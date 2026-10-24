@@ -1,6 +1,6 @@
 # Release pipeline, run by hand from the Actions tab (or `gh workflow run release.yml`).
 # Builds Froxel for every desktop platform and creates or updates the draft GitHub
-# Release "Froxel v<version>". With the Apple secrets set (README, Releases), the macOS app
+# Release "Froxel v<version>". With the Apple secrets set (docs/releasing.md), the macOS app
 # and dmg are signed with Developer ID and notarized; without them they get an ad-hoc
 # signature. The other platforms are unsigned.
 name: Release

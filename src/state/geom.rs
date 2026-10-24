@@ -158,7 +158,7 @@ pub(super) fn world_extents(volume: &Volume) -> Option<(Cell, Cell)> {
     ))
 }
 
-/// Integer center of an inclusive span. Matches the C++ floor((lo+hi+1)/2).
+/// Integer center of an inclusive span: floor((lo + hi + 1) / 2).
 pub(super) fn span_center(lo: i32, hi: i32) -> i32 {
     let s = lo as i64 + hi as i64 + 1;
     let center = if s >= 0 { s / 2 } else { -((-s + 1) / 2) };

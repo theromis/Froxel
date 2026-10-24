@@ -87,9 +87,9 @@ and the window are different documents.
 
 ### Protocol
 
-Newline-delimited JSON-RPC 2.0, the same rules as the C++ server below: one
-message per line, 16 MiB limit, `initialize` first, `ping` before that, tool
-failures as `isError: true`. The default revision is `2025-06-18`.
+Newline-delimited JSON-RPC 2.0: one message per line, 16 MiB limit,
+`initialize` first, `ping` before that, tool failures as `isError: true`.
+The default revision is `2025-06-18`.
 `2026-07-28`, `2025-03-26`, and `2024-11-05` are accepted and echoed back.
 
 ### Coordinates

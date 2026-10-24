@@ -1,9 +1,9 @@
-"""Builds the Froxel icons from frog.vox. Run from the repository root:
+"""Builds the Froxel icons from examples/frog.vox. Run from the repository root:
 
     cargo build --release
     uv run --with pillow python packaging/icons/make_icons.py
 
-The frog is the hero of jumpy-arcade with its lids and squints hidden. The GPU tracer renders it
+The frog has its lids and squints hidden. The GPU tracer renders it
 with an albedo pass, whose black sky is the cut-out mask. macOS gets the 824 px tile on a 1024
 canvas with a shadow (froxel-macos*.png, Froxel.icns); Windows and Linux get the tile edge to
 edge (froxel.png, froxel.ico, hicolor/).
@@ -11,9 +11,10 @@ edge (froxel.png, froxel.ico, hicolor/).
 import subprocess, tempfile
 from pathlib import Path
 HERE = Path(__file__).resolve().parent
+FROG = HERE.parent.parent / "examples" / "frog.vox"
 tmp = tempfile.mkdtemp()
 # 1440 is the largest square the GPU tracer binds today.
-subprocess.run(["target/release/froxel", "render", "--input", str(HERE / "frog.vox"),
+subprocess.run(["target/release/froxel", "render", "--input", str(FROG),
                 "--output", f"{tmp}/frog.png", "--aov-albedo", f"{tmp}/albedo.png",
                 "--width", "1440", "--height", "1440", "--samples", "384", "--denoise", "--gpu",
                 "--yaw", "-65", "--pitch", "18", "--distance", "0.62"], check=True)

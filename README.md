@@ -1,35 +1,65 @@
 <p align="center"><img src="packaging/icons/hicolor/256x256.png" width="128" alt="Froxel"></p>
 
-# Froxel
+<h1 align="center">Froxel</h1>
 
-A voxel editor in the spirit of MagicaVoxel, written in Rust: an egui window,
-a wgpu viewport, a path tracer, and an MCP server for automation. It runs on
+<p align="center">
+A voxel editor with a path tracer and an MCP server, written in Rust.<br>
 macOS, Windows, Linux, and FreeBSD.
+</p>
 
-## Build
+<p align="center">
+<a href="https://github.com/theromis/Froxel/releases/latest"><b>Download</b></a> ·
+<a href="#mcp-let-an-agent-build-models">MCP</a> ·
+<a href="#scripting">Scripting</a> ·
+<a href="#command-line">Command line</a> ·
+<a href="#build-from-source">Build</a>
+</p>
 
-```sh
-cargo run
-cargo run -- path/to/model.vox
-```
+![Froxel editing the frog: tools and palette on the left, the viewport with its skeleton, the inspector and the objects on the right](docs/images/editor.jpg)
 
-The binary is `froxel`. On macOS the File and Edit commands live on
-the application menu bar. Elsewhere, or with `FROXEL_NO_NATIVE_MENU` set,
-they are in a menu strip at the top of the window.
+Froxel opens and saves MagicaVoxel `.vox` files, edits them with brushes, shapes,
+and selections, path-traces them on the GPU, and exports glTF with bones and
+animation clips. An AI agent can drive all of it through the built-in
+[Model Context Protocol](https://modelcontextprotocol.io) server.
 
-## What it does
+## Features
 
-- Loads and saves MagicaVoxel `.vox` files. A file that has a scene graph is
-  written back with its groups, layers, hidden objects, and animation frames.
-  Frame 0 keeps the edited translation, rotation, name, and `_hidden`.
-  Materials (`_diffuse`, `_metal`, `_glass`, `_emit`) round-trip.
-- Edits voxels with a brush, line, box, face fill, generators, and a marquee.
-  Object mode moves, rotates, and flips whole objects. Strokes undo as one step.
-- Draws the scene as a mesh. Coplanar faces of one palette color merge, and
-  the export then splits edges so a neighbour's corner is not a T-junction.
-- Switches to a path-traced Render mode. The frame accumulates on the GPU
-  through wgpu. A scene that does not fit one grid falls back to the CPU
-  tracer. Save Render writes the frame that is on screen.
+- **`.vox` in and out.** Keeps groups, layers, hidden objects, animation frames,
+  and materials (`_diffuse`, `_metal`, `_glass`, `_emit`). Files saved by Froxel open
+  in MagicaVoxel.
+- **Editing.** Brush, line, circle, square, box, face fill, generators, mutators,
+  marquee, box select, and flood select. Add, remove, and paint modes. Object mode
+  moves, rotates, mirrors, and flips whole objects. Each stroke undoes in one step.
+- **Characters.** Bones, rigid binding of objects to bones, poses, and animation
+  clips, saved in the `.vox` file and exported to glTF.
+- **Render mode.** A path tracer with sky, sun, metal, glass, and emission. It
+  accumulates on the GPU through wgpu (Metal, Vulkan, DX12) and falls back to the
+  CPU. Denoising is built in.
+- **glTF export.** `.glb` with merged coplanar faces, no T-junctions, and a palette
+  texture or vertex colours.
+- **Scripts.** Objects can carry a sandboxed [Rhai](https://rhai.rs/) script with
+  sliders for its parameters.
+- **Automation.** An MCP server for agents and a command line for batch renders.
+
+<p align="center"><img src="docs/images/turntable.gif" width="320" alt="The frog turning on a turntable, rendered frame by frame with froxel render"></p>
+
+## Install
+
+Download the file for your system from the
+[latest release](https://github.com/theromis/Froxel/releases/latest).
+
+| System | File | Notes |
+|---|---|---|
+| macOS 11+ (Apple silicon and Intel) | `froxel-<version>-macos-universal.dmg` | Signed and notarized. Drag Froxel to Applications. |
+| Windows (x64, x86, ARM64) | `froxel-<version>-windows-<arch>.zip` | Not signed yet: SmartScreen may ask once. Choose **More info → Run anyway**. |
+| Debian, Ubuntu (x86_64, aarch64, riscv64) | `froxel-<version>-linux-<arch>.deb` | `sudo apt install ./froxel-*.deb` adds the menu entry and icon. Needs Vulkan. |
+| Other Linux | `froxel-<version>-linux-<arch>.tar.gz` | Needs Vulkan and glibc 2.35 or newer (2.39 for riscv64). |
+| FreeBSD (x86_64) | `froxel-<version>-freebsd-x86_64.tar.gz` | |
+
+Every release has a `SHA256SUMS.txt`.
+
+Try it on the frog:
+[`examples/frog.vox`](examples/frog.vox).
 
 ## Controls
 
@@ -43,74 +73,120 @@ they are in a menu strip at the top of the window.
 - **⌘N / ⌘O / ⌘S / ⇧⌘S** new, open, save, and save as.
 - **⇧⌘E** exports a glTF `.glb` with a palette texture and merged faces.
 
-## Command line
+On Windows and Linux, use **Ctrl** in place of **⌘**.
 
-`froxel render` path-traces a `.vox` file to a PNG and exits. It opens no
-window and starts no MCP server. The CPU tracer is the default, so one seed
-always writes the same PNG. `--gpu` uses the wgpu tracer and exits with
-`no GPU adapter` when the machine has none.
+## MCP: let an agent build models
+
+`froxel mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server.
+An agent can create objects, place voxels, fill boxes and ellipsoids, set the
+palette, add bones and clips, run scripts, export `.glb`, and path-trace a PNG
+to check its work. The frog in these pictures was built this way.
+
+Add it to Claude Code. On macOS, after installing from the dmg:
 
 ```sh
-froxel render --input model.vox --output frame.png \
-  --width 512 --height 512 --samples 64 --bounces 5 --seed 1
+claude mcp add froxel -- /Applications/Froxel.app/Contents/MacOS/froxel mcp
 ```
 
-`--help` lists the defaults. `--denoise` uses Open Image Denoise
-when the binary is built with `--features oidn`, and the edge-aware filter
-otherwise. The feature needs the Open Image Denoise library on the machine
-that builds it.
+Or add it to any MCP client's config:
 
-`froxel voxrt --input model.vox` loads the file, saves it, loads that save,
-and compares objects, cells, palette, materials, the scene graph, names,
-translations, rotations, hidden flags, layers, frames, bones, scripts, and
-motion. It also checks that a second save is byte-identical and that every
-`_r` value round-trips. `--dump` prints the chunk tree and skips the checks.
-Exit code 0 is a match. Exit code 1 lists the differences.
+```json
+{
+  "mcpServers": {
+    "froxel": {
+      "command": "/path/to/froxel",
+      "args": ["mcp"]
+    }
+  }
+}
+```
 
-## MCP
+Then ask for a model:
 
-`froxel mcp` edits a document over stdin/stdout. `render` path-traces
-a PNG in that process. Connected to a window it can also screenshot and
-click. Details are in [docs/mcp.md](docs/mcp.md).
+> Build a 16-voxel-tall voxel frog with big eyes and pink cheeks, give it a head
+> and jaw bone, render it from the front, and export it to `frog.glb`.
+
+`froxel mcp` works headless, with no window. To watch the edits happen, and let
+the agent take screenshots and click controls, connect it to an open editor:
 
 ```sh
-cargo build
-froxel --control 7979
 froxel mcp --connect 127.0.0.1:7979 --launch
 ```
 
-## Releases
+`--launch` opens the window if it is not already running. The full tool list and
+the connected mode are in [docs/mcp.md](docs/mcp.md).
 
-The Release workflow runs only on request:
+## Scripting
 
-```sh
-gh workflow run release.yml                      # version from Cargo.toml
-gh workflow run release.yml -f version=0.1.0-rc.1
-gh workflow run release.yml -f draft-release=false  # artifacts only
+An object can carry a [Rhai](https://rhai.rs/) script. The editor shows a slider
+for each parameter, and **Regenerate** rebuilds the voxels. Scripts run in a
+sandbox with no file, network, or clock access, and saved files keep the voxels,
+so the `.vox` still opens in MagicaVoxel.
+
+<img src="docs/images/lily-pad-script.jpg" width="200" align="right" alt="A lily pad generated by examples/lily_pad.rhai">
+
+```rhai
+let radius = param_float("radius", 8.0, 3.0, 16.0);
+let seed = param_int("seed", 1, 0, 9999);
+
+set_slot(1, [18, 72, 28]);   // a palette colour
+// …for each cell inside a wobbly disc:
+set(ix, 0, iz, slot);
 ```
 
-It builds macOS universal (`.dmg`, `.zip`), Windows x64, x86 and arm64
-(`.zip`), Linux x86_64, aarch64 and riscv64 (`.tar.gz`, `.deb`) and FreeBSD
-x86_64 (`.tar.gz`), then creates or updates the draft release `v<version>`
-with a `SHA256SUMS.txt`.
+The whole lily pad is [`examples/lily_pad.rhai`](examples/lily_pad.rhai). The
+API is in [docs/scripting.md](docs/scripting.md).
 
-The macOS app (`com.lonje.froxel`) and its dmg are signed with Developer ID,
-notarized, and stapled when these repository secrets are set. Without them the
-app has an ad-hoc signature and Gatekeeper blocks the first launch. The other
-platforms are unsigned.
+## Command line
 
-| Secret | Value |
-|---|---|
-| `MACOS_CERTIFICATE` | The Developer ID Application certificate and its private key as a `.p12`, base64: `base64 -i froxel.p12 \| pbcopy` |
-| `MACOS_CERTIFICATE_PASSWORD` | The password the `.p12` was exported with |
-| `APPLE_API_KEY` | The text of the App Store Connect API key, `AuthKey_<id>.p8` |
-| `APPLE_API_KEY_ID` | That key's ID |
-| `APPLE_API_ISSUER_ID` | The Issuer ID shown above the key list |
+`froxel render` path-traces a `.vox` file to a PNG with no window. The CPU tracer is
+the default, so a given seed always writes the same image. `--gpu` uses the wgpu
+tracer.
 
-The certificate comes from Certificates, Identifiers & Profiles in the Apple
-Developer account (Developer ID Application, created by the Account Holder).
-The API key comes from App Store Connect, Users and Access, Integrations, Team
-Keys, with the Developer role.
+```sh
+froxel render --input examples/frog.vox --output frog.png \
+  --width 1440 --height 810 --samples 256 --denoise --gpu \
+  --yaw -62 --pitch 16 --distance 0.72
+```
+
+![The frog, path-traced in Froxel](docs/images/hero.jpg)
+
+That command made this picture. `--help` lists every option: camera,
+depth of field, sky, sun, glass mode, and albedo and normal passes. The turntable
+above is 48 such renders, one every 7.5° of `--yaw`.
+
+![Lily pad, lotus bank, reeds and a letter, rendered with froxel render](docs/images/gallery.jpg)
+
+`froxel voxrt --input model.vox` loads a file, saves it, loads the save, and
+checks that nothing changed: objects, palette, materials, scene graph, bones,
+scripts, and motion. `--dump` prints the chunk tree instead.
+
+## Build from source
+
+You need [Rust](https://rustup.rs). On Linux, the editor loads Wayland or X11 and
+Vulkan at run time, so the build needs no `-dev` packages.
+
+```sh
+git clone https://github.com/theromis/Froxel
+cd Froxel
+cargo run --release -- examples/frog.vox
+```
+
+The binary is `target/release/froxel`. On macOS the File and Edit commands live on
+the application menu bar. Elsewhere, or with `FROXEL_NO_NATIVE_MENU` set, they are
+in a menu strip at the top of the window.
+
+`--features oidn` links [Open Image Denoise](https://www.openimagedenoise.org) for
+`--denoise`. It needs the library on the build machine. Without it, Froxel uses
+its built-in edge-aware filter.
+
+Tests:
+
+```sh
+cargo test --bin froxel
+```
+
+Releases are built by a GitHub workflow. See [docs/releasing.md](docs/releasing.md).
 
 ## Thanks
 
@@ -118,4 +194,4 @@ Inspired by [MacVoxel](https://tangled.org/pa.ulst.ar/MacVoxel).
 
 ## License
 
-MIT. See `LICENSE`.
+MIT. See [LICENSE](LICENSE).
