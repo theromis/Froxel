@@ -1,0 +1,31 @@
+[package]
+name = "froxel"
+version = "0.0.1"
+edition = "2021"
+publish = false
+# tests/*.rs are unit tests included with #[path], not integration tests.
+autotests = false
+description = "Froxel voxel editor."
+
+[dependencies]
+eframe = { version = "0.37", features = ["wgpu"] }
+egui = "0.37"
+glam = "0.29"
+rfd = "0.15"
+bytemuck = { version = "1.7", features = ["derive"] }
+png = "0.18"
+serde_json = "1"
+rhai = "1.27.0"
+oidn = { version = "2", optional = true }
+
+[features]
+oidn = ["dep:oidn"]
+
+[target.'cfg(target_os = "macos")'.dependencies]
+muda = { version = "0.21", default-features = false }
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSDictionary", "NSString", "NSUserDefaults", "NSValue"] }
+
+# Embeds packaging/icons/froxel.ico in froxel.exe.
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"

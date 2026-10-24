@@ -1,0 +1,12 @@
+# Cargo build output
+target/
+
+# Local-only test corpus: sample .vox files and scratch renders. Not redistributed.
+test/
+
+# Editors and IDEs
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~

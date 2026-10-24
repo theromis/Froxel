@@ -1,0 +1,316 @@
+# Release pipeline, run by hand from the Actions tab (or `gh workflow run release.yml`).
+# Builds Froxel for every desktop platform and creates or updates the draft GitHub
+# Release "Froxel v<version>". Builds are unsigned: macOS gets an ad-hoc signature.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version, e.g. 0.1.0 or 0.1.0-rc.1 (empty: Cargo.toml)"
+        type: string
+        default: ""
+      draft-release:
+        description: "Create or update the draft GitHub Release (off: artifacts only)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: v
+        name: Resolve version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version="${INPUT_VERSION#v}"
+          if [ -z "$version" ]; then
+            version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          fi
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "::error::'$version' is not a version like 1.2.3 or 1.2.3-rc.1"
+            exit 1
+          fi
+          prerelease=false
+          case "$version" in *-*) prerelease=true ;; esac
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >>"$GITHUB_OUTPUT"
+          echo "Froxel $version (prerelease: $prerelease)" >>"$GITHUB_STEP_SUMMARY"
+
+  macos:
+    name: macOS universal
+    needs: version
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: release-macos-universal
+      - name: Build
+        run: |
+          cargo build --release --locked --target aarch64-apple-darwin
+          cargo build --release --locked --target x86_64-apple-darwin
+      - name: Bundle Froxel.app, zip and dmg
+        run: |
+          set -euo pipefail
+          name="froxel-$VERSION-macos-universal"
+          app=dist/stage/Froxel.app
+          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" dist/release
+          cp packaging/icons/Froxel.icns "$app/Contents/Resources/"
+          lipo -create -output "$app/Contents/MacOS/froxel" \
+            target/aarch64-apple-darwin/release/froxel \
+            target/x86_64-apple-darwin/release/froxel
+          cat >"$app/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key><string>Froxel</string>
+            <key>CFBundleDisplayName</key><string>Froxel</string>
+            <key>CFBundleIdentifier</key><string>dev.theromis.Froxel</string>
+            <key>CFBundleExecutable</key><string>froxel</string>
+            <key>CFBundleIconFile</key><string>Froxel</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>${VERSION%%-*}</string>
+            <key>CFBundleVersion</key><string>$VERSION</string>
+            <key>LSMinimumSystemVersion</key><string>$MACOSX_DEPLOYMENT_TARGET</string>
+            <key>LSApplicationCategoryType</key><string>public.app-category.graphics-design</string>
+            <key>NSHighResolutionCapable</key><true/>
+          </dict>
+          </plist>
+          EOF
+          plutil -lint "$app/Contents/Info.plist"
+          codesign --force --sign - "$app"
+          codesign --verify --strict "$app"
+          lipo -info "$app/Contents/MacOS/froxel"
+          cp README.md LICENSE dist/stage/
+          ditto -c -k --keepParent "$app" "dist/release/$name.zip"
+          ln -s /Applications dist/stage/Applications
+          hdiutil create -volname Froxel -srcfolder dist/stage -ov -format UDZO "dist/release/$name.dmg"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-macos
+          path: dist/release/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows ${{ matrix.arch }}
+    needs: version
+    runs-on: windows-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64, target: x86_64-pc-windows-msvc }
+          - { arch: x86, target: i686-pc-windows-msvc }
+          - { arch: arm64, target: aarch64-pc-windows-msvc }
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: release-windows-${{ matrix.arch }}
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Zip
+        shell: pwsh
+        run: |
+          $name = "froxel-$env:VERSION-windows-${{ matrix.arch }}"
+          $stage = "dist/stage/$name"
+          New-Item -ItemType Directory -Force -Path $stage, dist/release | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/froxel.exe", README.md, LICENSE $stage
+          Compress-Archive -Path $stage -DestinationPath "dist/release/$name.zip"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-windows-${{ matrix.arch }}
+          path: dist/release/*
+          if-no-files-found: error
+
+  linux:
+    name: Linux ${{ matrix.arch }}
+    needs: version
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, runner: ubuntu-22.04, target: x86_64-unknown-linux-gnu, deb: amd64, glibc: "2.35" }
+          - { arch: aarch64, runner: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu, deb: arm64, glibc: "2.35" }
+          # Cross-compiled. 22.04 lacks a matching riscv64 libc for its toolchain, so the
+          # binary needs the newer glibc of 24.04.
+          - { arch: riscv64, runner: ubuntu-24.04, target: riscv64gc-unknown-linux-gnu, deb: riscv64, glibc: "2.39", cross: riscv64-linux-gnu }
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the cross linker
+        if: matrix.cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-${{ matrix.cross }} libc6-dev-${{ matrix.deb }}-cross
+          echo "CARGO_TARGET_$(echo '${{ matrix.target }}' | tr 'a-z-' 'A-Z_')_LINKER=${{ matrix.cross }}-gcc" >>"$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: release-linux-${{ matrix.arch }}
+      # Wayland, X11 and Vulkan are loaded at run time, so the build needs no -dev packages.
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package tar.gz and deb
+        run: |
+          set -euo pipefail
+          bin="target/${{ matrix.target }}/release/froxel"
+          name="froxel-$VERSION-linux-${{ matrix.arch }}"
+          mkdir -p "dist/stage/$name" dist/release
+          cp "$bin" README.md LICENSE packaging/linux/froxel.desktop packaging/icons/froxel.png "dist/stage/$name/"
+          tar -C dist/stage -czf "dist/release/$name.tar.gz" "$name"
+
+          root="dist/stage/deb"
+          install -Dm755 "$bin" "$root/usr/bin/froxel"
+          install -Dm644 packaging/linux/froxel.desktop "$root/usr/share/applications/froxel.desktop"
+          for png in packaging/icons/hicolor/*.png; do
+            size=$(basename "$png" .png)
+            install -Dm644 "$png" "$root/usr/share/icons/hicolor/$size/apps/froxel.png"
+          done
+          install -Dm644 LICENSE "$root/usr/share/doc/froxel/copyright"
+          install -Dm644 README.md "$root/usr/share/doc/froxel/README.md"
+          mkdir -p "$root/DEBIAN"
+          # Debian sorts 1.0~rc1 before 1.0, as semver sorts 1.0-rc1.
+          deb_version=$(printf '%s' "$VERSION" | tr - '~')
+          cat >"$root/DEBIAN/control" <<EOF
+          Package: froxel
+          Version: $deb_version
+          Architecture: ${{ matrix.deb }}
+          Maintainer: Froxel <noreply@github.com>
+          Section: graphics
+          Priority: optional
+          Installed-Size: $(du -sk "$root/usr" | cut -f1)
+          Depends: libc6 (>= ${{ matrix.glibc }}), libvulkan1, libxkbcommon0
+          Recommends: libwayland-client0, libxkbcommon-x11-0, libx11-6, xdg-desktop-portal
+          Homepage: https://github.com/${{ github.repository }}
+          Description: Voxel editor
+           A voxel editor in the spirit of MagicaVoxel, with a wgpu viewport,
+           a path tracer and an MCP server for automation.
+          EOF
+          dpkg-deb --root-owner-group --build "$root" "dist/release/$name.deb"
+          dpkg-deb --info "dist/release/$name.deb"
+      - name: Smoke test
+        if: ${{ !matrix.cross }}
+        run: '"dist/stage/froxel-$VERSION-linux-${{ matrix.arch }}/froxel" --help'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-linux-${{ matrix.arch }}
+          path: dist/release/*
+          if-no-files-found: error
+
+  freebsd:
+    name: FreeBSD x86_64
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build in a FreeBSD VM
+        uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc # v1.5.9
+        with:
+          release: "15.1"
+          usesh: true
+          cpu: 4
+          mem: 12288
+          envs: "VERSION CARGO_TERM_COLOR CARGO_INCREMENTAL"
+          prepare: |
+            pkg install -y bash curl
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+          run: |
+            set -eu
+            . "$HOME/.cargo/env"
+            cargo build --release --locked
+            name="froxel-$VERSION-freebsd-x86_64"
+            mkdir -p "dist/stage/$name" dist/release
+            cp target/release/froxel README.md LICENSE packaging/linux/froxel.desktop packaging/icons/froxel.png "dist/stage/$name/"
+            tar -C dist/stage -czf "dist/release/$name.tar.gz" "$name"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-freebsd-x86_64
+          path: dist/release/*
+          if-no-files-found: error
+
+  release:
+    name: Draft GitHub Release
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && inputs.draft-release }}
+    needs: [version, macos, windows, linux, freebsd]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      PRERELEASE: ${{ needs.version.outputs.prerelease }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Create or update the draft
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum -- * >SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          tag="v$VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" != true ]; then
+              echo "::error::$tag is already published; bump the version instead of replacing its files"
+              exit 1
+            fi
+            gh release upload "$tag" --clobber -- *
+          else
+            flags=()
+            if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
+            gh release create "$tag" --draft --title "Froxel $tag" \
+              --target "$GITHUB_SHA" --generate-notes "${flags[@]}" -- *
+          fi
+          echo "Draft: $(gh release view "$tag" --json url --jq .url)" >>"$GITHUB_STEP_SUMMARY"

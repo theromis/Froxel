@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Froxel
+Comment=Voxel editor
+Exec=froxel %f
+Icon=froxel
+Terminal=false
+Categories=Graphics;3DGraphics;
