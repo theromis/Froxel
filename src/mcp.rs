@@ -278,7 +278,7 @@ fn dispatch(
             json!({
                 "protocolVersion": version,
                 "capabilities": {"tools": {"listChanged": false}},
-                "serverInfo": {"name": "Froxel", "version": "0.1.0"},
+                "serverInfo": {"name": "Froxel", "version": env!("CARGO_PKG_VERSION")},
                 "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode."
             }),
         ));
