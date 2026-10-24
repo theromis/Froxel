@@ -1,6 +1,8 @@
 # Release pipeline, run by hand from the Actions tab (or `gh workflow run release.yml`).
 # Builds Froxel for every desktop platform and creates or updates the draft GitHub
-# Release "Froxel v<version>". Builds are unsigned: macOS gets an ad-hoc signature.
+# Release "Froxel v<version>". With the Apple secrets set (README, Releases), the macOS app
+# and dmg are signed with Developer ID and notarized; without them they get an ad-hoc
+# signature. The other platforms are unsigned.
 name: Release
 
 on:
@@ -65,12 +67,44 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
       MACOSX_DEPLOYMENT_TARGET: "11.0"
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: stable
           targets: aarch64-apple-darwin, x86_64-apple-darwin
+      # A throwaway keychain holds the Developer ID certificate for this job only.
+      - name: Import the Developer ID certificate
+        if: env.MACOS_CERTIFICATE != ''
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password=$(openssl rand -hex 24)
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          printf '%s' "$MACOS_CERTIFICATE" | base64 --decode >"$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" >/dev/null
+          # The existing search list is one path per word.
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity=$(security find-identity -v -p codesigning "$keychain" \
+            | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -n 1)
+          if [ -z "$identity" ]; then
+            echo "::error::MACOS_CERTIFICATE has no Developer ID Application identity"
+            exit 1
+          fi
+          echo "Signing as $identity"
+          echo "SIGN_IDENTITY=$identity" >>"$GITHUB_ENV"
+          echo "SIGN_KEYCHAIN=$keychain" >>"$GITHUB_ENV"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: release-macos-universal
@@ -95,7 +129,7 @@ jobs:
           <dict>
             <key>CFBundleName</key><string>Froxel</string>
             <key>CFBundleDisplayName</key><string>Froxel</string>
-            <key>CFBundleIdentifier</key><string>dev.theromis.Froxel</string>
+            <key>CFBundleIdentifier</key><string>com.lonje.froxel</string>
             <key>CFBundleExecutable</key><string>froxel</string>
             <key>CFBundleIconFile</key><string>Froxel</string>
             <key>CFBundlePackageType</key><string>APPL</string>
@@ -108,13 +142,68 @@ jobs:
           </plist>
           EOF
           plutil -lint "$app/Contents/Info.plist"
-          codesign --force --sign - "$app"
-          codesign --verify --strict "$app"
           lipo -info "$app/Contents/MacOS/froxel"
+
+          # Notarizes one file and fails the job with Apple's log unless it is accepted.
+          notarize() {
+            local result id status
+            result=$(xcrun notarytool submit "$1" --key "$RUNNER_TEMP/notary.p8" \
+              --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER_ID" \
+              --wait --timeout 30m --output-format json) || true
+            id=$(printf '%s' "$result" | plutil -extract id raw - 2>/dev/null || true)
+            status=$(printf '%s' "$result" | plutil -extract status raw - 2>/dev/null || true)
+            echo "Notarization of $(basename "$1"): ${status:-no answer} ${id}"
+            if [ "$status" != Accepted ]; then
+              printf '%s\n' "$result"
+              if [ -n "$id" ]; then
+                xcrun notarytool log "$id" --key "$RUNNER_TEMP/notary.p8" \
+                  --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER_ID" || true
+              fi
+              exit 1
+            fi
+          }
+
+          signed=false
+          if [ -n "${SIGN_IDENTITY:-}" ]; then
+            if [ -z "$APPLE_API_KEY" ] || [ -z "$APPLE_API_KEY_ID" ] || [ -z "$APPLE_API_ISSUER_ID" ]; then
+              echo "::error::The certificate is set but APPLE_API_KEY, APPLE_API_KEY_ID or APPLE_API_ISSUER_ID is missing"
+              exit 1
+            fi
+            signed=true
+            printf '%s' "$APPLE_API_KEY" >"$RUNNER_TEMP/notary.p8"
+            codesign --force --options runtime --timestamp --keychain "$SIGN_KEYCHAIN" \
+              --sign "$SIGN_IDENTITY" "$app"
+            codesign --verify --strict --verbose=2 "$app"
+            ditto -c -k --keepParent "$app" "$RUNNER_TEMP/notarize.zip"
+            notarize "$RUNNER_TEMP/notarize.zip"
+            xcrun stapler staple "$app"
+            spctl --assess --type execute --verbose=4 "$app"
+          else
+            echo "::warning::No Developer ID secrets: the app gets an ad-hoc signature and Gatekeeper will block it"
+            codesign --force --sign - "$app"
+            codesign --verify --strict "$app"
+          fi
+
           cp README.md LICENSE dist/stage/
           ditto -c -k --keepParent "$app" "dist/release/$name.zip"
           ln -s /Applications dist/stage/Applications
           hdiutil create -volname Froxel -srcfolder dist/stage -ov -format UDZO "dist/release/$name.dmg"
+          if [ "$signed" = true ]; then
+            codesign --force --timestamp --keychain "$SIGN_KEYCHAIN" --sign "$SIGN_IDENTITY" \
+              "dist/release/$name.dmg"
+            notarize "dist/release/$name.dmg"
+            xcrun stapler staple "dist/release/$name.dmg"
+            spctl --assess --type open --context context:primary-signature --verbose=4 \
+              "dist/release/$name.dmg"
+            echo "macOS: signed as $SIGN_IDENTITY and notarized" >>"$GITHUB_STEP_SUMMARY"
+          else
+            echo "macOS: ad-hoc signature, not notarized" >>"$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Remove the signing keychain
+        if: always() && env.SIGN_KEYCHAIN != ''
+        run: |
+          security delete-keychain "$SIGN_KEYCHAIN" || true
+          rm -f "$RUNNER_TEMP/notary.p8" "$RUNNER_TEMP/notarize.zip"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-macos
