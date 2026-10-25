@@ -1,12 +1,14 @@
 # Code signing policy
 
-Windows builds: free code signing provided by [SignPath.io](https://about.signpath.io),
-certificate by [SignPath Foundation](https://signpath.org). The application to
-SignPath Foundation is under review, so releases up to and including 0.2.0 ship
-unsigned Windows executables.
-
 macOS builds are signed with the maintainer's Apple Developer ID and notarized
 by Apple.
+
+Windows builds are not code-signed. SmartScreen may ask before the first
+launch (**More info → Run anyway**), and Windows 11 with Smart App Control
+turned on blocks unsigned programs outright. Signing will come back when the
+project qualifies for a free open source certificate or takes up a paid one.
+
+Linux and FreeBSD builds are not signed; check them against `SHA256SUMS.txt`.
 
 ## What gets signed
 
@@ -18,10 +20,11 @@ release lists the SHA-256 of every file in `SHA256SUMS.txt`.
 ## Team
 
 - Committers and reviewers: [Roman Vasilyev](https://github.com/theromis)
-- Approvers: [Roman Vasilyev](https://github.com/theromis)
+- Release approvers: [Roman Vasilyev](https://github.com/theromis)
 
 Changes from other contributors arrive as pull requests and are reviewed by a
-committer before they are merged. An approver authorizes each signing request.
+committer before they are merged. Releases are started by hand and published
+only after an approver checks the draft.
 
 ## Privacy
 

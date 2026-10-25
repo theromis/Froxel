@@ -22,9 +22,9 @@ GitHub generates them from the commits.
 
 The macOS app (`com.lonje.froxel`) and its dmg are signed with Developer ID,
 notarized, and stapled when these repository secrets are set. Without them the
-app has an ad-hoc signature and Gatekeeper blocks the first launch. Windows
-builds are unsigned until SignPath Foundation approves the project; see
-[CODE_SIGNING.md](../CODE_SIGNING.md). Linux and FreeBSD builds are not signed.
+app has an ad-hoc signature and Gatekeeper blocks the first launch. Windows,
+Linux, and FreeBSD builds are not signed; see
+[CODE_SIGNING.md](../CODE_SIGNING.md).
 
 | Secret | Value |
 |---|---|
