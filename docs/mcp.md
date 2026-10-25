@@ -181,7 +181,8 @@ tracer. A file with no scene graph still loads its first model.
 | `screenshot_region` | `x`, `y`, `width`, `height` | PNG of a rectangle in window points. Connected mode only |
 | `ui_inspect` | — | Previous frame's controls, tool, mode, active object, voxel count, and status. Connected mode only |
 | `ui_click` | `x`, `y` | Click the topmost registered control. A viewport hit stamps the active tool. A slider sets its value from the point. A palette cell selects that slot. Connected mode only |
-| `export_mesh` | `path` | Write a glTF 2.0 `.glb` of every object. `merge` defaults to false. `vertexColors` defaults to false. `exportHidden` and `splitObjects` default to false. A slot with motion adds `TEXCOORD_1`. Clips become glTF animations |
+| `export_mesh` | `path` | Write a glTF 2.0 `.glb` of every object. `merge` defaults to false. `vertexColors` defaults to false. `exportHidden` and `splitObjects` default to false. A slot with motion adds `TEXCOORD_1`. Clips become glTF animations. The reply includes `structure` |
+| `export_models` | `models` | Write 1 to 16 `.glb` files. Each item is `{path, source?, merge?, vertexColors?, exportHidden?, splitObjects?}`. `source` is a `.vox` opened in its own session, so the open document stays. Each file's `structure` lists nodes, meshes, skins, animations, and warnings |
 | `set_script` | `source`, optional `object` | Store a Rhai script and read its parameters. One undo step. Does not rebuild voxels |
 | `get_script` | optional `object` | Source, auto flag, and parameters |
 | `set_params` | `values`, optional `object` | Set parameter values by name. One undo step. Does not run the script |
@@ -285,6 +286,16 @@ curve. When any palette slot has motion, every vertex also gets
 slot. Godot imports that as UV2. A document with no motion omits
 `TEXCOORD_1`. The file is Y-up, positions `(x, z, −y)`. File → Export Mesh…
 uses the palette texture and always merges. An empty scene is an error.
+The reply's `structure` is the JSON chunk: node names, mesh primitive vertex
+and index counts, position bounds, skin joint counts, and animation channel
+counts. A warning names an empty mesh, a skin with no joints, a missing or
+repeated node name, or an animation with no channels.
+
+`export_models` is the same write, for 1 to 16 files. A `source` path loads
+that `.vox` into a separate session. The open document is not replaced and is
+what a model without `source` exports. One file's error is that model's
+`error`; the other files are still written. `ok` is false when any model
+failed.
 
 When the document has a skeleton, `export_mesh` writes a skinned mesh
 instead of a rigid one. Each bone is a joint node (name, translation,
@@ -429,3 +440,8 @@ by name. `ui_click` hits the controls `ui_inspect` lists, including sliders
 and palette cells, plus a stamp in the viewport. Voxel changes also go
 through `set_voxel`, `set_voxels`, and `fill_box` on the active object.
 Screenshots need the connected window.
+
+Batch export checks all destinations before writing. Names that resolve to the
+same path, including links, `..` aliases and case-only differences, are rejected
+as a malformed batch. Other per-model failures remain independent: a failed
+source does not prevent valid sources from exporting.

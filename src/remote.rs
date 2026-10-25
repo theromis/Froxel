@@ -2,7 +2,8 @@
 //! control port. Screenshots are not applied here: only a live window can
 //! take one.
 
-use std::path::Path;
+use std::collections::HashSet;
+use std::path::{Component, Path, PathBuf};
 
 use serde_json::{json, Map, Value};
 
@@ -471,29 +472,8 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
                 "objects": session.objects.len(),
             }))
         }
-        "mesh.export" => {
-            let path = req_str(&params, "path")?;
-            let merge = opt_bool(&params, "merge")?.unwrap_or(false);
-            let vertex_colors = opt_bool(&params, "vertexColors")?.unwrap_or(false);
-            let export_hidden = opt_bool(&params, "exportHidden")?.unwrap_or(false);
-            let split_objects = opt_bool(&params, "splitObjects")?.unwrap_or(false);
-            let quads = crate::export::export_with(
-                session,
-                Path::new(&path),
-                &crate::export::MeshExport {
-                    vertex_colors,
-                    merge,
-                    export_hidden,
-                    split_objects,
-                },
-            )?;
-            Ok(json!({
-                "path": path,
-                "quads": quads,
-                "merge": merge,
-                "vertexColors": vertex_colors
-            }))
-        }
+        "mesh.export" => export_mesh(session, &params),
+        "mesh.export_batch" => export_batch(session, &params),
         "ui.screenshot" | "ui.inspect" | "ui.click" => Err(NO_WINDOW.into()),
         "control.methods" => Ok(Value::Array(
             METHODS
@@ -508,6 +488,180 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
             "unknown method `{other}`; `control.methods` lists them"
         )),
     }
+}
+
+fn export_mesh(session: &Session, params: &Value) -> Result<Value, String> {
+    let path = req_str(params, "path")?;
+    let options = mesh_options(params)?;
+    let written = write_mesh(session, &path, &options)?;
+    Ok(json!({
+        "path": path,
+        "quads": written["quads"],
+        "merge": options.merge,
+        "vertexColors": options.vertex_colors,
+        "structure": written["structure"],
+    }))
+}
+
+fn export_batch(session: &Session, params: &Value) -> Result<Value, String> {
+    let models = params
+        .get("models")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "models must be an array of 1 to 16 exports".to_string())?;
+    if models.is_empty() || models.len() > 16 {
+        return Err("models must contain 1 to 16 exports".into());
+    }
+    // Duplicate output names are a malformed batch, not independent per-model failures.
+    // Check the complete batch before an export can replace an existing file.
+    let mut outputs = HashSet::new();
+    let mut existing: Vec<PathBuf> = Vec::new();
+    for model in models {
+        if let Some(path) = model
+            .get("path")
+            .and_then(Value::as_str)
+            .filter(|path| path.ends_with(".glb"))
+        {
+            let key = export_destination_key(Path::new(path))?;
+            let mut aliases_existing = false;
+            if Path::new(path).is_file() {
+                for previous in &existing {
+                    aliases_existing |= same_file::is_same_file(path, previous)
+                        .map_err(|error| format!("Cannot compare output files: {error}"))?;
+                }
+                existing.push(PathBuf::from(path));
+            }
+            if !outputs.insert(key) || aliases_existing {
+                return Err(format!("Duplicate output destination: {path}. Use distinct names, including case-only aliases."));
+            }
+        }
+    }
+    let mut written = Vec::with_capacity(models.len());
+    let mut failed = 0;
+    for (index, model) in models.iter().enumerate() {
+        match export_model(session, model) {
+            Ok(value) => written.push(value),
+            Err(error) => {
+                failed += 1;
+                written.push(json!({"ok": false, "index": index, "error": error}));
+            }
+        }
+    }
+    Ok(json!({
+        "ok": failed == 0,
+        "models": written,
+        "failed": failed,
+    }))
+}
+
+fn export_destination_key(path: &Path) -> Result<String, String> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|error| error.to_string())?
+            .join(path)
+    };
+    let ancestor = absolute
+        .ancestors()
+        .find(|part| std::fs::symlink_metadata(part).is_ok())
+        .ok_or("No existing output ancestor.")?;
+    let mut resolved = ancestor.canonicalize().map_err(|error| error.to_string())?;
+    resolved.push(
+        absolute
+            .strip_prefix(ancestor)
+            .map_err(|error| error.to_string())?,
+    );
+    let mut normalized = PathBuf::new();
+    for component in resolved.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            other => normalized.push(other.as_os_str()),
+        }
+    }
+    // Portable batches must not rely on a case-sensitive output filesystem.
+    Ok(normalized
+        .to_string_lossy()
+        .replace('\\', "/")
+        .to_lowercase())
+}
+
+fn export_model(session: &Session, model: &Value) -> Result<Value, String> {
+    if !model.is_object() {
+        return Err("each model must be an object".into());
+    }
+    let path = req_str(model, "path")?;
+    let options = mesh_options(model)?;
+    let source = opt_str(model, "source")?;
+    let (document, source) = match source {
+        Some(source) => {
+            if !source.ends_with(".vox") {
+                return Err(format!("source must be a .vox file ({source})"));
+            }
+            let mut loaded = Session::new();
+            loaded.open_vox(Path::new(&source))?;
+            (loaded, Some(source))
+        }
+        None => {
+            // The open document. Cloning the session would copy the undo stacks,
+            // so the export reads it in place. open_vox above uses its own session.
+            return finish_export(session, &path, &options, None);
+        }
+    };
+    finish_export(&document, &path, &options, source)
+}
+
+fn finish_export(
+    session: &Session,
+    path: &str,
+    options: &crate::export::MeshExport,
+    source: Option<String>,
+) -> Result<Value, String> {
+    if !path.ends_with(".glb") {
+        return Err(format!("path must end in .glb ({path})"));
+    }
+    let written = write_mesh(session, path, options)?;
+    let mut body = json!({
+        "ok": true,
+        "path": path,
+        "quads": written["quads"],
+        "bytes": written["bytes"],
+        "structure": written["structure"],
+    });
+    if let Some(source) = source {
+        body["source"] = json!(source);
+    }
+    Ok(body)
+}
+
+fn write_mesh(
+    session: &Session,
+    path: &str,
+    options: &crate::export::MeshExport,
+) -> Result<Value, String> {
+    let file = Path::new(path);
+    if let Some(parent) = file
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("Could not create {}: {err}", parent.display()))?;
+    }
+    let quads = crate::export::export_with(session, file, options)?;
+    let bytes = std::fs::read(file).map_err(|err| format!("Could not read {path}: {err}"))?;
+    let structure = crate::export::gltf_structure(&bytes)?;
+    Ok(json!({"quads": quads, "bytes": bytes.len(), "structure": structure}))
+}
+
+fn mesh_options(params: &Value) -> Result<crate::export::MeshExport, String> {
+    Ok(crate::export::MeshExport {
+        merge: opt_bool(params, "merge")?.unwrap_or(false),
+        vertex_colors: opt_bool(params, "vertexColors")?.unwrap_or(false),
+        export_hidden: opt_bool(params, "exportHidden")?.unwrap_or(false),
+        split_objects: opt_bool(params, "splitObjects")?.unwrap_or(false),
+    })
 }
 
 const METHODS: &[(&str, &str, &str)] = &[
@@ -539,6 +693,11 @@ const METHODS: &[(&str, &str, &str)] = &[
         "mesh.export",
         "path, merge?, vertexColors?",
         "Write a glTF 2.0 .glb of every object. merge defaults to false. vertexColors defaults to false (palette texture). exportHidden and splitObjects default to false. A skeleton writes a rigid skin. Clips become glTF animations.",
+    ),
+    (
+        "mesh.export_batch",
+        "models",
+        "Write 1 to 16 .glb files. Each model is {path, source?, merge?, vertexColors?, exportHidden?, splitObjects?}. source opens that .vox in a separate session, so the open document stays. The reply includes each file's node, mesh, skin and animation structure.",
     ),
     (
         "script.set",

@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use serde_json::json;
+use serde_json::{json, Value};
 
 use crate::state::{Cell, Session};
 
@@ -851,6 +851,184 @@ fn pad(buf: &mut Vec<u8>, fill: u8) {
 /// writes a palette texture, greedy-merged.
 pub fn export_glb(session: &Session, path: &Path) -> Result<u32, String> {
     export_with(session, path, &session.export)
+}
+
+/// Nodes, meshes, skins and animations in a `.glb`, plus warnings for an empty
+/// mesh, a skin with no joints, or an animation with no channels. This reads
+/// the JSON chunk only. It does not load the vertex buffer.
+pub fn gltf_structure(bytes: &[u8]) -> Result<Value, String> {
+    let root = gltf_json(bytes)?;
+    let mut warnings = Vec::new();
+    let nodes = root
+        .get("nodes")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if nodes.is_empty() {
+        warnings.push("the glb has no nodes".to_string());
+    }
+    let mut names = BTreeMap::<String, usize>::new();
+    let mut node_report = Vec::new();
+    for node in &nodes {
+        let name = node
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        if name.is_empty() {
+            warnings.push("a node has no name".to_string());
+        } else {
+            *names.entry(name.clone()).or_default() += 1;
+        }
+        let children = node
+            .get("children")
+            .and_then(Value::as_array)
+            .map(Vec::len)
+            .unwrap_or(0);
+        node_report.push(json!({
+            "name": name,
+            "mesh": node.get("mesh").cloned().unwrap_or(Value::Null),
+            "skin": node.get("skin").cloned().unwrap_or(Value::Null),
+            "children": children,
+        }));
+    }
+    for (name, count) in &names {
+        if *count > 1 {
+            warnings.push(format!("node name `{name}` is used {count} times"));
+        }
+    }
+    let meshes = root
+        .get("meshes")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if meshes.is_empty() {
+        warnings.push("the glb has no meshes".to_string());
+    }
+    let accessors = root.get("accessors").and_then(Value::as_array);
+    let mut mesh_report = Vec::new();
+    for mesh in &meshes {
+        let primitives = mesh
+            .get("primitives")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        if primitives.is_empty() {
+            warnings.push(format!(
+                "mesh `{}` has no primitives",
+                mesh.get("name").and_then(Value::as_str).unwrap_or("")
+            ));
+        }
+        let mut primitive_report = Vec::new();
+        for primitive in &primitives {
+            let position = primitive
+                .pointer("/attributes/POSITION")
+                .and_then(Value::as_u64);
+            let Some(position) = position else {
+                warnings.push("a primitive has no POSITION".to_string());
+                primitive_report.push(json!({"vertices": 0, "indices": 0}));
+                continue;
+            };
+            let vertices = accessor_count(accessors, position);
+            if vertices == 0 {
+                warnings.push("a primitive has no vertices".to_string());
+            }
+            let indices = primitive
+                .get("indices")
+                .and_then(Value::as_u64)
+                .map(|index| accessor_count(accessors, index))
+                .unwrap_or(0);
+            if indices == 0 {
+                warnings.push("a primitive has no indices".to_string());
+            }
+            let bounds = accessors
+                .and_then(|items| items.get(position as usize))
+                .map(|accessor| json!({"min": accessor.get("min"), "max": accessor.get("max")}))
+                .unwrap_or(Value::Null);
+            primitive_report
+                .push(json!({"vertices": vertices, "indices": indices, "bounds": bounds}));
+        }
+        mesh_report.push(json!({
+            "name": mesh.get("name").cloned().unwrap_or(Value::Null),
+            "primitives": primitive_report,
+        }));
+    }
+    let mut skins = Vec::new();
+    for skin in root
+        .get("skins")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let joints = skin
+            .get("joints")
+            .and_then(Value::as_array)
+            .map(Vec::len)
+            .unwrap_or(0);
+        if joints == 0 {
+            warnings.push("a skin has no joints".to_string());
+        }
+        skins.push(json!({"joints": joints}));
+    }
+    let mut animations = Vec::new();
+    for animation in root
+        .get("animations")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let channels = animation
+            .get("channels")
+            .and_then(Value::as_array)
+            .map(Vec::len)
+            .unwrap_or(0);
+        if channels == 0 {
+            warnings.push(format!(
+                "animation `{}` has no channels",
+                animation.get("name").and_then(Value::as_str).unwrap_or("")
+            ));
+        }
+        animations.push(json!({
+            "name": animation.get("name").cloned().unwrap_or(Value::Null),
+            "channels": channels,
+        }));
+    }
+    Ok(json!({
+        "generator": root.pointer("/asset/generator").cloned().unwrap_or(Value::Null),
+        "nodes": node_report,
+        "meshes": mesh_report,
+        "skins": skins,
+        "animations": animations,
+        "images": root.get("images").and_then(Value::as_array).map(Vec::len).unwrap_or(0),
+        "warnings": warnings,
+    }))
+}
+
+fn accessor_count(accessors: Option<&Vec<Value>>, index: u64) -> u64 {
+    accessors
+        .and_then(|items| items.get(index as usize))
+        .and_then(|accessor| accessor.get("count"))
+        .and_then(Value::as_u64)
+        .unwrap_or(0)
+}
+
+fn gltf_json(bytes: &[u8]) -> Result<Value, String> {
+    if bytes.len() < 20 || &bytes[0..4] != b"glTF" {
+        return Err("not a glb".into());
+    }
+    let json_len = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]) as usize;
+    if &bytes[16..20] != b"JSON" {
+        return Err("a glb JSON chunk is missing".into());
+    }
+    let end = 20 + json_len;
+    if end > bytes.len() {
+        return Err("the glb JSON chunk is truncated".into());
+    }
+    let mut json_end = end;
+    while json_end > 20 && matches!(bytes[json_end - 1], 0x00 | b' ') {
+        json_end -= 1;
+    }
+    serde_json::from_slice(&bytes[20..json_end]).map_err(|err| format!("glb JSON: {err}"))
 }
 
 /// Write a `.glb` and return the quad count. An empty scene is an error

@@ -362,6 +362,7 @@ fn map_tool(name: &str, args: &Value) -> Result<(String, Value), String> {
         "ui_inspect" => "ui.inspect",
         "ui_click" => "ui.click",
         "export_mesh" => "mesh.export",
+        "export_models" => "mesh.export_batch",
         "set_script" => "script.set",
         "get_script" => "script.get",
         "set_params" => "script.params",
@@ -605,13 +606,16 @@ fn tools() -> Vec<Value> {
         tool("regenerate", "Run the object's script and replace the voxels it writes. One undo step. A limit or runtime error leaves the document unchanged and includes the script line.", json!({
             "object": int_prop("Object index. Omit for the active object.")
         }), &[]),
-        tool("export_mesh", "Write a glTF 2.0 .glb of every object. Exposed faces only. The default material is a 256-wide palette texture. A swaying or bobbing slot adds TEXCOORD_1 (sway, bob) on every vertex. A skeleton writes one rigid skin: each vertex belongs to one bone with weight 1.", json!({
+        tool("export_mesh", "Write a glTF 2.0 .glb of every object. Exposed faces only. The default material is a 256-wide palette texture. A swaying or bobbing slot adds TEXCOORD_1 (sway, bob) on every vertex. A skeleton writes one rigid skin: each vertex belongs to one bone with weight 1. The reply includes the file's node, mesh, skin and animation structure.", json!({
             "path": str_prop("Where to write the .glb"),
             "merge": {"type": "boolean", "description": "Greedy-merge coplanar faces of one palette slot. Defaults to false."},
             "vertexColors": {"type": "boolean", "description": "Store a linear COLOR_0 on each vertex instead of the palette texture. Defaults to false."},
             "exportHidden": {"type": "boolean", "description": "Include hidden objects. Default false, which omits them."},
             "splitObjects": {"type": "boolean", "description": "One mesh node per object, still sharing one skin, so a game can hide a part. Default false is a single mesh."}
         }), &["path"]),
+        tool("export_models", "Write 1 to 16 .glb files and report each file's structure: nodes, meshes (vertices, indices, bounds), skins, and animations. A warning names an empty mesh, a skin with no joints, a nameless or duplicated node, or an animation with no channels. source opens that .vox in its own session, so the open document is not replaced. Omit source to export the open document. One model's failure is reported on that model and does not skip the others.", json!({
+            "models": {"type": "array", "minItems": 1, "maxItems": 16, "description": "Each item is {path, source?, merge?, vertexColors?, exportHidden?, splitObjects?}. path ends in .glb. source, when set, is a .vox file.", "items": {"type": "object"}}
+        }), &["models"]),
     ]
 }
 

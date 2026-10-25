@@ -1271,6 +1271,7 @@ dependencies = [
  "png",
  "rfd",
  "rhai",
+ "same-file",
  "serde_json",
  "winresource",
 ]

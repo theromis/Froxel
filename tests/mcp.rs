@@ -634,3 +634,113 @@ fn clips_save_in_vox_and_mirror_and_shapes_follow_the_box_rules() {
     assert_eq!(dot["changed"], 1);
     assert!(head.session.objects[0].cells.contains_key(&(3, 3, 3)));
 }
+
+#[test]
+fn export_models_checks_structure_and_leaves_the_open_document() {
+    let mut head = Headless::new();
+    head.ok("set_voxel", json!({"x": 0, "y": 0, "z": 0, "palette": 3}));
+    let dir = std::env::temp_dir().join(format!("froxel-mcp-batch-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let source = dir.join("one.vox");
+    head.ok("save_file", json!({"path": source.to_string_lossy()}));
+    head.ok("set_voxel", json!({"x": 1, "y": 0, "z": 0, "palette": 3}));
+    let from_file = dir.join("from-file.glb");
+    let from_session = dir.join("from-session.glb");
+    let report = head.ok(
+        "export_models",
+        json!({"models": [
+            {"source": source.to_string_lossy(), "path": from_file.to_string_lossy()},
+            {"path": from_session.to_string_lossy()}
+        ]}),
+    );
+    assert_eq!(report["ok"], true, "{report}");
+    assert_eq!(
+        report["models"][0]["structure"]["nodes"][0]["name"],
+        "voxels"
+    );
+    assert!(
+        report["models"][0]["structure"]["meshes"][0]["primitives"][0]["vertices"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+    assert!(
+        report["models"][0]["structure"]["warnings"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        "{report}"
+    );
+    let file_quads = report["models"][0]["quads"].as_u64().unwrap();
+    let session_quads = report["models"][1]["quads"].as_u64().unwrap();
+    assert!(session_quads > file_quads, "{report}");
+    assert_eq!(head.session.objects[0].cells.len(), 2);
+    let mixed = head.ok(
+        "export_models",
+        json!({"models": [
+            {"path": from_session.to_string_lossy()},
+            {"path": dir.join("notes.txt").to_string_lossy()}
+        ]}),
+    );
+    assert_eq!(mixed["ok"], false, "{mixed}");
+    assert_eq!(mixed["failed"], 1, "{mixed}");
+    assert_eq!(mixed["models"][0]["ok"], true, "{mixed}");
+    assert!(
+        mixed["models"][1]["error"]
+            .as_str()
+            .unwrap()
+            .contains(".glb"),
+        "{mixed}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn batch_rejects_destination_aliases_before_writing() {
+    let mut head = Headless::new();
+    head.ok("set_voxel", json!({"x":0,"y":0,"z":0,"palette":3}));
+    let dir = std::env::temp_dir().join(format!("froxel-duplicate-test-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("nested")).unwrap();
+    let path = dir.join("same.glb");
+    std::fs::write(&path, b"preserve existing output").unwrap();
+    let reply = head.call(
+        "export_models",
+        json!({"models":[
+            {"path":path}, {"path":dir.join("nested/../same.glb")}
+        ]}),
+    );
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+    assert!(reply.to_string().contains("Duplicate"), "{reply}");
+    assert_eq!(std::fs::read(&path).unwrap(), b"preserve existing output");
+    let reply = head.call(
+        "export_models",
+        json!({"models":[
+            {"path":dir.join("new.glb")}, {"path":dir.join("NEW.glb")}
+        ]}),
+    );
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+    assert!(!dir.join("new.glb").exists());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn batch_rejects_hard_linked_outputs_before_writing() {
+    let mut head = Headless::new();
+    head.ok("set_voxel", json!({"x":0,"y":0,"z":0,"palette":3}));
+    let dir = std::env::temp_dir().join(format!("froxel-hardlink-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let first = dir.join("first.glb");
+    let second = dir.join("second.glb");
+    let _ = std::fs::remove_file(&second);
+    std::fs::write(&first, b"preserved").unwrap();
+    std::fs::hard_link(&first, &second).unwrap();
+    let reply = head.call(
+        "export_models",
+        json!({"models":[{"path":first},{"path":second}]}),
+    );
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+    assert!(reply.to_string().contains("Duplicate"));
+    assert_eq!(std::fs::read(first).unwrap(), b"preserved");
+    std::fs::remove_dir_all(dir).unwrap();
+}
