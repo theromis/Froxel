@@ -163,6 +163,21 @@ jobs:
             fi
           }
 
+          # Fetches the notarization ticket from Apple. The lookup can drop the
+          # connection, and a fresh ticket can take a moment to appear, so retry.
+          staple() {
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              if xcrun stapler staple "$1"; then
+                return 0
+              fi
+              echo "Stapling $(basename "$1") failed (attempt $attempt); retrying in $((attempt * 15)) s"
+              sleep $((attempt * 15))
+            done
+            echo "::error::Could not staple $(basename "$1")"
+            exit 1
+          }
+
           signed=false
           if [ -n "${SIGN_IDENTITY:-}" ]; then
             if [ -z "$APPLE_API_KEY" ] || [ -z "$APPLE_API_KEY_ID" ] || [ -z "$APPLE_API_ISSUER_ID" ]; then
@@ -176,7 +191,7 @@ jobs:
             codesign --verify --strict --verbose=2 "$app"
             ditto -c -k --keepParent "$app" "$RUNNER_TEMP/notarize.zip"
             notarize "$RUNNER_TEMP/notarize.zip"
-            xcrun stapler staple "$app"
+            staple "$app"
             spctl --assess --type execute --verbose=4 "$app"
           else
             echo "::warning::No Developer ID secrets: the app gets an ad-hoc signature and Gatekeeper will block it"
@@ -192,7 +207,7 @@ jobs:
             codesign --force --timestamp --keychain "$SIGN_KEYCHAIN" --sign "$SIGN_IDENTITY" \
               "dist/release/$name.dmg"
             notarize "dist/release/$name.dmg"
-            xcrun stapler staple "dist/release/$name.dmg"
+            staple "dist/release/$name.dmg"
             spctl --assess --type open --context context:primary-signature --verbose=4 \
               "dist/release/$name.dmg"
             echo "macOS: signed as $SIGN_IDENTITY and notarized" >>"$GITHUB_STEP_SUMMARY"
