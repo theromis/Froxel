@@ -221,7 +221,7 @@ jobs:
           rm -f "$RUNNER_TEMP/notary.p8" "$RUNNER_TEMP/notarize.zip"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-macos
+          name: froxel-${{ env.VERSION }}-macos-universal
           path: dist/release/*
           if-no-files-found: error
 
@@ -260,7 +260,7 @@ jobs:
           Compress-Archive -Path $stage -DestinationPath "dist/release/$name.zip"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-windows-${{ matrix.arch }}
+          name: froxel-${{ env.VERSION }}-windows-${{ matrix.arch }}
           path: dist/release/*
           if-no-files-found: error
 
@@ -341,7 +341,7 @@ jobs:
         run: '"dist/stage/froxel-$VERSION-linux-${{ matrix.arch }}/froxel" --help'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-linux-${{ matrix.arch }}
+          name: froxel-${{ env.VERSION }}-linux-${{ matrix.arch }}
           path: dist/release/*
           if-no-files-found: error
 
@@ -375,7 +375,7 @@ jobs:
             tar -C dist/stage -czf "dist/release/$name.tar.gz" "$name"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-freebsd-x86_64
+          name: froxel-${{ env.VERSION }}-freebsd-x86_64
           path: dist/release/*
           if-no-files-found: error
 
@@ -400,7 +400,7 @@ jobs:
           unzip -l "dist/release/froxel-$VERSION-godot-addon.zip"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-addons
+          name: froxel-${{ env.VERSION }}-addons
           path: dist/release/*
           if-no-files-found: error
 
@@ -424,7 +424,7 @@ jobs:
           sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: release-*
+          pattern: froxel-${{ needs.version.outputs.version }}-*
           path: dist
           merge-multiple: true
       # The notes are the version's section of CHANGELOG.md, or GitHub's

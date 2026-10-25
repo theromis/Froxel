@@ -54,14 +54,15 @@ Download the file for your system from the
 | System | File | Notes |
 |---|---|---|
 | macOS 11+ (Apple silicon and Intel) | `froxel-<version>-macos-universal.dmg` | Signed and notarized. Drag Froxel to Applications. |
-| Windows (x64, x86, ARM64) | `froxel-<version>-windows-<arch>.zip` | Not signed yet: SmartScreen may ask once. Choose **More info → Run anyway**. |
+| Windows (x64, x86, ARM64) | `froxel-<version>-windows-<arch>.zip` | Not signed yet ([why](CODE_SIGNING.md)). SmartScreen may ask once: choose **More info → Run anyway**. Windows 11 with Smart App Control on blocks it outright. |
 | Debian, Ubuntu (x86_64, aarch64, riscv64) | `froxel-<version>-linux-<arch>.deb` | `sudo apt install ./froxel-*.deb` adds the menu entry and icon. Needs Vulkan. |
 | Other Linux | `froxel-<version>-linux-<arch>.tar.gz` | Needs Vulkan and glibc 2.35 or newer (2.39 for riscv64). |
 | FreeBSD (x86_64) | `froxel-<version>-freebsd-x86_64.tar.gz` | |
 | Godot 4.3+ plugin | `froxel-<version>-godot-addon.zip` | Unzip into the project folder. See [Godot and Blender](#godot-and-blender). |
 | Blender 4.2+ add-on | `froxel-<version>-blender-addon.zip` | Preferences → Add-ons → Install from Disk. |
 
-Every release has a `SHA256SUMS.txt`.
+Every release has a `SHA256SUMS.txt`. How the builds are signed is in
+[CODE_SIGNING.md](CODE_SIGNING.md).
 
 Try it on the frog, [`examples/frog.vox`](examples/frog.vox), or on the scripted
 lily pad, [`examples/lily_pad.vox`](examples/lily_pad.vox).
