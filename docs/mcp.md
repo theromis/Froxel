@@ -42,6 +42,20 @@ to reach the window does not silently edit a private document.
 }
 ```
 
+### Docker
+
+The `Dockerfile` at the repository root runs the headless server from a
+release build, checked against `SHA256SUMS.txt`, on x86_64 or ARM64 Linux.
+`FROXEL_VERSION` picks the release.
+
+```sh
+docker build -t froxel-mcp .
+docker run -i --rm froxel-mcp
+```
+
+Files the server opens or writes are inside the container; mount a folder
+with `-v` to reach them.
+
 ### Connected to the window
 
 Start the editor with a control port. It listens on `127.0.0.1` only.
