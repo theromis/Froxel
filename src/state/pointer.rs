@@ -170,6 +170,33 @@ impl Session {
         }
     }
 
+    /// Drop a stroke in progress and put the voxels back, for when a second
+    /// finger turns a one-finger stroke into a camera gesture.
+    pub fn cancel_stroke(&mut self) {
+        if self.grab == Grab::Paint {
+            if let Some(before) = self.pending.take() {
+                self.restore(before);
+                self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+            }
+            self.stroke = None;
+        }
+        self.grab = Grab::None;
+    }
+
+    /// Two fingers orbit and pinch to zoom; three fingers pan. Deltas are in
+    /// points, `zoom` is the pinch factor (above 1 spreads, so moves closer).
+    pub fn touch_view(&mut self, orbit: glam::Vec2, zoom: f32, pan: glam::Vec2) {
+        if orbit != glam::Vec2::ZERO {
+            self.orbit(orbit.x, orbit.y);
+        }
+        if pan != glam::Vec2::ZERO {
+            self.pan(pan.x, pan.y);
+        }
+        if zoom.is_finite() && zoom > 0.0 && zoom != 1.0 {
+            self.distance = (self.distance / zoom).clamp(2.0, 2000.0);
+        }
+    }
+
     /// Anchor of a face stroke, so the viewport can turn mouse movement
     /// into an extrusion distance.
     pub fn stroke_face(&self) -> Option<(Cell, i32, i32)> {

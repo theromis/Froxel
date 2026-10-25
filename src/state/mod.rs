@@ -497,6 +497,7 @@ impl UiRegion {
         x >= self.x && y >= self.y && x < self.x + self.w && y < self.y + self.h
     }
 }
+mod dialog;
 mod document;
 mod drag;
 mod files;
@@ -727,3 +728,15 @@ pub(crate) use vox::rotation_codec_errors;
 #[cfg(test)]
 #[path = "../../tests/state.rs"]
 mod tests;
+
+/// Where a phone or tablet keeps the user's files: the app's own Documents
+/// folder. The desktop picks paths in native dialogs instead.
+#[cfg(any(target_os = "ios", target_os = "android"))]
+pub fn documents_dir() -> PathBuf {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let dir = home.join("Documents");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}

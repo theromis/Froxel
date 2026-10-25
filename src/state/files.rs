@@ -9,9 +9,7 @@ use super::geom::*;
 use super::vox::*;
 use super::*;
 
-const SAVE: &str = "Save";
-const DONT_SAVE: &str = "Don't Save";
-const CANCEL: &str = "Cancel";
+use super::dialog::{self, CloseAnswer};
 
 impl Session {
     pub fn new_document(&mut self) {
@@ -55,10 +53,7 @@ impl Session {
     }
 
     pub fn open_dialog(&mut self) {
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter("MagicaVoxel", &["vox"])
-            .pick_file()
-        else {
+        let Some(path) = dialog::pick_open("MagicaVoxel", &["vox"]) else {
             return;
         };
         self.load_path(&path);
@@ -412,31 +407,13 @@ impl Session {
         if !self.has_unsaved_changes() {
             return true;
         }
-        let answer = rfd::MessageDialog::new()
-            .set_level(rfd::MessageLevel::Warning)
-            .set_title("Unsaved changes")
-            .set_description(format!(
-                "Save changes to {} before closing?",
-                self.document_label()
-            ))
-            .set_buttons(rfd::MessageButtons::YesNoCancelCustom(
-                SAVE.into(),
-                DONT_SAVE.into(),
-                CANCEL.into(),
-            ))
-            .show();
-        match answer {
-            rfd::MessageDialogResult::Custom(label) if label == SAVE => {
+        match dialog::ask_close(&self.document_label()) {
+            CloseAnswer::Save => {
                 self.save();
                 !self.has_unsaved_changes()
             }
-            rfd::MessageDialogResult::Yes => {
-                self.save();
-                !self.has_unsaved_changes()
-            }
-            rfd::MessageDialogResult::Custom(label) if label == DONT_SAVE => true,
-            rfd::MessageDialogResult::No => true,
-            _ => false,
+            CloseAnswer::DontSave => true,
+            CloseAnswer::Cancel => false,
         }
     }
 
@@ -455,11 +432,7 @@ impl Session {
             Some(name) => name.to_string_lossy().into_owned(),
             None => format!("{}.vox", self.active().name),
         };
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter("MagicaVoxel", &["vox"])
-            .set_file_name(name)
-            .save_file()
-        else {
+        let Some(path) = dialog::pick_save(None, "MagicaVoxel", &["vox"], &name) else {
             return;
         };
         let _ = self.write_vox(&ensure_vox_extension(path));
@@ -508,11 +481,7 @@ impl Session {
 
     pub fn export_mesh_dialog(&mut self) {
         let name = format!("{}.glb", self.active().name);
-        let Some(path) = rfd::FileDialog::new()
-            .set_title(self.export_summary())
-            .add_filter("glTF", &["glb"])
-            .set_file_name(name)
-            .save_file()
+        let Some(path) = dialog::pick_save(Some(&self.export_summary()), "glTF", &["glb"], &name)
         else {
             return;
         };
@@ -628,10 +597,7 @@ impl Session {
 
     pub(super) fn pick_render_path(&self) -> Option<PathBuf> {
         let name = format!("{}.png", self.active().name);
-        let path = rfd::FileDialog::new()
-            .add_filter("PNG", &["png"])
-            .set_file_name(name)
-            .save_file()?;
+        let path = dialog::pick_save(None, "PNG", &["png"], &name)?;
         Some(if path.extension().is_some() {
             path
         } else {
@@ -665,12 +631,14 @@ impl Session {
     }
 
     /// Topmost registered control under a window point. `None` actions,
-    /// such as the window rectangle, are not click targets.
+    /// such as the window rectangle, are not click targets. Phone controls
+    /// with a `mobile.` id stay clickable: undo and the sheets have no
+    /// session action.
     pub fn ui_target(&self, x: f32, y: f32) -> Option<UiRegion> {
         self.ui_regions
             .iter()
             .rev()
-            .find(|region| region.action != UiAction::None && region.contains(x, y))
+            .find(|region| listed_control(region) && region.contains(x, y))
             .cloned()
     }
 
@@ -833,7 +801,7 @@ impl Session {
         let regions: Vec<serde_json::Value> = self
             .ui_regions
             .iter()
-            .filter(|region| region.action != UiAction::None)
+            .filter(|region| listed_control(region))
             .map(|region| {
                 serde_json::json!({
                     "id": region.id,
@@ -885,6 +853,10 @@ impl Session {
             self.load_path(&path);
         }
     }
+}
+
+fn listed_control(region: &UiRegion) -> bool {
+    region.action != UiAction::None || region.id.starts_with("mobile.")
 }
 
 fn graph_differences(left: Option<&VoxGraph>, right: Option<&VoxGraph>) -> Vec<String> {

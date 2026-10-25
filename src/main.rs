@@ -28,6 +28,7 @@ mod mcp;
 mod menu;
 mod menu_bar;
 mod mesh;
+mod mobile;
 #[cfg(target_os = "macos")]
 mod native_menu;
 mod panels;
@@ -54,7 +55,49 @@ use mcp::ShotRegion;
 use state::{Session, UiAction};
 use viewport::ViewCache;
 
+/// Appends a line to `Documents/froxel.log` on a phone, which has no console.
+#[cfg(any(target_os = "ios", target_os = "android"))]
+pub(crate) fn append_log(line: &str) {
+    use std::io::Write;
+    let path = state::documents_dir().join("froxel.log");
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = writeln!(file, "{line}");
+    }
+}
+
+/// Sends eframe's and wgpu's log records to `Documents/froxel.log` on a
+/// phone, where the app has no console.
+#[cfg(any(target_os = "ios", target_os = "android"))]
+struct FileLog;
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+impl log::Log for FileLog {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        metadata.level() <= log::Level::Warn
+    }
+    fn log(&self, record: &log::Record) {
+        if self.enabled(record.metadata()) {
+            append_log(&format!(
+                "{} {}: {}",
+                record.level(),
+                record.target(),
+                record.args()
+            ));
+        }
+    }
+    fn flush(&self) {}
+}
+
 fn main() -> eframe::Result {
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    {
+        static LOGGER: FileLog = FileLog;
+        let _ = log::set_logger(&LOGGER).map(|()| log::set_max_level(log::LevelFilter::Warn));
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|arg| arg == "mcp") {
         std::process::exit(mcp::run(&args[1..]));
@@ -104,16 +147,30 @@ fn main() -> eframe::Result {
         session.load_path(path.as_path());
     }
 
-    let options = eframe::NativeOptions {
+    // The phone strip is what `FROXEL_MOBILE_UI` is for. The desktop minimum
+    // is wider than that strip, so a preview starts at a phone size.
+    let (inner, min_inner) = if mobile::active() {
+        ([390.0, 844.0], [320.0, 480.0])
+    } else {
+        ([1280.0, 800.0], [960.0, 640.0])
+    };
+    #[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(unused_mut))]
+    let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1280.0, 800.0])
-            .with_min_inner_size([960.0, 640.0])
+            .with_inner_size(inner)
+            .with_min_inner_size(min_inner)
             .with_title("Froxel")
             .with_icon(window_icon()),
         renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };
-    eframe::run_native(
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    mobile_options(&mut options);
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    std::panic::set_hook(Box::new(|info| {
+        append_log(&format!("panic: {info}"));
+    }));
+    let result = eframe::run_native(
         "Froxel",
         options,
         Box::new(move |cc| {
@@ -126,11 +183,36 @@ fn main() -> eframe::Result {
                 shots: VecDeque::new(),
                 inflight: None,
                 viewport_rect: egui::Rect::NOTHING,
+                mobile: mobile::MobileUi::default(),
                 #[cfg(target_os = "macos")]
                 native_menu: None,
             }))
         }),
-    )
+    );
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    if let Err(err) = &result {
+        append_log(&format!("eframe: {err}"));
+    }
+    result
+}
+
+/// A phone fills its screen, and its GPU may fall short of wgpu's default
+/// limits (the iOS simulator allows 15 inter-stage variables, not 16), so the
+/// device asks for what the adapter has.
+#[cfg(any(target_os = "ios", target_os = "android"))]
+fn mobile_options(options: &mut eframe::NativeOptions) {
+    use eframe::egui_wgpu::{WgpuSetup, WgpuSetupCreateNew};
+    use std::sync::Arc;
+
+    options.viewport = egui::ViewportBuilder::default().with_title("Froxel");
+    options.wgpu_options.wgpu_setup = WgpuSetup::CreateNew(WgpuSetupCreateNew {
+        device_descriptor: Arc::new(|adapter| eframe::wgpu::DeviceDescriptor {
+            label: Some("froxel device"),
+            required_limits: adapter.limits(),
+            ..Default::default()
+        }),
+        ..WgpuSetupCreateNew::without_display_handle()
+    });
 }
 
 /// The voxel frog of `packaging/icons`. macOS gets the padded tile its Dock expects.
@@ -150,6 +232,7 @@ struct Shell {
     shots: VecDeque<PendingShot>,
     inflight: Option<InflightShot>,
     viewport_rect: egui::Rect,
+    mobile: mobile::MobileUi,
     #[cfg(target_os = "macos")]
     native_menu: Option<native_menu::NativeMenu>,
 }
@@ -208,6 +291,18 @@ impl eframe::App for Shell {
         self.session.take_drops(ctx);
         self.session.take_keys(ctx);
 
+        if mobile::active() {
+            self.viewport_rect = mobile::show(
+                ui,
+                frame.wgpu_render_state(),
+                &mut self.session,
+                &mut self.cache,
+                &mut self.mobile,
+            );
+            self.issue_screenshot(ctx);
+            return;
+        }
+
         menu_bar::show(ui, &mut self.session);
 
         egui::Panel::bottom("status").show(ui, |ui| {
@@ -252,6 +347,8 @@ impl eframe::App for Shell {
                 frame.wgpu_render_state(),
                 &mut self.session,
                 &mut self.cache,
+                true,
+                &[],
             );
         });
         self.issue_screenshot(ctx);
@@ -310,6 +407,9 @@ impl Shell {
         let Some(region) = self.session.ui_target(x, y) else {
             return Err(format!("no control at {x}, {y}"));
         };
+        if self.mobile.activate(&region.id, &mut self.session) {
+            return Ok(serde_json::json!({"id": region.id, "label": region.label}));
+        }
         if region.action == UiAction::Viewport {
             let rect = egui::Rect::from_min_size(
                 egui::pos2(region.x, region.y),
@@ -483,12 +583,31 @@ fn parse_port(text: &str) -> Result<u16, String> {
         .map_err(|_| format!("port `{text}` is not a number"))
 }
 
-/// Load a system UI sans close to Godot's editor font (Inter). San Francisco
-/// is the macOS UI face; the others are regular single-face fallbacks.
-/// Collections are skipped so a hairline weight is not picked by index.
-/// Nothing is vendored or downloaded. Returns false when no face is present,
-/// in which case the theme just uses a larger default size.
+/// Load a system UI sans close to Godot's editor font (Inter), and the
+/// vendored Phosphor subset used by the phone chrome.
+///
+/// San Francisco is the macOS UI face; the others are regular single-face
+/// fallbacks. Collections are skipped so a hairline weight is not picked by
+/// index. Returns false when no UI face is present, in which case the theme
+/// uses a larger default size. The icon font is installed either way.
 fn install_ui_font(ctx: &egui::Context) -> bool {
+    let mut fonts = egui::FontDefinitions::default();
+    let loaded = load_system_ui(&mut fonts);
+    fonts.font_data.insert(
+        "Phosphor".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
+            "../assets/icons/Phosphor.ttf"
+        ))),
+    );
+    fonts.families.insert(
+        egui::FontFamily::Name("Phosphor".into()),
+        vec!["Phosphor".to_owned()],
+    );
+    ctx.set_fonts(fonts);
+    loaded
+}
+
+fn load_system_ui(fonts: &mut egui::FontDefinitions) -> bool {
     const CANDIDATES: &[&str] = &[
         "/System/Library/Fonts/SFNS.ttf",
         "/System/Library/Fonts/Supplemental/Arial.ttf",
@@ -499,11 +618,10 @@ fn install_ui_font(ctx: &egui::Context) -> bool {
         let Ok(bytes) = std::fs::read(path) else {
             continue;
         };
-        // TrueType outlines. egui panics on a face ab_glyph cannot parse.
+        // TrueType outlines. egui panics on a face it cannot parse.
         if bytes.len() < 12 || bytes[0..4] != [0, 1, 0, 0] {
             continue;
         }
-        let mut fonts = egui::FontDefinitions::default();
         fonts.font_data.insert(
             "UI".to_owned(),
             std::sync::Arc::new(egui::FontData::from_owned(bytes)),
@@ -511,7 +629,6 @@ fn install_ui_font(ctx: &egui::Context) -> bool {
         if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
             family.insert(0, "UI".to_owned());
         }
-        ctx.set_fonts(fonts);
         return true;
     }
     false

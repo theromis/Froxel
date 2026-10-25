@@ -8,16 +8,24 @@ autotests = false
 description = "Froxel voxel editor."
 
 [dependencies]
-eframe = { version = "0.37", features = ["wgpu"] }
 egui = "0.37"
 getrandom = "0.3"
 glam = "0.29"
-rfd = "0.15"
 bytemuck = { version = "1.7", features = ["derive"] }
 png = "0.18"
 serde_json = "1"
 rhai = "1.27.0"
 oidn = { version = "2", optional = true }
+
+# Desktop: eframe's defaults and native file dialogs.
+[target.'cfg(not(any(target_os = "ios", target_os = "android")))'.dependencies]
+eframe = { version = "0.37", features = ["wgpu"] }
+rfd = "0.15"
+
+# Phones and tablets: no clipboard, X11, or Wayland, which do not build there.
+[target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
+log = "0.4"
+eframe = { version = "0.37", default-features = false, features = ["wgpu", "default_fonts", "accesskit"] }
 
 [features]
 oidn = ["dep:oidn"]
@@ -33,3 +41,8 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 # Embeds packaging/icons/froxel.ico in froxel.exe.
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"
+
+# iOS surface size fix; see vendor/README.md.
+[patch.crates-io]
+eframe = { path = "vendor/eframe" }
+egui-wgpu = { path = "vendor/egui-wgpu" }

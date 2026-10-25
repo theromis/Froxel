@@ -19,6 +19,9 @@ pub struct ViewCache {
     trace: Option<crate::trace_gpu::Tracer>,
     trace_texture: Option<egui::TextureId>,
     trace_epoch: u64,
+    /// Two or more fingers are down, or were since the last time none were:
+    /// the touch moves the camera and edits nothing.
+    touch_gesture: bool,
 }
 
 impl ViewCache {
@@ -30,6 +33,7 @@ impl ViewCache {
             trace: None,
             trace_texture: None,
             trace_epoch: 0,
+            touch_gesture: false,
         }
     }
 
@@ -54,12 +58,16 @@ impl ViewCache {
     }
 }
 
+/// `hud` draws the desktop chips. `block` is what the phone paints itself:
+/// a press there orbits nothing and edits nothing.
 pub fn show(
     ctx: &egui::Context,
     ui: &mut egui::Ui,
     render_state: Option<&eframe::egui_wgpu::RenderState>,
     session: &mut Session,
     cache: &mut ViewCache,
+    hud: bool,
+    block: &[egui::Rect],
 ) -> egui::Rect {
     let rect = ui.available_rect_before_wrap();
     ui.allocate_rect(rect, egui::Sense::click_and_drag());
@@ -74,9 +82,13 @@ pub fn show(
         egui::vec2(168.0, 32.0),
     );
     let pointer = ctx.input(|i| i.pointer.clone());
-    let on_hud = pointer
-        .hover_pos()
-        .is_some_and(|p| left.contains(p) || right.contains(p) || motion_chip.contains(p));
+    let pointed = pointer.hover_pos().or(pointer.interact_pos());
+    let blocked = pointed.is_some_and(|p| block.iter().any(|area| area.contains(p)));
+    let on_hud = blocked
+        || (hud
+            && pointer
+                .hover_pos()
+                .is_some_and(|p| left.contains(p) || right.contains(p) || motion_chip.contains(p)));
     let hover = pointer.hover_pos().filter(|p| rect.contains(*p) && !on_hud);
     let space = ctx.input(|i| i.key_down(egui::Key::Space));
     let scroll = if hover.is_some() {
@@ -102,22 +114,25 @@ pub fn show(
         };
     let shift = ctx.input(|i| i.modifiers.shift);
     let drag = tool_drag(session, rect, cache.anchor, aim, shift);
-    session.pointer(
-        hover.is_some(),
-        pointer.button_down(egui::PointerButton::Primary),
-        pointer.button_pressed(egui::PointerButton::Primary) && hover.is_some(),
-        pointer.button_released(egui::PointerButton::Primary),
-        pointer.button_down(egui::PointerButton::Secondary),
-        pointer.button_pressed(egui::PointerButton::Secondary) && hover.is_some(),
-        pointer.button_down(egui::PointerButton::Middle),
-        pointer.button_pressed(egui::PointerButton::Middle) && hover.is_some(),
-        space,
-        glam::Vec2::new(pointer.delta().x, pointer.delta().y),
-        scroll,
-        ray,
-        &drag,
-        ctx.input(|i| i.modifiers.command),
-    );
+    let gesturing = touch_gesture(ctx, session, cache, hover.is_some() || pointer.any_down());
+    if !gesturing {
+        session.pointer(
+            hover.is_some(),
+            pointer.button_down(egui::PointerButton::Primary),
+            pointer.button_pressed(egui::PointerButton::Primary) && hover.is_some(),
+            pointer.button_released(egui::PointerButton::Primary),
+            pointer.button_down(egui::PointerButton::Secondary),
+            pointer.button_pressed(egui::PointerButton::Secondary) && hover.is_some(),
+            pointer.button_down(egui::PointerButton::Middle),
+            pointer.button_pressed(egui::PointerButton::Middle) && hover.is_some(),
+            space,
+            glam::Vec2::new(pointer.delta().x, pointer.delta().y),
+            scroll,
+            ray,
+            &drag,
+            ctx.input(|i| i.modifiers.command),
+        );
+    }
     if pointer.button_released(egui::PointerButton::Primary) {
         cache.anchor = None;
     }
@@ -214,17 +229,39 @@ pub fn show(
     paint_bones(ui.painter().with_clip_rect(rect), session, rect);
 
     if session.active().cells.is_empty() {
-        painter.text(
-            rect.center(),
-            egui::Align2::CENTER_CENTER,
-            "empty",
-            egui::FontId::proportional(14.0),
-            egui::Color32::from_rgb(214, 220, 230),
-        );
+        let color = egui::Color32::from_rgb(214, 220, 230);
+        if hud {
+            painter.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "empty",
+                egui::FontId::proportional(14.0),
+                color,
+            );
+        } else {
+            let galley = painter.layout(
+                "One finger draws. Two orbit and pinch. Three pan.".to_owned(),
+                egui::FontId::proportional(15.0),
+                color,
+                (rect.width() - 32.0).max(40.0),
+            );
+            painter.galley(rect.center() - galley.size() / 2.0, galley, color);
+        }
     }
 
     if session.motion_preview {
         ctx.request_repaint();
+    }
+    if matches!(session.hover, Some(_))
+        && matches!(
+            session.tool,
+            Tool::Brush | Tool::Marquee | Tool::BoxSelect | Tool::FloodSelect
+        )
+    {
+        ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
+    }
+    if !hud {
+        return rect;
     }
     ui.scope_builder(egui::UiBuilder::new().max_rect(motion_chip), |ui| {
         hud_frame(ui, |ui| {
@@ -274,14 +311,6 @@ pub fn show(
         });
     });
 
-    if matches!(session.hover, Some(_))
-        && matches!(
-            session.tool,
-            Tool::Brush | Tool::Marquee | Tool::BoxSelect | Tool::FloodSelect
-        )
-    {
-        ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
-    }
     rect
 }
 
@@ -477,6 +506,37 @@ fn gpu_view_proj(session: &Session, aspect: f32) -> Mat4 {
         Vec4::new(0.0, 0.0, 0.5, 1.0),
     );
     clip * projection(aspect) * view_matrix(session)
+}
+
+/// Two fingers orbit and pinch to zoom, three or more pan. A stroke that the
+/// first finger began is undone when the second lands, and nothing edits
+/// again until every finger has lifted. Returns true while that lasts.
+fn touch_gesture(
+    ctx: &egui::Context,
+    session: &mut Session,
+    cache: &mut ViewCache,
+    inside: bool,
+) -> bool {
+    let touch = ctx.multi_touch().filter(|_| inside || cache.touch_gesture);
+    if let Some(touch) = touch {
+        if !cache.touch_gesture {
+            session.cancel_stroke();
+            cache.anchor = None;
+            cache.touch_gesture = true;
+        }
+        let delta = glam::Vec2::new(touch.translation_delta.x, touch.translation_delta.y);
+        if touch.num_touches >= 3 {
+            session.touch_view(glam::Vec2::ZERO, touch.zoom_delta, delta);
+        } else {
+            session.touch_view(delta, touch.zoom_delta, glam::Vec2::ZERO);
+        }
+        ctx.request_repaint();
+        return true;
+    }
+    if cache.touch_gesture && !ctx.input(|i| i.pointer.any_down() || i.any_touches()) {
+        cache.touch_gesture = false;
+    }
+    cache.touch_gesture
 }
 
 fn tool_drag(
