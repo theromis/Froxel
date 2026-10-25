@@ -158,6 +158,11 @@ froxel bridge --input examples/lily_pad.vox      # four sliders: radius, notch, 
 froxel --bridge 29771 examples/lily_pad.vox
 ```
 
+<p align="center">
+<img src="docs/images/godot-bridge.jpg" width="49%" alt="The lily pad's script sliders in the Godot inspector">
+<img src="docs/images/blender-bridge.jpg" width="49%" alt="The lily pad's script sliders in the Blender sidebar">
+</p>
+
 The Godot plugin is [`godot/addons/froxel_bridge`](godot/addons/froxel_bridge) and
 the Blender add-on is [`blender/froxel_bridge`](blender/froxel_bridge). Both are
 in every release since 0.2.0 as `froxel-<version>-godot-addon.zip` and

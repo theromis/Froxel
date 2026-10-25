@@ -52,6 +52,8 @@ included in the next import.
 
 ## Godot
 
+![The FroxelBridge node in Godot 4.5: the lily pad in the 3D view and its radius, notch, direction, and seed sliders in the inspector](images/godot-bridge.jpg)
+
 Unzip `froxel-<version>-godot-addon.zip` into the project folder. It creates
 `addons/froxel_bridge`. Then enable Froxel Bridge in Project Settings →
 Plugins. From a clone, copy `godot/addons/froxel_bridge` instead; `godot/` is
@@ -97,6 +99,8 @@ Godot 4.3+ is the target and 4.5 is tested. The glTF import uses
 `GLTFDocument`.
 
 ## Blender
+
+![The Froxel tab in Blender 5.2: the lily pad in the 3D view and its sliders and Bake into scene in the sidebar](images/blender-bridge.jpg)
 
 Install `froxel-<version>-blender-addon.zip` from Preferences → Add-ons →
 Install from Disk, then enable Froxel Bridge. From a clone, build the same zip
