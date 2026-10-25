@@ -285,6 +285,41 @@ fn point(session: &mut Session, down: bool, pressed: bool, released: bool, ray: 
 }
 
 #[test]
+fn a_held_brush_click_changes_one_layer() {
+    // A click lasts several frames. Each one must aim at the model as it was
+    // when the stroke began, not at the voxels the stroke just wrote.
+    let ray = (Vec3::new(0.5, 0.5, 5.0), Vec3::new(0.0, 0.0, -1.0));
+    let mut session = Session::new();
+    session.tool = Tool::Brush;
+    session.tool_mode = ToolMode::Add;
+    session.brush_size = 1;
+    session.active_mut().translation = (0, 0, 0);
+    session.active_mut().cells.clear();
+    session.active_mut().cells.insert((0, 0, 0), 1);
+    point(&mut session, true, true, false, ray);
+    for _ in 0..5 {
+        point(&mut session, true, false, false, ray);
+    }
+    point(&mut session, false, false, true, ray);
+    assert_eq!(session.active().cells.len(), 2);
+    assert!(session.active().cells.contains_key(&(0, 0, 1)));
+    session.undo();
+    assert_eq!(session.active().cells.len(), 1);
+
+    session.tool_mode = ToolMode::Remove;
+    for z in 1..3 {
+        session.active_mut().cells.insert((0, 0, z), 1);
+    }
+    point(&mut session, true, true, false, ray);
+    for _ in 0..5 {
+        point(&mut session, true, false, false, ray);
+    }
+    point(&mut session, false, false, true, ray);
+    assert_eq!(session.active().cells.len(), 2);
+    assert!(!session.active().cells.contains_key(&(0, 0, 2)));
+}
+
+#[test]
 fn object_drag_slides_the_translation_and_undoes() {
     let mut session = Session::new();
     session.editor_mode = EditorMode::Object;

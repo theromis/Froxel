@@ -203,7 +203,18 @@ impl Session {
             return;
         };
         if self.tool == Tool::Brush {
-            if let Some(hit) = raycast(&self.active().cells, origin, dir) {
+            // Aim at the model as it was when the stroke began. A click spans
+            // several frames, and aiming at the live cells would stack a voxel
+            // on the one this stroke just added (or dig past the one it just
+            // removed) on every frame. A drag paints one layer.
+            let cells = match &self.stroke {
+                Some(stroke) => &stroke.base,
+                None => &self.active().cells,
+            };
+            if let Some(hit) = raycast(cells, origin, dir) {
+                if self.stroke.is_none() {
+                    self.begin_stroke(hit);
+                }
                 self.stamp(hit);
             }
         } else {

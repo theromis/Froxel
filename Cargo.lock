@@ -1259,12 +1259,14 @@ dependencies = [
 
 [[package]]
 name = "froxel"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytemuck",
  "eframe",
  "egui",
+ "getrandom 0.3.4",
  "glam",
+ "libc",
  "muda",
  "objc2 0.6.5",
  "objc2-foundation 0.3.2",

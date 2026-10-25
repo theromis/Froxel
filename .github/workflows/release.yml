@@ -364,10 +364,35 @@ jobs:
           path: dist/release/*
           if-no-files-found: error
 
+  addons:
+    name: Godot and Blender add-ons
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Zip the add-ons
+        run: |
+          set -euo pipefail
+          mkdir -p dist/release
+          python3 tools/package_bridge.py
+          mv dist/froxel_bridge.zip "dist/release/froxel-$VERSION-blender-addon.zip"
+          (cd godot && zip -r -X "../dist/release/froxel-$VERSION-godot-addon.zip" \
+            addons/froxel_bridge -x '*.uid')
+          unzip -l "dist/release/froxel-$VERSION-blender-addon.zip"
+          unzip -l "dist/release/froxel-$VERSION-godot-addon.zip"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-addons
+          path: dist/release/*
+          if-no-files-found: error
+
   release:
     name: Draft GitHub Release
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && inputs.draft-release }}
-    needs: [version, macos, windows, linux, freebsd]
+    needs: [version, macos, windows, linux, freebsd, addons]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -378,14 +403,30 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: CHANGELOG.md
+          sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: release-*
           path: dist
           merge-multiple: true
+      # The notes are the version's section of CHANGELOG.md, or GitHub's
+      # generated list when the changelog has none.
+      - name: Release notes from the changelog
+        run: |
+          set -euo pipefail
+          awk -v v="$VERSION" '
+            /^## / { keep = ($2 == v) ; next }
+            keep { print }
+          ' CHANGELOG.md >notes.md
+          if [ -s notes.md ]; then cat notes.md; else echo "No CHANGELOG.md section for $VERSION"; fi
       - name: Create or update the draft
         run: |
           set -euo pipefail
+          notes=(--generate-notes)
+          if [ -s notes.md ]; then notes=(--notes-file "$PWD/notes.md"); fi
           cd dist
           sha256sum -- * >SHA256SUMS.txt
           cat SHA256SUMS.txt
@@ -400,6 +441,6 @@ jobs:
             flags=()
             if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
             gh release create "$tag" --draft --title "Froxel $tag" \
-              --target "$GITHUB_SHA" --generate-notes "${flags[@]}" -- *
+              --target "$GITHUB_SHA" "${notes[@]}" "${flags[@]}" -- *
           fi
           echo "Draft: $(gh release view "$tag" --json url --jq .url)" >>"$GITHUB_STEP_SUMMARY"

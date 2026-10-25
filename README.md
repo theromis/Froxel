@@ -11,6 +11,7 @@ macOS, Windows, Linux, and FreeBSD.
 <a href="https://github.com/theromis/Froxel/releases/latest"><b>Download</b></a> ·
 <a href="#mcp-let-an-agent-build-models">MCP</a> ·
 <a href="#scripting">Scripting</a> ·
+<a href="#godot-and-blender">Bridges</a> ·
 <a href="#command-line">Command line</a> ·
 <a href="#build-from-source">Build</a>
 </p>
@@ -39,6 +40,8 @@ animation clips. An AI agent can drive all of it through the built-in
   texture or vertex colours.
 - **Scripts.** Objects can carry a sandboxed [Rhai](https://rhai.rs/) script with
   sliders for its parameters.
+- **Bridges.** Godot and Blender can drive those sliders and import the mesh
+  live, then bake a standalone scene. See [docs/bridges.md](docs/bridges.md).
 - **Automation.** An MCP server for agents and a command line for batch renders.
 
 <p align="center"><img src="docs/images/turntable.gif" width="320" alt="The frog turning on a turntable, rendered frame by frame with froxel render"></p>
@@ -55,11 +58,13 @@ Download the file for your system from the
 | Debian, Ubuntu (x86_64, aarch64, riscv64) | `froxel-<version>-linux-<arch>.deb` | `sudo apt install ./froxel-*.deb` adds the menu entry and icon. Needs Vulkan. |
 | Other Linux | `froxel-<version>-linux-<arch>.tar.gz` | Needs Vulkan and glibc 2.35 or newer (2.39 for riscv64). |
 | FreeBSD (x86_64) | `froxel-<version>-freebsd-x86_64.tar.gz` | |
+| Godot 4.3+ plugin | `froxel-<version>-godot-addon.zip` | Unzip into the project folder. See [Godot and Blender](#godot-and-blender). |
+| Blender 4.2+ add-on | `froxel-<version>-blender-addon.zip` | Preferences → Add-ons → Install from Disk. |
 
 Every release has a `SHA256SUMS.txt`.
 
-Try it on the frog:
-[`examples/frog.vox`](examples/frog.vox).
+Try it on the frog, [`examples/frog.vox`](examples/frog.vox), or on the scripted
+lily pad, [`examples/lily_pad.vox`](examples/lily_pad.vox).
 
 ## Controls
 
@@ -137,6 +142,27 @@ set(ix, 0, iz, slot);
 The whole lily pad is [`examples/lily_pad.rhai`](examples/lily_pad.rhai). The
 API is in [docs/scripting.md](docs/scripting.md).
 
+## Godot and Blender
+
+`froxel bridge` serves a `.vox` on `127.0.0.1`. A Godot node or the Blender
+sidebar connects with the printed session file, shows a slider for each script
+parameter, and imports the model as glTF, bones and clips included. Moving a
+slider reruns the script. **Bake** writes an ordinary scene or Blender object
+that no longer needs Froxel, and headless Godot can bake a list of variants in
+one go. `--bridge PORT` serves the open editor instead, so edits in the window
+show up in the next import.
+
+```sh
+froxel bridge --input examples/lily_pad.vox      # four sliders: radius, notch, direction, seed
+froxel --bridge 29771 examples/lily_pad.vox
+```
+
+The Godot plugin is [`godot/addons/froxel_bridge`](godot/addons/froxel_bridge) and
+the Blender add-on is [`blender/froxel_bridge`](blender/froxel_bridge). Both are
+in every release since 0.2.0 as `froxel-<version>-godot-addon.zip` and
+`froxel-<version>-blender-addon.zip`. Tested with Godot 4.5 and Blender 5.2.
+Setup, the variant baker, and the protocol are in [docs/bridges.md](docs/bridges.md).
+
 ## Command line
 
 `froxel render` path-traces a `.vox` file to a PNG with no window. The CPU tracer is
@@ -186,7 +212,8 @@ Tests:
 cargo test --bin froxel
 ```
 
-Releases are built by a GitHub workflow. See [docs/releasing.md](docs/releasing.md).
+What changed in each version is in [CHANGELOG.md](CHANGELOG.md). Releases are built
+by a GitHub workflow. See [docs/releasing.md](docs/releasing.md).
 
 ## Thanks
 

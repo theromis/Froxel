@@ -223,8 +223,7 @@ fn token_path(port: u16) -> io::Result<PathBuf> {
 
 fn issue(port: u16) -> io::Result<String> {
     let mut bytes = [0u8; 32];
-    let mut random = fs::File::open("/dev/urandom")?;
-    io::Read::read_exact(&mut random, &mut bytes)?;
+    getrandom::fill(&mut bytes).map_err(|err| io::Error::other(err.to_string()))?;
     let token: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
     let path = token_path(port)?;
     if let Some(parent) = path.parent() {

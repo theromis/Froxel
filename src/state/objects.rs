@@ -679,6 +679,34 @@ impl Session {
         }
     }
 
+    /// Run `edit` as one undo step. When it fails, the document is put back as
+    /// it was and no undo step is added. Inside a panel drag the drag keeps
+    /// gathering the edits.
+    pub fn transaction<T>(
+        &mut self,
+        edit: impl FnOnce(&mut Self) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let outer = self.gesture;
+        if !outer {
+            self.begin_gesture();
+        }
+        let before = self.snapshot();
+        let result = edit(self);
+        if result.is_err() {
+            self.restore(before);
+            self.clamp_selection();
+            self.clear_picked();
+            self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+            if !outer {
+                self.pending = None;
+                self.gesture = false;
+            }
+        } else if !outer {
+            self.end_gesture();
+        }
+        result
+    }
+
     /// Mirror the active object through the origin and make the copy active.
     /// `mirror_bones` decides whether its bone subtree is copied too.
     pub fn mirror_selected(&mut self, axis: usize) -> Result<usize, String> {

@@ -1,6 +1,6 @@
 [package]
 name = "froxel"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 publish = false
 # tests/*.rs are unit tests included with #[path], not integration tests.
@@ -10,6 +10,7 @@ description = "Froxel voxel editor."
 [dependencies]
 eframe = { version = "0.37", features = ["wgpu"] }
 egui = "0.37"
+getrandom = "0.3"
 glam = "0.29"
 rfd = "0.15"
 bytemuck = { version = "1.7", features = ["derive"] }
@@ -20,6 +21,9 @@ oidn = { version = "2", optional = true }
 
 [features]
 oidn = ["dep:oidn"]
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 muda = { version = "0.21", default-features = false }

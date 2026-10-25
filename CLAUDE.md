@@ -15,7 +15,11 @@ edit-mode mesh. `trace/` is the CPU path tracer. `trace_gpu.rs` plus
 `trace.wgsl` and `blit.wgsl` are the wgpu tracer used by Render mode.
 `export/` writes glTF. `native_menu.rs` is the macOS menu. `mcp.rs`,
 `remote.rs`, and `control.rs` are the MCP server and the `--control` port.
-Unit tests live in `tests/` and are included from the module they cover.
+`bridge.rs` is the Godot/Blender loopback server (`froxel bridge` and
+`--bridge`). Its `evaluate` runs inside `Session::transaction`: one undo step,
+and the document is restored if a value or a script fails. The clients live in `godot/addons/froxel_bridge` and
+`blender/froxel_bridge`. Unit tests live in `tests/` and are included from
+the module they cover.
 
 ## .vox
 
@@ -74,6 +78,16 @@ cargo test --offline --bin froxel -- --skip ping_round_trips
 `ping_round_trips_with_the_token` needs a socket the sandbox does not allow.
 Do not filter on the substring `ping`: `save_round_trips` matches it too.
 The package is a binary, so `--lib` does not apply.
+
+The bridge clients have their own checks:
+
+```sh
+python3 tests/bridge_protocol.py
+cargo build && python3 tests/bridge_live.py
+```
+
+`bridge_live.py` starts `target/debug/froxel bridge` (or `FROXEL_BIN`) on the
+frog and asks for a glb.
 
 ## Formatting
 

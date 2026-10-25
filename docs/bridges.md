@@ -1,0 +1,168 @@
+# Godot and Blender
+
+The bridge is new in 0.2.0. Each release has the Godot plugin and the Blender
+add-on as zips next to the Froxel downloads.
+
+Froxel can serve the open document on `127.0.0.1`. Godot and Blender connect
+as clients, edit the script parameters, and import a glTF. Bake keeps a plain
+scene or a Blender object after Froxel stops.
+
+The export is the same glTF as File → Export Mesh: Y-up, a palette texture,
+bones, and clips when the document has them. From the editor, the bridge uses
+the options on the Export panel. The headless command uses the defaults
+(merged faces, palette texture, hidden objects left out, one mesh).
+
+An `evaluate` reruns every object script, then writes the glTF. Hand edits on
+a scripted object are replaced by that run. An object with no script is
+exported as it is. Sending no values still reruns the scripts at their
+current parameters. If a value is rejected or a script fails, the document
+stays as it was.
+
+## Headless
+
+```sh
+froxel bridge --input examples/lily_pad.vox
+froxel bridge --input model.vox --port 0
+```
+
+`examples/lily_pad.vox` has a script with four parameters, so it is a good first
+test. A model with no script, like `examples/frog.vox`, still imports but shows
+no sliders.
+
+The default port is 29771. `--port 0` binds a free port. The process prints
+
+```text
+FROXEL_SESSION=/tmp/froxel-bridge-…/session.json
+```
+
+and serves until it exits. Copy that path into Godot or Blender. Do not open
+a session file from someone else: it contains the token, and the token is
+checked on every request.
+
+## Editor
+
+```sh
+froxel --bridge 29771 examples/lily_pad.vox
+```
+
+`FROXEL_BRIDGE_PORT` is the port when `--bridge` is omitted. The session path
+is printed on stderr and shown in the status bar. Each `evaluate` from a
+client is one undo step in the window. Voxel edits made in the window are
+included in the next import.
+
+## Godot
+
+Unzip `froxel-<version>-godot-addon.zip` into the project folder. It creates
+`addons/froxel_bridge`. Then enable Froxel Bridge in Project Settings →
+Plugins. From a clone, copy `godot/addons/froxel_bridge` instead; `godot/` is
+an example project with the plugin already enabled.
+
+Create a Node3D of type **FroxelBridge**. Set **Session File** to the printed
+path and click **Connect / Refresh**. Parameters show up under the object
+name. Edits update the preview after a short pause. Set **Bake Path** and
+click **Bake standalone scene**. The `.tscn` is a normal scene with embedded
+resources. The bridge node does not poll during a running game.
+
+Headless, one scene per object in `variants.json`. A value may be a parameter
+name, `objectName/name`, or the id `index/name`. A bare name has to be unique.
+
+```sh
+godot --headless --path godot \
+  --script res://addons/froxel_bridge/bake.gd -- \
+  --session "$FROXEL_SESSION" \
+  --out res://baked/pad_%d.tscn \
+  --variants variants.json
+```
+
+```json
+[
+  {"radius": 8, "seed": 1},
+  {"radius": 14, "seed": 2}
+]
+```
+
+From a script on a node that is already in the tree:
+
+```gdscript
+bridge.session_file = session_path
+bridge.connect_bridge()
+var error := await bridge.wait_schema()
+error = bridge.set_parameter("radius", 12.0)
+error = await bridge.bake_to("res://baked/pad.tscn")
+```
+
+`wait_schema` and `bake_to` return `""` on success. A timeout is 20 seconds.
+
+Godot 4.3+ is the target and 4.5 is tested. The glTF import uses
+`GLTFDocument`.
+
+## Blender
+
+Install `froxel-<version>-blender-addon.zip` from Preferences → Add-ons →
+Install from Disk, then enable Froxel Bridge. From a clone, build the same zip
+with
+
+```sh
+python3 tools/package_bridge.py
+```
+
+and install `dist/froxel_bridge.zip`. In the 3D View sidebar, open the **Froxel**
+tab, choose the session file, and click **Connect / Refresh**. Sliders match
+the script parameters and stop at their range. **Bake into scene** duplicates
+the current import under an empty named `FroxelBake` and leaves the live
+preview in place.
+
+Blender 4.2+ is the target and 5.2 is tested. The glTF importer add-on has to
+be enabled, which it is by default.
+
+## Protocol
+
+One client at a time. The first request has to arrive within 5 seconds and
+carry the right token, or the connection is closed, so a silent or unknown
+peer cannot hold the slot. UTF-8 JSON objects separated by a newline, at most
+65536 bytes per frame. TCP fragments are accepted. There are no shell
+commands and no client-supplied paths.
+
+The session file is mode 0600 on Unix:
+
+```json
+{"v":1,"host":"127.0.0.1","port":29771,"token":"…","root":"/tmp/froxel-bridge-…"}
+```
+
+Every request carries `v`, `id`, and `token`. `id` is a nonnegative integer
+and must increase on that connection. A malformed frame closes the
+connection. A well-formed request that fails returns `error` and leaves the
+connection open.
+
+```json
+{"v":1,"id":1,"token":"…","op":"describe"}
+{"v":1,"id":2,"token":"…","op":"evaluate","values":{"0/radius":8.0}}
+```
+
+Replies echo `v` and `id`:
+
+- `schema`: `parameters`, each `{id, name, object, objectName, type, value, min?, max?}`
+- `result`: absolute `path` of a glb inside the session directory
+- `error`: `message`
+
+`id` on a parameter is `objectIndex/name`. A bare name is accepted when only
+one parameter has it.
+
+Types:
+
+| type | JSON | notes |
+|---|---|---|
+| `bool` | `true` / `false` | not coerced from a number |
+| `int` | integer | inclusive `min` / `max` |
+| `float` | number | inclusive `min` / `max` |
+| `color` | `[r, g, b]` or `[r, g, b, a]` | components in 0..1; alpha is ignored |
+
+Omitted keys keep their current values. Unknown keys, a wrong type, or a
+value outside the range is an error and does not write a new glb. The latest
+eight glbs are kept. Stopping Froxel deletes the session directory, so bake
+before stopping. On macOS, Linux, and FreeBSD that includes Ctrl-C and
+SIGTERM. On Windows, Ctrl-C in the console leaves the directory in the temp
+folder.
+
+Refresh reconnects and asks for the schema again. The client does not
+reconnect on its own.

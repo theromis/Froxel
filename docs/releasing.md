@@ -1,5 +1,8 @@
 # Releasing
 
+Before a release, move the `Unreleased` entries in `CHANGELOG.md` under the
+new version and set `version` in `Cargo.toml`.
+
 `.github/workflows/release.yml` builds every platform. It runs only on request:
 
 ```sh
@@ -11,7 +14,9 @@ gh workflow run release.yml -f draft-release=false  # artifacts only
 It builds macOS universal (`.dmg`, `.zip`), Windows x64, x86 and arm64
 (`.zip`), Linux x86_64, aarch64 and riscv64 (`.tar.gz`, `.deb`) and FreeBSD
 x86_64 (`.tar.gz`), then creates or updates the draft release `v<version>`
-with a `SHA256SUMS.txt`.
+with a `SHA256SUMS.txt`. It also zips the Godot plugin and the Blender add-on.
+The release notes are the version's section of `CHANGELOG.md`; without one,
+GitHub generates them from the commits.
 
 ## macOS signing
 

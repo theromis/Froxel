@@ -11,12 +11,14 @@
 //! `mcp` speaks Model Context Protocol on stdin/stdout. Without `--connect`
 //! the session is in-process and has no window. `--connect` drives an editor
 //! that was started with `--control`, which is where screenshots come from.
-//! `--launch` opens that editor. Render mode path-traces on the GPU
-//! through wgpu. MCP `render` and `froxel render` path-trace a PNG with
-//! no window. `froxel voxrt` checks a `.vox` round trip.
+//! `--launch` opens that editor. `froxel bridge` and `--bridge` speak the
+//! Godot/Blender bridge. Render mode path-traces on the GPU through wgpu.
+//! MCP `render` and `froxel render` path-trace a PNG with no window.
+//! `froxel voxrt` checks a `.vox` round trip.
 //!
 //! On macOS the File and Edit commands live on the application menu bar.
 
+mod bridge;
 mod cli;
 mod control;
 mod denoise;
@@ -63,18 +65,31 @@ fn main() -> eframe::Result {
     if args.first().is_some_and(|arg| arg == "voxrt") {
         std::process::exit(cli::voxrt(&args[1..]));
     }
-    let (port, file) = match parse_gui(&args) {
+    if args.first().is_some_and(|arg| arg == "bridge") {
+        std::process::exit(bridge::run(&args[1..]));
+    }
+    let gui = match parse_gui(&args) {
         Ok(parsed) => parsed,
         Err(err) => {
             eprintln!("{err}");
             std::process::exit(2);
         }
     };
-    let control = match port {
+    let control = match gui.control {
         Some(port) => match ControlServer::start(port) {
             Ok(server) => Some(server),
             Err(err) => {
                 eprintln!("control port {port}: {err}");
+                std::process::exit(1);
+            }
+        },
+        None => None,
+    };
+    let bridge = match gui.bridge {
+        Some(port) => match bridge::BridgeServer::start(port) {
+            Ok(server) => Some(server),
+            Err(err) => {
+                eprintln!("bridge port {port}: {err}");
                 std::process::exit(1);
             }
         },
@@ -85,7 +100,7 @@ fn main() -> eframe::Result {
         native_menu::suppress_system_edit_items();
     }
     let mut session = Session::new();
-    if let Some(path) = file {
+    if let Some(path) = gui.file {
         session.load_path(path.as_path());
     }
 
@@ -107,6 +122,7 @@ fn main() -> eframe::Result {
                 session,
                 cache: ViewCache::new(),
                 control,
+                bridge,
                 shots: VecDeque::new(),
                 inflight: None,
                 viewport_rect: egui::Rect::NOTHING,
@@ -130,6 +146,7 @@ struct Shell {
     session: Session,
     cache: ViewCache,
     control: Option<ControlServer>,
+    bridge: Option<bridge::BridgeServer>,
     shots: VecDeque<PendingShot>,
     inflight: Option<InflightShot>,
     viewport_rect: egui::Rect,
@@ -159,8 +176,16 @@ impl eframe::App for Shell {
         if let Some(control) = &self.control {
             control.bind_context(ctx);
         }
+        if let Some(bridge) = &self.bridge {
+            bridge.bind_context(ctx);
+        }
+        let bridge_path = self
+            .bridge
+            .as_ref()
+            .map(|bridge| bridge.session_path.display().to_string());
         self.take_screenshot();
         self.take_control();
+        self.take_bridge();
         self.session.clear_ui();
         let screen = ctx.input(|input| input.content_rect());
         self.session
@@ -195,6 +220,13 @@ impl eframe::App for Shell {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let n = self.session.voxel_count();
                     ui.monospace(format!("{n} voxels"));
+                    if let Some(path) = &bridge_path {
+                        ui.monospace(
+                            RichText::new(format!("bridge {path}"))
+                                .small()
+                                .color(Color32::from_rgb(160, 176, 196)),
+                        );
+                    }
                 });
             });
         });
@@ -251,6 +283,18 @@ impl Shell {
                 let result = remote::apply(&mut self.session, &job.method, &job.params);
                 let _ = job.reply.send(result);
             }
+        }
+    }
+
+    fn take_bridge(&mut self) {
+        let Some(bridge) = &self.bridge else {
+            return;
+        };
+        let jobs = bridge.poll();
+        let root = bridge.root.clone();
+        for job in jobs {
+            let result = bridge::dispatch(&mut self.session, &root, job.id, &job.op);
+            let _ = job.reply.send(result);
         }
     }
 
@@ -371,8 +415,18 @@ fn pixel_rect(
     (x, y, right - x, bottom - y)
 }
 
-fn parse_gui(args: &[String]) -> Result<(Option<u16>, Option<PathBuf>), String> {
-    let mut port = std::env::var("FROXEL_CONTROL_PORT")
+struct GuiArgs {
+    control: Option<u16>,
+    bridge: Option<u16>,
+    file: Option<PathBuf>,
+}
+
+fn parse_gui(args: &[String]) -> Result<GuiArgs, String> {
+    let mut control = std::env::var("FROXEL_CONTROL_PORT")
+        .ok()
+        .map(|text| parse_port(&text))
+        .transpose()?;
+    let mut bridge = std::env::var("FROXEL_BRIDGE_PORT")
         .ok()
         .map(|text| parse_port(&text))
         .transpose()?;
@@ -383,7 +437,8 @@ fn parse_gui(args: &[String]) -> Result<(Option<u16>, Option<PathBuf>), String> 
             "-h" | "--help" => {
                 eprintln!(
                     "\
-usage: froxel [--control PORT] [file.vox]
+usage: froxel [--control PORT] [--bridge PORT] [file.vox]
+       froxel bridge --input <file.vox> [--port PORT]
        froxel mcp [--connect HOST:PORT] [--launch]
        froxel render --input <file.vox> --output <file.png>
        froxel voxrt --input <file.vox> [--dump]"
@@ -396,7 +451,15 @@ usage: froxel [--control PORT] [file.vox]
                     .get(i)
                     .filter(|s| !s.starts_with('-'))
                     .ok_or_else(|| "--control needs a port".to_string())?;
-                port = Some(parse_port(text)?);
+                control = Some(parse_port(text)?);
+            }
+            "--bridge" => {
+                i += 1;
+                let text = args
+                    .get(i)
+                    .filter(|s| !s.starts_with('-'))
+                    .ok_or_else(|| "--bridge needs a port".to_string())?;
+                bridge = Some(parse_port(text)?);
             }
             other if other.starts_with('-') => return Err(format!("unknown argument `{other}`")),
             other => {
@@ -408,7 +471,11 @@ usage: froxel [--control PORT] [file.vox]
         }
         i += 1;
     }
-    Ok((port, file))
+    Ok(GuiArgs {
+        control,
+        bridge,
+        file,
+    })
 }
 
 fn parse_port(text: &str) -> Result<u16, String> {

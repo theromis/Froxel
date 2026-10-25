@@ -4,6 +4,17 @@ target/
 # Local-only test corpus: sample .vox files and scratch renders. Not redistributed.
 test/
 
+# Packaged Blender add-on
+dist/
+
+# Godot import cache and generated ids
+godot/.godot/
+godot/**/*.uid
+
+# Python
+**/__pycache__/
+*.pyc
+
 # Editors and IDEs
 .DS_Store
 .vscode/
