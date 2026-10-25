@@ -24,6 +24,7 @@ impl Session {
         ray: Option<(Vec3, Vec3)>,
         drag: &ToolDrag,
         command: bool,
+        alt: bool,
     ) {
         let world_ray = ray;
         let aimed = world_ray.and_then(|(origin, dir)| self.pick_object(origin, dir));
@@ -37,7 +38,15 @@ impl Session {
         } else if middle_pressed && inside {
             self.grab = Grab::Pan;
         } else if primary_pressed && inside {
-            if space {
+            // Alt-click copies the voxel's palette index, as in MagicaVoxel.
+            // The phone has no Alt key: a long-press on the color swatch arms
+            // the same sample for the next tap.
+            if alt || self.sample_armed {
+                if self.sample_color(ray) {
+                    self.sample_armed = false;
+                }
+                self.grab = Grab::None;
+            } else if space {
                 self.grab = Grab::Pan;
             } else if self.editor_mode == EditorMode::Object {
                 if self.render_mode != RenderMode::Edit {

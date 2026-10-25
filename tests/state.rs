@@ -281,7 +281,75 @@ fn point(session: &mut Session, down: bool, pressed: bool, released: bool, ray: 
             object_band: None,
         },
         false,
+        false,
     );
+}
+
+#[test]
+fn alt_click_copies_the_voxel_color_and_does_not_paint() {
+    let ray = (Vec3::new(0.5, 0.5, 5.0), Vec3::new(0.0, 0.0, -1.0));
+    let mut session = Session::new();
+    session.tool = Tool::Brush;
+    session.tool_mode = ToolMode::Add;
+    session.brush_size = 1;
+    session.active_slot = 36;
+    session.active_mut().cells.clear();
+    session.active_mut().cells.insert((0, 0, 0), 7);
+    session.pointer(
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        glam::Vec2::ZERO,
+        0.0,
+        Some(ray),
+        &ToolDrag {
+            rays: Vec::new(),
+            face_steps: 1,
+            marquee: None,
+            shift: false,
+            object_band: None,
+        },
+        false,
+        true,
+    );
+    assert_eq!(session.active_slot, 7);
+    assert_eq!(session.active().cells.len(), 1);
+    assert!(!session.sample_armed);
+
+    session.active_slot = 36;
+    session.sample_armed = true;
+    session.pointer(
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        glam::Vec2::ZERO,
+        0.0,
+        Some(ray),
+        &ToolDrag {
+            rays: Vec::new(),
+            face_steps: 1,
+            marquee: None,
+            shift: false,
+            object_band: None,
+        },
+        false,
+        false,
+    );
+    assert_eq!(session.active_slot, 7);
+    assert!(!session.sample_armed);
+    assert_eq!(session.active().cells.len(), 1);
 }
 
 #[test]
@@ -630,6 +698,7 @@ fn move_slides_on_the_clicked_plane_and_undoes() {
         Some(down),
         &empty,
         true,
+        false,
     );
     let shifted = (Vec3::new(2.6, 0.4, 5.0), Vec3::new(0.0, 0.0, -1.0));
     session.pointer(
@@ -647,6 +716,7 @@ fn move_slides_on_the_clicked_plane_and_undoes() {
         Some(shifted),
         &empty,
         true,
+        false,
     );
     assert_eq!(session.active().cells.get(&(2, 0, 0)), Some(&4));
     assert!(!session.active().cells.contains_key(&(0, 0, 0)));
@@ -666,6 +736,7 @@ fn move_slides_on_the_clicked_plane_and_undoes() {
         Some(shifted),
         &empty,
         true,
+        false,
     );
     session.undo();
     assert_eq!(session.active().cells.get(&(0, 0, 0)), Some(&4));

@@ -6,7 +6,9 @@
 //! the English name. The tool grid, the tool's own settings, the palette,
 //! and the files open as sheets joined to that strip; names inside those
 //! sheets stay words. One finger edits, two orbit and pinch, three pan
-//! (see `viewport`).
+//! (see `viewport`). A long-press on the color swatch, then a tap on a
+//! voxel, copies that voxel's palette index. Desktop Alt-click does the
+//! same without the long-press.
 //!
 //! At 700 points and wider the desktop Tools and Palette dock sits on the
 //! left, and the strip does not repeat it. Render mode drops the dock so the
@@ -67,6 +69,11 @@ pub struct MobileUi {
     flip: bool,
     /// A long-press already redid; the release must not undo as well.
     redo_held: bool,
+    /// A long-press on the color swatch armed sampling; the release must not
+    /// also open the palette.
+    sample_held: bool,
+    /// Last active slot copied into `recent`.
+    tracked_slot: u8,
     recent: Vec<u8>,
     /// Last frame's viewport, so a press there can dismiss a sheet before
     /// this frame lays the panels out.
@@ -79,6 +86,8 @@ impl Default for MobileUi {
             sheet: Sheet::None,
             flip: false,
             redo_held: false,
+            sample_held: false,
+            tracked_slot: 0,
             recent: Vec::new(),
             viewport: egui::Rect::NOTHING,
         }
@@ -162,6 +171,12 @@ pub fn show(
     mobile: &mut MobileUi,
 ) -> egui::Rect {
     let ctx = ui.ctx().clone();
+    if mobile.tracked_slot != session.active_slot {
+        if session.active_slot != 0 {
+            remember_slot(&mut mobile.recent, session.active_slot);
+        }
+        mobile.tracked_slot = session.active_slot;
+    }
     dismiss_on_press(&ctx, mobile);
     let full = ctx.viewport_rect();
     let safe = ctx.content_rect();
@@ -499,18 +514,43 @@ fn fit(ui: &mut Ui, width: f32, body: impl FnOnce(&mut Ui)) {
 fn color_button(ui: &mut Ui, width: f32, session: &mut Session, mobile: &mut MobileUi) {
     let [r, g, b, _] = session.palette[session.active_slot as usize];
     let open = mobile.sheet == Sheet::Color;
+    let armed = session.sample_armed;
     let swatch = egui::Button::new("")
         .fill(Color32::from_rgb(r, g, b))
-        .selected(open);
-    let response = ui.add_sized([width, TOUCH], swatch).on_hover_text("Color");
+        .stroke(if armed {
+            egui::Stroke::new(3.0, Color32::WHITE)
+        } else {
+            egui::Stroke::NONE
+        })
+        .selected(open && !armed);
+    let tip = if armed {
+        "Tap a voxel, or tap here to cancel"
+    } else {
+        "Color. Long-press, then tap a voxel to pick its color"
+    };
+    let response = ui.add_sized([width, TOUCH], swatch).on_hover_text(tip);
     session.note_ui(
         "mobile.color",
         "Color",
         response.rect,
         UiAction::Palette(session.active_slot),
     );
-    if response.clicked() {
-        mobile.sheet = if open { Sheet::None } else { Sheet::Color };
+    if response.long_touched() && !mobile.sample_held {
+        session.sample_armed = true;
+        mobile.sample_held = true;
+        mobile.sheet = Sheet::None;
+        session.status = "Tap a voxel to pick its color.".into();
+    }
+    if response.clicked() && !mobile.sample_held {
+        if session.sample_armed {
+            session.sample_armed = false;
+            session.status.clear();
+        } else {
+            mobile.sheet = if open { Sheet::None } else { Sheet::Color };
+        }
+    }
+    if !ui.input(|input| input.pointer.any_down()) {
+        mobile.sample_held = false;
     }
 }
 

@@ -793,6 +793,7 @@ impl Session {
             Some(ray),
             &drag,
             false,
+            false,
         );
     }
 

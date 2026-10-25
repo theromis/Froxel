@@ -598,6 +598,10 @@ pub struct Session {
     pub palette: [[u8; 4]; 256],
     pub materials: [Material; 256],
     pub active_slot: u8,
+    /// The next press on a voxel copies its palette index into `active_slot`
+    /// and does not edit. The phone arms this from a long-press on the color
+    /// swatch. A desktop Alt-click samples without arming it.
+    pub sample_armed: bool,
 
     pub objects: Vec<Volume>,
     /// Primary object. Tools and the gizmo use this one.

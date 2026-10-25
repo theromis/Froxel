@@ -57,6 +57,7 @@ impl Session {
             palette: default_palette(),
             materials: [Material::default(); 256],
             active_slot: 36,
+            sample_armed: false,
             objects: Vec::new(),
             selected: 0,
             object_selection: vec![0],

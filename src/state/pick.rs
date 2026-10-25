@@ -225,6 +225,26 @@ impl Session {
         best.map(|(_, index, hit)| (index, hit))
     }
 
+    /// Copy the palette index of the voxel under `ray` into the active slot.
+    /// A miss leaves the slot alone. Nothing is checkpointed.
+    pub(super) fn sample_color(&mut self, ray: Option<(Vec3, Vec3)>) -> bool {
+        let Some((origin, dir)) = ray else {
+            return false;
+        };
+        let Some((index, hit)) = self.pick_object(origin, dir) else {
+            return false;
+        };
+        let Some(&slot) = self.objects[index].cells.get(&hit.cell) else {
+            return false;
+        };
+        if slot == 0 {
+            return false;
+        }
+        self.select_palette_slot(slot, false);
+        self.status = format!("Color {slot}.");
+        true
+    }
+
     pub(super) fn hit_cell(&self, ray: Option<(Vec3, Vec3)>) -> Option<Cell> {
         let (origin, dir) = ray?;
         raycast(&self.active().cells, origin, dir).map(|hit| hit.cell)

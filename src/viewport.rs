@@ -131,6 +131,7 @@ pub fn show(
             ray,
             &drag,
             ctx.input(|i| i.modifiers.command),
+            ctx.input(|i| i.modifiers.alt),
         );
     }
     if pointer.button_released(egui::PointerButton::Primary) {
