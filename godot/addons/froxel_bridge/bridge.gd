@@ -219,7 +219,9 @@ func _get_property_list() -> Array[Dictionary]:
 		var group := str(prop).get_slice("/", 0)
 		if not opened.has(group):
 			opened[group] = true
-			properties.append({"name": group, "type": TYPE_NIL, "usage": PROPERTY_USAGE_GROUP})
+			# The prefix strips "group/" from the names below, so they do not
+			# nest a second section of the same name.
+			properties.append({"name": group, "type": TYPE_NIL, "usage": PROPERTY_USAGE_GROUP, "hint_string": group + "/"})
 		var entry := {"name": prop, "type": types[str(spec.type)], "usage": PROPERTY_USAGE_EDITOR}
 		if spec.type == "int" or spec.type == "float":
 			entry["hint"] = PROPERTY_HINT_RANGE
@@ -400,6 +402,9 @@ func prepare_materials(node: Node) -> void:
 func load_preview_scene(path: String) -> Node3D:
 	var document := GLTFDocument.new()
 	var gltf_state := GLTFState.new()
+	# The default extracts textures as files beside the glb, which in the editor
+	# fails for a glb outside res:// and leaves the preview and bakes untextured.
+	gltf_state.handle_binary_image = GLTFState.HANDLE_BINARY_EMBED_AS_UNCOMPRESSED
 	var converter: GLTFDocumentExtension
 	if Engine.is_editor_hint():
 		converter = GLTFDocumentExtensionConvertImporterMesh.new()

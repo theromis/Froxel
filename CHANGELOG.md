@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- The Godot plugin embeds the palette texture when it imports a model. In the
+  editor it used to extract the texture as a file beside the glb, which failed
+  outside `res://`, so the preview and **Bake standalone scene** came out
+  untextured.
+- The Godot inspector shows a script's parameters under one object heading
+  instead of the same heading twice.
+- `examples/lily_pad.rhai` lays the lily pad flat. It used to stand on its
+  edge, because `.vox` has Z up.
+
 ## 0.2.0
 
 Froxel models can now live inside Godot and Blender. Open a scripted `.vox`

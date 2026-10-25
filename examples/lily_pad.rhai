@@ -50,7 +50,8 @@ for iz in -extent..(extent + 1) {
         } else {
             2
         };
-        set(ix, 0, iz, slot);
-        set(ix, 1, iz, slot);
+        // Z is up in .vox, so the disc lies in the XY plane, two voxels thick.
+        set(ix, iz, 0, slot);
+        set(ix, iz, 1, slot);
     }
 }
