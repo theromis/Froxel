@@ -392,32 +392,21 @@ fn display_color(
     }
 }
 
-pub fn preview_size(session: &Session, viewport: [u32; 2]) -> [u32; 2] {
-    preview_capped(session, viewport, 192)
-}
-
-/// GPU frames can be larger. The long side still stays under the panel's 1024
-/// unless Match window is on, and then it stops at 1280.
-pub fn gpu_preview_size(session: &Session, viewport: [u32; 2]) -> [u32; 2] {
-    preview_capped(session, viewport, 1280)
-}
-
-fn preview_capped(session: &Session, viewport: [u32; 2], cap: u32) -> [u32; 2] {
-    let (mut w, mut h) = if session.resolution_match_window {
-        (viewport[0].max(1), viewport[1].max(1))
+/// The viewport's own pixels, scaled so the long side is at most `cap`.
+/// The aspect stays, so the render frames the same picture as the edit view.
+pub fn view_size(viewport: [u32; 2], cap: u32) -> [u32; 2] {
+    let w = viewport[0].max(1) as f32;
+    let h = viewport[1].max(1) as f32;
+    let long = w.max(h);
+    let scale = if long > cap.max(1) as f32 {
+        cap.max(1) as f32 / long
     } else {
-        (
-            session.render_width.clamp(16, 1024) as u32,
-            session.render_height.clamp(16, 1024) as u32,
-        )
+        1.0
     };
-    let long = w.max(h).max(1);
-    if long > cap {
-        let scale = cap as f32 / long as f32;
-        w = ((w as f32) * scale).round().max(1.0) as u32;
-        h = ((h as f32) * scale).round().max(1.0) as u32;
-    }
-    [w, h]
+    [
+        (w * scale).round().max(1.0) as u32,
+        (h * scale).round().max(1.0) as u32,
+    ]
 }
 
 /// Linear color after the active denoiser, or the accumulated picture.

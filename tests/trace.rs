@@ -8,6 +8,15 @@ fn voxel(session: &mut Session, cell: (i32, i32, i32), slot: u8) {
 }
 
 #[test]
+fn view_size_keeps_a_portrait_panel() {
+    let size = view_size([1170, 1900], 1280);
+    assert_eq!(size[1], 1280);
+    let aspect = size[0] as f32 / size[1] as f32;
+    assert!((aspect - 1170.0 / 1900.0).abs() < 0.01);
+    assert_eq!(view_size([400, 300], 1280), [400, 300]);
+}
+
+#[test]
 fn a_ray_hits_the_voxel_in_front_of_it() {
     let mut session = Session::new();
     session.objects[0].cells.clear();

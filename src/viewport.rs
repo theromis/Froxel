@@ -360,7 +360,7 @@ fn paint_gpu(
         (rect.width() * ppp).round().max(1.0) as u32,
         (rect.height() * ppp).round().max(1.0) as u32,
     ];
-    let size = crate::trace::gpu_preview_size(session, viewport);
+    let size = preview_pixels(viewport, true);
     if cache.trace.is_none() {
         cache.trace = Some(crate::trace_gpu::Tracer::new(&rs.device));
     }
@@ -450,14 +450,19 @@ fn paint_gpu(
     true
 }
 
-/// OpenGL-style projection. The ray caster unprojects with this matrix.
+/// The on-screen render uses the panel's own pixels, so the model is the same
+/// size as in the edit view. A fixed 960×800 stretched into the panel is not.
+fn preview_pixels(viewport: [u32; 2], gpu: bool) -> [u32; 2] {
+    crate::trace::view_size(viewport, if gpu { 1280 } else { 192 })
+}
+
 fn advance_trace(ctx: &egui::Context, session: &mut Session, rect: egui::Rect) {
     let ppp = ctx.pixels_per_point();
     let viewport = [
         (rect.width() * ppp).round().max(1.0) as u32,
         (rect.height() * ppp).round().max(1.0) as u32,
     ];
-    let size = crate::trace::preview_size(session, viewport);
+    let size = preview_pixels(viewport, false);
     let key = crate::trace::frame_key(session, size);
     let size_mismatch = session
         .render_preview
@@ -482,6 +487,7 @@ fn advance_trace(ctx: &egui::Context, session: &mut Session, rect: egui::Rect) {
     }
 }
 
+/// OpenGL-style projection. The ray caster unprojects with this matrix.
 fn projection(aspect: f32) -> Mat4 {
     Mat4::perspective_rh(50_f32.to_radians(), aspect.max(0.05), 0.08, 4000.0)
 }

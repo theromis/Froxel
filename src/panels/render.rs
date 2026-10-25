@@ -98,21 +98,6 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
                 ui.selectable_value(&mut session.glass_mode, GlassMode::Absorption, "Absorption");
             });
     });
-    ui.checkbox(
-        &mut session.resolution_match_window,
-        "Match window resolution",
-    );
-    ui.add_enabled_ui(!session.resolution_match_window, |ui| {
-        ui.horizontal(|ui| {
-            ui.add_sized(
-                [64.0, 16.0],
-                egui::Label::new(RichText::new("Resolution").small().color(DIM)),
-            );
-            ui.add(egui::DragValue::new(&mut session.render_width).range(16..=16384));
-            ui.label("×");
-            ui.add(egui::DragValue::new(&mut session.render_height).range(16..=16384));
-        });
-    });
     slider_i32(ui, session, "Samples", SliderTarget::MaxSamples, 16..=8192);
     section(ui, "Camera");
     ui.checkbox(&mut session.aces, "ACES tonemap");
