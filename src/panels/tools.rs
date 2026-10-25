@@ -19,49 +19,68 @@ pub(super) fn tools(ui: &mut Ui, session: &mut Session) {
         (Tool::BoxSelect, "Box Select", ""),
         (Tool::FloodSelect, "Flood", ""),
     ];
-    egui::Grid::new("tools")
-        .num_columns(2)
-        .spacing([4.0, 4.0])
-        .show(ui, |ui| {
-            for (i, (tool, label, key)) in TOOLS.iter().enumerate() {
-                let tip = if key.is_empty() {
-                    (*label).to_string()
-                } else {
-                    format!("{label} ({key})")
-                };
-                let on = session.tool == *tool;
-                let resp = ui
-                    .add_sized([86.0, 26.0], egui::Button::new(*label).selected(on))
-                    .on_hover_text(tip);
-                let rect = resp.rect;
-                let clicked = resp.clicked();
-                let id = format!("tool.{}", label.to_ascii_lowercase().replace(' ', "-"));
-                session.note_ui(&id, label, rect, UiAction::Tool(*tool));
-                if clicked {
-                    session.tool = *tool;
-                }
-                if i % 2 == 1 {
-                    ui.end_row();
-                }
+    let gap = 4.0;
+    let width = ui.available_width();
+    let cols = ((width + gap) / 40.0).floor().clamp(4.0, 6.0);
+    let size = ((width - gap * (cols - 1.0)) / cols).clamp(28.0, 44.0);
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = egui::vec2(gap, gap);
+        for (tool, label, key) in TOOLS {
+            let tip = if key.is_empty() {
+                label.to_string()
+            } else {
+                format!("{label} ({key})")
+            };
+            let on = session.tool == tool;
+            let resp = ui
+                .add_sized(
+                    [size, size],
+                    egui::Button::new("")
+                        .min_size(egui::vec2(size, size))
+                        .selected(on),
+                )
+                .on_hover_text(tip);
+            crate::icons::paint(ui, &resp, crate::icons::tool(tool), on);
+            let rect = resp.rect;
+            let clicked = resp.clicked();
+            let id = format!("tool.{}", label.to_ascii_lowercase().replace(' ', "-"));
+            session.note_ui(&id, label, rect, UiAction::Tool(tool));
+            if clicked {
+                session.tool = tool;
             }
-        });
+        }
+    });
 
     section(ui, "Mode");
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 2.0;
+        ui.spacing_mut().item_spacing.x = gap;
+        let each = ((ui.available_width() - gap * 2.0) / 3.0).max(28.0);
         for (name, mode) in [
             ("Add", ToolMode::Add),
             ("Remove", ToolMode::Remove),
             ("Paint", ToolMode::Paint),
         ] {
-            let resp = ui.selectable_value(&mut session.tool_mode, mode, name);
+            let on = session.tool_mode == mode;
+            let resp = ui
+                .add_sized(
+                    [each, size],
+                    egui::Button::new("")
+                        .min_size(egui::vec2(each, size))
+                        .selected(on),
+                )
+                .on_hover_text(name);
+            crate::icons::paint(ui, &resp, crate::icons::mode(mode), on);
             let rect = resp.rect;
+            let clicked = resp.clicked();
             session.note_ui(
                 &format!("mode.{}", name.to_ascii_lowercase()),
                 name,
                 rect,
                 UiAction::Mode(mode),
             );
+            if clicked {
+                session.tool_mode = mode;
+            }
         }
     });
 

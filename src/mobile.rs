@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 
 use egui::{Color32, RichText, Ui, Vec2};
 
+use crate::icons::{self, glyph};
 use crate::state::{
     Axis, BrushShape, EditorMode, FaceExtrude, FaceWith, GeneratorKind, LineMode, RenderMode,
     Session, Tool, ToolMode, UiAction,
@@ -35,54 +36,6 @@ const WIDE: f32 = 700.0;
 
 /// Secondary labels, the same quiet blue-gray as the desktop docks.
 const DIM: Color32 = Color32::from_rgb(196, 206, 220);
-
-/// Private-use codepoints in the vendored Phosphor subset
-/// (`assets/icons`, MIT). The family is installed in `apply_theme`.
-mod glyph {
-    pub const FOLDER: char = '\u{E24A}';
-    pub const CUBE: char = '\u{E1DA}';
-    pub const SHAPES: char = '\u{EC5E}';
-    pub const PENCIL: char = '\u{E3B4}';
-    pub const CAMERA: char = '\u{E10E}';
-    pub const BRUSH: char = '\u{E6F0}';
-    pub const POLYLINE: char = '\u{E6D2}';
-    pub const CIRCLE: char = '\u{E18A}';
-    pub const SQUARE: char = '\u{E45E}';
-    pub const TEXTURE: char = '\u{E8C4}';
-    pub const SPARKLE: char = '\u{E6A2}';
-    pub const BUBBLES: char = '\u{E192}';
-    pub const MARQUEE: char = '\u{E69A}';
-    pub const SELECT_ALL: char = '\u{E746}';
-    pub const BUCKET: char = '\u{E392}';
-    pub const DROP: char = '\u{E210}';
-    pub const ADD: char = '\u{E3D4}';
-    pub const REMOVE: char = '\u{E32A}';
-    pub const UNDO: char = '\u{E08A}';
-    pub const SWAP_H: char = '\u{E0A0}';
-    pub const SWAP_V: char = '\u{E098}';
-    pub const FLIP: char = '\u{ED6A}';
-    pub const OUT: char = '\u{E092}';
-}
-
-fn icon_font() -> egui::FontId {
-    egui::FontId::new(24.0, egui::FontFamily::Name("Phosphor".into()))
-}
-
-fn tool_glyph(tool: Tool) -> char {
-    match tool {
-        Tool::Brush => glyph::BRUSH,
-        Tool::Line => glyph::POLYLINE,
-        Tool::Circle => glyph::CIRCLE,
-        Tool::Square => glyph::SQUARE,
-        Tool::Box => glyph::CUBE,
-        Tool::Face => glyph::TEXTURE,
-        Tool::Generator => glyph::SPARKLE,
-        Tool::Mutator => glyph::BUBBLES,
-        Tool::Marquee => glyph::MARQUEE,
-        Tool::BoxSelect => glyph::SELECT_ALL,
-        Tool::FloodSelect => glyph::DROP,
-    }
-}
 
 const TOOLS: [Tool; 11] = [
     Tool::Brush,
@@ -375,7 +328,7 @@ fn model_tools(ui: &mut Ui, session: &mut Session, mobile: &mut MobileUi) {
         UiAction::Tool(tool),
         open,
         Vec2::new(fitted.tool, TOUCH),
-        tool_glyph(tool),
+        icons::tool(tool),
     )
     .clicked()
     {
@@ -402,7 +355,7 @@ fn mode_segment(ui: &mut Ui, width: f32, session: &mut Session) {
             "Add",
             ToolMode::Add,
             size,
-            glyph::ADD,
+            icons::mode(ToolMode::Add),
         ) {
             session.tool_mode = ToolMode::Add;
         }
@@ -413,7 +366,7 @@ fn mode_segment(ui: &mut Ui, width: f32, session: &mut Session) {
             "Remove",
             ToolMode::Remove,
             size,
-            glyph::REMOVE,
+            icons::mode(ToolMode::Remove),
         ) {
             session.tool_mode = ToolMode::Remove;
         }
@@ -424,7 +377,7 @@ fn mode_segment(ui: &mut Ui, width: f32, session: &mut Session) {
             "Paint",
             ToolMode::Paint,
             size,
-            glyph::BUCKET,
+            icons::mode(ToolMode::Paint),
         ) {
             session.tool_mode = ToolMode::Paint;
         }
@@ -1032,18 +985,7 @@ fn icon_button(
             egui::Button::new("").min_size(size).selected(selected),
         )
         .on_hover_text(label);
-    let color = if selected || response.hovered() {
-        Color32::WHITE
-    } else {
-        ui.visuals().widgets.inactive.fg_stroke.color
-    };
-    ui.painter().text(
-        response.rect.center(),
-        egui::Align2::CENTER_CENTER,
-        glyph.to_string(),
-        icon_font(),
-        color,
-    );
+    icons::paint(ui, &response, glyph, selected);
     session.note_ui(id, label, response.rect, action);
     response
 }

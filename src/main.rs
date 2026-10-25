@@ -24,6 +24,7 @@ mod control;
 mod denoise;
 mod export;
 mod gpu;
+mod icons;
 mod mcp;
 mod menu;
 mod menu_bar;
@@ -584,7 +585,7 @@ fn parse_port(text: &str) -> Result<u16, String> {
 }
 
 /// Load a system UI sans close to Godot's editor font (Inter), and the
-/// vendored Phosphor subset used by the phone chrome.
+/// vendored Phosphor subset used by the tool icons.
 ///
 /// San Francisco is the macOS UI face; the others are regular single-face
 /// fallbacks. Collections are skipped so a hairline weight is not picked by
