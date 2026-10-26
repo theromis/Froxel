@@ -3,11 +3,36 @@
 extends Node3D
 ## Froxel client. The editor polls in _process; scripts use wait_schema and bake_to.
 ## Bake creates a plain Node3D scene with embedded resources and no network dependency.
+## With the default bake settings that scene is the glTF as imported, in voxel units. The Bake
+## settings can scale it to metres, move its origin, keep this node's transform and add a simple
+## collision shape; the scene then has an unscaled root with Visual and Collision children.
+
+enum BakeOrigin { SOURCE, CENTER, BOTTOM_CENTER }
+enum BakeCollision { NONE, BOX, CAPSULE }
 
 @export_file("*.json") var session_file: String = ""
 @export_file("*.tscn") var bake_path: String = "res://baked_froxel.tscn"
 @export_storage var schema: Array = []
 @export_storage var values: Dictionary = {}
+
+@export_group("Bake")
+## Metres per voxel. 1 keeps the glTF's units, one unit per voxel. The preview uses it too.
+@export_range(0.001, 10.0, 0.001, "or_greater") var bake_voxel_size: float = 1.0:
+	set(value):
+		bake_voxel_size = value
+		place_preview()
+## Where the baked scene's origin is. Source keeps the document's origin; Center and Bottom
+## Center use the bounds of the geometry. The preview uses it too.
+@export var bake_origin: BakeOrigin = BakeOrigin.SOURCE:
+	set(value):
+		bake_origin = value
+		place_preview()
+## Bake this node's transform into the scene, so it looks the same placed at the origin of
+## another scene as the preview looks here.
+@export var bake_apply_transform: bool = false
+## A StaticBody3D with one box or one upright capsule around the bounds of the geometry.
+@export var bake_collision: BakeCollision = BakeCollision.NONE
+@export_group("")
 
 var peer := StreamPeerTCP.new()
 var input := PackedByteArray()
@@ -135,6 +160,7 @@ func handle(message: Dictionary) -> void:
 		prepare_materials(node)
 		preview = node
 		add_child(preview)
+		place_preview()
 		applied = wanted
 		fault = ""
 		status = "Applied revision %s" % applied
@@ -365,18 +391,111 @@ func bake() -> void:
 	if not bake_path.begins_with("res://") or bake_path.get_extension() != "tscn":
 		fail("Bake path must be res://...tscn")
 		return
-	var root := preview.duplicate()
-	root.name = "BakedFroxel"
+	var root := build_bake()
+	if root == null:
+		return
 	set_owners(root, root)
 	var packed := PackedScene.new()
 	var error := packed.pack(root)
-	if error == OK:
-		error = ResourceSaver.save(packed, bake_path, ResourceSaver.FLAG_BUNDLE_RESOURCES)
 	root.free()
+	# Written beside the target and moved over it only once complete, so a failed bake leaves
+	# the previous scene in place.
+	var staging := bake_path.get_basename() + ".baking.tscn"
+	if error == OK:
+		error = ResourceSaver.save(packed, staging, ResourceSaver.FLAG_BUNDLE_RESOURCES)
+	if error == OK:
+		error = DirAccess.rename_absolute(staging, bake_path)
 	if error != OK:
+		if FileAccess.file_exists(staging):
+			DirAccess.remove_absolute(staging)
 		fail("Bake failed: %s" % error)
 	else:
+		packed.take_over_path(bake_path)
 		status = "Baked " + bake_path
+
+## True when every bake setting has its default, which bakes the import as it is.
+func bake_is_raw() -> bool:
+	return is_equal_approx(bake_voxel_size, 1.0) and bake_origin == BakeOrigin.SOURCE \
+		and not bake_apply_transform and bake_collision == BakeCollision.NONE
+
+## The scene root to save, or null after fail().
+func build_bake() -> Node3D:
+	if bake_voxel_size <= 0.0:
+		fail("Bake voxel size must be above 0")
+		return null
+	if bake_is_raw():
+		var raw := preview.duplicate() as Node3D
+		raw.name = "BakedFroxel"
+		return raw
+	var bounds := voxel_bounds(preview)
+	if bounds.size == Vector3.ZERO:
+		fail("Nothing to bake: the geometry is empty")
+		return null
+	var root := Node3D.new()
+	root.name = "BakedFroxel"
+	var visual := preview.duplicate() as Node3D
+	visual.name = "Visual"
+	visual.transform = bake_transform(bounds)
+	if bake_apply_transform:
+		visual.transform = transform * visual.transform
+	root.add_child(visual)
+	if bake_collision != BakeCollision.NONE:
+		var placed := visual.transform * bounds
+		var body := StaticBody3D.new()
+		body.name = "Collision"
+		var shape := CollisionShape3D.new()
+		shape.name = "Shape"
+		shape.position = placed.get_center()
+		if bake_collision == BakeCollision.BOX:
+			var box := BoxShape3D.new()
+			box.size = placed.size
+			shape.shape = box
+		else:
+			var capsule := CapsuleShape3D.new()
+			capsule.radius = maxf(placed.size.x, placed.size.z) * 0.5
+			capsule.height = maxf(placed.size.y, capsule.radius * 2.0)
+			shape.shape = capsule
+		body.add_child(shape)
+		root.add_child(body)
+	return root
+
+## Voxel size and origin, from the glTF's own space. This node's transform is not included.
+func bake_transform(bounds: AABB) -> Transform3D:
+	var origin := Vector3.ZERO
+	match bake_origin:
+		BakeOrigin.CENTER:
+			origin = bounds.get_center()
+		BakeOrigin.BOTTOM_CENTER:
+			origin = Vector3(bounds.get_center().x, bounds.position.y, bounds.get_center().z)
+	return Transform3D(Basis.from_scale(Vector3.ONE * bake_voxel_size), -origin * bake_voxel_size)
+
+## Shows the preview at the bake's voxel size and origin.
+func place_preview() -> void:
+	if not is_instance_valid(preview):
+		return
+	if bake_voxel_size <= 0.0:
+		return
+	preview.transform = bake_transform(voxel_bounds(preview))
+
+## The bounds of every mesh under node, in node's own space (its transform left out).
+func voxel_bounds(node: Node3D) -> AABB:
+	var found := {"bounds": AABB(), "any": false}
+	if node is MeshInstance3D and (node as MeshInstance3D).mesh != null:
+		found["bounds"] = (node as MeshInstance3D).mesh.get_aabb()
+		found["any"] = true
+	collect_bounds(node, Transform3D.IDENTITY, found)
+	return found["bounds"]
+
+func collect_bounds(node: Node, to_root: Transform3D, found: Dictionary) -> void:
+	for child in node.get_children():
+		if not child is Node3D:
+			continue
+		var placed: Transform3D = to_root * (child as Node3D).transform
+		if child is MeshInstance3D and (child as MeshInstance3D).mesh != null:
+			var box: AABB = placed * (child as MeshInstance3D).mesh.get_aabb()
+			found["bounds"] = box if not found["any"] else (found["bounds"] as AABB).merge(box)
+			found["any"] = true
+		collect_bounds(child, placed, found)
 
 func set_owners(node: Node, root: Node) -> void:
 	for child in node.get_children():

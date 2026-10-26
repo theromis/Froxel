@@ -87,7 +87,13 @@ cargo build && python3 tests/bridge_live.py
 ```
 
 `bridge_live.py` starts `target/debug/froxel bridge` (or `FROXEL_BIN`) on the
-frog and asks for a glb.
+frog and asks for a glb. `bridge_godot.py` bakes the lily pad through the Godot node
+when `GODOT_PATH` names Godot 4.3+ (it skips without it) and checks the
+scenes with the bridge stopped:
+
+```sh
+cargo build && GODOT_PATH=/path/to/godot python3 tests/bridge_godot.py
+```
 
 ## Formatting
 

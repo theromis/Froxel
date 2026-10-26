@@ -7,9 +7,21 @@
 - The release workflow builds an Android arm64 APK, an iOS ipa, and an iOS
   simulator app. They are signed when the signing secrets in
   `docs/releasing.md` are set.
+- The Godot **FroxelBridge** node has Bake settings: **Bake Voxel Size**
+  (metres per voxel), **Bake Origin** (Source, Center or Bottom Center of the
+  geometry), **Bake Apply Transform** (keep the node's own transform) and
+  **Bake Collision** (none, a box or an upright capsule around the geometry).
+  With any of them set, the baked scene is ready to place: an unscaled root
+  with a `Visual` child and a `Collision` StaticBody3D. The preview shows the
+  voxel size and origin too. The headless `bake.gd` takes `--voxel-size`,
+  `--origin` and `--collision`. The defaults bake the raw import as before.
+- `tests/bridge_godot.py` bakes through the Godot node with `GODOT_PATH` and
+  checks the scenes with the bridge stopped.
 
 ### Fixed
 
+- A failed Godot bake leaves the previous scene in place. The scene is written
+  beside the target first and moved over it only when it is complete.
 - The Godot plugin embeds the palette texture when it imports a model. In the
   editor it used to extract the texture as a file beside the glb, which failed
   outside `res://`, so the preview and **Bake standalone scene** came out
