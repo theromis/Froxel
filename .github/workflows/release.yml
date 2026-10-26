@@ -450,6 +450,11 @@ jobs:
         run: |
           set -euo pipefail
           cargo fetch --locked
+          # cargo-apk takes versionName and versionCode from Cargo.toml, so the
+          # APK gets the workflow's version. The build updates only froxel's
+          # own entry in Cargo.lock.
+          sed -i "s/^version = \".*\"$/version = \"$VERSION\"/" Cargo.toml
+          grep -m 1 '^version = ' Cargo.toml
           ANDROID_NDK_ROOT="$ANDROID_NDK_LATEST_HOME" \
             cargo apk build --lib --features android-lib --release
       # The App Bundle for Google Play is signed with the same key, the Play upload key.
