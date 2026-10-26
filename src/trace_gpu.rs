@@ -241,7 +241,8 @@ impl Tracer {
     }
 
     /// Trace the next batch. `Frame.gpu` is false when the scene does not fit
-    /// a single grid and the caller should use the CPU tracer.
+    /// a single grid, or the frame does not fit the device's limits, and the
+    /// caller should use the CPU tracer.
     pub fn advance(
         &mut self,
         device: &wgpu::Device,
@@ -261,7 +262,7 @@ impl Tracer {
             self.packed = true;
             self.frame_key = 0;
         }
-        if !self.packed {
+        if !self.packed || frame_fits(size, &device.limits()).is_err() {
             return self.frame(false);
         }
         let key = trace::frame_key(session, size);
@@ -720,6 +721,32 @@ fn pixel_buffer(device: &wgpu::Device, size: usize) -> wgpu::Buffer {
     })
 }
 
+/// Whether a `size` frame fits `limits`: the pixel buffer is bound whole as
+/// one storage buffer, and the two targets are 2D textures of that size.
+pub(crate) fn frame_fits(size: [u32; 2], limits: &wgpu::Limits) -> Result<(), String> {
+    let side = size[0].max(size[1]);
+    if side > limits.max_texture_dimension_2d {
+        return Err(format!(
+            "a {}x{} frame is wider than this GPU's {} pixel texture limit",
+            size[0], size[1], limits.max_texture_dimension_2d
+        ));
+    }
+    let bytes = (size[0] as u64) * (size[1] as u64) * PIXEL_STRIDE;
+    let cap = limits
+        .max_buffer_size
+        .min(limits.max_storage_buffer_binding_size);
+    if bytes > cap {
+        return Err(format!(
+            "a {}x{} frame needs {} MiB of GPU memory in one buffer; this GPU allows {} MiB",
+            size[0],
+            size[1],
+            bytes.div_ceil(1 << 20),
+            cap >> 20
+        ));
+    }
+    Ok(())
+}
+
 fn padded_row(width: u32) -> u32 {
     width.saturating_mul(4).div_ceil(256) * 256
 }
@@ -746,8 +773,14 @@ pub fn render_headless(session: &Session, size: [u32; 2], seed: u32) -> Result<G
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
         .map_err(|err| format!("no GPU adapter: {err}"))?;
-    let (device, queue) = block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-        .map_err(|err| format!("could not open a GPU device: {err}"))?;
+    let limits = adapter.limits();
+    frame_fits(size, &limits).map_err(|err| format!("{err}; omit --gpu to use the CPU tracer"))?;
+    let (device, queue) = block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+        label: Some("froxel render"),
+        required_limits: limits,
+        ..Default::default()
+    }))
+    .map_err(|err| format!("could not open a GPU device: {err}"))?;
     let mut tracer = Tracer::new(&device);
     tracer.set_seed(seed);
     let cap = session.render_sample_cap();

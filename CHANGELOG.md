@@ -41,6 +41,11 @@
   instead of the same heading twice.
 - `examples/lily_pad.rhai` lays the lily pad flat. It used to stand on its
   edge, because `.vox` has Z up.
+- `froxel render --gpu` renders large frames such as 3840x1646 and 5244x2950.
+  It used to panic, because the headless device kept wgpu's default buffer
+  limits. It now asks for the adapter's limits, and a frame that still does
+  not fit exits with an error that suggests the CPU tracer. Render mode
+  falls back to the CPU tracer for such a frame instead of panicking.
 
 ## 0.2.0
 
