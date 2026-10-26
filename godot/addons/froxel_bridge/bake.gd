@@ -1,6 +1,11 @@
 # SPDX-License-Identifier: MIT
 extends SceneTree
 ## Headless bake. One .tscn per variants.json object. Prints each path and exits non-zero on failure.
+## --voxel-size, --origin and --collision set the bridge node's bake settings; without them the
+## scenes are the raw import, as before.
+
+const ORIGINS := {"source": 0, "center": 1, "bottom_center": 2}
+const COLLISIONS := {"none": 0, "box": 1, "capsule": 2}
 
 func _initialize() -> void:
 	call_deferred("run")
@@ -36,7 +41,29 @@ func run() -> void:
 	if parsed.size() > 1 and not out.contains("%d"):
 		fail("--out needs %d when baking more than one variant")
 		return
+	var voxel_size := 1.0
+	var size_text := option("--voxel-size")
+	if size_text != "":
+		if not size_text.is_valid_float() or size_text.to_float() <= 0.0:
+			fail("--voxel-size must be a number above 0, in metres per voxel")
+			return
+		voxel_size = size_text.to_float()
+	var origin := option("--origin")
+	if origin == "":
+		origin = "source"
+	if not ORIGINS.has(origin):
+		fail("--origin must be source, center or bottom_center")
+		return
+	var collision := option("--collision")
+	if collision == "":
+		collision = "none"
+	if not COLLISIONS.has(collision):
+		fail("--collision must be none, box or capsule")
+		return
 	var bridge: Node3D = load("res://addons/froxel_bridge/bridge.gd").new()
+	bridge.set("bake_voxel_size", voxel_size)
+	bridge.set("bake_origin", ORIGINS[origin])
+	bridge.set("bake_collision", COLLISIONS[collision])
 	root.add_child(bridge)
 	bridge.session_file = session
 	bridge.connect_bridge()

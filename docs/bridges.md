@@ -65,6 +65,33 @@ name. Edits update the preview after a short pause. Set **Bake Path** and
 click **Bake standalone scene**. The `.tscn` is a normal scene with embedded
 resources. The bridge node does not poll during a running game.
 
+### Bake settings
+
+By default a bake is the glTF as it was imported: one unit per voxel, the
+document's origin, and no collision. The **Bake** group on the node makes a
+scene that is ready to place instead:
+
+| Setting | Default | Effect |
+|---|---|---|
+| **Bake Voxel Size** | 1 | Metres per voxel. 0.04 makes a 25-voxel model 1 m. |
+| **Bake Origin** | Source | Source keeps the document's origin. Center and Bottom Center use the bounds of the geometry, so a tree or a rock stands on its origin. |
+| **Bake Apply Transform** | off | Bakes the node's own position, rotation and scale. The scene placed at the origin of another scene looks as the preview looks here. |
+| **Bake Collision** | None | Adds a StaticBody3D with one BoxShape3D, or one upright CapsuleShape3D, around the bounds of the geometry after the settings above. |
+
+The preview uses the voxel size and the origin, so what you see is what is
+baked. With any setting changed, the scene has an unscaled root named
+`BakedFroxel` with a `Visual` child (the geometry, carrying the scale and the
+offset) and, with collision, a `Collision` child whose `Shape` is not scaled.
+Placing the scene sets the root's position, so the offset is kept. Do not set
+a voxel size and also scale the node with **Bake Apply Transform** on, or the
+scale applies twice. The collision layer and mask are Godot's defaults; set
+them on the instance. The shape is a simple bound, not the geometry: replace
+it when a model needs a closer fit.
+
+A bake is written beside the target as `<name>.baking.tscn` and moved over it
+only when it is complete, so a bake that fails leaves the previous scene in
+place.
+
 Headless, one scene per object in `variants.json`. A value may be a parameter
 name, `objectName/name`, or the id `index/name`. A bare name has to be unique.
 
@@ -83,6 +110,21 @@ godot --headless --path godot \
 ]
 ```
 
+The same bake settings, headless. Without them the scenes are the raw import.
+The headless node has no transform of its own.
+
+```sh
+godot --headless --path godot \
+  --script res://addons/froxel_bridge/bake.gd -- \
+  --session "$FROXEL_SESSION" \
+  --out res://baked/pad_%d.tscn \
+  --variants variants.json \
+  --voxel-size 0.04 --origin bottom_center --collision box
+```
+
+`--origin` is `source`, `center` or `bottom_center`; `--collision` is `none`,
+`box` or `capsule`.
+
 From a script on a node that is already in the tree:
 
 ```gdscript
@@ -92,6 +134,10 @@ var error := await bridge.wait_schema()
 error = bridge.set_parameter("radius", 12.0)
 error = await bridge.bake_to("res://baked/pad.tscn")
 ```
+
+The settings are properties of the node (`bake_voxel_size`, `bake_origin`,
+`bake_apply_transform`, `bake_collision`), so a script sets them before
+`bake_to`.
 
 `wait_schema` and `bake_to` return `""` on success. They wait up to 300 seconds, the same deadline the server gives a script run; pass `timeout_msec` to change it.
 
