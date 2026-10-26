@@ -610,6 +610,9 @@ pub struct Session {
     pub object_selection: Vec<usize>,
     pub next_object: u32,
     pub path: Option<PathBuf>,
+    /// The title while `path` is empty, such as a bundled example that saves
+    /// to a new file. Save As offers it as the file name.
+    pub name_hint: Option<String>,
     /// Scene graph from the last opened `.vox`. Save writes it back, including
     /// groups, layers, hidden flags, and animation frames past the first.
     graph: Option<VoxGraph>,

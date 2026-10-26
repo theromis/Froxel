@@ -33,6 +33,7 @@ impl Session {
         self.focus_object();
         self.next_object = 2;
         self.path = None;
+        self.name_hint = None;
         self.graph = None;
         self.skeleton = Skeleton::default();
         self.pose.clear();
@@ -81,6 +82,7 @@ impl Session {
             .unwrap_or_else(|| "Model".into());
         self.install(loaded, &stem);
         self.path = Some(path.to_path_buf());
+        self.name_hint = None;
         self.undo.clear();
         self.redo.clear();
         self.pending = None;
@@ -270,6 +272,7 @@ impl Session {
         self.focus_object();
         self.next_object = 2;
         self.path = None;
+        self.name_hint = None;
         self.graph = None;
         self.skeleton = Skeleton::default();
         self.pose.clear();
@@ -433,7 +436,10 @@ impl Session {
     pub fn save_as(&mut self) {
         let name = match self.path.as_ref().and_then(|p| p.file_name()) {
             Some(name) => name.to_string_lossy().into_owned(),
-            None => format!("{}.vox", self.active().name),
+            None => match &self.name_hint {
+                Some(hint) => format!("{hint}.vox"),
+                None => format!("{}.vox", self.active().name),
+            },
         };
         let Some(path) = dialog::pick_save(None, "MagicaVoxel", &["vox"], &name) else {
             return;
@@ -468,6 +474,7 @@ impl Session {
             return Err(message);
         }
         self.path = Some(path.to_path_buf());
+        self.name_hint = None;
         self.mark_clean();
         let file = path
             .file_name()

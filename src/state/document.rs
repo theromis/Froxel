@@ -63,6 +63,7 @@ impl Session {
             object_selection: vec![0],
             next_object: 2,
             path: None,
+            name_hint: None,
             graph: None,
             skeleton: Skeleton::default(),
             pose: HashMap::new(),
@@ -226,7 +227,15 @@ impl Session {
     pub fn document_label(&self) -> String {
         match &self.path {
             Some(p) => p.display().to_string(),
-            None => "Untitled".into(),
+            None => self.name_hint.clone().unwrap_or_else(|| "Untitled".into()),
+        }
+    }
+
+    /// The file name without its folder, for the narrow phone header.
+    pub fn document_name(&self) -> String {
+        match self.path.as_ref().and_then(|p| p.file_name()) {
+            Some(name) => name.to_string_lossy().into_owned(),
+            None => self.document_label(),
         }
     }
 

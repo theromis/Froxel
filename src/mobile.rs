@@ -295,7 +295,7 @@ fn title_bar(ui: &mut Ui, session: &mut Session, mobile: &mut MobileUi) {
         let width = ui.available_width();
         ui.add_sized(
             [width, TOUCH],
-            egui::Label::new(RichText::new(session.document_label()).strong()).truncate(),
+            egui::Label::new(RichText::new(session.document_name()).strong()).truncate(),
         );
     });
     if !session.status.is_empty() {
@@ -889,6 +889,9 @@ fn scene_sheet(ui: &mut Ui, session: &mut Session, mobile: &mut MobileUi, _max_h
                 // Examples ship inside the app and are read-only: saving
                 // writes a new file to Documents.
                 session.path = None;
+                session.name_hint = path
+                    .file_stem()
+                    .map(|stem| stem.to_string_lossy().into_owned());
                 mobile.sheet = Sheet::None;
             }
         }

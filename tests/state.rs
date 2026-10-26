@@ -951,6 +951,31 @@ fn unsaved_changes_follow_the_last_save() {
     let _ = std::fs::remove_file(path);
 }
 
+#[test]
+fn name_hint_titles_an_unsaved_example_until_it_has_a_path() {
+    let path = std::env::temp_dir().join(format!("froxel-hint-{}.vox", std::process::id()));
+    let mut session = Session::new();
+    session.write_vox(&path).unwrap();
+
+    session.load_path(&path);
+    session.path = None;
+    session.name_hint = Some("frog".into());
+    assert_eq!(session.document_label(), "frog");
+    assert_eq!(session.document_name(), "frog");
+
+    session.load_path(&path);
+    assert_eq!(session.name_hint, None);
+    assert_eq!(
+        session.document_name(),
+        path.file_name().unwrap().to_string_lossy()
+    );
+    assert_eq!(session.document_label(), path.display().to_string());
+
+    session.new_document();
+    assert_eq!(session.document_label(), "Untitled");
+    let _ = std::fs::remove_file(path);
+}
+
 fn world_of(object: &LoadedObject, color: u8) -> Cell {
     let (cell, _) = object
         .cells
