@@ -93,7 +93,7 @@ error = bridge.set_parameter("radius", 12.0)
 error = await bridge.bake_to("res://baked/pad.tscn")
 ```
 
-`wait_schema` and `bake_to` return `""` on success. A timeout is 20 seconds.
+`wait_schema` and `bake_to` return `""` on success. They wait up to 300 seconds, the same deadline the server gives a script run; pass `timeout_msec` to change it.
 
 Godot 4.3+ is the target and 4.5 is tested. The glTF import uses
 `GLTFDocument`.

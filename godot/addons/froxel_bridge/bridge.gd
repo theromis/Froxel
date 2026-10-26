@@ -311,7 +311,7 @@ func set_parameter(parameter_name: String, value: Variant) -> String:
 	fault = ""
 	return ""
 
-func wait_schema(timeout_msec: int = 20000) -> String:
+func wait_schema(timeout_msec: int = 300000) -> String:
 	if fault != "":
 		return fault
 	if get_tree() == null:
@@ -329,7 +329,7 @@ func wait_schema(timeout_msec: int = 20000) -> String:
 	fail("Schema timed out: " + status)
 	return fault
 
-func bake_to(path: String, timeout_msec: int = 20000) -> String:
+func bake_to(path: String, timeout_msec: int = 300000) -> String:
 	if fault != "":
 		return fault
 	if get_tree() == null:
