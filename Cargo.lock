@@ -1257,6 +1257,7 @@ dependencies = [
 name = "froxel"
 version = "0.2.0"
 dependencies = [
+ "android-activity",
  "bytemuck",
  "eframe",
  "egui",
