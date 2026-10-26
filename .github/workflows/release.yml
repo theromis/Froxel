@@ -379,6 +379,185 @@ jobs:
           path: dist/release/*
           if-no-files-found: error
 
+  android:
+    name: Android arm64
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: release-android
+      - name: Install cargo-apk
+        run: |
+          cargo install --locked --git https://github.com/parasyte/cargo-apk.git \
+            --rev 282639508eeed7d73f2e1eaeea042da2716436d5 cargo-apk
+      # cargo-apk signs a release build only with a given key. Without the secrets
+      # a throwaway debug key stands in, so the APK installs but cannot update
+      # one signed with the release key.
+      - name: Signing key
+        run: |
+          set -euo pipefail
+          keystore="$RUNNER_TEMP/release.keystore"
+          if [ -n "$ANDROID_KEYSTORE" ]; then
+            if [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
+              echo "::error::ANDROID_KEYSTORE is set but ANDROID_KEYSTORE_PASSWORD is missing"
+              exit 1
+            fi
+            printf '%s' "$ANDROID_KEYSTORE" | base64 --decode >"$keystore"
+            echo "Android: signed with the release key" >>"$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::No Android keystore secrets: the APK is signed with a throwaway debug key"
+            keytool -genkeypair -keystore "$keystore" -storepass android \
+              -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 \
+              -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            echo "Android: throwaway debug key" >>"$GITHUB_STEP_SUMMARY"
+          fi
+          echo "CARGO_APK_RELEASE_KEYSTORE=$keystore" >>"$GITHUB_ENV"
+      - name: Build
+        env:
+          CARGO_APK_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'android' }}
+        run: |
+          set -euo pipefail
+          cargo fetch --locked
+          ANDROID_NDK_ROOT="$ANDROID_NDK_LATEST_HOME" \
+            cargo apk build --lib --features android-lib --release
+      - name: Package
+        run: |
+          set -euo pipefail
+          mkdir -p dist/release
+          apk="dist/release/froxel-$VERSION-android-arm64.apk"
+          cp target/release/apk/froxel.apk "$apk"
+          tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
+          "$tools/apksigner" verify --print-certs "$apk"
+          "$tools/aapt" dump badging "$apk" | head -n 3
+      - name: Remove the keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.keystore"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: froxel-${{ env.VERSION }}-android-arm64
+          path: dist/release/*
+          if-no-files-found: error
+
+  ios:
+    name: iOS
+    needs: version
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+      IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
+      IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+      IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: aarch64-apple-ios, aarch64-apple-ios-sim
+      # A throwaway keychain holds the Apple Development or Distribution certificate
+      # for this job only. The provisioning profile names the devices or the store.
+      - name: Import the iOS certificate and profile
+        if: env.IOS_CERTIFICATE != ''
+        run: |
+          set -euo pipefail
+          if [ -z "$IOS_PROVISIONING_PROFILE" ]; then
+            echo "::error::IOS_CERTIFICATE is set but IOS_PROVISIONING_PROFILE is missing"
+            exit 1
+          fi
+          keychain="$RUNNER_TEMP/ios-signing.keychain-db"
+          password=$(openssl rand -hex 24)
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          printf '%s' "$IOS_CERTIFICATE" | base64 --decode >"$RUNNER_TEMP/ios.p12"
+          security import "$RUNNER_TEMP/ios.p12" -k "$keychain" \
+            -P "$IOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/ios.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" >/dev/null
+          # The existing search list is one path per word.
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity=$(security find-identity -v -p codesigning "$keychain" \
+            | sed -n 's/.*"\(\(Apple\|iPhone\) \(Development\|Distribution\|Developer\): .*\)"/\1/p' \
+            | head -n 1)
+          if [ -z "$identity" ]; then
+            echo "::error::IOS_CERTIFICATE has no Apple Development or Distribution identity"
+            exit 1
+          fi
+
+          profile="$RUNNER_TEMP/froxel.mobileprovision"
+          printf '%s' "$IOS_PROVISIONING_PROFILE" | base64 --decode >"$profile"
+          security cms -D -i "$profile" >"$RUNNER_TEMP/profile.plist"
+          plutil -extract Entitlements xml1 -o "$RUNNER_TEMP/entitlements.plist" "$RUNNER_TEMP/profile.plist"
+          app_id=$(plutil -extract Entitlements.application-identifier raw "$RUNNER_TEMP/profile.plist")
+          case "$app_id" in
+            *.com.lonje.froxel | *.\*) ;;
+            *)
+              echo "::error::The provisioning profile is for $app_id, not com.lonje.froxel"
+              exit 1
+              ;;
+          esac
+          echo "Signing as $identity with the profile $(plutil -extract Name raw "$RUNNER_TEMP/profile.plist")"
+          {
+            echo "IOS_SIGN_IDENTITY=$identity"
+            echo "IOS_SIGN_KEYCHAIN=$keychain"
+            echo "IOS_PROFILE=$profile"
+          } >>"$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: release-ios
+      - name: Build
+        run: |
+          cargo build --release --locked --target aarch64-apple-ios
+          cargo build --release --locked --target aarch64-apple-ios-sim
+      - name: Bundle the ipa and the simulator app
+        run: |
+          set -euo pipefail
+          mkdir -p dist/release dist/stage
+
+          sim=$(TARGET=aarch64-apple-ios-sim PROFILE=release packaging/ios/bundle.sh)
+          ditto -c -k --keepParent "$sim" "dist/release/froxel-$VERSION-ios-simulator.zip"
+
+          app=$(TARGET=aarch64-apple-ios PROFILE=release packaging/ios/bundle.sh)
+          if [ -n "${IOS_SIGN_IDENTITY:-}" ]; then
+            cp "$IOS_PROFILE" "$app/embedded.mobileprovision"
+            codesign --force --keychain "$IOS_SIGN_KEYCHAIN" --sign "$IOS_SIGN_IDENTITY" \
+              --entitlements "$RUNNER_TEMP/entitlements.plist" "$app"
+            codesign --verify --strict --verbose=2 "$app"
+            ipa="froxel-$VERSION-ios.ipa"
+            echo "iOS: signed as $IOS_SIGN_IDENTITY" >>"$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::No iOS signing secrets: the ipa has an ad-hoc signature and must be re-signed to install"
+            ipa="froxel-$VERSION-ios-unsigned.ipa"
+            echo "iOS: ad-hoc signature, re-sign to install" >>"$GITHUB_STEP_SUMMARY"
+          fi
+          mkdir -p dist/stage/Payload
+          ditto "$app" dist/stage/Payload/Froxel.app
+          (cd dist/stage && zip -qr -X "../release/$ipa" Payload)
+          unzip -l "dist/release/$ipa" | tail -n 1
+      - name: Remove the signing keychain
+        if: always() && env.IOS_SIGN_KEYCHAIN != ''
+        run: |
+          security delete-keychain "$IOS_SIGN_KEYCHAIN" || true
+          rm -f "$IOS_PROFILE" "$RUNNER_TEMP/profile.plist" "$RUNNER_TEMP/entitlements.plist"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: froxel-${{ env.VERSION }}-ios
+          path: dist/release/*
+          if-no-files-found: error
+
   addons:
     name: Godot and Blender add-ons
     needs: version
@@ -407,7 +586,7 @@ jobs:
   release:
     name: Draft GitHub Release
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && inputs.draft-release }}
-    needs: [version, macos, windows, linux, freebsd, addons]
+    needs: [version, macos, windows, linux, freebsd, android, ios, addons]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

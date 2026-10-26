@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- The release workflow builds an Android arm64 APK, an iOS ipa, and an iOS
+  simulator app. They are signed when the signing secrets in
+  `docs/releasing.md` are set.
+
 ### Fixed
 
 - The Godot plugin embeds the palette texture when it imports a model. In the

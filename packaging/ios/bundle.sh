@@ -3,16 +3,22 @@
 #
 #   packaging/ios/bundle.sh                  # debug, aarch64-apple-ios-sim
 #   PROFILE=release packaging/ios/bundle.sh
+#   TARGET=aarch64-apple-ios PROFILE=release packaging/ios/bundle.sh   # device
 #
 # Needs the rustup toolchain with the aarch64-apple-ios-sim target. The app
 # gets an ad-hoc signature, which the simulator accepts; a device build needs
-# a provisioning profile. Prints the path to the .app.
+# a provisioning profile. VERSION overrides the version from Cargo.toml.
+# Prints the path to the .app.
 set -eu
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
 target=${TARGET:-aarch64-apple-ios-sim}
 profile=${PROFILE:-debug}
-version=$(sed -n 's/^version = "\(.*\)"$/\1/p' "$root/Cargo.toml" | head -n 1)
+version=${VERSION:-$(sed -n 's/^version = "\(.*\)"$/\1/p' "$root/Cargo.toml" | head -n 1)}
+case "$target" in
+*-sim) platform=iPhoneSimulator ;;
+*) platform=iPhoneOS ;;
+esac
 
 flag=""
 if [ "$profile" = release ]; then flag=--release; fi
@@ -35,8 +41,9 @@ cat >"$app/Info.plist" <<EOF
   <key>CFBundleIdentifier</key><string>com.lonje.froxel</string>
   <key>CFBundleExecutable</key><string>froxel</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>$version</string>
+  <key>CFBundleShortVersionString</key><string>${version%%-*}</string>
   <key>CFBundleVersion</key><string>$version</string>
+  <key>CFBundleSupportedPlatforms</key><array><string>$platform</string></array>
   <key>CFBundleIconFiles</key><array><string>AppIcon.png</string></array>
   <key>MinimumOSVersion</key><string>16.0</string>
   <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
