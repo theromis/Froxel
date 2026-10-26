@@ -6,9 +6,10 @@
 The frog has its lids and squints hidden. The GPU tracer renders it
 with an albedo pass, whose black sky is the cut-out mask. macOS gets the 824 px tile on a 1024
 canvas with a shadow (froxel-macos*.png, Froxel.icns); Windows and Linux get the tile edge to
-edge (froxel.png, froxel.ico, hicolor/).
+edge (froxel.png, froxel.ico, hicolor/), and iOS the tile with its corners filled
+(froxel-ios.png).
 """
-import subprocess, tempfile
+import subprocess, sys, tempfile
 from pathlib import Path
 HERE = Path(__file__).resolve().parent
 FROG = HERE.parent.parent / "examples" / "frog.vox"
@@ -19,7 +20,7 @@ subprocess.run(["target/release/froxel", "render", "--input", str(FROG),
                 "--width", "1440", "--height", "1440", "--samples", "384", "--denoise", "--gpu",
                 "--yaw", "-65", "--pitch", "18", "--distance", "0.62"], check=True)
 from PIL import Image, ImageDraw, ImageFilter, ImageChops
-S = 1024
+from background import S, background
 render = Image.open(f"{tmp}/frog.png").convert("RGB")
 alb = Image.open(f"{tmp}/albedo.png").convert("L")
 mask = alb.point(lambda v: 255 if v > 2 else 0)
@@ -28,23 +29,7 @@ frog = frog.crop(mask.getbbox())
 
 # macOS template: an 824 tile centred on the 1024 canvas, continuous-corner radius about 185.
 tile = 824; off = (S - tile) // 2
-top, bottom = (70, 170, 240), (24, 70, 160)
-grad = Image.new("RGB", (S, S))
-d = ImageDraw.Draw(grad)
-for y in range(S):
-    t = y / (S - 1)
-    d.line([(0, y), (S, y)], fill=tuple(round(a + (b - a) * t) for a, b in zip(top, bottom)))
-# A soft light behind the frog.
-glow = Image.new("L", (S, S), 0)
-ImageDraw.Draw(glow).ellipse([212, 150, 812, 750], fill=110)
-glow = glow.filter(ImageFilter.GaussianBlur(120))
-grad = Image.composite(Image.new("RGB", (S, S), (180, 230, 255)), grad, glow)
-# Faint voxel grid.
-grid = Image.new("L", (S, S), 0); g = ImageDraw.Draw(grid)
-step = 64
-for i in range(off, off + tile + 1, step):
-    g.line([(i, 0), (i, S)], fill=26, width=3); g.line([(0, i), (S, i)], fill=26, width=3)
-grad = Image.composite(Image.new("RGB", (S, S), (255, 255, 255)), grad, grid)
+grad = background()
 
 shape = Image.new("L", (S, S), 0)
 ImageDraw.Draw(shape).rounded_rectangle([off, off, off + tile - 1, off + tile - 1], radius=185, fill=255)
@@ -88,3 +73,4 @@ for s in (16, 32, 128, 256, 512):
     mac.resize((s, s), Image.LANCZOS).save(iconset / f"icon_{s}x{s}.png")
     mac.resize((s * 2, s * 2), Image.LANCZOS).save(iconset / f"icon_{s}x{s}@2x.png")
 subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(HERE / "Froxel.icns")], check=True)
+subprocess.run([sys.executable, str(HERE / "make_ios_icon.py")], check=True)
