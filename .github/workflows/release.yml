@@ -3,7 +3,8 @@
 # Release "Froxel v<version>". With the Apple secrets set (docs/releasing.md), the macOS app
 # and dmg are signed with Developer ID and notarized; without them they get an ad-hoc
 # signature. The other platforms are unsigned. With upload-stores on, the iOS build goes to
-# TestFlight and the Android bundle to a Google Play track (docs/releasing.md).
+# TestFlight and the Android bundle to a Google Play track; submit-review also sends both
+# for store review (docs/releasing.md).
 name: Release
 # run-name sees only the inputs, so an empty version names the branch instead.
 run-name: Release ${{ inputs.version || format('(Cargo.toml, {0})', github.ref_name) }}
@@ -21,6 +22,10 @@ on:
         default: true
       upload-stores:
         description: "Upload the iOS build to TestFlight and the Android bundle to Google Play"
+        type: boolean
+        default: false
+      submit-review:
+        description: "With upload-stores: submit to App Store review and Google Play production"
         type: boolean
         default: false
 
@@ -51,6 +56,8 @@ jobs:
         name: Resolve version
         env:
           INPUT_VERSION: ${{ inputs.version }}
+          UPLOAD_STORES: ${{ inputs.upload-stores }}
+          SUBMIT_REVIEW: ${{ inputs.submit-review }}
         run: |
           set -euo pipefail
           version="${INPUT_VERSION#v}"
@@ -70,6 +77,10 @@ jobs:
             echo "prerelease=$prerelease"
             echo "build=$build"
           } >>"$GITHUB_OUTPUT"
+          if [ "$SUBMIT_REVIEW" = true ] && { [ "$UPLOAD_STORES" != true ] || [ "$prerelease" = true ]; }; then
+            echo "::error::submit-review needs upload-stores and a release version, not $version"
+            exit 1
+          fi
           echo "Froxel $version (prerelease: $prerelease, store build $build)" >>"$GITHUB_STEP_SUMMARY"
 
   macos:
@@ -402,6 +413,7 @@ jobs:
       ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+      SUBMIT_REVIEW: ${{ inputs.submit-review }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
@@ -480,8 +492,16 @@ jobs:
             echo "::error::upload-stores needs ANDROID_KEYSTORE and PLAY_SERVICE_ACCOUNT_JSON"
             exit 1
           fi
+          # Internal testers get the build either way. With submit-review the
+          # production release is committed complete, which sends it for review.
+          tracks=(--track internal --status draft)
+          if [ "$SUBMIT_REVIEW" = true ]; then
+            tracks=(--track internal --track production --status completed)
+          fi
+          python3 tools/release_notes.py "$VERSION" >"$RUNNER_TEMP/notes.txt"
           python3 tools/play_upload.py "dist/store/froxel-$VERSION-android.aab" \
-            --version "$VERSION" --track internal --status draft | tee -a "$GITHUB_STEP_SUMMARY"
+            --version "$VERSION" "${tracks[@]}" --notes-file "$RUNNER_TEMP/notes.txt" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Remove the keystore
         if: always()
         run: rm -f "$RUNNER_TEMP/release.keystore"
@@ -502,7 +522,8 @@ jobs:
     needs: version
     # App Store Connect takes builds made with Xcode 26 and the iOS 26 SDK or later.
     runs-on: macos-26
-    timeout-minutes: 90
+    # submit-review waits for App Store Connect to process the build.
+    timeout-minutes: 150
     env:
       VERSION: ${{ needs.version.outputs.version }}
       IPHONEOS_DEPLOYMENT_TARGET: "16.0"
@@ -630,6 +651,23 @@ jobs:
           xcrun altool --upload-package "dist/store/froxel-$VERSION-ios.ipa" \
             --api-key "$APPLE_API_KEY_ID" --api-issuer "$APPLE_API_ISSUER_ID"
           echo "iOS: uploaded to App Store Connect; it shows in TestFlight once processed" >>"$GITHUB_STEP_SUMMARY"
+      # The release key has the App Manager role, which the notarization key lacks.
+      - name: Submit for App Store review
+        if: inputs.submit-review
+        env:
+          ASC_KEY: ${{ secrets.ASC_RELEASE_KEY }}
+          ASC_KEY_ID: ${{ secrets.ASC_RELEASE_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          BUILD: ${{ needs.version.outputs.build }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ASC_KEY" ] || [ -z "$ASC_KEY_ID" ]; then
+            echo "::error::submit-review needs ASC_RELEASE_KEY and ASC_RELEASE_KEY_ID"
+            exit 1
+          fi
+          python3 tools/release_notes.py "$VERSION" >"$RUNNER_TEMP/notes.txt"
+          python3 tools/asc_release.py --version "$VERSION" --build "$BUILD" \
+            --notes-file "$RUNNER_TEMP/notes.txt" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Remove the signing keychain
         if: always() && env.IOS_SIGN_KEYCHAIN != ''
         run: |

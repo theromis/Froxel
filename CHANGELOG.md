@@ -12,6 +12,9 @@
   to Google Play's internal track and TestFlight. The iOS app carries a
   privacy manifest. Both stores get the build number from
   `packaging/build_number.sh`. See `docs/releasing.md`.
+- The release workflow's `submit-review` input sends the build for App Store
+  review and Google Play production review, with release notes from this
+  changelog.
 - The Godot **FroxelBridge** node has Bake settings: **Bake Voxel Size**
   (metres per voxel), **Bake Origin** (Source, Center or Bottom Center of the
   geometry), **Bake Apply Transform** (keep the node's own transform) and

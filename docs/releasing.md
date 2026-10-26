@@ -125,4 +125,30 @@ only an app that exists, so the first bundle is uploaded by hand in Play
 Console, and it accepts only drafts until the app has passed its first
 review.
 
+`submit-review` (with `upload-stores`, release versions only) also sends the
+build for review in both stores:
+
+```sh
+gh workflow run release.yml -f version=0.3.2 -f upload-stores=true -f submit-review=true
+```
+
+The `android` job then releases the bundle on the internal and production
+tracks as complete, which sends production for review. The `ios` job runs
+`tools/asc_release.py`: it waits until App Store Connect has processed the
+build, reuses the editable iOS version or creates one, sets its version and
+What's New, attaches the build, and submits it. The version's release type
+(manual or after approval) is kept. Both stores take their release notes from
+the version's `CHANGELOG.md` section through `tools/release_notes.py`; without
+one, Play gets none and the App Store gets "Bug fixes and improvements." A
+version still in review or waiting for release stops the iOS step; finish it
+first.
+
+| Secret | Value |
+|---|---|
+| `ASC_RELEASE_KEY` | The text of an App Store Connect API key with the App Manager role, `AuthKey_<id>.p8` |
+| `ASC_RELEASE_KEY_ID` | That key's ID |
+
+The issuer is `APPLE_API_ISSUER_ID`. A Developer key, like the notarization
+key, uploads builds but cannot submit them.
+
 Then publish the draft on the Releases page. Publishing creates the tag.
