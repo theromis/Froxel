@@ -4,7 +4,7 @@
 
 <p align="center">
 A voxel editor with a path tracer and an MCP server, written in Rust.<br>
-macOS, Windows, Linux, and FreeBSD.
+macOS, Windows, Linux, FreeBSD, Android, and iOS.
 </p>
 
 <p align="center">
@@ -58,6 +58,8 @@ Download the file for your system from the
 | Debian, Ubuntu (x86_64, aarch64, riscv64) | `froxel-<version>-linux-<arch>.deb` | `sudo apt install ./froxel-*.deb` adds the menu entry and icon. Needs Vulkan. |
 | Other Linux | `froxel-<version>-linux-<arch>.tar.gz` | Needs Vulkan and glibc 2.35 or newer (2.39 for riscv64). |
 | FreeBSD (x86_64) | `froxel-<version>-freebsd-x86_64.tar.gz` | |
+| Android 7.0+ (arm64) | `froxel-<version>-android-arm64.apk` | Open it on the phone. Android asks once to allow installs from the browser or file manager. |
+| iOS 16+ simulator | `froxel-<version>-ios-simulator.zip` | Unzip and drag `Froxel.app` onto a booted simulator. The device build goes to the App Store. |
 | Godot 4.3+ plugin | `froxel-<version>-godot-addon.zip` | Unzip into the project folder. See [Godot and Blender](#godot-and-blender). |
 | Blender 4.2+ add-on | `froxel-<version>-blender-addon.zip` | Preferences → Add-ons → Install from Disk. |
 
@@ -66,6 +68,25 @@ Every release has a `SHA256SUMS.txt`. How the builds are signed is in
 
 Try it on the frog, [`examples/frog.vox`](examples/frog.vox), or on the scripted
 lily pad, [`examples/lily_pad.vox`](examples/lily_pad.vox).
+
+## Phones and tablets
+
+<img src="docs/images/ios.jpg" width="240" align="right" alt="Froxel on an iPhone: the frog with its skeleton, the file button above, and the tool, mode, colour and undo strip below">
+
+The Android and iOS builds are the same editor with a touch layout. The
+viewport fills the screen. The strip at the bottom holds the tool, add, remove,
+and paint, the colour, and undo. The tool settings, the palette, and the files
+open as sheets above it. The bundled frog and lily pad are under the folder
+button, and your own files are saved to the app's documents.
+
+- **One finger** uses the active tool.
+- **Two fingers** orbit and pinch to zoom. **Three fingers** pan.
+- **Long-press the colour**, then tap a voxel, to pick its colour.
+
+On a tablet 700 points wide or more, the desktop tools and palette sit on the
+left instead of the strip.
+
+<br clear="right">
 
 ## Controls
 
@@ -211,6 +232,14 @@ in a menu strip at the top of the window.
 `--features oidn` links [Open Image Denoise](https://www.openimagedenoise.org) for
 `--denoise`. It needs the library on the build machine. Without it, Froxel uses
 its built-in edge-aware filter.
+
+The phone builds need the [Android NDK](https://developer.android.com/ndk) and
+[cargo-apk](https://github.com/parasyte/cargo-apk), or Xcode on macOS:
+
+```sh
+cargo apk build --lib --features android-lib --release   # target/release/apk/froxel.apk
+packaging/ios/bundle.sh                                   # simulator Froxel.app
+```
 
 Tests:
 
