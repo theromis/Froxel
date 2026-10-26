@@ -603,8 +603,9 @@ fn tools() -> Vec<Value> {
         tool("list_params", "Parameters from the last successful run of the object's script.", json!({
             "object": int_prop("Object index. Omit for the active object.")
         }), &[]),
-        tool("regenerate", "Run the object's script and replace the voxels it writes. One undo step. A limit or runtime error leaves the document unchanged and includes the script line.", json!({
-            "object": int_prop("Object index. Omit for the active object.")
+        tool("regenerate", "Run the object's script and replace the voxels it writes. One undo step. There is no operation or voxel cap; the run stops at timeoutSeconds. A timeout or runtime error leaves the document unchanged and includes the script line.", json!({
+            "object": int_prop("Object index. Omit for the active object."),
+            "timeoutSeconds": {"type": "number", "description": "Stop the run after this many seconds. Default 300. 0 waits as long as it takes."}
         }), &[]),
         tool("export_mesh", "Write a glTF 2.0 .glb of every object. Exposed faces only. The default material is a 256-wide palette texture. A swaying or bobbing slot adds TEXCOORD_1 (sway, bob) on every vertex. A skeleton writes one rigid skin: each vertex belongs to one bone with weight 1. The reply includes the file's node, mesh, skin and animation structure.", json!({
             "path": str_prop("Where to write the .glb"),

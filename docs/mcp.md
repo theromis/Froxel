@@ -424,8 +424,9 @@ are an error. `list_params` and `get_script` return each parameter as
 `float`, `int`, `bool`, or `color`.
 
 `regenerate` runs the stored script in the sandbox and, on success, replaces
-every object the script wrote. That is one undo step. A loop that passes the
-operation limit, a call-depth limit, or any other runtime error leaves the
+every object the script wrote. That is one undo step. There is no operation
+or voxel cap; the run stops after `timeoutSeconds` (default 300, `0` for no
+deadline). A timeout, a call-depth limit, or any other runtime error leaves the
 voxels, palette, and parameters as they were. The error includes the script
 line. Opening a `.vox` never regenerates; call `regenerate` yourself. The
 language and the `MVSC` chunk are described in `docs/scripting.md`.

@@ -465,7 +465,17 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         }
         "script.regenerate" => {
             let index = script_index(session, &params)?;
-            session.regenerate_script(index)?;
+            let timeout = match params.get("timeoutSeconds") {
+                None | Some(Value::Null) => Some(crate::script::SCRIPT_TIMEOUT),
+                Some(value) => {
+                    let seconds = value
+                        .as_f64()
+                        .filter(|seconds| seconds.is_finite() && *seconds >= 0.0)
+                        .ok_or("timeoutSeconds must be a number >= 0")?;
+                    (seconds > 0.0).then(|| std::time::Duration::from_secs_f64(seconds))
+                }
+            };
+            session.regenerate_script_within(index, timeout)?;
             Ok(serde_json::json!({
                 "object": index,
                 "voxels": session.objects[index].cells.len(),

@@ -2,27 +2,66 @@
 //!
 //! The engine has no file, network, process, or clock access. A run writes a
 //! scratch copy and replaces objects only after it finishes, as one undo step.
+//! There is no operation or voxel cap: a run stops when its `Stop` is
+//! cancelled or its deadline passes. The editor runs scripts on a worker
+//! thread (`start_script`) so a long run never blocks the window.
 //! Opening a `.vox` never runs the script; the generated voxels are already
 //! in the file, and `MVSC` keeps the source and parameter values.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
+use std::time::{Duration, Instant};
 use std::rc::Rc;
 
 use rhai::{Array, Dynamic, Engine, EvalAltResult, OptimizationLevel, Position, INT};
 
 use crate::state::{Cell, Motion, Session, Volume};
 
-const MAX_OPS: u64 = 1_000_000;
 const MAX_DEPTH: usize = 32;
 const MAX_ARRAY: usize = 4_096;
 const MAX_STRING: usize = 16_384;
 const MAX_MAP: usize = 256;
-const MAX_CELLS: usize = 250_000;
 const MAX_OBJECTS: usize = 32;
 const MAX_SOURCE: usize = 65_536;
 const COORD_LIMIT: i32 = 512;
+/// Deadline for a blocking run (MCP, bridge, parameter discovery).
+pub const SCRIPT_TIMEOUT: Duration = Duration::from_secs(300);
 
+/// Ends a running script: cancel it, or let its deadline pass.
+#[derive(Clone, Default)]
+pub struct Stop {
+    cancel: Arc<AtomicBool>,
+    deadline: Option<(Instant, Duration)>,
+}
+
+impl Stop {
+    pub fn after(timeout: Option<Duration>) -> Self {
+        Self {
+            cancel: Arc::new(AtomicBool::new(false)),
+            deadline: timeout.map(|timeout| (Instant::now() + timeout, timeout)),
+        }
+    }
+
+    pub fn cancel(&self) {
+        self.cancel.store(true, Ordering::Relaxed);
+    }
+
+    /// Why the run must end, or `None` to keep going.
+    fn reason(&self) -> Option<String> {
+        if self.cancel.load(Ordering::Relaxed) {
+            return Some("script cancelled".into());
+        }
+        match self.deadline {
+            Some((at, timeout)) if Instant::now() >= at => Some(format!(
+                "script timed out after {} s",
+                timeout.as_secs_f64()
+            )),
+            _ => None,
+        }
+    }
+}
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct ObjectScript {
     pub source: String,
@@ -91,6 +130,16 @@ struct Built {
     cells: HashMap<Cell, u8>,
 }
 
+/// A script running on a worker thread for the editor.
+pub struct ScriptJob {
+    index: usize,
+    declare: bool,
+    source: String,
+    started: Instant,
+    stop: Stop,
+    done: mpsc::Receiver<Result<Outcome, String>>,
+}
+
 #[derive(Clone)]
 pub(crate) enum BuiltKey {
     Index(usize),
@@ -105,6 +154,7 @@ struct Scratch {
     params: Vec<ScriptParam>,
     palette: Vec<(u8, [u8; 3])>,
     motion: Vec<(u8, Motion, f32)>,
+    stop: Stop,
 }
 
 pub(crate) struct Outcome {
@@ -127,9 +177,6 @@ impl Scratch {
             cells.remove(&cell);
             return Ok(());
         }
-        if cells.len() >= MAX_CELLS && !cells.contains_key(&cell) {
-            return Err(format!("object has more than {MAX_CELLS} voxels"));
-        }
         cells.insert(cell, slot);
         Ok(())
     }
@@ -140,6 +187,7 @@ pub(crate) fn execute(
     stored: &[ScriptParam],
     host: usize,
     names: &[String],
+    stop: &Stop,
 ) -> Result<Outcome, String> {
     if source.len() > MAX_SOURCE {
         return Err(format!("script is longer than {MAX_SOURCE} bytes"));
@@ -161,10 +209,17 @@ pub(crate) fn execute(
         params: Vec::new(),
         palette: Vec::new(),
         motion: Vec::new(),
+        stop: stop.clone(),
     }));
     let mut engine = Engine::new_raw();
     engine.set_optimization_level(OptimizationLevel::None);
-    engine.set_max_operations(MAX_OPS);
+    let watch = stop.clone();
+    engine.on_progress(move |ops| {
+        if ops % 1024 != 0 {
+            return None;
+        }
+        watch.reason().map(Dynamic::from)
+    });
     engine.set_max_call_levels(MAX_DEPTH);
     engine.set_max_array_size(MAX_ARRAY);
     engine.set_max_map_size(MAX_MAP);
@@ -451,17 +506,10 @@ impl Scratch {
         let (x0, x1) = ordered(x0, x1)?;
         let (y0, y1) = ordered(y0, y1)?;
         let (z0, z1) = ordered(z0, z1)?;
-        let nx = (x1 - x0 + 1) as usize;
-        let ny = (y1 - y0 + 1) as usize;
-        let nz = (z1 - z0 + 1) as usize;
-        let count = nx
-            .checked_mul(ny)
-            .and_then(|value| value.checked_mul(nz))
-            .ok_or_else(|| format!("fill_box is larger than {MAX_CELLS} voxels"))?;
-        if count > MAX_CELLS {
-            return Err(format!("fill_box is larger than {MAX_CELLS} voxels"));
-        }
         for z in z0..=z1 {
+            if let Some(reason) = self.stop.reason() {
+                return Err(reason);
+            }
             for y in y0..=y1 {
                 for x in x0..=x1 {
                     self.paint(x as INT, y as INT, z as INT, slot as INT)?;
@@ -581,9 +629,13 @@ fn runtime(message: impl Into<String>) -> Box<EvalAltResult> {
 }
 
 fn explain(err: &EvalAltResult) -> String {
+    let text = match err {
+        EvalAltResult::ErrorTerminated(reason, _) => reason.to_string(),
+        _ => err.to_string(),
+    };
     match err.position().line().filter(|line| *line > 0) {
-        Some(line) => format!("line {line}: {err}"),
-        None => err.to_string(),
+        Some(line) => format!("line {line}: {text}"),
+        None => text,
     }
 }
 
@@ -676,7 +728,7 @@ impl Session {
         let declared = if source.is_empty() {
             Vec::new()
         } else {
-            match execute(source, &stored, index, &names) {
+            match execute(source, &stored, index, &names, &Stop::after(Some(SCRIPT_TIMEOUT))) {
                 Ok(outcome) => outcome.params,
                 Err(err) => {
                     self.begin_edit();
@@ -693,31 +745,6 @@ impl Session {
         self.end_edit();
         self.script_error.clear();
         Ok(())
-    }
-
-    /// Run the source already stored on the object and refresh its parameter
-    /// list. Voxels stay as they are. Used when the code editor loses focus.
-    pub fn redeclare_script(&mut self, index: usize) -> Result<(), String> {
-        self.script_index(index)?;
-        let source = self.objects[index].script.source.clone();
-        if source.is_empty() {
-            self.objects[index].script.params.clear();
-            self.script_error.clear();
-            return Ok(());
-        }
-        let names = self.object_names();
-        let stored = self.objects[index].script.params.clone();
-        match execute(&source, &stored, index, &names) {
-            Ok(outcome) => {
-                self.objects[index].script.params = outcome.params;
-                self.script_error.clear();
-                Ok(())
-            }
-            Err(err) => {
-                self.script_error = err.clone();
-                Err(err)
-            }
-        }
     }
 
     pub fn set_script_params(
@@ -783,15 +810,27 @@ impl Session {
         }
     }
 
+    /// Run the object's script on this thread, stopping at `SCRIPT_TIMEOUT`.
     pub fn regenerate_script(&mut self, index: usize) -> Result<(), String> {
+        self.regenerate_script_within(index, Some(SCRIPT_TIMEOUT))
+    }
+
+    /// Run the object's script on this thread. `None` waits as long as it takes.
+    pub fn regenerate_script_within(
+        &mut self,
+        index: usize,
+        timeout: Option<Duration>,
+    ) -> Result<(), String> {
         self.script_index(index)?;
+        // A worker run for the editor would land on top of this one.
+        self.cancel_script();
         let source = self.objects[index].script.source.clone();
         if source.is_empty() {
             return Err("object has no script".into());
         }
         let names = self.object_names();
         let stored = self.objects[index].script.params.clone();
-        let outcome = match execute(&source, &stored, index, &names) {
+        let outcome = match execute(&source, &stored, index, &names, &Stop::after(timeout)) {
             Ok(outcome) => outcome,
             Err(err) => {
                 self.script_error = err.clone();
@@ -804,6 +843,96 @@ impl Session {
         self.end_edit();
         self.script_error.clear();
         Ok(())
+    }
+
+    /// Start the object's script on a worker thread. A run already in flight
+    /// is cancelled. `declare` only refreshes the parameter list, as
+    /// `redeclare_script` does; otherwise the result replaces voxels as one
+    /// undo step when `poll_script` collects it.
+    pub fn start_script(&mut self, index: usize, declare: bool) -> Result<(), String> {
+        self.script_index(index)?;
+        let source = self.objects[index].script.source.clone();
+        if source.is_empty() {
+            if declare {
+                self.objects[index].script.params.clear();
+                self.script_error.clear();
+                return Ok(());
+            }
+            return Err("object has no script".into());
+        }
+        self.cancel_script();
+        let names = self.object_names();
+        let stored = self.objects[index].script.params.clone();
+        let stop = Stop::after(None);
+        let (send, done) = mpsc::channel();
+        let worker = stop.clone();
+        let run = source.clone();
+        std::thread::Builder::new()
+            .name("froxel-script".into())
+            .stack_size(16 << 20)
+            .spawn(move || {
+                let _ = send.send(execute(&run, &stored, index, &names, &worker));
+            })
+            .map_err(|err| format!("cannot start the script: {err}"))?;
+        self.script_job = Some(ScriptJob {
+            index,
+            declare,
+            source,
+            started: Instant::now(),
+            stop,
+            done,
+        });
+        Ok(())
+    }
+
+    /// Stop the run in flight, if any. Its result is dropped.
+    pub fn cancel_script(&mut self) {
+        if let Some(job) = self.script_job.take() {
+            job.stop.cancel();
+        }
+    }
+
+    /// `(object index, seconds)` of the run in flight.
+    pub fn script_running(&self) -> Option<(usize, f64)> {
+        self.script_job
+            .as_ref()
+            .map(|job| (job.index, job.started.elapsed().as_secs_f64()))
+    }
+
+    /// Apply a finished worker run. Returns true when one finished this call.
+    /// A run whose object was removed or whose source changed is dropped.
+    pub fn poll_script(&mut self) -> bool {
+        let Some(job) = &self.script_job else {
+            return false;
+        };
+        let result = match job.done.try_recv() {
+            Ok(result) => result,
+            Err(mpsc::TryRecvError::Empty) => return false,
+            Err(mpsc::TryRecvError::Disconnected) => Err("the script thread stopped".into()),
+        };
+        let job = self.script_job.take().expect("checked");
+        let current = self
+            .objects
+            .get(job.index)
+            .is_some_and(|object| object.script.source == job.source);
+        match result {
+            Ok(_) if !current => {
+                self.script_error = "the object changed while its script ran".into();
+            }
+            Ok(outcome) if job.declare => {
+                self.objects[job.index].script.params = outcome.params;
+                self.script_error.clear();
+            }
+            Ok(outcome) => {
+                self.begin_edit();
+                self.apply_outcome(job.index, outcome);
+                self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+                self.end_edit();
+                self.script_error.clear();
+            }
+            Err(err) => self.script_error = err,
+        }
+        true
     }
 
     fn apply_outcome(&mut self, index: usize, outcome: Outcome) {

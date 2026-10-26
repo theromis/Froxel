@@ -270,6 +270,11 @@ impl eframe::App for Shell {
         self.take_screenshot();
         self.take_control();
         self.take_bridge();
+        // A worker-thread script lands here, wherever the Script panel is.
+        self.session.poll_script();
+        if self.session.script_running().is_some() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
         self.session.clear_ui();
         let screen = ctx.input(|input| input.content_rect());
         self.session

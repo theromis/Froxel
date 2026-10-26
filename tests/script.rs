@@ -56,7 +56,7 @@ fn parameters_build_the_same_voxels_until_the_seed_changes() {
 }
 
 #[test]
-fn a_limit_or_a_missing_file_function_leaves_the_document() {
+fn a_timeout_or_a_missing_file_function_leaves_the_document() {
     let mut session = Session::new();
     session.replace_empty();
     session.set_script(0, ROW).unwrap();
@@ -66,9 +66,11 @@ fn a_limit_or_a_missing_file_function_leaves_the_document() {
     let materials = session.materials;
     let params = session.objects[0].script.params.clone();
 
-    session.objects[0].script.source = "let mut i = 0;\nloop { i += 1; }\n".into();
-    let err = session.regenerate_script(0).unwrap_err();
-    assert!(err.contains("line"), "{err}");
+    session.objects[0].script.source = "let i = 0;\nloop { i += 1; }\n".into();
+    let err = session
+        .regenerate_script_within(0, Some(std::time::Duration::from_millis(200)))
+        .unwrap_err();
+    assert!(err.contains("line") && err.contains("timed out"), "{err}");
     assert_eq!(cells_of(&session), cells);
     assert_eq!(session.palette, palette);
     assert_eq!(session.materials, materials);
@@ -181,4 +183,58 @@ fn the_lily_pad_is_two_layers_and_responds_to_its_seed() {
         .unwrap();
     session.regenerate_script(0).unwrap();
     assert_ne!(cells_of(&session), pad);
+}
+
+fn wait_for_script(session: &mut Session) {
+    let start = std::time::Instant::now();
+    while !session.poll_script() {
+        assert!(start.elapsed().as_secs() < 30, "the worker did not finish");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn a_worker_run_is_one_undo_step_and_has_no_voxel_cap() {
+    let mut session = Session::new();
+    session.replace_empty();
+    // 80 x 80 x 50 = 320 000 voxels, past the old 250 000 cap.
+    session
+        .set_script(0, "fill_box(0, 0, 0, 79, 79, 49, 1);")
+        .unwrap();
+    session.start_script(0, false).unwrap();
+    assert!(session.script_running().is_some());
+    wait_for_script(&mut session);
+    assert!(session.script_running().is_none());
+    assert!(session.script_error.is_empty(), "{}", session.script_error);
+    assert_eq!(session.objects[0].cells.len(), 320_000);
+    session.undo();
+    assert!(session.objects[0].cells.is_empty());
+}
+
+#[test]
+fn cancelling_a_worker_run_leaves_the_document() {
+    let mut session = Session::new();
+    session.replace_empty();
+    session.set_script(0, ROW).unwrap();
+    session.regenerate_script(0).unwrap();
+    let cells = cells_of(&session);
+    session.objects[0].script.source = "let i = 0;\nloop { i += 1; }\n".into();
+    session.start_script(0, false).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    session.cancel_script();
+    assert!(session.script_running().is_none());
+    assert!(!session.poll_script());
+    assert_eq!(cells_of(&session), cells);
+}
+
+#[test]
+fn a_worker_run_is_dropped_when_the_source_changes() {
+    let mut session = Session::new();
+    session.replace_empty();
+    session.set_script(0, ROW).unwrap();
+    session.start_script(0, false).unwrap();
+    session.objects[0].script.source = "set(0, 0, 0, 1);".into();
+    wait_for_script(&mut session);
+    assert!(session.objects[0].cells.is_empty());
+    assert!(session.script_error.contains("changed"), "{}", session.script_error);
 }

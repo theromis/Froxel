@@ -12,18 +12,22 @@ registered. There is no `print`, `eval`, `import`, or `timestamp`. Limits:
 
 | Limit | Value |
 | --- | --- |
-| Operations | 1 000 000 |
 | Call depth | 32 |
 | Array length | 4 096 |
 | Map size | 256 |
 | String length | 16 384 bytes |
 | Script source | 65 536 bytes |
-| Voxels per object | 250 000 |
 | Objects per run | 32 |
 | Coordinate | −512 to 512 inclusive |
 
-A script that exceeds a limit stops. The voxels, palette, and materials stay
-as they were, and the error names the line.
+There is no cap on operations or on voxels per object. Instead a run can be
+stopped: the editor runs the script on a worker thread and shows the elapsed
+time with a **Cancel** button, and the window stays responsive. MCP
+`regenerate`, the bridge, and parameter discovery run with a 300 second
+deadline (MCP `timeoutSeconds` changes it; `0` waits as long as it takes).
+
+A script that exceeds a limit, is cancelled, or times out stops. The voxels,
+palette, and materials stay as they were, and the error names the line.
 
 The run writes a scratch copy that starts empty on the host object (the
 object whose script this is). On success that copy replaces the host, and

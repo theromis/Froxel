@@ -46,6 +46,7 @@ impl Session {
         self.mark_clean();
         self.clear_picked();
         self.script_error.clear();
+        self.cancel_script();
         self.script_due = None;
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
         self.frame_camera();
@@ -87,6 +88,7 @@ impl Session {
         self.frame_camera();
         let file = path.file_name().unwrap_or_default().to_string_lossy();
         self.script_error.clear();
+        self.cancel_script();
         self.script_due = None;
         self.status = if models > 1 {
             format!("Loaded {n} voxels in {models} objects from {file}.")
@@ -280,6 +282,7 @@ impl Session {
         self.pending = None;
         self.mark_clean();
         self.script_error.clear();
+        self.cancel_script();
         self.script_due = None;
         self.clear_picked();
         self.hover = None;

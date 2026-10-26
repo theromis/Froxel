@@ -90,6 +90,7 @@ impl Session {
             motion_preview: false,
             script_error: String::new(),
             script_due: None,
+            script_job: None,
             aperture: 0.0,
             focus_distance: 30.0,
             max_bounces: 5,

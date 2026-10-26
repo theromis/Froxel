@@ -650,6 +650,8 @@ pub struct Session {
     pub script_error: String,
     /// `(object index, time)` when an auto-regenerate should run.
     pub script_due: Option<(usize, f64)>,
+    /// The script running on a worker thread, collected by `poll_script`.
+    pub script_job: Option<crate::script::ScriptJob>,
     pub aperture: f32,
     pub focus_distance: f32,
     pub max_bounces: i32,

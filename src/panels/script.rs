@@ -2,7 +2,8 @@
 //!
 //! The source is stored as it is typed. Parameters come from the last
 //! successful run. Regenerate is explicit unless Auto is on, in which case
-//! a parameter edit reruns after a short pause.
+//! a parameter edit reruns after a short pause. Runs happen on a worker
+//! thread; the panel shows the elapsed time and a Cancel button meanwhile.
 
 use std::time::Duration;
 
@@ -23,7 +24,7 @@ pub(super) fn script(ui: &mut Ui, session: &mut Session) {
                 .get(index)
                 .is_some_and(|object| object.script.auto)
             {
-                if let Err(err) = session.regenerate_script(index) {
+                if let Err(err) = session.start_script(index, false) {
                     session.script_error = err;
                 }
             }
@@ -66,7 +67,9 @@ pub(super) fn script(ui: &mut Ui, session: &mut Session) {
         }
     }
     if resp.lost_focus() {
-        let _ = session.redeclare_script(index);
+        if let Err(err) = session.start_script(index, true) {
+            session.script_error = err;
+        }
         session.end_edit();
     }
 
@@ -91,9 +94,22 @@ pub(super) fn script(ui: &mut Ui, session: &mut Session) {
         param_row(ui, session, index, param);
     }
 
-    if ui.button("Regenerate").clicked() {
+    if let Some((running, seconds)) = session.script_running() {
+        ui.horizontal(|ui| {
+            ui.spinner();
+            let what = session
+                .objects
+                .get(running)
+                .map(|object| object.name.as_str())
+                .unwrap_or("script");
+            ui.label(RichText::new(format!("Running {what}… {seconds:.1} s")).small());
+            if ui.button("Cancel").clicked() {
+                session.cancel_script();
+            }
+        });
+    } else if ui.button("Regenerate").clicked() {
         session.script_due = None;
-        if let Err(err) = session.regenerate_script(index) {
+        if let Err(err) = session.start_script(index, false) {
             session.script_error = err;
         }
     }
