@@ -490,7 +490,7 @@ jobs:
           # shellcheck disable=SC2046
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
           identity=$(security find-identity -v -p codesigning "$keychain" \
-            | sed -n 's/.*"\(\(Apple\|iPhone\) \(Development\|Distribution\|Developer\): .*\)"/\1/p' \
+            | sed -En 's/.*"((Apple|iPhone) (Development|Distribution|Developer): .*)"/\1/p' \
             | head -n 1)
           if [ -z "$identity" ]; then
             echo "::error::IOS_CERTIFICATE has no Apple Development or Distribution identity"
