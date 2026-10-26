@@ -7,6 +7,11 @@
 - The release workflow builds an Android arm64 APK, an iOS ipa, and an iOS
   simulator app. They are signed when the signing secrets in
   `docs/releasing.md` are set.
+- Store builds: the release workflow makes a Google Play App Bundle and, with
+  an App Store profile, an App Store ipa, and with `upload-stores` sends them
+  to Google Play's internal track and TestFlight. The iOS app carries a
+  privacy manifest. Both stores get the build number from
+  `packaging/build_number.sh`. See `docs/releasing.md`.
 - The Godot **FroxelBridge** node has Bake settings: **Bake Voxel Size**
   (metres per voxel), **Bake Origin** (Source, Center or Bottom Center of the
   geometry), **Bake Apply Transform** (keep the node's own transform) and
@@ -17,6 +22,12 @@
   `--origin` and `--collision`. The defaults bake the raw import as before.
 - `tests/bridge_godot.py` bakes through the Godot node with `GODOT_PATH` and
   checks the scenes with the bridge stopped.
+
+### Changed
+
+- The Android package is `com.lonje.froxel`, as on iOS and macOS, and
+  targets Android 16 (API 36). An APK from an earlier release installs beside
+  it instead of updating.
 
 ### Fixed
 

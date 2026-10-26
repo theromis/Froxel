@@ -2,7 +2,8 @@
 # Builds Froxel for every desktop platform and creates or updates the draft GitHub
 # Release "Froxel v<version>". With the Apple secrets set (docs/releasing.md), the macOS app
 # and dmg are signed with Developer ID and notarized; without them they get an ad-hoc
-# signature. The other platforms are unsigned.
+# signature. The other platforms are unsigned. With upload-stores on, the iOS build goes to
+# TestFlight and the Android bundle to a Google Play track (docs/releasing.md).
 name: Release
 # run-name sees only the inputs, so an empty version names the branch instead.
 run-name: Release ${{ inputs.version || format('(Cargo.toml, {0})', github.ref_name) }}
@@ -18,6 +19,10 @@ on:
         description: "Create or update the draft GitHub Release (off: artifacts only)"
         type: boolean
         default: true
+      upload-stores:
+        description: "Upload the iOS build to TestFlight and the Android bundle to Google Play"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -39,6 +44,7 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
       prerelease: ${{ steps.v.outputs.prerelease }}
+      build: ${{ steps.v.outputs.build }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: v
@@ -57,9 +63,14 @@ jobs:
           fi
           prerelease=false
           case "$version" in *-*) prerelease=true ;; esac
-          echo "version=$version" >>"$GITHUB_OUTPUT"
-          echo "prerelease=$prerelease" >>"$GITHUB_OUTPUT"
-          echo "Froxel $version (prerelease: $prerelease)" >>"$GITHUB_STEP_SUMMARY"
+          # The iOS CFBundleVersion and the Android versionCode.
+          build=$(packaging/build_number.sh "$version")
+          {
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+            echo "build=$build"
+          } >>"$GITHUB_OUTPUT"
+          echo "Froxel $version (prerelease: $prerelease, store build $build)" >>"$GITHUB_STEP_SUMMARY"
 
   macos:
     name: macOS universal
@@ -390,6 +401,7 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
       ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
@@ -399,6 +411,13 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: release-android
+      # cargo-apk and aapt2 link against the platform of target_sdk_version.
+      - name: Android platform
+        run: |
+          set -euo pipefail
+          sdk=$(sed -n 's/^target_sdk_version = \([0-9]*\)$/\1/p' Cargo.toml)
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-$sdk" >/dev/null
+          ls "$ANDROID_HOME/platforms/android-$sdk/android.jar"
       - name: Install cargo-apk
         run: |
           cargo install --locked --git https://github.com/parasyte/cargo-apk.git \
@@ -433,15 +452,31 @@ jobs:
           cargo fetch --locked
           ANDROID_NDK_ROOT="$ANDROID_NDK_LATEST_HOME" \
             cargo apk build --lib --features android-lib --release
+      # The App Bundle for Google Play is signed with the same key, the Play upload key.
       - name: Package
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'android' }}
         run: |
           set -euo pipefail
-          mkdir -p dist/release
+          mkdir -p dist/release dist/store
           apk="dist/release/froxel-$VERSION-android-arm64.apk"
           cp target/release/apk/froxel.apk "$apk"
           tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
           "$tools/apksigner" verify --print-certs "$apk"
           "$tools/aapt" dump badging "$apk" | head -n 3
+          aab=$(KEYSTORE="$CARGO_APK_RELEASE_KEYSTORE" packaging/android/bundle.sh)
+          cp "$aab" "dist/store/froxel-$VERSION-android.aab"
+          echo "Android: App Bundle versionCode $(packaging/build_number.sh "$VERSION")" >>"$GITHUB_STEP_SUMMARY"
+      - name: Upload to Google Play
+        if: inputs.upload-stores
+        run: |
+          set -euo pipefail
+          if [ -z "$ANDROID_KEYSTORE" ] || [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::error::upload-stores needs ANDROID_KEYSTORE and PLAY_SERVICE_ACCOUNT_JSON"
+            exit 1
+          fi
+          python3 tools/play_upload.py "dist/store/froxel-$VERSION-android.aab" \
+            --version "$VERSION" --track internal --status draft | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Remove the keystore
         if: always()
         run: rm -f "$RUNNER_TEMP/release.keystore"
@@ -450,11 +485,18 @@ jobs:
           name: froxel-${{ env.VERSION }}-android-arm64
           path: dist/release/*
           if-no-files-found: error
+      # Not part of the GitHub Release: the stores take these, people install the APK.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: store-${{ env.VERSION }}-android
+          path: dist/store/*
+          if-no-files-found: error
 
   ios:
     name: iOS
     needs: version
-    runs-on: macos-15
+    # App Store Connect takes builds made with Xcode 26 and the iOS 26 SDK or later.
+    runs-on: macos-26
     timeout-minutes: 90
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -462,6 +504,9 @@ jobs:
       IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
       IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
       IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
@@ -511,23 +556,31 @@ jobs:
               exit 1
               ;;
           esac
-          echo "Signing as $identity with the profile $(plutil -extract Name raw "$RUNNER_TEMP/profile.plist")"
+          # An App Store profile lists no devices; its build installs only from the store.
+          store=true
+          if plutil -extract ProvisionedDevices raw "$RUNNER_TEMP/profile.plist" >/dev/null 2>&1 ||
+            plutil -extract ProvisionsAllDevices raw "$RUNNER_TEMP/profile.plist" >/dev/null 2>&1; then
+            store=false
+          fi
+          echo "Signing as $identity with the profile $(plutil -extract Name raw "$RUNNER_TEMP/profile.plist") (App Store: $store)"
           {
             echo "IOS_SIGN_IDENTITY=$identity"
             echo "IOS_SIGN_KEYCHAIN=$keychain"
             echo "IOS_PROFILE=$profile"
+            echo "IOS_APP_STORE=$store"
           } >>"$GITHUB_ENV"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: release-ios
       - name: Build
         run: |
+          xcodebuild -version
           cargo build --release --locked --target aarch64-apple-ios --bin froxel
           cargo build --release --locked --target aarch64-apple-ios-sim --bin froxel
       - name: Bundle the ipa and the simulator app
         run: |
           set -euo pipefail
-          mkdir -p dist/release dist/stage
+          mkdir -p dist/release dist/stage dist/store
 
           sim=$(TARGET=aarch64-apple-ios-sim PROFILE=release packaging/ios/bundle.sh)
           ditto -c -k --keepParent "$sim" "dist/release/froxel-$VERSION-ios-simulator.zip"
@@ -539,7 +592,7 @@ jobs:
               --entitlements "$RUNNER_TEMP/entitlements.plist" "$app"
             codesign --verify --strict --verbose=2 "$app"
             ipa="froxel-$VERSION-ios.ipa"
-            echo "iOS: signed as $IOS_SIGN_IDENTITY" >>"$GITHUB_STEP_SUMMARY"
+            echo "iOS: signed as $IOS_SIGN_IDENTITY, build $(plutil -extract CFBundleVersion raw "$app/Info.plist")" >>"$GITHUB_STEP_SUMMARY"
           else
             echo "::warning::No iOS signing secrets: the ipa has an ad-hoc signature and must be re-signed to install"
             ipa="froxel-$VERSION-ios-unsigned.ipa"
@@ -547,18 +600,47 @@ jobs:
           fi
           mkdir -p dist/stage/Payload
           ditto "$app" dist/stage/Payload/Froxel.app
-          (cd dist/stage && zip -qr -X "../release/$ipa" Payload)
-          unzip -l "dist/release/$ipa" | tail -n 1
+          out=release
+          if [ "${IOS_APP_STORE:-false}" = true ]; then out=store; fi
+          (cd dist/stage && zip -qr -X "../$out/$ipa" Payload)
+          unzip -l "dist/$out/$ipa" | tail -n 1
+      # altool reads the key from ~/.appstoreconnect/private_keys/AuthKey_<id>.p8.
+      - name: Upload to TestFlight
+        if: inputs.upload-stores
+        run: |
+          set -euo pipefail
+          if [ "${IOS_APP_STORE:-false}" != true ]; then
+            echo "::error::upload-stores needs an Apple Distribution certificate and an App Store profile"
+            exit 1
+          fi
+          if [ -z "$APPLE_API_KEY" ] || [ -z "$APPLE_API_KEY_ID" ] || [ -z "$APPLE_API_ISSUER_ID" ]; then
+            echo "::error::upload-stores needs APPLE_API_KEY, APPLE_API_KEY_ID and APPLE_API_ISSUER_ID"
+            exit 1
+          fi
+          keys="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$keys"
+          printf '%s' "$APPLE_API_KEY" >"$keys/AuthKey_$APPLE_API_KEY_ID.p8"
+          xcrun altool --validate-app "dist/store/froxel-$VERSION-ios.ipa" \
+            --api-key "$APPLE_API_KEY_ID" --api-issuer "$APPLE_API_ISSUER_ID"
+          xcrun altool --upload-package "dist/store/froxel-$VERSION-ios.ipa" \
+            --api-key "$APPLE_API_KEY_ID" --api-issuer "$APPLE_API_ISSUER_ID"
+          echo "iOS: uploaded to App Store Connect; it shows in TestFlight once processed" >>"$GITHUB_STEP_SUMMARY"
       - name: Remove the signing keychain
         if: always() && env.IOS_SIGN_KEYCHAIN != ''
         run: |
           security delete-keychain "$IOS_SIGN_KEYCHAIN" || true
           rm -f "$IOS_PROFILE" "$RUNNER_TEMP/profile.plist" "$RUNNER_TEMP/entitlements.plist"
+          rm -rf "$HOME/.appstoreconnect"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: froxel-${{ env.VERSION }}-ios
           path: dist/release/*
           if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: store-${{ env.VERSION }}-ios
+          path: dist/store/*
+          if-no-files-found: ignore
 
   addons:
     name: Godot and Blender add-ons

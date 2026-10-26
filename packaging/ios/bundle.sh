@@ -10,6 +10,8 @@
 # Info.plist names the SDK and Xcode it was built with, as App Store Connect
 # expects. The app gets an ad-hoc signature, which the simulator accepts; a device build needs
 # a provisioning profile. VERSION overrides the version from Cargo.toml.
+# CFBundleVersion is the store build number from packaging/build_number.sh,
+# and PrivacyInfo.xcprivacy is the App Store privacy manifest.
 # Prints the path to the .app.
 set -eu
 
@@ -17,6 +19,7 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 target=${TARGET:-aarch64-apple-ios-sim}
 profile=${PROFILE:-debug}
 version=${VERSION:-$(sed -n 's/^version = "\(.*\)"$/\1/p' "$root/Cargo.toml" | head -n 1)}
+build=$("$root/packaging/build_number.sh" "$version")
 case "$target" in
 *-sim) platform=iPhoneSimulator sdk=iphonesimulator ;;
 *) platform=iPhoneOS sdk=iphoneos ;;
@@ -55,6 +58,7 @@ xcrun actool --compile "$app" --platform "$sdk" --minimum-deployment-target 16.0
   --output-partial-info-plist "$icons/icons.plist" --output-format human-readable-text \
   "$icons/Assets.xcassets" >&2
 cp "$root/examples/frog.vox" "$root/examples/lily_pad.vox" "$app/"
+cp "$root/packaging/ios/PrivacyInfo.xcprivacy" "$app/"
 cat >"$app/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -66,7 +70,7 @@ cat >"$app/Info.plist" <<EOF
   <key>CFBundleExecutable</key><string>froxel</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${version%%-*}</string>
-  <key>CFBundleVersion</key><string>$version</string>
+  <key>CFBundleVersion</key><string>$build</string>
   <key>CFBundleSupportedPlatforms</key><array><string>$platform</string></array>
   <key>DTPlatformName</key><string>$sdk</string>
   <key>DTPlatformVersion</key><string>$sdk_version</string>

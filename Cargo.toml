@@ -48,16 +48,17 @@ path = "src/lib.rs"
 crate-type = ["cdylib"]
 required-features = ["android-lib"]
 
-# `cargo apk build --lib --features android-lib --release`
+# `cargo apk build --lib --features android-lib --release` for the APK, then
+# `packaging/android/bundle.sh` for the Play App Bundle.
 [package.metadata.android]
-package = "app.froxel"
+package = "com.lonje.froxel"
 apk_name = "froxel"
 build_targets = ["aarch64-linux-android"]
 resources = "packaging/android/res"
 
 [package.metadata.android.sdk]
 min_sdk_version = 24
-target_sdk_version = 35
+target_sdk_version = 36
 
 [package.metadata.android.application]
 label = "Froxel"

@@ -238,6 +238,7 @@ The phone builds need the [Android NDK](https://developer.android.com/ndk) and
 
 ```sh
 cargo apk build --lib --features android-lib --release   # target/release/apk/froxel.apk
+packaging/android/bundle.sh                               # Play bundle, froxel.aab (needs a JDK)
 packaging/ios/bundle.sh                                   # simulator Froxel.app
 ```
 
