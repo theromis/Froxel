@@ -4,8 +4,13 @@ use egui::{RichText, Ui};
 
 use super::*;
 
-pub(super) fn tools(ui: &mut Ui, session: &mut Session) {
-    section(ui, "Tool");
+/// Edge of a strip button, and the space between buttons.
+pub(super) const STRIP_ICON: f32 = 32.0;
+const STRIP_GAP: f32 = 4.0;
+
+/// The tool strip: one column of tool icons, then the Add, Remove, and
+/// Paint modes. Their settings are in [`options`].
+pub(super) fn strip(ui: &mut Ui, session: &mut Session) {
     const TOOLS: [(Tool, &str, &str); 11] = [
         (Tool::Brush, "Brush", "V"),
         (Tool::Line, "Line", "L"),
@@ -19,73 +24,69 @@ pub(super) fn tools(ui: &mut Ui, session: &mut Session) {
         (Tool::BoxSelect, "Box Select", ""),
         (Tool::FloodSelect, "Flood", ""),
     ];
-    let gap = 4.0;
-    let width = ui.available_width();
-    let cols = ((width + gap) / 40.0).floor().clamp(4.0, 6.0);
-    let size = ((width - gap * (cols - 1.0)) / cols).clamp(28.0, 44.0);
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = egui::vec2(gap, gap);
-        for (tool, label, key) in TOOLS {
-            let tip = if key.is_empty() {
-                label.to_string()
-            } else {
-                format!("{label} ({key})")
-            };
-            let on = session.tool == tool;
-            let resp = ui
-                .add_sized(
-                    [size, size],
-                    egui::Button::new("")
-                        .min_size(egui::vec2(size, size))
-                        .selected(on),
-                )
-                .on_hover_text(tip);
-            crate::icons::paint(ui, &resp, crate::icons::tool(tool), on);
-            let rect = resp.rect;
-            let clicked = resp.clicked();
-            let id = format!("tool.{}", label.to_ascii_lowercase().replace(' ', "-"));
-            session.note_ui(&id, label, rect, UiAction::Tool(tool));
-            if clicked {
-                session.tool = tool;
-            }
+    let size = STRIP_ICON;
+    ui.spacing_mut().item_spacing = egui::vec2(STRIP_GAP, STRIP_GAP);
+    for (tool, label, key) in TOOLS {
+        let tip = if key.is_empty() {
+            label.to_string()
+        } else {
+            format!("{label} ({key})")
+        };
+        let on = session.tool == tool;
+        let resp = ui
+            .add_sized(
+                [size, size],
+                egui::Button::new("")
+                    .min_size(egui::vec2(size, size))
+                    .selected(on),
+            )
+            .on_hover_text(tip);
+        crate::icons::paint(ui, &resp, crate::icons::tool(tool), on);
+        let rect = resp.rect;
+        let clicked = resp.clicked();
+        let id = format!("tool.{}", label.to_ascii_lowercase().replace(' ', "-"));
+        session.note_ui(&id, label, rect, UiAction::Tool(tool));
+        if clicked {
+            session.tool = tool;
         }
-    });
+    }
 
-    section(ui, "Mode");
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = gap;
-        let each = ((ui.available_width() - gap * 2.0) / 3.0).max(28.0);
-        for (name, mode) in [
-            ("Add", ToolMode::Add),
-            ("Remove", ToolMode::Remove),
-            ("Paint", ToolMode::Paint),
-        ] {
-            let on = session.tool_mode == mode;
-            let resp = ui
-                .add_sized(
-                    [each, size],
-                    egui::Button::new("")
-                        .min_size(egui::vec2(each, size))
-                        .selected(on),
-                )
-                .on_hover_text(name);
-            crate::icons::paint(ui, &resp, crate::icons::mode(mode), on);
-            let rect = resp.rect;
-            let clicked = resp.clicked();
-            session.note_ui(
-                &format!("mode.{}", name.to_ascii_lowercase()),
-                name,
-                rect,
-                UiAction::Mode(mode),
-            );
-            if clicked {
-                session.tool_mode = mode;
-            }
+    ui.separator();
+    for (name, key, mode) in [
+        ("Add", "T", ToolMode::Add),
+        ("Remove", "R", ToolMode::Remove),
+        ("Paint", "G", ToolMode::Paint),
+    ] {
+        let on = session.tool_mode == mode;
+        let resp = ui
+            .add_sized(
+                [size, size],
+                egui::Button::new("")
+                    .min_size(egui::vec2(size, size))
+                    .selected(on),
+            )
+            .on_hover_text(format!("{name} ({key})"));
+        crate::icons::paint(ui, &resp, crate::icons::mode(mode), on);
+        let rect = resp.rect;
+        let clicked = resp.clicked();
+        session.note_ui(
+            &format!("mode.{}", name.to_ascii_lowercase()),
+            name,
+            rect,
+            UiAction::Mode(mode),
+        );
+        if clicked {
+            session.tool_mode = mode;
         }
-    });
+    }
+}
+
+/// Settings of the current tool, laid out in a row that wraps.
+pub(super) fn options(ui: &mut Ui, session: &mut Session) {
+    ui.label(RichText::new(session.tool.name()).strong());
+    ui.separator();
 
     if session.tool != Tool::Face && session.tool != Tool::Generator {
-        section(ui, "Brush");
         slider_i32(ui, session, "Size", SliderTarget::BrushSize, 1..=63);
         session.brush_size = session.brush_size.clamp(1, 63);
         segment(
@@ -97,7 +98,7 @@ pub(super) fn tools(ui: &mut Ui, session: &mut Session) {
             ],
         );
         let mut dim = session.brush_3d;
-        ui.horizontal(|ui| {
+        row(ui, |ui| {
             if ui.selectable_label(!dim, "2D").clicked() {
                 dim = false;
             }
@@ -113,12 +114,20 @@ pub(super) fn tools(ui: &mut Ui, session: &mut Session) {
         } else {
             format!("{edge} × {edge}  ({n} cells, on face plane)")
         };
-        ui.label(RichText::new(summary).small().monospace().color(DIM));
+        ui.add(
+            egui::Label::new(RichText::new(summary).small().monospace().color(DIM))
+                .wrap_mode(egui::TextWrapMode::Extend),
+        );
+    }
+    if matches!(
+        session.tool,
+        Tool::Line | Tool::Circle | Tool::Square | Tool::Box | Tool::Mutator
+    ) {
+        ui.separator();
     }
 
     match session.tool {
         Tool::Line => {
-            section(ui, "Line");
             segment(
                 ui,
                 &mut session.line_mode,
@@ -129,25 +138,21 @@ pub(super) fn tools(ui: &mut Ui, session: &mut Session) {
             );
         }
         Tool::Circle => {
-            section(ui, "Circle");
-            ui.horizontal(|ui| {
+            row(ui, |ui| {
                 ui.toggle_value(&mut session.circle_fill, "Fill");
                 ui.toggle_value(&mut session.circle_even, "Even");
             });
         }
         Tool::Square => {
-            section(ui, "Square");
-            ui.horizontal(|ui| {
+            row(ui, |ui| {
                 ui.toggle_value(&mut session.square_fill, "Fill");
                 ui.toggle_value(&mut session.square_even, "Even");
             });
         }
         Tool::Box => {
-            section(ui, "Box");
             ui.toggle_value(&mut session.box_fill, "Fill");
         }
         Tool::Face => {
-            section(ui, "Face");
             ui.label(RichText::new("Extrude").small().color(DIM));
             segment(
                 ui,
@@ -168,7 +173,7 @@ pub(super) fn tools(ui: &mut Ui, session: &mut Session) {
             );
             ui.label(RichText::new("Connectivity").small().color(DIM));
             let mut eight = session.face_eight;
-            ui.horizontal(|ui| {
+            row(ui, |ui| {
                 if ui.selectable_label(!eight, "4-side").clicked() {
                     eight = false;
                 }
@@ -179,7 +184,6 @@ pub(super) fn tools(ui: &mut Ui, session: &mut Session) {
             session.face_eight = eight;
         }
         Tool::Generator => {
-            section(ui, "Generator");
             egui::ComboBox::from_id_salt("generator")
                 .selected_text(session.generator.name())
                 .show_ui(ui, |ui| {
@@ -201,7 +205,6 @@ pub(super) fn tools(ui: &mut Ui, session: &mut Session) {
             generator(ui, session);
         }
         Tool::Mutator => {
-            section(ui, "Mutator");
             ui.add_enabled_ui(false, |ui| {
                 let mut foliage = 0;
                 egui::ComboBox::from_id_salt("mutator")
@@ -258,7 +261,7 @@ pub(super) fn generator(ui: &mut Ui, session: &mut Session) {
             axis_row(ui, &mut session.gen_axis);
             ui.label(RichText::new("Apex at").small().color(DIM));
             let mut max = session.apex_at_max;
-            ui.horizontal(|ui| {
+            row(ui, |ui| {
                 if ui.selectable_label(!max, "Min").clicked() {
                     max = false;
                 }
@@ -337,7 +340,7 @@ pub(super) fn generator(ui: &mut Ui, session: &mut Session) {
             slider_f32(ui, session, "Tube", SliderTarget::HelixTube, 0.02..=0.90, 2);
             ui.label(RichText::new("Winding").small().color(DIM));
             let mut cw = session.helix_cw;
-            ui.horizontal(|ui| {
+            row(ui, |ui| {
                 if ui.selectable_label(!cw, "CCW").clicked() {
                     cw = false;
                 }

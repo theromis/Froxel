@@ -1,4 +1,5 @@
-//! Side panels: tools and palette on the left, scene and render settings on the right.
+//! Side panels: the tool strip on the left, tool options and the palette
+//! around the viewport, scene and render settings on the right.
 
 use egui::{Color32, RichText, Slider, Ui};
 
@@ -15,47 +16,74 @@ pub fn side_frame(style: &egui::Style) -> egui::Frame {
         .inner_margin(egui::Margin::same(DOCK_GAP))
 }
 
-/// Tools dock on top, palette dock at the bottom. The gap between them is
-/// the palette's resize handle.
-pub fn left(ui: &mut Ui, session: &mut Session) {
-    egui::Panel::bottom("palette-dock")
-        .resizable(true)
-        .default_size(360.0)
-        .size_range(140.0..=900.0)
+/// Width of the tool strip panel: one icon plus the frame margins.
+pub const STRIP_WIDTH: f32 = tools::STRIP_ICON + 2.0 * (STRIP_PAD + DOCK_GAP as f32);
+const STRIP_PAD: f32 = 6.0;
+
+/// The tool strip on the left: tool icons, then the modes.
+pub fn strip(ui: &mut Ui, session: &mut Session) {
+    let visuals = ui.visuals().clone();
+    egui::Frame::new()
+        .fill(visuals.panel_fill)
+        .corner_radius(DOCK_RADIUS)
+        .inner_margin(egui::Margin::same(STRIP_PAD as i8))
+        .show(ui, |ui| {
+            ui.set_min_height(ui.available_height());
+            egui::ScrollArea::vertical()
+                .id_salt("tools")
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                .show(ui, |ui| tools::strip(ui, session));
+        });
+}
+
+/// Settings of the current tool in a row above the viewport, and the
+/// palette below it. Call after the side panels so both span only the
+/// viewport's width.
+pub fn around_viewport(ui: &mut Ui, session: &mut Session) {
+    let style = ui.style().clone();
+    egui::Panel::top("tool-options")
+        .resizable(false)
         .show_separator_line(false)
-        .frame(egui::Frame::NONE.inner_margin(egui::Margin {
-            top: DOCK_GAP,
-            ..egui::Margin::ZERO
+        .frame(side_frame(&style).inner_margin(egui::Margin {
+            bottom: 0,
+            ..egui::Margin::same(DOCK_GAP)
         }))
         .show(ui, |ui| {
-            dock(
+            egui::Frame::new()
+                .fill(style.visuals.panel_fill)
+                .corner_radius(DOCK_RADIUS)
+                .inner_margin(egui::Margin::symmetric(8, 4))
+                .show(ui, |ui| {
+                    ui.set_min_width(ui.available_width());
+                    ui.horizontal_wrapped(|ui| {
+                        ui.set_min_height(24.0);
+                        tools::options(ui, session);
+                    });
+                });
+        });
+    egui::Panel::bottom("palette-dock")
+        .resizable(false)
+        .show_separator_line(false)
+        .frame(side_frame(&style).inner_margin(egui::Margin {
+            top: 0,
+            ..egui::Margin::same(DOCK_GAP)
+        }))
+        .show(ui, |ui| {
+            dock_row(
                 ui,
                 &["Palette"],
                 0,
                 true,
                 |_| {},
                 |ui| {
-                    palette::active_color(ui, session);
-                    egui::ScrollArea::vertical()
-                        .id_salt("palette")
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| palette::palette(ui, session));
+                    ui.horizontal_top(|ui| {
+                        ui.vertical(|ui| palette::active_color(ui, session));
+                        ui.add_space(4.0);
+                        palette::palette(ui, session);
+                    });
                 },
             );
         });
-    dock(
-        ui,
-        &["Tools"],
-        0,
-        true,
-        |_| {},
-        |ui| {
-            egui::ScrollArea::vertical()
-                .id_salt("tools")
-                .auto_shrink([false, false])
-                .show(ui, |ui| tools::tools(ui, session));
-        },
-    );
 }
 
 /// Inspector dock on top, scene tree dock at the bottom, on the dark window
@@ -105,6 +133,18 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
 const DOCK_GAP: i8 = 6;
 const DOCK_RADIUS: u8 = 4;
 
+/// A dock as tall as its body, for a panel sized by its content.
+fn dock_row(
+    ui: &mut Ui,
+    tabs: &[&str],
+    selected: usize,
+    open: bool,
+    trailing: impl FnOnce(&mut Ui),
+    body: impl FnOnce(&mut Ui),
+) -> Option<usize> {
+    dock_impl(ui, tabs, selected, open, false, trailing, body)
+}
+
 /// A Godot-style dock: a strip of tabs on a darker band, the selected tab
 /// joined to the body below it. `trailing` fills the right end of the strip.
 /// Without `open` only the strip shows. Returns the tab that was clicked.
@@ -113,6 +153,18 @@ pub(super) fn dock(
     tabs: &[&str],
     selected: usize,
     open: bool,
+    trailing: impl FnOnce(&mut Ui),
+    body: impl FnOnce(&mut Ui),
+) -> Option<usize> {
+    dock_impl(ui, tabs, selected, open, true, trailing, body)
+}
+
+fn dock_impl(
+    ui: &mut Ui,
+    tabs: &[&str],
+    selected: usize,
+    open: bool,
+    fill: bool,
     trailing: impl FnOnce(&mut Ui),
     body: impl FnOnce(&mut Ui),
 ) -> Option<usize> {
@@ -151,7 +203,11 @@ pub(super) fn dock(
                 .inner_margin(egui::Margin::same(8))
                 .show(ui, |ui| {
                     ui.spacing_mut().item_spacing = spacing;
-                    ui.set_min_size(ui.available_size());
+                    if fill {
+                        ui.set_min_size(ui.available_size());
+                    } else {
+                        ui.set_min_width(ui.available_width());
+                    }
                     body(ui);
                 });
         });
@@ -235,12 +291,24 @@ fn run_action(
     }
 }
 
+/// Widgets side by side. In a row that wraps they join that row, so each
+/// one can wrap; a nested horizontal block cannot.
+pub(super) fn row<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+    if ui.layout().is_horizontal() {
+        add(ui)
+    } else {
+        ui.horizontal(add).inner
+    }
+}
+
 pub(super) fn segment<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, opts: &[(&str, T)]) {
-    ui.horizontal(|ui| {
+    row(ui, |ui| {
+        let gap = ui.spacing().item_spacing.x;
         ui.spacing_mut().item_spacing.x = 2.0;
         for (name, v) in opts {
             ui.selectable_value(value, *v, *name);
         }
+        ui.spacing_mut().item_spacing.x = gap;
     });
 }
 
@@ -252,11 +320,9 @@ pub(super) fn slider_i32(
     range: std::ops::RangeInclusive<i32>,
 ) {
     let mut value = slider_value(session, target).round() as i32;
-    ui.horizontal(|ui| {
-        ui.add_sized(
-            [96.0, 16.0],
-            egui::Label::new(RichText::new(label).small().color(DIM)),
-        );
+    let column = !ui.layout().is_horizontal();
+    row(ui, |ui| {
+        slider_label(ui, label, column);
         let resp = ui.add(Slider::new(&mut value, range.clone()).show_value(false));
         note_slider(
             session,
@@ -282,11 +348,9 @@ pub(super) fn slider_f32(
     digits: usize,
 ) {
     let mut value = slider_value(session, target);
-    ui.horizontal(|ui| {
-        ui.add_sized(
-            [96.0, 16.0],
-            egui::Label::new(RichText::new(label).small().color(DIM)),
-        );
+    let column = !ui.layout().is_horizontal();
+    row(ui, |ui| {
+        slider_label(ui, label, column);
         let resp = ui.add(Slider::new(&mut value, range.clone()).show_value(false));
         note_slider(
             session,
@@ -301,6 +365,24 @@ pub(super) fn slider_f32(
         }
         ui.monospace(format!("{value:.digits$}"));
     });
+}
+
+/// A slider's name: a fixed column in the Inspector, its own width in the
+/// tool options row.
+fn slider_label(ui: &mut Ui, label: &str, column: bool) {
+    let text = RichText::new(label).small().color(DIM);
+    if column {
+        ui.add_sized([96.0, 16.0], egui::Label::new(text));
+        return;
+    }
+    // Start a new line when the name, track, and value would not fit.
+    let font = egui::TextStyle::Small.resolve(ui.style());
+    let name = ui.painter().layout_no_wrap(label.to_owned(), font, DIM);
+    let need = name.size().x + ui.spacing().slider_width + 56.0;
+    if ui.max_rect().right() - ui.cursor().left() < need {
+        ui.end_row();
+    }
+    ui.add(egui::Label::new(text));
 }
 
 pub(super) fn slider_value(session: &Session, target: SliderTarget) -> f32 {
@@ -393,11 +475,9 @@ pub(super) fn material_slider_f32(
     digits: usize,
 ) {
     let mut shown = material_shown(session, target);
-    ui.horizontal(|ui| {
-        ui.add_sized(
-            [96.0, 16.0],
-            egui::Label::new(RichText::new(label).small().color(DIM)),
-        );
+    let column = !ui.layout().is_horizontal();
+    row(ui, |ui| {
+        slider_label(ui, label, column);
         let resp = ui.add(Slider::new(&mut shown, range.clone()).show_value(false));
         note_slider(
             session,
@@ -426,11 +506,9 @@ pub(super) fn material_slider_i32(
     range: std::ops::RangeInclusive<i32>,
 ) {
     let mut shown = material_shown(session, target).round() as i32;
-    ui.horizontal(|ui| {
-        ui.add_sized(
-            [96.0, 16.0],
-            egui::Label::new(RichText::new(label).small().color(DIM)),
-        );
+    let column = !ui.layout().is_horizontal();
+    row(ui, |ui| {
+        slider_label(ui, label, column);
         let resp = ui.add(Slider::new(&mut shown, range.clone()).show_value(false));
         note_slider(
             session,

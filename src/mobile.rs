@@ -221,11 +221,11 @@ pub fn show(
     if wide && session.render_mode != RenderMode::Render {
         let frame = crate::panels::side_frame(ui.style());
         egui::Panel::left("tools")
-            .resizable(true)
-            .default_size(220.0)
-            .size_range(200.0..=300.0)
+            .resizable(false)
+            .exact_size(crate::panels::STRIP_WIDTH)
             .frame(frame)
-            .show(ui, |ui| crate::panels::left(ui, session));
+            .show(ui, |ui| crate::panels::strip(ui, session));
+        crate::panels::around_viewport(ui, session);
     }
 
     let mut rect = egui::Rect::NOTHING;

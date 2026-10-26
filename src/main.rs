@@ -459,11 +459,10 @@ impl eframe::App for Shell {
         });
 
         egui::Panel::left("tools")
-            .resizable(true)
-            .default_size(220.0)
-            .size_range(200.0..=300.0)
+            .resizable(false)
+            .exact_size(panels::STRIP_WIDTH)
             .frame(panels::side_frame(&ctx.global_style()))
-            .show(ui, |ui| panels::left(ui, &mut self.session));
+            .show(ui, |ui| panels::strip(ui, &mut self.session));
 
         egui::Panel::right("inspector")
             .resizable(true)
@@ -471,6 +470,8 @@ impl eframe::App for Shell {
             .size_range(280.0..=400.0)
             .frame(panels::side_frame(&ctx.global_style()))
             .show(ui, |ui| panels::right(ui, &mut self.session));
+
+        panels::around_viewport(ui, &mut self.session);
 
         egui::CentralPanel::default().show(ui, |ui| {
             self.viewport_rect = viewport::show(

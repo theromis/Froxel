@@ -4,11 +4,11 @@ use egui::{Color32, RichText, Ui};
 
 use super::*;
 
-/// The active slot and its color picker, kept above the scrolling grid.
+/// The active slot and its color picker, beside the grid.
 pub(super) fn active_color(ui: &mut Ui, session: &mut Session) {
+    ui.label(RichText::new("Active").small().color(DIM));
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Active").small().color(DIM));
-        ui.monospace(format!("{}", session.active_slot));
+        ui.monospace(format!("{:>3}", session.active_slot));
         let mut rgb = session.color(session.active_slot);
         let resp = ui.color_edit_button_srgb(&mut rgb);
         if resp.changed() {
@@ -21,31 +21,36 @@ pub(super) fn active_color(ui: &mut Ui, session: &mut Session) {
     });
 }
 
+/// The 256 slots in 32 columns of 8, slot 1 at the top left, so the grid
+/// fits under the viewport. Cells are named in the 8-wide (column, row)
+/// order of [`crate::state::palette_slot_at`]: screen column `x` is row
+/// `31 - x` there, and screen row `y` is column `y`.
 pub(super) fn palette(ui: &mut Ui, session: &mut Session) {
-    let cell = 14.0;
     let gap = 2.0;
-    let pitch = cell + gap;
     let cols = 8i32;
     let rows = 32i32;
-    let w = cols as f32 * cell + (cols - 1) as f32 * gap;
-    let h = rows as f32 * cell + (rows - 1) as f32 * gap;
+    let cell = ((ui.available_width() + gap) / rows as f32 - gap).clamp(12.0, 18.0);
+    let pitch = cell + gap;
+    let w = rows as f32 * cell + (rows - 1) as f32 * gap;
+    let h = cols as f32 * cell + (cols - 1) as f32 * gap;
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, h), egui::Sense::click_and_drag());
     let painter = ui.painter().with_clip_rect(rect);
     let cell_of = |p: egui::Pos2| -> (i32, i32) {
-        let col = ((p.x - rect.min.x) / pitch).floor() as i32;
-        let row = ((p.y - rect.min.y) / pitch).floor() as i32;
-        (col.clamp(0, cols - 1), row.clamp(0, rows - 1))
+        let x = ((p.x - rect.min.x) / pitch).floor() as i32;
+        let y = ((p.y - rect.min.y) / pitch).floor() as i32;
+        (y.clamp(0, cols - 1), rows - 1 - x.clamp(0, rows - 1))
+    };
+    // Top left corner of the cell at (column, row).
+    let corner = |col: i32, row: i32| {
+        egui::pos2(
+            rect.min.x + (rows - 1 - row) as f32 * pitch,
+            rect.min.y + col as f32 * pitch,
+        )
     };
     for row in 0..rows {
         for col in 0..cols {
             let slot = crate::state::palette_slot_at(col, row);
-            let r = egui::Rect::from_min_size(
-                egui::pos2(
-                    rect.min.x + col as f32 * pitch,
-                    rect.min.y + row as f32 * pitch,
-                ),
-                egui::vec2(cell, cell),
-            );
+            let r = egui::Rect::from_min_size(corner(col, row), egui::vec2(cell, cell));
             if slot == 0 {
                 continue;
             }
@@ -86,14 +91,8 @@ pub(super) fn palette(ui: &mut Ui, session: &mut Session) {
         let min_r = r0.min(r1);
         let max_r = r0.max(r1);
         let band = egui::Rect::from_min_max(
-            egui::pos2(
-                rect.min.x + min_c as f32 * pitch,
-                rect.min.y + min_r as f32 * pitch,
-            ),
-            egui::pos2(
-                rect.min.x + max_c as f32 * pitch + cell,
-                rect.min.y + max_r as f32 * pitch + cell,
-            ),
+            corner(min_c, max_r),
+            corner(max_c, min_r) + egui::vec2(cell, cell),
         );
         painter.rect_stroke(
             band,
