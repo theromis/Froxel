@@ -1274,6 +1274,7 @@ dependencies = [
  "rhai",
  "same-file",
  "serde_json",
+ "winit",
  "winresource",
 ]
 

@@ -24,12 +24,46 @@ eframe = { version = "0.37", features = ["wgpu"] }
 rfd = "0.15"
 
 # Phones and tablets: no clipboard, X11, or Wayland, which do not build there.
-[target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
+# accesskit on Android requires the game-activity backend; this app uses native-activity.
+[target.'cfg(target_os = "ios")'.dependencies]
 log = "0.4"
 eframe = { version = "0.37", default-features = false, features = ["wgpu", "default_fonts", "accesskit"] }
 
+[target.'cfg(target_os = "android")'.dependencies]
+log = "0.4"
+eframe = { version = "0.37", default-features = false, features = ["wgpu", "default_fonts", "android-native-activity"] }
+winit = { version = "0.30.13", default-features = false }
+android-activity = { version = "0.6.1", features = ["native-activity"] }
+
 [features]
 oidn = ["dep:oidn"]
+# Selects the Android cdylib (`src/lib.rs`). Desktop builds leave it off so
+# `cargo build` / `cargo test --bin froxel` stay the host binary.
+android-lib = []
+
+[lib]
+name = "froxel"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+required-features = ["android-lib"]
+
+# `cargo apk build --lib --features android-lib --release`
+[package.metadata.android]
+package = "app.froxel"
+apk_name = "froxel"
+build_targets = ["aarch64-linux-android"]
+
+[package.metadata.android.sdk]
+min_sdk_version = 24
+target_sdk_version = 35
+
+[package.metadata.android.application]
+label = "Froxel"
+theme = "@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen"
+extract_native_libs = true
+
+[package.metadata.android.application.activity]
+config_changes = "orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize|density|uiMode"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -47,6 +81,3 @@ winresource = "0.1"
 [patch.crates-io]
 eframe = { path = "vendor/eframe" }
 egui-wgpu = { path = "vendor/egui-wgpu" }
-
-[target.'cfg(target_os = "android")'.dependencies]
-android-activity = { version = "0.6.1", features = ["native-activity"] }

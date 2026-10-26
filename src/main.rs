@@ -1,22 +1,25 @@
-//! Froxel editor.
-//!
-//! ```sh
-//! cargo run
-//! cargo run -- path/to/model.vox
-//! cargo run -- --control 7979
-//! cargo run -- mcp
-//! cargo run -- mcp --connect 127.0.0.1:7979 --launch
-//! ```
-//!
-//! `mcp` speaks Model Context Protocol on stdin/stdout. Without `--connect`
-//! the session is in-process and has no window. `--connect` drives an editor
-//! that was started with `--control`, which is where screenshots come from.
-//! `--launch` opens that editor. `froxel bridge` and `--bridge` speak the
-//! Godot/Blender bridge. Render mode path-traces on the GPU through wgpu.
-//! MCP `render` and `froxel render` path-trace a PNG with no window.
-//! `froxel voxrt` checks a `.vox` round trip.
-//!
-//! On macOS the File and Edit commands live on the application menu bar.
+// Froxel editor.
+//
+// ```sh
+// cargo run
+// cargo run -- path/to/model.vox
+// cargo run -- --control 7979
+// cargo run -- mcp
+// cargo run -- mcp --connect 127.0.0.1:7979 --launch
+// ```
+//
+// `mcp` speaks Model Context Protocol on stdin/stdout. Without `--connect`
+// the session is in-process and has no window. `--connect` drives an editor
+// that was started with `--control`, which is where screenshots come from.
+// `--launch` opens that editor. `froxel bridge` and `--bridge` speak the
+// Godot/Blender bridge. Render mode path-traces on the GPU through wgpu.
+// MCP `render` and `froxel render` path-trace a PNG with no window.
+// `froxel voxrt` checks a `.vox` round trip.
+//
+// On macOS the File and Edit commands live on the application menu bar.
+//
+// This file is the desktop binary crate and, via `include!` from `src/lib.rs`,
+// the Android cdylib. Inner doc comments cannot be included that way.
 
 mod bridge;
 mod cli;
@@ -93,7 +96,15 @@ impl log::Log for FileLog {
     fn flush(&self) {}
 }
 
-fn main() -> eframe::Result {
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+fn android_main(app: winit::platform::android::activity::AndroidApp) {
+    let _ = main(app);
+}
+
+fn main(
+    #[cfg(target_os = "android")] app: winit::platform::android::activity::AndroidApp,
+) -> eframe::Result {
     #[cfg(any(target_os = "ios", target_os = "android"))]
     {
         static LOGGER: FileLog = FileLog;
@@ -167,6 +178,10 @@ fn main() -> eframe::Result {
     };
     #[cfg(any(target_os = "ios", target_os = "android"))]
     mobile_options(&mut options);
+    #[cfg(target_os = "android")]
+    {
+        options.android_app = Some(app);
+    }
     #[cfg(any(target_os = "ios", target_os = "android"))]
     std::panic::set_hook(Box::new(|info| {
         append_log(&format!("panic: {info}"));
