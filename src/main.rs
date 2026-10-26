@@ -97,9 +97,116 @@ impl log::Log for FileLog {
 }
 
 #[cfg(target_os = "android")]
+static ANDROID_APP: std::sync::Mutex<Option<winit::platform::android::activity::AndroidApp>> =
+    std::sync::Mutex::new(None);
+
+#[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
 fn android_main(app: winit::platform::android::activity::AndroidApp) {
+    if let Ok(mut slot) = ANDROID_APP.lock() {
+        *slot = Some(app.clone());
+    }
     let _ = main(app);
+}
+
+/// Hides the status and navigation bars. A swipe from the screen edge shows
+/// them over the app, then they hide again (`BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`).
+#[cfg(target_os = "android")]
+fn hide_system_bars(app: &winit::platform::android::activity::AndroidApp) {
+    use jni::objects::JObject;
+    use jni::refs::Global;
+    use jni::{jni_sig, jni_str, JValue, JavaVM};
+
+    let vm = unsafe { JavaVM::from_raw(app.vm_as_ptr().cast()) };
+    let result = vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+        let raw = app.activity_as_ptr() as jni::sys::jobject;
+        let activity = unsafe { env.as_cast_raw::<Global<JObject>>(&raw)? };
+        let window = env
+            .call_method(
+                activity.as_ref(),
+                jni_str!("getWindow"),
+                jni_sig!(() -> android.view.Window),
+                &[],
+            )?
+            .l()?;
+        let decor = env
+            .call_method(
+                &window,
+                jni_str!("getDecorView"),
+                jni_sig!(() -> android.view.View),
+                &[],
+            )?
+            .l()?;
+        // LAYOUT_* keeps the surface full-screen. IMMERSIVE_STICKY reveals the
+        // bars over the app on an edge swipe and hides them again.
+        let flags: i32 = 0x0100 | 0x0200 | 0x0400 | 0x0002 | 0x0004 | 0x1000;
+        env.call_method(
+            &decor,
+            jni_str!("setSystemUiVisibility"),
+            jni_sig!((jint) -> ()),
+            &[JValue::Int(flags)],
+        )?;
+        if android_activity::AndroidApp::sdk_version() >= 30 {
+            env.call_method(
+                &window,
+                jni_str!("setDecorFitsSystemWindows"),
+                jni_sig!((boolean) -> ()),
+                &[JValue::Bool(false)],
+            )?;
+            let controller = env
+                .call_method(
+                    &window,
+                    jni_str!("getInsetsController"),
+                    jni_sig!(() -> android.view.WindowInsetsController),
+                    &[],
+                )?
+                .l()?;
+            if !controller.is_null() {
+                env.call_method(
+                    &controller,
+                    jni_str!("hide"),
+                    jni_sig!((jint) -> ()),
+                    &[JValue::Int(1 | 2)],
+                )?;
+                env.call_method(
+                    &controller,
+                    jni_str!("setSystemBarsBehavior"),
+                    jni_sig!((jint) -> ()),
+                    &[JValue::Int(2)],
+                )?;
+            }
+        }
+        Ok(())
+    });
+    if let Err(err) = result {
+        append_log(&format!("system bars: {err}"));
+    }
+}
+
+/// The decor view is not always ready on the first frame, and Samsung clears
+/// immersive mode when the activity is focused again.
+#[cfg(target_os = "android")]
+fn maintain_system_bars(ctx: &egui::Context) {
+    use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+    static WAS_FOCUSED: AtomicBool = AtomicBool::new(false);
+    static TRIES: AtomicU32 = AtomicU32::new(0);
+    let focused = ctx.input(|input| input.viewport().focused.unwrap_or(true));
+    let was = WAS_FOCUSED.swap(focused, Ordering::Relaxed);
+    let tries = TRIES.load(Ordering::Relaxed);
+    if !(tries < 8 || (focused && !was)) {
+        return;
+    }
+    let Ok(slot) = ANDROID_APP.lock() else {
+        return;
+    };
+    let Some(app) = slot.clone() else {
+        return;
+    };
+    drop(slot);
+    hide_system_bars(&app);
+    if tries < 8 {
+        TRIES.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 fn main(
@@ -110,6 +217,8 @@ fn main(
         static LOGGER: FileLog = FileLog;
         let _ = log::set_logger(&LOGGER).map(|()| log::set_max_level(log::LevelFilter::Warn));
     }
+    #[cfg(target_os = "android")]
+    hide_system_bars(&app);
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|arg| arg == "mcp") {
         std::process::exit(mcp::run(&args[1..]));
@@ -272,6 +381,8 @@ struct InflightShot {
 impl eframe::App for Shell {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = &ui.ctx().clone();
+        #[cfg(target_os = "android")]
+        maintain_system_bars(ctx);
         if let Some(control) = &self.control {
             control.bind_context(ctx);
         }
