@@ -4,6 +4,8 @@
 # and dmg are signed with Developer ID and notarized; without them they get an ad-hoc
 # signature. The other platforms are unsigned.
 name: Release
+# run-name sees only the inputs, so an empty version names the branch instead.
+run-name: Release ${{ inputs.version || format('(Cargo.toml, {0})', github.ref_name) }}
 
 on:
   workflow_dispatch:
