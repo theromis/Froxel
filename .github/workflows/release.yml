@@ -520,8 +520,8 @@ jobs:
           key: release-ios
       - name: Build
         run: |
-          cargo build --release --locked --target aarch64-apple-ios
-          cargo build --release --locked --target aarch64-apple-ios-sim
+          cargo build --release --locked --target aarch64-apple-ios --bin froxel
+          cargo build --release --locked --target aarch64-apple-ios-sim --bin froxel
       - name: Bundle the ipa and the simulator app
         run: |
           set -euo pipefail

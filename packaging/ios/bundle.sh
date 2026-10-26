@@ -29,8 +29,10 @@ xcode_build=$(xcodebuild -version | sed -n 's/^Build version //p')
 
 flag=""
 if [ "$profile" = release ]; then flag=--release; fi
-# rustup's rustc has the iOS standard library; a system rustc may not.
-PATH="$HOME/.cargo/bin:$PATH" cargo build --manifest-path "$root/Cargo.toml" --target "$target" $flag >&2
+# rustup's rustc has the iOS standard library; a system rustc may not. Only
+# the binary: the cdylib is the Android app, and required-features does not
+# keep cargo from building a library.
+PATH="$HOME/.cargo/bin:$PATH" cargo build --manifest-path "$root/Cargo.toml" --target "$target" --bin froxel $flag >&2
 
 app="$root/target/$target/$profile/Froxel.app"
 rm -rf "$app"
