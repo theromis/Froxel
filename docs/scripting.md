@@ -111,10 +111,14 @@ not listed here, are not registered.
 
 ## Storage
 
-Scripts live in an `MVSC` chunk, version 1. MagicaVoxel skips chunks it does
+Scripts live in an `MVSC` chunk, version 2 (version 1 is still readable). MagicaVoxel skips chunks it does
 not know. The chunk holds, for each object whose source is non-empty, the
 object name, the source, the auto-regenerate flag, and the current parameter
-values. A document with no script does not get the chunk.
+values, plus the occupied local minimum. Loading restores the generator's
+coordinate frame without running the script, so Regenerate after reopening
+does not shift the object. Version 1 files lack that origin metadata; existing
+generators should be re-authored in their intended local frame and saved once
+with the updated editor. A document with no script does not get the chunk.
 
 The voxels are written in the normal `SIZE` / `XYZI` chunks as well. Save
 after a regenerate if you want the file to contain both.

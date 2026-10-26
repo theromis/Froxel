@@ -151,8 +151,49 @@ pub(crate) fn load_vox(bytes: &[u8]) -> Result<Loaded, String> {
         Skeleton::default()
     };
     if let Some(scripts) = scripts {
-        for (name, script) in scripts {
+        for crate::script::StoredScript {
+            name,
+            script,
+            local_min,
+        } in scripts
+        {
             if let Some(object) = objects.iter_mut().find(|object| object.name == name) {
+                if let (Some(saved), Some((loaded, _))) =
+                    (local_min, crate::state::occupied_bounds(&object.cells))
+                {
+                    let delta = (
+                        saved.0.checked_sub(loaded.0),
+                        saved.1.checked_sub(loaded.1),
+                        saved.2.checked_sub(loaded.2),
+                    );
+                    let (Some(dx), Some(dy), Some(dz)) = delta else {
+                        return Err("MVSC local origin overflow".into());
+                    };
+                    let add = |p: Cell| -> Result<Cell, String> {
+                        match (
+                            p.0.checked_add(dx),
+                            p.1.checked_add(dy),
+                            p.2.checked_add(dz),
+                        ) {
+                            (Some(x), Some(y), Some(z)) => Ok((x, y, z)),
+                            _ => Err("MVSC local origin overflow".into()),
+                        }
+                    };
+                    object.cells = object
+                        .cells
+                        .iter()
+                        .map(|(cell, slot)| Ok((add(*cell)?, *slot)))
+                        .collect::<Result<HashMap<_, _>, String>>()?;
+                    object.box_min = add(object.box_min)?;
+                    object.translation = match (
+                        object.translation.0.checked_sub(dx),
+                        object.translation.1.checked_sub(dy),
+                        object.translation.2.checked_sub(dz),
+                    ) {
+                        (Some(x), Some(y), Some(z)) => (x, y, z),
+                        _ => return Err("MVSC local origin overflow".into()),
+                    };
+                }
                 object.script = script;
             } else {
                 objects.push(LoadedObject {

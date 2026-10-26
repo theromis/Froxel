@@ -10,10 +10,10 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
-use std::rc::Rc;
 
 use rhai::{Array, Dynamic, Engine, EvalAltResult, OptimizationLevel, Position, INT};
 
@@ -728,7 +728,13 @@ impl Session {
         let declared = if source.is_empty() {
             Vec::new()
         } else {
-            match execute(source, &stored, index, &names, &Stop::after(Some(SCRIPT_TIMEOUT))) {
+            match execute(
+                source,
+                &stored,
+                index,
+                &names,
+                &Stop::after(Some(SCRIPT_TIMEOUT)),
+            ) {
                 Ok(outcome) => outcome.params,
                 Err(err) => {
                     self.begin_edit();
@@ -1145,10 +1151,18 @@ pub(crate) fn encode_chunk(objects: &[Volume]) -> Option<Vec<u8>> {
         return None;
     }
     let mut body = Vec::new();
-    push_u32(&mut body, 1);
+    push_u32(&mut body, 2);
     push_u32(&mut body, kept.len() as u32);
     for object in kept {
         push_str(&mut body, &object.name);
+        // XYZI packs away the local minimum. Retain it so reopening can
+        // restore the generator's coordinate frame without running code.
+        let min = crate::state::occupied_bounds(&object.cells)
+            .map(|(min, _)| min)
+            .unwrap_or((0, 0, 0));
+        push_i32(&mut body, min.0);
+        push_i32(&mut body, min.1);
+        push_i32(&mut body, min.2);
         push_str(&mut body, &object.script.source);
         body.push(u8::from(object.script.auto));
         push_u32(&mut body, object.script.params.len() as u32);
@@ -1181,10 +1195,16 @@ pub(crate) fn encode_chunk(objects: &[Volume]) -> Option<Vec<u8>> {
     Some(body)
 }
 
-pub(crate) fn decode_chunk(body: &[u8]) -> Result<Vec<(String, ObjectScript)>, String> {
+pub(crate) struct StoredScript {
+    pub name: String,
+    pub script: ObjectScript,
+    pub local_min: Option<Cell>,
+}
+
+pub(crate) fn decode_chunk(body: &[u8]) -> Result<Vec<StoredScript>, String> {
     let mut cursor = 0;
     let version = read_u32(body, &mut cursor)?;
-    if version != 1 {
+    if version != 1 && version != 2 {
         return Err(format!("MVSC version {version} is not supported"));
     }
     let count = read_u32(body, &mut cursor)? as usize;
@@ -1194,6 +1214,15 @@ pub(crate) fn decode_chunk(body: &[u8]) -> Result<Vec<(String, ObjectScript)>, S
     let mut scripts = Vec::with_capacity(count);
     for _ in 0..count {
         let name = read_str(body, &mut cursor)?;
+        let local_min = if version >= 2 {
+            Some((
+                read_i32(body, &mut cursor)?,
+                read_i32(body, &mut cursor)?,
+                read_i32(body, &mut cursor)?,
+            ))
+        } else {
+            None
+        };
         let source = read_str(body, &mut cursor)?;
         if source.len() > MAX_SOURCE {
             return Err(format!("MVSC script is longer than {MAX_SOURCE} bytes"));
@@ -1237,14 +1266,15 @@ pub(crate) fn decode_chunk(body: &[u8]) -> Result<Vec<(String, ObjectScript)>, S
             };
             params.push(ScriptParam { name, value });
         }
-        scripts.push((
+        scripts.push(StoredScript {
             name,
-            ObjectScript {
+            script: ObjectScript {
                 source,
                 params,
                 auto: auto == 1,
             },
-        ));
+            local_min,
+        });
     }
     if cursor != body.len() {
         return Err("MVSC chunk has trailing bytes".into());

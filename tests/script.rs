@@ -236,5 +236,75 @@ fn a_worker_run_is_dropped_when_the_source_changes() {
     session.objects[0].script.source = "set(0, 0, 0, 1);".into();
     wait_for_script(&mut session);
     assert!(session.objects[0].cells.is_empty());
-    assert!(session.script_error.contains("changed"), "{}", session.script_error);
+    assert!(
+        session.script_error.contains("changed"),
+        "{}",
+        session.script_error
+    );
+}
+
+#[test]
+fn reopening_preserves_generator_coordinates_and_regeneration_placement() {
+    let mut session = Session::new();
+    session.replace_empty();
+    session
+        .set_script(
+            0,
+            r#"
+        let wide = param_int("wide", 3, 2, 5);
+        fill_box(-wide, -4, -2, 5, 2, 9, 1);
+    "#,
+        )
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    // Hand edits must also survive opening; loading must not execute code.
+    session.objects[0].cells.insert((-7, 8, 3), 2);
+    session.objects[0].translation = (19, -13, 6);
+    let local = cells_of(&session);
+    let path = std::env::temp_dir().join("froxel-script-origin-roundtrip.vox");
+    for _ in 0..3 {
+        session.write_vox(&path).unwrap();
+        session.open_vox(&path).unwrap();
+        assert_eq!(cells_of(&session), local);
+    }
+    let position = session.objects[0].translation;
+    session.regenerate_script(0).unwrap();
+    let generated = cells_of(&session);
+    assert!(!generated.contains_key(&(-7, 8, 3)));
+    assert_eq!(session.objects[0].translation, position);
+    for _ in 0..3 {
+        session.write_vox(&path).unwrap();
+        session.open_vox(&path).unwrap();
+        let before = session.objects[0].translation;
+        assert_eq!(cells_of(&session), generated);
+        session.regenerate_script(0).unwrap();
+        assert_eq!(cells_of(&session), generated);
+        assert_eq!(session.objects[0].translation, before);
+    }
+    session.write_script_int(0, "wide", 5);
+    session.regenerate_script(0).unwrap();
+    let changed = cells_of(&session);
+    session.write_vox(&path).unwrap();
+    session.open_vox(&path).unwrap();
+    let before = session.objects[0].translation;
+    session.regenerate_script(0).unwrap();
+    assert_eq!(cells_of(&session), changed);
+    assert_eq!(session.objects[0].translation, before);
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn version_one_script_metadata_remains_readable() {
+    let mut bytes = Vec::new();
+    push_u32(&mut bytes, 1);
+    push_u32(&mut bytes, 1);
+    push_str(&mut bytes, "legacy");
+    push_str(&mut bytes, ROW);
+    bytes.push(0);
+    push_u32(&mut bytes, 0);
+    let scripts = decode_chunk(&bytes).unwrap();
+    assert_eq!(scripts.len(), 1);
+    assert_eq!(scripts[0].name, "legacy");
+    assert_eq!(scripts[0].script.source, ROW);
+    assert_eq!(scripts[0].local_min, None);
 }
