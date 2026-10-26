@@ -1263,6 +1263,7 @@ dependencies = [
  "egui",
  "getrandom 0.3.4",
  "glam",
+ "jni",
  "libc",
  "log",
  "muda",
@@ -1274,6 +1275,7 @@ dependencies = [
  "rhai",
  "same-file",
  "serde_json",
+ "winit",
  "winresource",
 ]
 
