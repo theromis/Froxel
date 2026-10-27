@@ -148,6 +148,10 @@ with box and ellipsoid fills, refine single cells, render after every step,
 and compare with the reference. No script is stored. See
 [docs/hand-sculpting.md](docs/hand-sculpting.md).
 
+[skills/froxel/SKILL.md](skills/froxel/SKILL.md) is an agent skill that
+explains when and how an agent should use these tools. To install it for
+Claude Code, copy the `skills/froxel` folder into `~/.claude/skills/`.
+
 ## Scripting
 
 An object can carry a [Rhai](https://rhai.rs/) script. The editor shows a slider

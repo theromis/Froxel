@@ -13,7 +13,7 @@ and undo), `pointer`,
 UI. `tools/` is brush shapes and generators. `mesh.rs` and `gpu.rs` draw the
 edit-mode mesh. `trace/` is the CPU path tracer. `trace_gpu.rs` plus
 `trace.wgsl` and `blit.wgsl` are the wgpu tracer used by Render mode.
-`export/` writes glTF. `native_menu.rs` is the macOS menu. `mcp.rs`,
+`export/` writes glTF. `native_menu.rs` is the macOS menu. `skills/froxel` is the agent skill for the MCP tools. `mcp.rs`,
 `remote.rs`, and `control.rs` are the MCP server and the `--control` port.
 `bridge.rs` is the Godot/Blender loopback server (`froxel bridge` and
 `--bridge`). Its `evaluate` runs inside `Session::transaction`: one undo step,
