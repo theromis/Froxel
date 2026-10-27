@@ -68,11 +68,24 @@ pub(crate) fn save_document(
     graph: Option<&VoxGraph>,
     skeleton: &Skeleton,
     clips: &[crate::rig::Clip],
+    method: Option<Method>,
 ) -> Result<Vec<u8>, String> {
-    match graph {
+    let mut bytes = match graph {
         Some(graph) => save_graph(objects, palette, materials, graph, skeleton, clips),
         None => save_scene(objects, palette, materials, skeleton, clips),
+    }?;
+    if let Some(method) = method {
+        append_chunk(&mut bytes, b"MVPR", &provenance_body(method));
     }
+    Ok(bytes)
+}
+
+/// `MVPR` body. A document with no label gets no chunk.
+pub(crate) fn provenance_body(method: Method) -> Vec<u8> {
+    let mut body = Vec::new();
+    body.extend_from_slice(&PROVENANCE_VERSION.to_le_bytes());
+    push_dict(&mut body, &[("method", method.as_str())]);
+    body
 }
 
 /// Write the loaded graph back. Frame 0 picks up the edited translation,
@@ -746,6 +759,16 @@ pub(crate) fn wrap_vox(children: Vec<u8>) -> Vec<u8> {
     file.extend_from_slice(&(children.len() as u32).to_le_bytes());
     file.extend(children);
     file
+}
+
+/// Add a chunk to the end of a file `wrap_vox` made and grow the MAIN
+/// children size to match.
+pub(crate) fn append_chunk(file: &mut Vec<u8>, id: &[u8; 4], content: &[u8]) {
+    let before = file.len();
+    push_chunk(file, id, content);
+    let children = u32::from_le_bytes(file[16..20].try_into().unwrap());
+    let grown = children + (file.len() - before) as u32;
+    file[16..20].copy_from_slice(&grown.to_le_bytes());
 }
 
 pub(crate) fn push_i32(out: &mut Vec<u8>, value: i32) {

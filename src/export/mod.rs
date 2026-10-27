@@ -122,7 +122,7 @@ fn encode(session: &Session, options: &MeshExport) -> Result<Vec<u8>, String> {
         attributes.insert("TEXCOORD_1".into(), json!(4));
     }
     let mut root = json!({
-        "asset": {"version": "2.0", "generator": "Froxel"},
+        "asset": asset_json(session),
         "scene": 0,
         "scenes": [{"nodes": [0]}],
         "nodes": [{"name": "voxels", "mesh": 0}],
@@ -352,7 +352,7 @@ fn encode_skinned(session: &Session, options: &MeshExport) -> Result<Vec<u8>, St
     }
 
     let mut root = json!({
-        "asset": {"version": "2.0", "generator": "Froxel"},
+        "asset": asset_json(session),
         "scene": 0,
         "scenes": [{"nodes": scene_nodes}],
         "nodes": nodes,
@@ -663,7 +663,7 @@ fn encode_split(session: &Session, options: &MeshExport) -> Result<Vec<u8>, Stri
         views.push(json!({"buffer": 0, "byteOffset": image_off, "byteLength": png.len()}));
     }
     let mut root = json!({
-        "asset": {"version": "2.0", "generator": "Froxel"},
+        "asset": asset_json(session),
         "scene": 0,
         "scenes": [{"nodes": scene_nodes}],
         "nodes": nodes,
@@ -847,6 +847,15 @@ fn pad(buf: &mut Vec<u8>, fill: u8) {
     }
 }
 
+/// glTF `asset`. A labelled document adds `extras.method`.
+fn asset_json(session: &Session) -> Value {
+    let mut asset = json!({"version": "2.0", "generator": "Froxel"});
+    if let Some(method) = session.method() {
+        asset["extras"] = json!({"method": method.as_str()});
+    }
+    asset
+}
+
 /// The menu export, with the options from the Export panel. A new session
 /// writes a palette texture, greedy-merged.
 pub fn export_glb(session: &Session, path: &Path) -> Result<u32, String> {
@@ -995,6 +1004,7 @@ pub fn gltf_structure(bytes: &[u8]) -> Result<Value, String> {
     }
     Ok(json!({
         "generator": root.pointer("/asset/generator").cloned().unwrap_or(Value::Null),
+        "method": root.pointer("/asset/extras/method").cloned().unwrap_or(Value::Null),
         "nodes": node_report,
         "meshes": mesh_report,
         "skins": skins,

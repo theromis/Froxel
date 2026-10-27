@@ -6,6 +6,10 @@ checkbox, or a color) per parameter. **Regenerate** runs the script.
 Opening a file never runs it: the `.vox` already contains the voxels the
 script produced last time, so MagicaVoxel opens it as an ordinary model.
 
+A document with a stored script reports `method: "script"` in MCP
+`inspect_document` and in the exported glTF `asset.extras`. A model made
+without a script is [hand sculpting](hand-sculpting.md).
+
 The engine is constructed with `Engine::new_raw()`. Nothing in the standard
 library that touches the clock, the filesystem, the network, or a process is
 registered. There is no `print`, `eval`, `import`, or `timestamp`. Limits:

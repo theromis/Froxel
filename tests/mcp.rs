@@ -744,3 +744,113 @@ fn batch_rejects_hard_linked_outputs_before_writing() {
     assert_eq!(std::fs::read(first).unwrap(), b"preserved");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn hand_sculpting_label_round_trips_through_save_open_and_glb() {
+    let mut head = Headless::new();
+    let reply = dispatch(
+        &mut head.proto,
+        &mut head.session,
+        None,
+        &json!({"jsonrpc": "2.0", "id": 99, "method": "initialize", "params": {}}),
+    )
+    .unwrap();
+    let instructions = reply["result"]["instructions"].as_str().unwrap();
+    assert!(instructions.contains("docs/hand-sculpting.md"));
+    assert!(instructions.contains("set_method hand_sculpting"));
+
+    assert_eq!(
+        head.ok("inspect_document", json!({}))["method"],
+        Value::Null
+    );
+    head.ok(
+        "fill_rounded_box",
+        json!({"x0": 0, "y0": 0, "z0": 0, "x1": 3, "y1": 2, "z1": 2, "palette": 5, "radius": 1}),
+    );
+    head.ok("set_voxels", json!({"cells": [[1, 1, 3, 9]]}));
+    let set = head.ok("set_method", json!({"method": "hand_sculpting"}));
+    assert_eq!(set["method"], "hand_sculpting");
+    assert_eq!(
+        head.ok("inspect_document", json!({}))["method"],
+        "hand_sculpting"
+    );
+    head.ok("undo", json!({}));
+    assert_eq!(
+        head.ok("inspect_document", json!({}))["method"],
+        Value::Null
+    );
+    head.ok("redo", json!({}));
+    assert_eq!(
+        head.ok("inspect_document", json!({}))["method"],
+        "hand_sculpting"
+    );
+
+    let dir = std::env::temp_dir().join(format!("froxel-method-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let vox = dir.join("eel.vox");
+    head.ok("save_file", json!({"path": vox}));
+    let bytes = std::fs::read(&vox).unwrap();
+    assert!(bytes.windows(4).any(|chunk| chunk == b"MVPR"));
+    assert!(bytes.windows(14).any(|chunk| chunk == b"hand_sculpting"));
+
+    head.ok("new_document", json!({}));
+    assert_eq!(
+        head.ok("inspect_document", json!({}))["method"],
+        Value::Null
+    );
+    let opened = head.ok("open_file", json!({"path": vox}));
+    assert_eq!(opened["method"], "hand_sculpting");
+
+    let glb = dir.join("eel.glb");
+    let exported = head.ok("export_mesh", json!({"path": glb}));
+    assert_eq!(exported["structure"]["method"], "hand_sculpting");
+    let root = crate::export::gltf_structure(&std::fs::read(&glb).unwrap()).unwrap();
+    assert_eq!(root["method"], "hand_sculpting");
+
+    // A source session carries its own label; the open document has none.
+    head.ok("new_document", json!({}));
+    head.ok("set_voxel", json!({"x": 0, "y": 0, "z": 0, "palette": 2}));
+    let batch = head.ok(
+        "export_models",
+        json!({"models": [
+            {"path": dir.join("from-source.glb"), "source": vox},
+            {"path": dir.join("open.glb")}
+        ]}),
+    );
+    assert_eq!(
+        batch["models"][0]["structure"]["method"], "hand_sculpting",
+        "{batch}"
+    );
+    assert_eq!(batch["models"][1]["structure"]["method"], Value::Null);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn a_stored_script_reports_script_and_refuses_hand_sculpting() {
+    let mut head = Headless::new();
+    head.ok("set_voxel", json!({"x": 0, "y": 0, "z": 0, "palette": 2}));
+    head.ok("set_method", json!({"method": "hand_sculpting"}));
+    head.ok("set_script", json!({"source": "set(0, 0, 0, 3);"}));
+    assert_eq!(head.ok("inspect_document", json!({}))["method"], "script");
+    let reply = head.call("set_method", json!({"method": "hand_sculpting"}));
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+    assert!(reply.to_string().contains("stores a script"));
+    let reply = head.call("set_method", json!({"method": "sculpted"}));
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+
+    let dir = std::env::temp_dir().join(format!("froxel-method-script-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let vox = dir.join("scripted.vox");
+    head.ok("save_file", json!({"path": vox}));
+    head.ok("set_script", json!({"source": ""}));
+    // The explicit label is back once the script is gone.
+    assert_eq!(
+        head.ok("inspect_document", json!({}))["method"],
+        "hand_sculpting"
+    );
+    head.ok("open_file", json!({"path": vox}));
+    assert_eq!(head.ok("inspect_document", json!({}))["method"], "script");
+    head.ok("set_method", json!({"method": null}));
+    assert_eq!(head.ok("inspect_document", json!({}))["method"], "script");
+    std::fs::remove_dir_all(dir).unwrap();
+}

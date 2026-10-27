@@ -38,6 +38,7 @@ impl Session {
         self.skeleton = Skeleton::default();
         self.pose.clear();
         self.clips.clear();
+        self.method_label = None;
         self.selected_bone = None;
         self.palette = default_palette();
         self.materials = [Material::default(); 256];
@@ -162,6 +163,7 @@ impl Session {
         self.graph = loaded.graph;
         self.skeleton = loaded.skeleton;
         self.clips = loaded.clips;
+        self.method_label = loaded.method;
         self.pose.clear();
         self.selected_bone = None;
         self.clear_picked();
@@ -176,6 +178,7 @@ impl Session {
             self.graph.as_ref(),
             &self.skeleton,
             &self.clips,
+            self.method(),
         )
     }
 
@@ -186,6 +189,46 @@ impl Session {
         self.redo.clear();
         self.pending = None;
         self.mark_clean();
+        Ok(())
+    }
+
+    /// How the document was made. Any object with a stored script makes it
+    /// `Script`; otherwise the label set with `set_method` or read from the
+    /// file, or `None` when nobody said.
+    pub fn method(&self) -> Option<Method> {
+        if self
+            .objects
+            .iter()
+            .any(|object| !object.script.source.is_empty())
+        {
+            return Some(Method::Script);
+        }
+        self.method_label
+    }
+
+    /// Set or clear the provenance label. One undo step. `HandSculpting` is
+    /// refused while an object stores a script, because the label would not
+    /// describe the document.
+    pub fn set_method(&mut self, method: Option<Method>) -> Result<(), String> {
+        if method == Some(Method::HandSculpting) {
+            if let Some((index, object)) = self
+                .objects
+                .iter()
+                .enumerate()
+                .find(|(_, object)| !object.script.source.is_empty())
+            {
+                return Err(format!(
+                    "object {index} `{}` stores a script; clear it with set_script source \"\" before labelling the document hand_sculpting",
+                    object.name
+                ));
+            }
+        }
+        if self.method_label == method {
+            return Ok(());
+        }
+        self.begin_edit();
+        self.method_label = method;
+        self.end_edit();
         Ok(())
     }
 
@@ -246,6 +289,13 @@ impl Session {
         if self.clips != other.clips {
             out.push("clips differ".into());
         }
+        if self.method() != other.method() {
+            out.push(format!(
+                "method: {:?} -> {:?}",
+                self.method(),
+                other.method()
+            ));
+        }
         out.extend(graph_differences(self.graph.as_ref(), other.graph.as_ref()));
         out
     }
@@ -277,6 +327,7 @@ impl Session {
         self.skeleton = Skeleton::default();
         self.pose.clear();
         self.clips.clear();
+        self.method_label = None;
         self.selected_bone = None;
         self.palette = default_palette();
         self.materials = [Material::default(); 256];
@@ -461,6 +512,7 @@ impl Session {
             self.graph.as_ref(),
             &self.skeleton,
             &self.clips,
+            self.method(),
         ) {
             Ok(bytes) => bytes,
             Err(e) => {

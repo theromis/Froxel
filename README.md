@@ -143,6 +143,12 @@ froxel mcp --connect 127.0.0.1:7979 --launch
 `--launch` opens the window if it is not already running. The full tool list and
 the connected mode are in [docs/mcp.md](docs/mcp.md).
 
+Creatures and other one-off shapes are made by **hand sculpting**: block out
+with box and ellipsoid fills, refine single cells, render after every step,
+and compare with the reference. No script is stored, and the `.vox` and
+`.glb` are labelled `hand_sculpting`. See
+[docs/hand-sculpting.md](docs/hand-sculpting.md).
+
 ## Scripting
 
 An object can carry a [Rhai](https://rhai.rs/) script. The editor shows a slider

@@ -29,6 +29,8 @@ pub(crate) fn load_vox(bytes: &[u8]) -> Result<Loaded, String> {
     let mut rig: Option<(Skeleton, Vec<crate::rig::StoredBind>)> = None;
     let mut clips = None;
     let mut scripts = None;
+    let mut method = None;
+    let mut provenance = false;
 
     while p + 12 <= end {
         let id = read_id(bytes, &mut p)?;
@@ -122,6 +124,12 @@ pub(crate) fn load_vox(bytes: &[u8]) -> Result<Loaded, String> {
                 return Err("duplicate MVSC chunk".into());
             }
             scripts = Some(crate::script::decode_chunk(body)?);
+        } else if &id == b"MVPR" {
+            if provenance {
+                return Err("duplicate MVPR chunk".into());
+            }
+            provenance = true;
+            method = decode_provenance(body)?;
         }
         p += content + children;
     }
@@ -236,7 +244,25 @@ pub(crate) fn load_vox(bytes: &[u8]) -> Result<Loaded, String> {
         graph,
         skeleton,
         clips: clips.unwrap_or_default(),
+        method,
     })
+}
+
+/// `MVPR`: a version, then a DICT. `method` is `hand_sculpting` or
+/// `script`. Other keys are skipped so a later version can add some.
+pub(crate) fn decode_provenance(body: &[u8]) -> Result<Option<Method>, String> {
+    let mut cursor = body;
+    let version = take_u32(&mut cursor).ok_or("truncated MVPR chunk")?;
+    if version != PROVENANCE_VERSION {
+        return Err(format!("unsupported MVPR version {version}"));
+    }
+    let pairs = read_pairs(&mut cursor).ok_or("truncated MVPR chunk")?;
+    match pair(&pairs, "method") {
+        None => Ok(None),
+        Some(text) => Method::parse(text)
+            .map(Some)
+            .ok_or_else(|| format!("unknown MVPR method `{text}`")),
+    }
 }
 
 pub(crate) fn parse_trn(body: &[u8]) -> Option<VoxNode> {

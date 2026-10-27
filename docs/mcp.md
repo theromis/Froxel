@@ -148,7 +148,8 @@ tracer. A file with no scene graph still loads its first model.
 | `new_document` | — | Empty document, default palette, cleared path and undo stack |
 | `open_file` | `path` | Open a `.vox`, replacing the session |
 | `save_file` | — | Write every non-empty object. `path` overwrites the open file when omitted. Replies with `voxels` and `objects` |
-| `inspect_document` | — | Path, counts, world bounds, objects (name and world position), palette, and each slot's motion |
+| `inspect_document` | — | Path, counts, world bounds, objects (name and world position), palette, each slot's motion, and `method` |
+| `set_method` | `method` | Label how the document was made: `hand_sculpting`, `script`, or null. A stored script always reports `script`. One undo step |
 | `get_voxel` | `x`, `y`, `z` | Palette index of one **local** cell of the active object. `0` is empty |
 | `set_voxel` | `x`, `y`, `z`, `palette` | Write one **local** cell. One undo step |
 | `set_voxels` | `cells` | Write up to 200000 **local** cells as one undo step |
@@ -194,6 +195,8 @@ tracer. A file with no scene graph still loads its first model.
 that already hold the requested index are not an undo step.
 
 `fill_box` corners may arrive in either order. The box is inclusive.
+Every fill writes every cell inside its shape, empty ones included. To
+recolour existing cells only, cover exactly those cells or use `set_voxels`.
 `fill_ellipsoid` and `fill_rounded_box` use that same inclusive box. A cell
 is solid when its centre lies inside the shape. The ellipsoid is centred on
 the box and touches the middle of each face. `fill_rounded_box` measures
@@ -213,6 +216,8 @@ slot's material and is one undo step together with the color.
 - `bounds` of every object in world space and `activeBounds` of the object
   being edited (`null` when empty). Each box is `{min: [x,y,z], max: [x,y,z]}`
 - `unsynced` (always false; edits are already in the window), `canUndo`, `canRedo`
+- `method`: how the document was made, `hand_sculpting`, `script`, or null.
+  Any object with a stored script reports `script`. See `set_method`
 - `objects`: `index`, `name`, `hidden`, `active`, `model`,
   `voxels`, local `bounds`, world `position` `[x,y,z]`, and `translation`
   (the same three integers as `position`). `bone` is the bound bone name, or
@@ -246,7 +251,8 @@ like the screenshots.
 `render` path-traces every visible object and writes a PNG. It does not need a
 window. `width` and `height` are 1..1024 and default to 256. `samples` is
 1..128 and defaults to 16. `bounces` is 0..8 and defaults to 4. `seed`
-defaults to 1. The camera frames the scene, then orbits: `yaw` defaults to
+defaults to 1. The camera frames the scene (every object, hidden ones too, so a hidden
+part far from the subject makes it smaller; lower `distance` or crop), then orbits: `yaw` defaults to
 30 degrees, `pitch` to 25 degrees (−90..90), and `distance` multiplies that
 framing distance (greater than 0, at most 100). Yaw 0 puts the camera on
 the +X side of the target, looking toward −X. A model whose face points
@@ -432,6 +438,17 @@ line. Opening a `.vox` never regenerates; call `regenerate` yourself. The
 language and the `MVSC` chunk are described in `docs/scripting.md`.
 `examples/lily_pad.rhai` is a pad with `radius`, `notch`, `direction`, and
 `seed`.
+
+`set_method` takes `method`: `"hand_sculpting"`, `"script"`, or null to
+clear the label. Hand sculpting is primitive fills plus `set_voxels`, with
+no script; the workflow is in [hand-sculpting.md](hand-sculpting.md). An
+object with a stored script makes the document report `script` whatever the
+label is, and `"hand_sculpting"` is refused while one exists. The reply is
+`label` (what was set) and `method` (what `inspect_document` reports).
+Setting the label is one undo step. `save_file` writes it in an `MVPR` chunk
+(a `u32` version, 1, then a DICT with the key `method`); a document with no
+label gets no chunk. `export_mesh` and `export_models` write it as glTF
+`asset.extras.method`, and `structure` includes `method`.
 
 ### What this server does not do
 

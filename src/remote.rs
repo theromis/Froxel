@@ -185,6 +185,22 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
             Ok(json!({"path": path, "voxels": voxels, "objects": objects}))
         }
         "document.inspect" => Ok(inspect(session)),
+        "document.method" => {
+            let method = match params.get("method") {
+                None => return Err("missing method".into()),
+                Some(Value::Null) => None,
+                Some(Value::String(text)) => Some(
+                    crate::state::Method::parse(text)
+                        .ok_or("method must be 'hand_sculpting', 'script', or null")?,
+                ),
+                Some(_) => return Err("method must be 'hand_sculpting', 'script', or null".into()),
+            };
+            session.set_method(method)?;
+            Ok(json!({
+                "label": method.map(|method| method.as_str()),
+                "method": session.method().map(|method| method.as_str()),
+            }))
+        }
         "voxel.get" => {
             let (x, y, z) = xyz(&params)?;
             let palette = session.active().cells.get(&(x, y, z)).copied().unwrap_or(0);
@@ -678,7 +694,8 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("document.new", "", "Empty document, default palette"),
     ("document.open", "path", "Open a .vox, replacing the session"),
     ("document.save", "path?", "Write every non-empty object. path overwrites the open file when omitted"),
-    ("document.inspect", "", "Path, counts, bounds, objects, palette"),
+    ("document.inspect", "", "Path, counts, bounds, objects, palette, method"),
+    ("document.method", "method", "Provenance label: hand_sculpting, script, or null. A stored script always reports script. One undo step"),
     ("voxel.get", "x, y, z", "Palette index of one local cell. 0 is empty"),
     ("voxel.set", "x, y, z, palette", "Write one cell. One undo step"),
     ("voxel.set_many", "cells", "Write up to 200000 cells as one undo step"),
@@ -799,6 +816,7 @@ fn inspect(session: &Session) -> Value {
         "unsynced": false,
         "canUndo": session.can_undo(),
         "canRedo": session.can_redo(),
+        "method": session.method().map(|method| method.as_str()),
         "objects": objects,
         "bones": bone_rows(session),
         "palette": (0..256).map(|i| hex_color(session.palette[i])).collect::<Vec<_>>(),

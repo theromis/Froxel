@@ -126,6 +126,34 @@ pub enum RenderMode {
     Render,
 }
 
+/// How a document was made. Saved in the `.vox` `MVPR` chunk and written to
+/// the glTF `asset.extras`. `Session::method` reports `Script` whenever an
+/// object stores a Rhai script.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Method {
+    /// Primitive fills and single-cell edits, no stored script.
+    HandSculpting,
+    /// A Rhai script generates the voxels.
+    Script,
+}
+
+impl Method {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Method::HandSculpting => "hand_sculpting",
+            Method::Script => "script",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "hand_sculpting" => Some(Method::HandSculpting),
+            "script" => Some(Method::Script),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum GlassMode {
     Probabilistic,
@@ -519,6 +547,7 @@ pub(super) struct Snapshot {
     skeleton: Skeleton,
     pose: crate::rig::Pose,
     clips: Vec<Clip>,
+    method: Option<Method>,
 }
 
 #[derive(Clone)]
@@ -622,6 +651,9 @@ pub struct Session {
     pub pose: crate::rig::Pose,
     /// Named clips. Saved in the `MVAN` chunk and exported as glTF animations.
     pub clips: Vec<Clip>,
+    /// Provenance label set with `set_method` or read from the `MVPR` chunk.
+    /// Read it through `Session::method`, which infers `Script`.
+    pub(crate) method_label: Option<Method>,
     /// Bone highlighted in the viewport. Not part of undo.
     pub selected_bone: Option<usize>,
     /// Parallel rays for a still. The window leaves this false.

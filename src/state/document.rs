@@ -68,6 +68,7 @@ impl Session {
             skeleton: Skeleton::default(),
             pose: HashMap::new(),
             clips: Vec::new(),
+            method_label: None,
             selected_bone: None,
             orthographic: false,
             show_bones: false,

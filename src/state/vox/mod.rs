@@ -1,5 +1,5 @@
-//! MagicaVoxel `.vox` read and write, including the `MVRG` rig chunk
-//! and the `MVAN` animation chunk.
+//! MagicaVoxel `.vox` read and write, including the `MVRG` rig chunk,
+//! the `MVAN` animation chunk, and the `MVPR` provenance chunk.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -35,6 +35,7 @@ pub(super) struct Loaded {
     pub(super) graph: Option<VoxGraph>,
     pub(super) skeleton: Skeleton,
     pub(super) clips: Vec<crate::rig::Clip>,
+    pub(super) method: Option<Method>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -321,3 +322,6 @@ pub(super) fn store_recent(paths: &[PathBuf]) {
         .join("\n");
     let _ = std::fs::write(file, text);
 }
+
+/// Version of the `MVPR` chunk: a `u32` version, then a DICT.
+pub(super) const PROVENANCE_VERSION: u32 = 1;
