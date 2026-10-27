@@ -938,7 +938,6 @@ impl Session {
             skeleton: self.skeleton.clone(),
             pose: self.pose.clone(),
             clips: self.clips.clone(),
-            method: self.method_label,
         }
     }
 
@@ -951,7 +950,6 @@ impl Session {
             skeleton: std::mem::replace(&mut self.skeleton, snap.skeleton),
             pose: std::mem::replace(&mut self.pose, snap.pose),
             clips: std::mem::replace(&mut self.clips, snap.clips),
-            method: std::mem::replace(&mut self.method_label, snap.method),
         }
     }
 

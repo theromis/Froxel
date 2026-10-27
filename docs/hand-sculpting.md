@@ -24,7 +24,7 @@ It is how agents should model living things through MCP.
    cells and is one undo step.
 4. **Repeat** steps 2 and 3. Render after every step and compare again. A
    first blockout is never the result.
-5. **Label and save.** `set_method` with `hand_sculpting`, then `save_file`.
+5. **Save.** `save_file`.
 
 ```
 new_document
@@ -34,7 +34,6 @@ fill_ellipsoid       x0=2 y0=1 z0=0 x1=9 y1=4 z1=1 palette=2              # bell
 render               path="step1.png" yaw=-90 pitch=10
 set_voxels           cells=[[11, 2, 3, 0], [11, 3, 3, 0], [10, 1, 3, 5]]   # cut the snout, place an eye
 render               path="step2.png" yaw=-90 pitch=10
-set_method           method="hand_sculpting"
 save_file            path="creature.vox"
 ```
 
@@ -65,25 +64,3 @@ far from the body makes the subject small in the picture. Lower `distance`
 
 **Mirror.** Sculpt one side of a paired part and copy it with
 `mirror_object`; `mirrorBones` copies its bones too.
-
-## The label
-
-`set_method` stores how the document was made:
-
-| Value | Meaning |
-|---|---|
-| `"hand_sculpting"` | Primitive fills and single-cell edits, no script |
-| `"script"` | A Rhai script makes the voxels |
-| `null` | Not labelled |
-
-Any object with a stored script makes the document report `"script"`,
-whatever the label says, and `set_method` refuses `"hand_sculpting"` while
-one exists. Clear a script with `set_script` and an empty `source` first.
-
-`inspect_document` reports the result as `method`. `save_file` writes it to
-the `.vox` in an `MVPR` chunk: a `u32` version (1), then a MagicaVoxel
-DICT with the key `method`. An unlabelled document gets no chunk.
-MagicaVoxel skips the chunk. `open_file` reads it back. `export_mesh` and
-`export_models` write it to the glTF `asset.extras.method`, and their
-`structure` reply includes `method`. A document with no label has no
-`extras`, so its `.glb` is unchanged.

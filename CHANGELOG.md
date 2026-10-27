@@ -7,11 +7,6 @@
 - Hand sculpting is a named workflow, described in `docs/hand-sculpting.md`:
   block out with fills, refine with `set_voxels`, render after every step.
   The MCP server instructions point to it.
-- MCP `set_method` labels how a document was made, `hand_sculpting` or
-  `script`; `inspect_document` reports it as `method`. A stored script always
-  reports `script`. The label is saved in a `.vox` `MVPR` chunk and exported
-  as glTF `asset.extras.method`.
-
 - The release workflow builds an Android arm64 APK, an iOS ipa, and an iOS
   simulator app. They are signed when the signing secrets in
   `docs/releasing.md` are set.

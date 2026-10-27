@@ -279,7 +279,7 @@ fn dispatch(
                 "protocolVersion": version,
                 "capabilities": {"tools": {"listChanged": false}},
                 "serverInfo": {"name": "Froxel", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, refine with set_voxels, render after every step, then set_method hand_sculpting before save_file. inspect_document reports the label as method."
+                "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, refine with set_voxels, and render after every step."
             }),
         ));
     }
@@ -329,7 +329,6 @@ fn map_tool(name: &str, args: &Value) -> Result<(String, Value), String> {
         "open_file" => "document.open",
         "save_file" => "document.save",
         "inspect_document" => "document.inspect",
-        "set_method" => "document.method",
         "get_voxel" => "voxel.get",
         "set_voxel" => "voxel.set",
         "set_voxels" => "voxel.set_many",
@@ -433,10 +432,7 @@ fn tools() -> Vec<Value> {
         tool("new_document", "Replace the session with an empty one-object document and the default palette.", json!({}), &[]),
         tool("open_file", "Open a .vox file, replacing the session document.", json!({"path": str_prop("Path of a .vox file")}), &["path"]),
         tool("save_file", "Write every non-empty object as a .vox scene. Replies with voxels (solid cells in the file) and objects (models written).", json!({"path": str_prop("Where to write. Omit to overwrite the open file.")}), &[]),
-        tool("inspect_document", "Path, voxel count, world bounds, objects (name, world position, local bounds), the 256-color palette, and method: how the document was made (hand_sculpting, script, or null).", json!({}), &[]),
-        tool("set_method", "Label how the document was made. hand_sculpting: primitive fills and set_voxels edits, no script (see docs/hand-sculpting.md). script: a Rhai script. null clears the label. An object with a stored script always reports script, and hand_sculpting is refused while one exists. Saved in the .vox and written to glTF asset.extras.method. One undo step.", json!({
-            "method": {"type": ["string", "null"], "enum": ["hand_sculpting", "script", null], "description": "hand_sculpting, script, or null"}
-        }), &["method"]),
+        tool("inspect_document", "Path, voxel count, world bounds, objects (name, world position, local bounds), and the 256-color palette.", json!({}), &[]),
         tool("get_voxel", "Read one local cell of the active object. 0 is empty. Coordinates are local to that object.", xyz_props(), &["x", "y", "z"]),
         tool("set_voxel", "Write one local cell of the active object. Coordinates are local. One undo step.", {
             let mut p = xyz_props();

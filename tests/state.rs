@@ -1156,7 +1156,6 @@ fn scene_graph_keeps_hidden_layers_frames_and_groups() {
         loaded.graph.as_ref(),
         &Skeleton::default(),
         &[],
-        None,
     )
     .unwrap();
     assert!(bytes.windows(4).any(|window| window == b"LAYR"));
@@ -1190,7 +1189,6 @@ fn scene_graph_keeps_hidden_layers_frames_and_groups() {
         loaded.graph.as_ref(),
         &Skeleton::default(),
         &[],
-        None,
     )
     .unwrap();
     let shifted = load_vox(&bytes).expect("moved");
@@ -2001,43 +1999,4 @@ fn the_export_dialog_names_its_options() {
     assert!(session
         .export_summary()
         .ends_with("vertex colors, one mesh per object"));
-}
-
-#[test]
-fn provenance_chunk_is_only_written_for_a_label_and_rejects_unknown_methods() {
-    let mut session = Session::new();
-    session.replace_empty();
-    session.write_cells(&[(0, 0, 0, 1)]).unwrap();
-    let plain = session.export_bytes().unwrap();
-    assert!(!plain.windows(4).any(|chunk| chunk == b"MVPR"));
-    assert_eq!(load_vox(&plain).unwrap().method, None);
-
-    session.set_method(Some(Method::HandSculpting)).unwrap();
-    let labelled = session.export_bytes().unwrap();
-    assert_eq!(
-        load_vox(&labelled).unwrap().method,
-        Some(Method::HandSculpting)
-    );
-    let mut first = Session::new();
-    first.import_bytes(&labelled).unwrap();
-    assert_eq!(first.method(), Some(Method::HandSculpting));
-    let mut second = Session::new();
-    second.import_bytes(&first.export_bytes().unwrap()).unwrap();
-    assert_eq!(first.round_trip_differences(&second), Vec::<String>::new());
-    second.method_label = None;
-    assert_eq!(
-        first.round_trip_differences(&second),
-        vec!["method: Some(HandSculpting) -> None".to_string()]
-    );
-
-    let mut body = provenance_body(Method::Script);
-    assert_eq!(decode_provenance(&body), Ok(Some(Method::Script)));
-    let at = body.len() - "script".len();
-    body[at..].copy_from_slice(b"scrypt");
-    assert!(decode_provenance(&body).unwrap_err().contains("scrypt"));
-    let mut future = provenance_body(Method::Script);
-    future[0] = 9;
-    assert!(decode_provenance(&future)
-        .unwrap_err()
-        .contains("version 9"));
 }

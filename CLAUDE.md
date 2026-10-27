@@ -23,10 +23,8 @@ the module they cover.
 
 ## .vox
 
-Index 0 is empty. The `MVPR` chunk is the provenance label
-(`Session::method`, `hand_sculpting` or `script`; a stored script always
-reports `script`), also written to glTF `asset.extras.method`. Hand
-sculpting is described in `docs/hand-sculpting.md`. A loaded scene keeps its node graph (`VoxGraph` on the
+Index 0 is empty. Hand sculpting is described in
+`docs/hand-sculpting.md`. A loaded scene keeps its node graph (`VoxGraph` on the
 session): groups, layers, every animation frame, and `_hidden`. Save writes
 that graph back. Frame 0 is the edited pose. Objects created in the editor
 are appended. Hidden objects stay in the file and are omitted from the mesh,

@@ -148,8 +148,7 @@ tracer. A file with no scene graph still loads its first model.
 | `new_document` | — | Empty document, default palette, cleared path and undo stack |
 | `open_file` | `path` | Open a `.vox`, replacing the session |
 | `save_file` | — | Write every non-empty object. `path` overwrites the open file when omitted. Replies with `voxels` and `objects` |
-| `inspect_document` | — | Path, counts, world bounds, objects (name and world position), palette, each slot's motion, and `method` |
-| `set_method` | `method` | Label how the document was made: `hand_sculpting`, `script`, or null. A stored script always reports `script`. One undo step |
+| `inspect_document` | — | Path, counts, world bounds, objects (name and world position), palette, and each slot's motion |
 | `get_voxel` | `x`, `y`, `z` | Palette index of one **local** cell of the active object. `0` is empty |
 | `set_voxel` | `x`, `y`, `z`, `palette` | Write one **local** cell. One undo step |
 | `set_voxels` | `cells` | Write up to 200000 **local** cells as one undo step |
@@ -216,8 +215,6 @@ slot's material and is one undo step together with the color.
 - `bounds` of every object in world space and `activeBounds` of the object
   being edited (`null` when empty). Each box is `{min: [x,y,z], max: [x,y,z]}`
 - `unsynced` (always false; edits are already in the window), `canUndo`, `canRedo`
-- `method`: how the document was made, `hand_sculpting`, `script`, or null.
-  Any object with a stored script reports `script`. See `set_method`
 - `objects`: `index`, `name`, `hidden`, `active`, `model`,
   `voxels`, local `bounds`, world `position` `[x,y,z]`, and `translation`
   (the same three integers as `position`). `bone` is the bound bone name, or
@@ -439,16 +436,8 @@ language and the `MVSC` chunk are described in `docs/scripting.md`.
 `examples/lily_pad.rhai` is a pad with `radius`, `notch`, `direction`, and
 `seed`.
 
-`set_method` takes `method`: `"hand_sculpting"`, `"script"`, or null to
-clear the label. Hand sculpting is primitive fills plus `set_voxels`, with
-no script; the workflow is in [hand-sculpting.md](hand-sculpting.md). An
-object with a stored script makes the document report `script` whatever the
-label is, and `"hand_sculpting"` is refused while one exists. The reply is
-`label` (what was set) and `method` (what `inspect_document` reports).
-Setting the label is one undo step. `save_file` writes it in an `MVPR` chunk
-(a `u32` version, 1, then a DICT with the key `method`); a document with no
-label gets no chunk. `export_mesh` and `export_models` write it as glTF
-`asset.extras.method`, and `structure` includes `method`.
+A creature or other one-off shape is modelled without a script: see
+[hand-sculpting.md](hand-sculpting.md).
 
 ### What this server does not do
 
