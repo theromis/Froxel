@@ -96,6 +96,10 @@ scenes with the bridge stopped:
 cargo build && GODOT_PATH=/path/to/godot python3 tests/bridge_godot.py
 ```
 
+## Git
+
+Commit straight to `main`. Do not create branches.
+
 ## Formatting
 
 Style is `rustfmt.toml`. Run `cargo fmt` before every commit and keep
