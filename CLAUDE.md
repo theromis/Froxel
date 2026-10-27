@@ -63,7 +63,10 @@ finished frame from the albedo and normal guides. That feature needs the
 Open Image Denoise library on the build machine (`pkg-config`); the default
 build does not. The Render panel names the denoiser that is linked. Yaw 0 places the camera on +X looking toward −X; a model facing −Y is face-on at yaw −90. `froxel render` is the same still with no window:
 CPU by default, `--gpu` for the wgpu tracer. `froxel voxrt` checks a `.vox`
-round trip, the save fixpoint, and the rotation codec.
+round trip, the save fixpoint, and the rotation codec. MCP `model_view` is the flat model
+view: each pixel is the palette colour of the first cell hit, with no light
+or tonemap. MCP `set_view` moves the window camera; its `orthographic` also
+switches the edit viewport.
 
 **V** **L** **B** **F** **U** **M** select brush, line, box, face, mutator, and
 marquee. **T** **R** **G** select Add, Remove, and Paint, in Model mode only.

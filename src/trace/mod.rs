@@ -78,6 +78,7 @@ pub fn frame_key(session: &Session, size: [u32; 2]) -> u64 {
     mix(&mut hash, session.yaw.to_bits() as u64);
     mix(&mut hash, session.pitch.to_bits() as u64);
     mix(&mut hash, session.distance.to_bits() as u64);
+    mix(&mut hash, session.orthographic as u64);
     mix(&mut hash, session.target.x.to_bits() as u64);
     mix(&mut hash, session.target.y.to_bits() as u64);
     mix(&mut hash, session.target.z.to_bits() as u64);
@@ -317,6 +318,42 @@ pub fn render_still(session: &Session, width: u32, height: u32, samples: u32, se
         image.samples = sample + 1;
     }
     image
+}
+
+/// The flat model view: RGBA8, top row first. Each pixel is the palette
+/// colour of the first visible cell under its centre, with no light, no
+/// tonemap, and no lens. A miss is `background`.
+pub fn render_flat(session: &Session, width: u32, height: u32, background: [u8; 4]) -> Vec<u8> {
+    let world = build_world(session);
+    let eye = session.eye();
+    let mut rgba = Vec::with_capacity(width as usize * height as usize * 4);
+    for y in 0..height {
+        for x in 0..width {
+            let (origin, dir) = center_ray(
+                width,
+                height,
+                x,
+                y,
+                eye,
+                session.target,
+                session.orthographic,
+            );
+            let color = match march(&world, origin, dir) {
+                Some(hit) => {
+                    let [r, g, b, _] = session.palette[hit.slot as usize];
+                    [r, g, b, 255]
+                }
+                None => background,
+            };
+            rgba.extend_from_slice(&color);
+        }
+    }
+    rgba
+}
+
+/// Pixels per voxel edge in an orthographic frame `height` pixels tall.
+pub fn ortho_pixels_per_voxel(session: &Session, height: u32) -> f32 {
+    height as f32 / (2.0 * session.distance * (FOV_Y * 0.5).tan())
 }
 
 fn shade_pixel(
@@ -664,10 +701,10 @@ mod shade;
 mod world;
 
 use shade::{
-    aces, camera_basis, denoise, first_guides, lens_ray, ortho_primary, primary_dir, radiance,
-    to_srgb,
+    aces, camera_basis, center_ray, denoise, first_guides, lens_ray, ortho_primary, primary_dir,
+    radiance, to_srgb,
 };
-use world::build_world;
+use world::{build_world, march};
 pub use world::{gpu_scene, GpuLight, GpuScene};
 
 #[cfg(test)]

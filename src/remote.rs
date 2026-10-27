@@ -35,8 +35,7 @@ fn render_scene(session: &mut Session, params: &Value) -> Result<Value, String> 
             return Err("glass-mode must be 'probabilistic' or 'absorption'".into());
         }
     };
-    let yaw = opt_f64(params, "yaw")?;
-    let pitch = opt_f64(params, "pitch")?;
+    let (yaw, pitch) = view_angles(params)?;
     let distance = opt_f64(params, "distance")?;
     let orthographic = opt_bool(params, "orthographic")?.unwrap_or(false);
     let show_bones = opt_bool(params, "showBones")?.unwrap_or(false);
@@ -118,6 +117,143 @@ fn render_scene(session: &mut Session, params: &Value) -> Result<Value, String> 
         reply["views"] = json!(files);
     }
     Ok(reply)
+}
+
+/// The flat model view: palette colours of the first cell hit, no light and
+/// no tonemap. Orthographic unless the caller asks for perspective.
+fn model_view(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let path = req_str(params, "path")?;
+    if path.is_empty() {
+        return Err("path is empty".into());
+    }
+    let width = opt_i32_range(params, "width", 512, 1, 4096)? as u32;
+    let height = opt_i32_range(params, "height", 512, 1, 4096)? as u32;
+    let (yaw, pitch) = view_angles(params)?;
+    let distance = opt_f64(params, "distance")?;
+    if let Some(distance) = distance {
+        if !(distance > 0.0) || distance > 100.0 {
+            return Err("distance is out of range".into());
+        }
+    }
+    let orthographic = opt_bool(params, "orthographic")?.unwrap_or(true);
+    let show_bones = opt_bool(params, "showBones")?.unwrap_or(false);
+    let background = background(params)?;
+    let views = render_views(params)?;
+    let pose = match render_pose(params)? {
+        Some(pose) => Some(session.checked_pose(pose)?),
+        None => None,
+    };
+    let visible = session
+        .objects
+        .iter()
+        .filter(|object| !object.hidden)
+        .any(|object| object.cells.values().any(|slot| *slot != 0));
+    if !visible {
+        return Err("document has no voxels".into());
+    }
+
+    let yaw = yaw.unwrap_or(30.0) as f32;
+    let pitch = pitch.unwrap_or(25.0) as f32;
+    let saved = crate::still::prepare(
+        session,
+        &crate::still::Still {
+            width,
+            height,
+            samples: 1,
+            bounces: 0,
+            seed: 0,
+            aces: false,
+            denoise: false,
+            atmospheric: None,
+            sky_intensity: None,
+            sun_intensity: None,
+            aperture: None,
+            focus: None,
+            glass: None,
+            stochastic_gi: None,
+            yaw,
+            pitch,
+            distance: distance.unwrap_or(1.0) as f32,
+            orthographic: Some(orthographic),
+        },
+    );
+    let saved_pose = session.pose.clone();
+    if let Some(pose) = pose {
+        session.pose = pose;
+    }
+    let mut shots = vec![(yaw, pitch, path.clone())];
+    shots.extend(views.iter().cloned());
+    let mut files = Vec::new();
+    let mut written = Ok(());
+    for (view_yaw, view_pitch, view_path) in &shots {
+        session.yaw = view_yaw.to_radians();
+        session.pitch = view_pitch.to_radians();
+        let mut rgba = crate::trace::render_flat(session, width, height, background);
+        if show_bones {
+            crate::trace::draw_bone_overlay(&mut rgba, width, height, session);
+        }
+        written = crate::trace::write_rgba_png(Path::new(view_path), width, height, &rgba);
+        if written.is_err() {
+            break;
+        }
+        files.push(json!({"path": view_path, "yaw": view_yaw, "pitch": view_pitch}));
+    }
+    let pixels_per_voxel = crate::trace::ortho_pixels_per_voxel(session, height);
+    session.pose = saved_pose;
+    crate::still::finish(session, saved);
+    written?;
+    let mut reply = json!({
+        "path": path,
+        "width": width,
+        "height": height,
+        "orthographic": orthographic
+    });
+    if orthographic {
+        reply["pixelsPerVoxel"] = json!(pixels_per_voxel);
+    }
+    if !views.is_empty() {
+        reply["views"] = json!(files[1..]);
+    }
+    Ok(reply)
+}
+
+/// Move the window camera. frame re-centres on every object first, so a
+/// named view always shows the whole model.
+fn set_view(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let (yaw, pitch) = view_angles(params)?;
+    let frame = opt_bool(params, "frame")?.unwrap_or(true);
+    let distance = opt_f64(params, "distance")?;
+    if let Some(distance) = distance {
+        if !frame {
+            return Err("distance multiplies the framing distance and needs frame".into());
+        }
+        if !(distance > 0.0) || distance > 100.0 {
+            return Err("distance is out of range".into());
+        }
+    }
+    let orthographic = opt_bool(params, "orthographic")?;
+    let bones = opt_bool(params, "bones")?;
+    let (old_yaw, old_pitch) = (session.yaw, session.pitch);
+    if frame {
+        session.frame_camera();
+        session.distance *= distance.unwrap_or(1.0) as f32;
+    }
+    session.yaw = yaw.map_or(old_yaw, |deg| (deg as f32).to_radians());
+    session.pitch = pitch.map_or(old_pitch, |deg| (deg as f32).to_radians());
+    if let Some(orthographic) = orthographic {
+        session.orthographic = orthographic;
+    }
+    if let Some(bones) = bones {
+        session.view_bones = bones;
+    }
+    Ok(json!({
+        "yaw": session.yaw.to_degrees(),
+        "pitch": session.pitch.to_degrees(),
+        "distance": session.distance,
+        "target": session.target.to_array(),
+        "orthographic": session.orthographic,
+        "bones": session.view_bones
+    }))
 }
 
 fn render_views_to(
@@ -412,6 +548,8 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
             Ok(json!({"index": created, "name": name, "bones": bones}))
         }
         "render" => render_scene(session, &params),
+        "render.flat" => model_view(session, &params),
+        "view.set" => set_view(session, &params),
         "script.set" => {
             let index = script_index(session, &params)?;
             let source = req_str(&params, "source")?;
@@ -700,6 +838,16 @@ const METHODS: &[(&str, &str, &str)] = &[
         "Path-trace the scene to a PNG. width and height default to 256 (1..1024). samples defaults to 16 (1..128). bounces defaults to 4 (0..8). denoise defaults to true. yaw 30 and pitch 25 degrees frame the scene when omitted. yaw 0 sits the camera on +X looking toward -X. orthographic, views, pose, and showBones are optional.",
     ),
     (
+        "render.flat",
+        "path, width?, height?, view?, yaw?, pitch?, distance?, orthographic?, background?, views?, pose?, showBones?",
+        "Flat model view PNG: each pixel is the palette colour of the first cell hit, with no light and no tonemap. width and height default to 512 (1..4096). orthographic defaults to true. view is front, back, left, right, top, or bottom. background defaults to transparent.",
+    ),
+    (
+        "view.set",
+        "view?, yaw?, pitch?, frame?, distance?, orthographic?, bones?",
+        "Move the window camera. frame (default true) centres every object; distance multiplies the framing distance. bones false hides the viewport joints.",
+    ),
+    (
         "mesh.export",
         "path, merge?, vertexColors?",
         "Write a glTF 2.0 .glb of every object. merge defaults to false. vertexColors defaults to false (palette texture). exportHidden and splitObjects default to false. A skeleton writes a rigid skin. Clips become glTF animations.",
@@ -855,14 +1003,17 @@ fn render_views(params: &Value) -> Result<Vec<(f32, f32, String)>, String> {
                 if path.is_empty() {
                     return Err("view path is empty".into());
                 }
-                let yaw = item
-                    .get("yaw")
-                    .and_then(Value::as_f64)
-                    .ok_or("view yaw is required")? as f32;
-                let pitch = item
-                    .get("pitch")
-                    .and_then(Value::as_f64)
-                    .ok_or("view pitch is required")? as f32;
+                let (yaw, pitch) = match opt_str(item, "view")? {
+                    Some(name) => named_view(&name)?,
+                    None => (
+                        item.get("yaw")
+                            .and_then(Value::as_f64)
+                            .ok_or("view yaw is required")? as f32,
+                        item.get("pitch")
+                            .and_then(Value::as_f64)
+                            .ok_or("view pitch is required")? as f32,
+                    ),
+                };
                 if !(-90.0..=90.0).contains(&pitch) {
                     return Err("pitch is out of range".into());
                 }
@@ -871,6 +1022,73 @@ fn render_views(params: &Value) -> Result<Vec<(f32, f32, String)>, String> {
             Ok(views)
         }
         Some(_) => Err("views must be a list".into()),
+    }
+}
+
+/// Yaw and pitch in degrees of a named view of a model that faces -Y with
+/// +Z up. right and left are the model's own sides.
+pub fn named_view(name: &str) -> Result<(f32, f32), String> {
+    match name {
+        "front" => Ok((-90.0, 0.0)),
+        "back" => Ok((90.0, 0.0)),
+        "right" => Ok((180.0, 0.0)),
+        "left" => Ok((0.0, 0.0)),
+        "top" => Ok((-90.0, 90.0)),
+        "bottom" => Ok((-90.0, -90.0)),
+        other => Err(format!(
+            "view must be front, back, left, right, top, or bottom ({other})"
+        )),
+    }
+}
+
+/// Top-level `view`, or `yaw` and `pitch` in degrees. Omitted angles are None.
+fn view_angles(params: &Value) -> Result<(Option<f64>, Option<f64>), String> {
+    let mut yaw = opt_f64(params, "yaw")?;
+    let mut pitch = opt_f64(params, "pitch")?;
+    if let Some(name) = opt_str(params, "view")? {
+        if yaw.is_some() || pitch.is_some() {
+            return Err("pass view or yaw and pitch, not both".into());
+        }
+        let (named_yaw, named_pitch) = named_view(&name)?;
+        yaw = Some(named_yaw as f64);
+        pitch = Some(named_pitch as f64);
+    }
+    if let Some(pitch) = pitch {
+        if !(-90.0..=90.0).contains(&pitch) {
+            return Err("pitch is out of range".into());
+        }
+    }
+    Ok((yaw, pitch))
+}
+
+/// `#rrggbb`, `#rrggbbaa`, `[r, g, b]`, or `[r, g, b, a]`. Defaults to
+/// transparent.
+fn background(params: &Value) -> Result<[u8; 4], String> {
+    let bad = || "background must be #rrggbb, #rrggbbaa, or [r, g, b, a?] in 0..255".to_string();
+    match params.get("background") {
+        None | Some(Value::Null) => Ok([0, 0, 0, 0]),
+        Some(Value::String(text)) => {
+            let hex = text.strip_prefix('#').unwrap_or(text);
+            if !(hex.len() == 6 || hex.len() == 8) || !hex.is_ascii() {
+                return Err(bad());
+            }
+            let mut rgba = [0, 0, 0, 255];
+            for (i, channel) in rgba.iter_mut().enumerate().take(hex.len() / 2) {
+                *channel = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).map_err(|_| bad())?;
+            }
+            Ok(rgba)
+        }
+        Some(Value::Array(items)) if items.len() == 3 || items.len() == 4 => {
+            let mut rgba = [0, 0, 0, 255];
+            for (channel, item) in rgba.iter_mut().zip(items) {
+                *channel = item
+                    .as_u64()
+                    .filter(|value| *value <= 255)
+                    .ok_or_else(bad)? as u8;
+            }
+            Ok(rgba)
+        }
+        Some(_) => Err(bad()),
     }
 }
 

@@ -176,6 +176,8 @@ tracer. A file with no scene graph still loads its first model.
 | `undo` | — | Undo the last edit |
 | `redo` | — | Redo the last undone edit |
 | `render` | `path` | Path-trace the scene to a PNG. `width` and `height` default to 256. `samples` defaults to 16. `bounces` defaults to 4. `denoise` defaults to true. `yaw` defaults to 30°, `pitch` to 25°. Optional `orthographic`, `views`, `pose`, `showBones` |
+| `model_view` | `path` | Flat model view PNG: each pixel is the palette colour of the first cell hit, no light, no tonemap. `width` and `height` default to 512. Orthographic by default. Optional `view`, `yaw`, `pitch`, `distance`, `orthographic`, `background`, `views`, `pose`, `showBones` |
+| `set_view` | — | Move the session camera; connected, the window's. Optional `view`, `yaw`, `pitch`, `frame`, `distance`, `orthographic`, `bones`. Not an edit |
 | `screenshot` | — | PNG of the whole editor window. Connected mode only |
 | `screenshot_viewport` | — | PNG of the 3D viewport, including its mode chips. Connected mode only |
 | `screenshot_region` | `x`, `y`, `width`, `height` | PNG of a rectangle in window points. Connected mode only |
@@ -273,6 +275,65 @@ frame, using the first-hit albedo and normal. `atmospheric`,
 is an error. The call does not move the editor camera. The reply is
 `path`, `width`, `height`, and `samples`, plus `views` when that list
 was sent.
+
+`model_view` writes the flat model view: for each pixel, the palette colour
+of the first visible cell under the pixel centre, byte for byte, with alpha
+255. There is no light, no sky, no tonemap, no denoise, no lens, and no
+anti-aliasing, so every pixel is a palette entry or `background`, and the
+picture compares directly with a turnaround sheet. It does not use the path
+tracer. `width` and `height` are 1..4096 and default to 512. The camera
+frames the scene as `render` does, with the same `yaw` (default 30),
+`pitch` (default 25), and `distance`. `orthographic` defaults to true.
+`view` names a side of a model whose face points along −Y with +Z up, in
+place of `yaw` and `pitch`:
+
+| `view` | yaw | pitch | camera |
+|---|---|---|---|
+| `front` | −90 | 0 | on −Y |
+| `back` | 90 | 0 | on +Y |
+| `left` | 0 | 0 | on +X, the model's left |
+| `right` | 180 | 0 | on −X, the model's right |
+| `top` | −90 | 90 | above; +X right, +Y up the image |
+| `bottom` | −90 | −90 | below; −X right, +Y up the image |
+
+Passing `view` with `yaw` or `pitch` is an error. `background` is
+`#rrggbb`, `#rrggbbaa`, or `[r, g, b]` / `[r, g, b, a]` for pixels that hit
+nothing, and defaults to transparent. `pose` and `showBones` work as in
+`render`; hidden objects are left out. `views` is a list of `{view, path}`
+or `{yaw, pitch, path}`, each an extra PNG with the same framing, size, and
+background, so six turnaround views are one call:
+
+```json
+{"path": "front.png", "view": "front", "background": "#ffffff",
+ "views": [{"view": "back", "path": "back.png"},
+           {"view": "left", "path": "left.png"},
+           {"view": "right", "path": "right.png"},
+           {"view": "top", "path": "top.png"},
+           {"view": "bottom", "path": "bottom.png"}]}
+```
+
+The reply is `path`, `width`, `height`, `orthographic`, `views` when sent,
+and, when orthographic, `pixelsPerVoxel`: how many pixels one voxel edge
+covers, the same for every view of the call. The editor camera does not
+move. Connected, the window draws the PNG; headless, this process does.
+`render` and its `views` items accept `view` too.
+
+`set_view` moves the session camera. Connected to a window, that is the
+editor's camera, so the next `screenshot_viewport` shows an exact front,
+side, or top view. `frame` defaults to true: the camera first centres on
+every object at the framing distance, as `render` does, and `distance`
+multiplies that distance (greater than 0, at most 100; an error without
+`frame`). `view`, or `yaw` and `pitch` in degrees, sets the angle; an
+omitted angle keeps the current one. Pitch may reach ±90 here, past the
+mouse orbit limit. `orthographic` switches the edit viewport (and the CPU
+Render trace) to a parallel projection whose frame matches the perspective
+view at the target; the GPU Render trace stays perspective. `bones: false`
+hides the skeleton overlay in the viewport until `bones: true`. The edit
+viewport still shades faces by their normal and draws its overlays, so its
+colours are not palette entries; use `model_view` for that. `set_view` is
+not an undo step. The reply is `yaw`, `pitch`, `distance`, `target`,
+`orthographic`, and `bones`. Headless it only changes the session camera,
+which `render` and `model_view` reframe anyway.
 
 `export_mesh` writes every solid voxel of every visible object, exposed faces
 only. Hidden objects are left out. `merge` defaults to false, one quad per
@@ -442,7 +503,8 @@ A creature or other one-off shape is modelled without a script: see
 ### What this server does not do
 
 Render mode in the window path-traces on the GPU; saving that frame is a
-window command. `render` is a separate CPU trace. It does not drive every mouse tool
+window command. `render` is a separate CPU trace, and `model_view` a flat
+one without lighting. It does not drive every mouse tool
 by name. `ui_click` hits the controls `ui_inspect` lists, including sliders
 and palette cells, plus a stamp in the viewport. Voxel changes also go
 through `set_voxel`, `set_voxels`, and `fill_box` on the active object.

@@ -71,6 +71,7 @@ impl Session {
             selected_bone: None,
             orthographic: false,
             show_bones: false,
+            view_bones: true,
             selected_clip: None,
             clip_draft: String::new(),
             clip_time: 0.0,

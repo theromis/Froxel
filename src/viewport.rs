@@ -489,8 +489,17 @@ fn advance_trace(ctx: &egui::Context, session: &mut Session, rect: egui::Rect) {
 }
 
 /// OpenGL-style projection. The ray caster unprojects with this matrix.
-fn projection(aspect: f32) -> Mat4 {
-    Mat4::perspective_rh(50_f32.to_radians(), aspect.max(0.05), 0.08, 4000.0)
+/// Orthographic frames the same height at the target as the perspective
+/// view, like the tracer, and keeps cells behind the eye.
+fn projection(session: &Session, aspect: f32) -> Mat4 {
+    let aspect = aspect.max(0.05);
+    if session.orthographic {
+        let half_h = session.distance * (25_f32.to_radians()).tan();
+        let half_w = half_h * aspect;
+        Mat4::orthographic_rh(-half_w, half_w, -half_h, half_h, -2000.0, 4000.0)
+    } else {
+        Mat4::perspective_rh(50_f32.to_radians(), aspect, 0.08, 4000.0)
+    }
 }
 
 fn view_matrix(session: &Session) -> Mat4 {
@@ -512,7 +521,7 @@ fn gpu_view_proj(session: &Session, aspect: f32) -> Mat4 {
         Vec4::new(0.0, 0.0, 0.5, 0.0),
         Vec4::new(0.0, 0.0, 0.5, 1.0),
     );
-    clip * projection(aspect) * view_matrix(session)
+    clip * projection(session, aspect) * view_matrix(session)
 }
 
 /// Two fingers orbit and pinch to zoom, three or more pan. A stroke that the
@@ -762,7 +771,7 @@ fn marquee_cells(session: &Session, rect: egui::Rect, a: egui::Pos2, b: egui::Po
         return Vec::new();
     }
     let aspect = rect.width() / rect.height().max(1.0);
-    let vp = projection(aspect) * view_matrix(session);
+    let vp = projection(session, aspect) * view_matrix(session);
     let mut picked = Vec::new();
     for cell in session.active().cells.keys().copied() {
         let center = Vec3::new(
@@ -808,7 +817,7 @@ fn face_drag_steps(
     sign: i32,
 ) -> i32 {
     let aspect = rect.width() / rect.height().max(1.0);
-    let vp = projection(aspect) * view_matrix(session);
+    let vp = projection(session, aspect) * view_matrix(session);
     let center = Vec3::new(
         cell.0 as f32 + 0.5,
         cell.1 as f32 + 0.5,
@@ -892,7 +901,7 @@ fn object_center(session: &Session) -> Option<Vec3> {
 }
 
 fn paint_bones(painter: egui::Painter, session: &Session, rect: egui::Rect) {
-    if session.skeleton.bones.is_empty() {
+    if session.skeleton.bones.is_empty() || !session.view_bones {
         return;
     }
     // Joints follow the preview pose; a broken chain falls back to the pivots.
@@ -930,7 +939,7 @@ fn paint_bones(painter: egui::Painter, session: &Session, rect: egui::Rect) {
 
 fn project_point(session: &Session, rect: egui::Rect, point: Vec3) -> Option<egui::Pos2> {
     let aspect = rect.width() / rect.height().max(1.0);
-    let ndc = to_ndc(projection(aspect) * view_matrix(session), point)?;
+    let ndc = to_ndc(projection(session, aspect) * view_matrix(session), point)?;
     Some(egui::pos2(
         rect.min.x + (ndc.x * 0.5 + 0.5) * rect.width(),
         rect.min.y + (1.0 - (ndc.y * 0.5 + 0.5)) * rect.height(),
@@ -957,7 +966,7 @@ fn to_ndc(vp: Mat4, p: Vec3) -> Option<glam::Vec2> {
 
 pub(crate) fn ray_through(session: &Session, rect: egui::Rect, pos: egui::Pos2) -> (Vec3, Vec3) {
     let aspect = rect.width() / rect.height().max(1.0);
-    let inv = (projection(aspect) * view_matrix(session)).inverse();
+    let inv = (projection(session, aspect) * view_matrix(session)).inverse();
     let ndc_x = (pos.x - rect.min.x) / rect.width() * 2.0 - 1.0;
     let ndc_y = 1.0 - (pos.y - rect.min.y) / rect.height() * 2.0;
     let unproject = |z: f32| {

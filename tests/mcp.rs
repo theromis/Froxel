@@ -758,3 +758,132 @@ fn the_instructions_point_to_hand_sculpting() {
     let instructions = reply["result"]["instructions"].as_str().unwrap();
     assert!(instructions.contains("docs/hand-sculpting.md"));
 }
+
+/// A 3x3x3 block of slot 1 with a different slot at the centre of each face.
+fn marked_block(head: &mut Headless) {
+    let cells = &mut head.session.objects[0].cells;
+    cells.clear();
+    for x in 0..3 {
+        for y in 0..3 {
+            for z in 0..3 {
+                cells.insert((x, y, z), 1);
+            }
+        }
+    }
+    for (cell, slot) in [
+        ((1, 0, 1), 2),
+        ((1, 2, 1), 3),
+        ((0, 1, 1), 4),
+        ((2, 1, 1), 5),
+        ((1, 1, 2), 6),
+        ((1, 1, 0), 7),
+    ] {
+        cells.insert(cell, slot);
+    }
+    for slot in 1..8u8 {
+        head.session.palette[slot as usize] = [slot * 30, 200 - slot * 20, slot * 7, 255];
+    }
+    head.session.mesh_epoch += 1;
+}
+
+fn read_png(path: &std::path::Path) -> (u32, u32, Vec<u8>) {
+    let decoder = png::Decoder::new(std::io::BufReader::new(std::fs::File::open(path).unwrap()));
+    let mut reader = decoder.read_info().unwrap();
+    let mut buf = vec![0; reader.output_buffer_size().unwrap()];
+    let info = reader.next_frame(&mut buf).unwrap();
+    assert_eq!(info.color_type, png::ColorType::Rgba);
+    buf.truncate(info.buffer_size());
+    (info.width, info.height, buf)
+}
+
+#[test]
+fn model_view_pixels_are_palette_entries_and_named_views_face_their_side() {
+    let mut head = Headless::new();
+    marked_block(&mut head);
+    head.session.yaw = 1.25;
+    let yaw = head.session.yaw;
+    let dir = std::env::temp_dir().join(format!("froxel-model-view-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let names = ["front", "back", "right", "left", "top", "bottom"];
+    let paths: Vec<_> = names
+        .iter()
+        .map(|name| dir.join(format!("{name}.png")))
+        .collect();
+    let views: Vec<Value> = names[1..]
+        .iter()
+        .zip(&paths[1..])
+        .map(|(name, path)| json!({"view": name, "path": path}))
+        .collect();
+    let reply = head.ok(
+        "model_view",
+        json!({
+            "path": paths[0],
+            "view": "front",
+            "width": 33,
+            "height": 33,
+            "background": "#102030",
+            "views": views
+        }),
+    );
+    assert_eq!(reply["orthographic"], true);
+    assert_eq!(reply["views"].as_array().unwrap().len(), 5);
+    assert!(reply["pixelsPerVoxel"].as_f64().unwrap() > 1.0);
+    assert!((head.session.yaw - yaw).abs() < 1e-6);
+    assert!(!head.session.orthographic);
+    let palette = head.session.palette;
+    for (path, slot) in paths.iter().zip([2u8, 3, 4, 5, 6, 7]) {
+        let (w, h, rgba) = read_png(path);
+        assert_eq!((w, h), (33, 33));
+        let centre = ((16 * w + 16) * 4) as usize;
+        assert_eq!(
+            &rgba[centre..centre + 4],
+            &palette[slot as usize],
+            "{path:?}"
+        );
+        assert_eq!(&rgba[..4], &[0x10, 0x20, 0x30, 255], "{path:?}");
+        for pixel in rgba.chunks(4) {
+            assert!(
+                pixel == [0x10, 0x20, 0x30, 255] || palette[1..8].iter().any(|p| p == pixel),
+                "{path:?} has {pixel:?}"
+            );
+        }
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn model_view_refuses_a_view_with_yaw_and_a_bad_background() {
+    let mut head = Headless::new();
+    marked_block(&mut head);
+    let path = std::env::temp_dir().join("froxel-model-view-refused.png");
+    let reply = head.call(
+        "model_view",
+        json!({"path": path, "view": "top", "yaw": 10.0}),
+    );
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+    let reply = head.call("model_view", json!({"path": path, "background": "#12"}));
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+    let reply = head.call("model_view", json!({"path": path, "view": "side"}));
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+    assert!(!path.exists());
+}
+
+#[test]
+fn set_view_frames_the_model_and_hides_the_bones() {
+    let mut head = Headless::new();
+    marked_block(&mut head);
+    let reply = head.ok(
+        "set_view",
+        json!({"view": "top", "orthographic": true, "bones": false, "distance": 2.0}),
+    );
+    assert_eq!(reply["pitch"].as_f64().unwrap().round(), 90.0);
+    assert_eq!(reply["target"], json!([1.5, 1.5, 1.5]));
+    assert!(head.session.orthographic);
+    assert!(!head.session.view_bones);
+    assert!((head.session.distance - 2.0 * 7.2).abs() < 1e-4);
+    head.ok("set_view", json!({"yaw": 180.0, "frame": false}));
+    assert!((head.session.yaw - std::f32::consts::PI).abs() < 1e-5);
+    assert!((head.session.pitch - std::f32::consts::FRAC_PI_2).abs() < 1e-5);
+    let reply = head.call("set_view", json!({"frame": false, "distance": 2.0}));
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+}

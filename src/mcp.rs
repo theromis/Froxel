@@ -279,7 +279,7 @@ fn dispatch(
                 "protocolVersion": version,
                 "capabilities": {"tools": {"listChanged": false}},
                 "serverInfo": {"name": "Froxel", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, refine with set_voxels, and render after every step."
+                "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, refine with set_voxels, and render after every step."
             }),
         ));
     }
@@ -356,6 +356,8 @@ fn map_tool(name: &str, args: &Value) -> Result<(String, Value), String> {
         "undo" => "edit.undo",
         "redo" => "edit.redo",
         "render" => "render",
+        "model_view" => "render.flat",
+        "set_view" => "view.set",
         "screenshot" => "ui.screenshot",
         "screenshot_viewport" => "ui.screenshot",
         "screenshot_region" => "ui.screenshot",
@@ -572,9 +574,33 @@ fn tools() -> Vec<Value> {
             "orthographic": {"type": "boolean", "description": "Parallel rays. The frame matches the perspective view at the same distance. Default false."},
             "pose": {"type": "object", "description": "Temporary preview pose for this still. Bone name to a quaternion [x, y, z, w] or {rotation, scale}, on top of the bind pose. A zero scale hides that bone's parts. The document pose is restored afterwards.", "additionalProperties": {"anyOf": [{"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}, {"type": "object", "properties": {"rotation": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}, "scale": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3}}, "additionalProperties": false}]}},
             "showBones": {"type": "boolean", "description": "Draw joint points and parent links on the PNG. Default false."},
-            "views": {"type": "array", "description": "Extra PNGs. The required path is still written with the top-level yaw and pitch. Each item is {yaw, pitch, path}.", "items": {"type": "object"}}
+            "view": view_prop(),
+            "views": {"type": "array", "description": "Extra PNGs. The required path is still written with the top-level yaw and pitch. Each item is {yaw, pitch, path} or {view, path}.", "items": {"type": "object"}}
             })
         }, &["path"]),
+        tool("model_view", "Flat model view to a PNG, like the editor's model view without shading: each pixel is the palette colour of the first visible cell under its centre, with no light, no tonemap, and no denoise, so it compares directly with a turnaround sheet. No path tracer. The camera frames the scene like render. Orthographic replies pixelsPerVoxel.", json!({
+            "path": str_prop("PNG file to write"),
+            "width": int_prop("Pixels, 1..4096. Default 512."),
+            "height": int_prop("Pixels, 1..4096. Default 512."),
+            "view": view_prop(),
+            "yaw": num_prop("Orbit yaw in degrees. 0 puts the camera on +X, looking toward -X. A model facing -Y is face-on at yaw -90. Default 30."),
+            "pitch": num_prop("Orbit pitch in degrees, -90..90. 90 looks straight down. Default 25."),
+            "distance": num_prop("Multiple of the framing distance, greater than 0 and at most 100. Default 1."),
+            "orthographic": {"type": "boolean", "description": "Parallel rays. Default true."},
+            "background": {"type": ["string", "array"], "description": "#rrggbb, #rrggbbaa, or [r, g, b, a?] for pixels that hit no cell. Default transparent."},
+            "pose": {"type": "object", "description": "Temporary preview pose for this still. Bone name to a quaternion [x, y, z, w] or {rotation, scale}, on top of the bind pose. A zero scale hides that bone's parts. The document pose is restored afterwards.", "additionalProperties": {"anyOf": [{"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}, {"type": "object", "properties": {"rotation": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}, "scale": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3}}, "additionalProperties": false}]}},
+            "showBones": {"type": "boolean", "description": "Draw joint points and parent links on the PNG. Default false."},
+            "views": {"type": "array", "description": "Extra PNGs with the same camera settings. Each item is {view, path} or {yaw, pitch, path}.", "items": {"type": "object"}}
+        }), &["path"]),
+        tool("set_view", "Move the session camera. Connected to a window, that is the editor's camera, so the next screenshot_viewport shows an exact view. Not an edit and not undoable. The edit viewport stays lit; use model_view for palette-exact colours.", json!({
+            "view": view_prop(),
+            "yaw": num_prop("Orbit yaw in degrees. 0 puts the camera on +X, looking toward -X. Omit to keep the current yaw."),
+            "pitch": num_prop("Orbit pitch in degrees, -90..90. 90 looks straight down. Omit to keep the current pitch."),
+            "frame": {"type": "boolean", "description": "Centre on every object at the framing distance first. Default true."},
+            "distance": num_prop("Multiple of the framing distance, greater than 0 and at most 100. Needs frame. Default 1."),
+            "orthographic": {"type": "boolean", "description": "Parallel projection in the edit viewport and the CPU trace. Omit to keep it."},
+            "bones": {"type": "boolean", "description": "Draw the skeleton overlay in the viewport. false hides it for a screenshot. Omit to keep it."}
+        }), &[]),
         tool("screenshot", "PNG of the whole editor window. Only when connected to a window.", json!({"path": str_prop("Optional file to write")}), &[]),
         tool("screenshot_viewport", "PNG of the 3D viewport. Only when connected to a window.", json!({"path": str_prop("Optional file to write")}), &[]),
         tool("screenshot_region", "PNG of a rectangle in window points, origin at the top-left of the client area. Only when connected to a window.", json!({
@@ -672,6 +698,14 @@ fn vec4_prop(description: &str) -> Value {
         "minItems": 4,
         "maxItems": 4,
         "description": description
+    })
+}
+
+fn view_prop() -> Value {
+    json!({
+        "type": "string",
+        "enum": ["front", "back", "left", "right", "top", "bottom"],
+        "description": "Named view of a model facing -Y with +Z up, instead of yaw and pitch. front is yaw -90, back 90, left 0, right 180 (the model's own sides), top pitch 90, bottom pitch -90."
     })
 }
 

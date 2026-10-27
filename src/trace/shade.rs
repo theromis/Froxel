@@ -280,6 +280,31 @@ pub(super) fn ortho_primary(
     (origin, forward)
 }
 
+/// Unjittered ray through the centre of a pixel, perspective or parallel.
+pub(super) fn center_ray(
+    width: u32,
+    height: u32,
+    x: u32,
+    y: u32,
+    eye: Vec3,
+    target: Vec3,
+    orthographic: bool,
+) -> (Vec3, Vec3) {
+    let (forward, right, up) = camera_basis(eye, target);
+    let aspect = width as f32 / height.max(1) as f32;
+    let tan = (FOV_Y * 0.5).tan();
+    let u = ((x as f32 + 0.5) / width as f32) * 2.0 - 1.0;
+    let v = 1.0 - ((y as f32 + 0.5) / height as f32) * 2.0;
+    if orthographic {
+        let half_h = eye.distance(target) * tan;
+        let origin = eye + right * (u * half_h * aspect) + up * (v * half_h);
+        (origin, forward)
+    } else {
+        let dir = forward + right * (u * aspect * tan) + up * (v * tan);
+        (eye, dir.normalize_or_zero())
+    }
+}
+
 pub(super) fn lens_ray(
     session: &Shade,
     eye: Vec3,

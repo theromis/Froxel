@@ -624,11 +624,14 @@ pub struct Session {
     pub clips: Vec<Clip>,
     /// Bone highlighted in the viewport. Not part of undo.
     pub selected_bone: Option<usize>,
-    /// Parallel rays for a still. The window leaves this false.
+    /// Parallel rays. A still sets it for one frame; MCP `set_view` sets it
+    /// for the edit viewport and the CPU trace.
     pub orthographic: bool,
-    /// Draw joints on a still PNG and on Save render. The viewport draws
-    /// them whenever a skeleton exists.
+    /// Draw joints on a still PNG and on Save render.
     pub show_bones: bool,
+    /// Draw joints in the viewport when a skeleton exists. MCP `set_view`
+    /// clears it for a clean screenshot.
+    pub view_bones: bool,
     /// Clip highlighted in the Clips panel. Not part of undo.
     pub selected_clip: Option<usize>,
     /// Name typed for the next clip.
