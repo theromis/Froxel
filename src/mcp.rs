@@ -647,6 +647,7 @@ fn tools() -> Vec<Value> {
 }
 
 fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> Value {
+    let [read_only, destructive, idempotent] = hints(name);
     json!({
         "name": name,
         "description": description,
@@ -655,8 +656,55 @@ fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> 
             "properties": properties,
             "required": required,
             "additionalProperties": false
+        },
+        "annotations": {
+            "readOnlyHint": read_only,
+            "destructiveHint": destructive,
+            "idempotentHint": idempotent,
+            "openWorldHint": false
         }
     })
+}
+
+/// Read-only, destructive, and idempotent hints for a tool. Destructive
+/// means it may replace or remove cells, document state, or a file on disk;
+/// a tool that writes to a caller's path may overwrite that file. Every tool
+/// works on the session and local files, so none is open-world.
+fn hints(name: &str) -> [bool; 3] {
+    match name {
+        "inspect_document" | "get_voxel" | "get_voxels" | "list_bones" | "list_clips"
+        | "get_script" | "list_params" | "ui_inspect" => [true, false, true],
+        "set_active_object" | "set_view" => [false, false, true],
+        "add_object" | "mirror_object" | "add_bone" | "add_clip" => [false, false, false],
+        "remove_object" | "undo" | "redo" | "ui_click" | "regenerate" => [false, true, false],
+        "new_document"
+        | "open_file"
+        | "save_file"
+        | "set_voxel"
+        | "set_voxels"
+        | "fill_box"
+        | "fill_ellipsoid"
+        | "fill_rounded_box"
+        | "set_palette"
+        | "set_object"
+        | "set_bone"
+        | "remove_bone"
+        | "bind_object"
+        | "set_pose"
+        | "clear_pose"
+        | "set_clip_keys"
+        | "remove_clip"
+        | "render"
+        | "model_view"
+        | "screenshot"
+        | "screenshot_viewport"
+        | "screenshot_region"
+        | "set_script"
+        | "set_params"
+        | "export_mesh"
+        | "export_models" => [false, true, true],
+        other => panic!("no annotation hints for tool `{other}`"),
+    }
 }
 
 fn str_prop(description: &str) -> Value {

@@ -887,3 +887,34 @@ fn set_view_frames_the_model_and_hides_the_bones() {
     let reply = head.call("set_view", json!({"frame": false, "distance": 2.0}));
     assert_eq!(reply["result"]["isError"], true, "{reply}");
 }
+
+#[test]
+fn every_tool_declares_all_four_hints() {
+    let tools = tools();
+    for tool in &tools {
+        let name = tool["name"].as_str().unwrap();
+        assert!(
+            map_tool(name, &json!({})).is_ok() || name.starts_with("screenshot"),
+            "{name}"
+        );
+        for hint in [
+            "readOnlyHint",
+            "destructiveHint",
+            "idempotentHint",
+            "openWorldHint",
+        ] {
+            assert!(tool["annotations"][hint].is_boolean(), "{name} {hint}");
+        }
+        if tool["annotations"]["readOnlyHint"] == true {
+            assert_eq!(tool["annotations"]["destructiveHint"], false, "{name}");
+        }
+    }
+    assert_eq!(
+        tools.iter().find(|t| t["name"] == "get_voxels").unwrap()["annotations"]["readOnlyHint"],
+        true
+    );
+    assert_eq!(
+        tools.iter().find(|t| t["name"] == "save_file").unwrap()["annotations"]["destructiveHint"],
+        true
+    );
+}
