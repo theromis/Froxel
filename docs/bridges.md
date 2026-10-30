@@ -147,7 +147,9 @@ The settings are properties of the node (`bake_voxel_size`, `bake_origin`,
 `bake_apply_transform`, `bake_collision`), so a script sets them before
 `bake_to`.
 
-`wait_schema` and `bake_to` return `""` on success. They wait up to 300 seconds, the same deadline the server gives a script run; pass `timeout_msec` to change it.
+`wait_schema` and `bake_to` return `""` on success, or the error text,
+including the server's own message. They wait up to 420 seconds, a minute
+longer than the server waits for a reply; pass `timeout_msec` to change it.
 
 Godot 4.3+ is the target and 4.5 is tested. The glTF import uses
 `GLTFDocument`.
@@ -222,6 +224,12 @@ Types:
 
 A frame is at most 65536 bytes, so keep the lists of one `evaluate` below
 about 4000 numbers in all.
+
+The scripts of one `evaluate` share a 300-second limit. A run past it
+returns `error` with `bake timed out after 300 s`. The server answers every
+request within 360 seconds, the limit plus a minute for a request queued
+behind the editor and for the export; past that the message is `bake timed
+out after 360 s` (or `describe timed out after 360 s`).
 
 Omitted keys keep their current values. Unknown keys, a wrong type, or a
 value outside the range is an error and does not write a new glb. The latest

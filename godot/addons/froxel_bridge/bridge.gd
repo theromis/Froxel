@@ -7,6 +7,11 @@ extends Node3D
 ## settings can scale it to metres, move its origin, keep this node's transform and add a simple
 ## collision shape; the scene then has an unscaled root with Visual and Collision children.
 
+## The server answers a request within 360 s: 300 s for the scripts of one evaluate, plus a
+## minute for a queued job and the export. The client waits a minute longer, so the server's
+## own error, such as "bake timed out after 360 s", arrives first.
+const WAIT_TIMEOUT_MSEC := 420000
+
 enum BakeOrigin { SOURCE, CENTER, BOTTOM_CENTER }
 enum BakeCollision { NONE, BOX, CAPSULE }
 
@@ -415,7 +420,7 @@ func set_parameter(parameter_name: String, value: Variant) -> String:
 	fault = ""
 	return ""
 
-func wait_schema(timeout_msec: int = 300000) -> String:
+func wait_schema(timeout_msec: int = WAIT_TIMEOUT_MSEC) -> String:
 	if fault != "":
 		return fault
 	if get_tree() == null:
@@ -430,10 +435,10 @@ func wait_schema(timeout_msec: int = 300000) -> String:
 		if described:
 			return ""
 		await get_tree().process_frame
-	fail("Schema timed out: " + status)
+	fail("Schema timed out after %s s: %s" % [timeout_msec / 1000.0, status])
 	return fault
 
-func bake_to(path: String, timeout_msec: int = 300000) -> String:
+func bake_to(path: String, timeout_msec: int = WAIT_TIMEOUT_MSEC) -> String:
 	if fault != "":
 		return fault
 	if get_tree() == null:
@@ -459,7 +464,7 @@ func bake_to(path: String, timeout_msec: int = 300000) -> String:
 			bake()
 			return fault
 		await get_tree().process_frame
-	fail("Bake timed out: " + status)
+	fail("Bake timed out after %s s: %s" % [timeout_msec / 1000.0, status])
 	return fault
 
 func bake() -> void:

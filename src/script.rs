@@ -1106,6 +1106,7 @@ impl Session {
     }
 
     /// Run the object's script on this thread, stopping at `SCRIPT_TIMEOUT`.
+    #[cfg(test)]
     pub fn regenerate_script(&mut self, index: usize) -> Result<(), String> {
         self.regenerate_script_within(index, Some(SCRIPT_TIMEOUT))
     }

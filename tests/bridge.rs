@@ -305,7 +305,7 @@ for x in 0..side {
 
 #[test]
 fn a_silent_or_unauthenticated_connection_is_dropped() {
-    let server = BridgeServer::launch(0, Duration::from_millis(200)).unwrap();
+    let server = BridgeServer::launch(0, Duration::from_millis(200), REPLY_TIMEOUT).unwrap();
     let mut session = scripted();
     let session_path = server.session_path.clone();
     let port = server.port;
@@ -325,6 +325,53 @@ fn a_silent_or_unauthenticated_connection_is_dropped() {
         assert_eq!(stranger.read.read_line(&mut rest).unwrap(), 0, "{rest}");
     });
     serve_until(&server, &mut session, client);
+}
+
+#[test]
+fn the_reply_waits_out_the_script_limit_and_names_the_timeout() {
+    assert!(REPLY_TIMEOUT > SCRIPT_TIMEOUT);
+    let server = BridgeServer::launch(0, AUTH_TIMEOUT, Duration::from_millis(200)).unwrap();
+    let session_path = server.session_path.clone();
+    let client = thread::spawn(move || {
+        let mut client = Client::connect(&session_path);
+        let reply = client.call("evaluate", Some(json!({"values": {}})));
+        assert_eq!(reply["op"], "error");
+        assert_eq!(reply["id"], 1);
+        assert_eq!(reply["message"], "bake timed out after 0.2 s");
+    });
+    // Nobody answers the job, as when the editor is busy past the wait.
+    let started = std::time::Instant::now();
+    let mut held = Vec::new();
+    while !client.is_finished() {
+        if let Ok(Some(job)) = server.wait(Duration::from_millis(50)) {
+            held.push(job);
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "no timeout reply"
+        );
+    }
+    client.join().unwrap();
+    assert_eq!(held.len(), 1);
+}
+
+#[test]
+fn an_evaluate_past_its_budget_names_the_bake_and_keeps_the_document() {
+    let mut session = scripted();
+    let root = temp_root("budget");
+    let before = session.objects[0].cells.clone();
+    let err = evaluate_within(
+        &mut session,
+        &root,
+        1,
+        &map(&[("side", json!(3))]),
+        Duration::ZERO,
+    )
+    .unwrap_err();
+    assert_eq!(err, "bake timed out after 0 s");
+    assert_eq!(session.objects[0].cells, before);
+    assert!(!root.join("result-1.glb").exists());
+    let _ = fs::remove_dir_all(root);
 }
 
 fn serve_until(server: &BridgeServer, session: &mut Session, client: thread::JoinHandle<()>) {

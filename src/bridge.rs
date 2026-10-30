@@ -15,11 +15,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Map, Value};
 
-use crate::script::ParamValue;
+use crate::script::{ParamValue, SCRIPT_TIMEOUT};
 use crate::state::Session;
 
 pub const DEFAULT_PORT: u16 = 29771;
@@ -28,6 +28,11 @@ const KEPT_RESULTS: usize = 8;
 /// A connection has this long to send a request that passes the token check.
 /// Until then a silent peer would hold the one client slot.
 const AUTH_TIMEOUT: Duration = Duration::from_secs(5);
+/// Every script of one evaluate shares `SCRIPT_TIMEOUT`. The reply wait adds
+/// this much for a job queued behind the editor and for the glTF export, so
+/// a run that ends in time is never answered with a timeout.
+const REPLY_MARGIN: Duration = Duration::from_secs(60);
+pub const REPLY_TIMEOUT: Duration = SCRIPT_TIMEOUT.saturating_add(REPLY_MARGIN);
 
 #[derive(Debug)]
 pub enum Op {
@@ -52,10 +57,10 @@ pub struct BridgeServer {
 
 impl BridgeServer {
     pub fn start(port: u16) -> io::Result<Self> {
-        Self::launch(port, AUTH_TIMEOUT)
+        Self::launch(port, AUTH_TIMEOUT, REPLY_TIMEOUT)
     }
 
-    fn launch(port: u16, auth_timeout: Duration) -> io::Result<Self> {
+    fn launch(port: u16, auth_timeout: Duration, reply_timeout: Duration) -> io::Result<Self> {
         let token = random_token()?;
         let root = std::env::temp_dir().join(format!("froxel-bridge-{}", &token[..16]));
         let _guard = DirGuard(root.clone());
@@ -91,6 +96,7 @@ impl BridgeServer {
                     listener,
                     token,
                     auth_timeout,
+                    reply_timeout,
                     tx,
                     wake_thread,
                     shutdown_thread,
@@ -343,6 +349,19 @@ fn evaluate(
     id: i64,
     values: &Map<String, Value>,
 ) -> Result<Value, String> {
+    evaluate_within(session, root, id, values, SCRIPT_TIMEOUT)
+}
+
+/// The scripts of all objects share `budget`, so the reply wait in
+/// `serve_conn` bounds the whole run.
+fn evaluate_within(
+    session: &mut Session,
+    root: &Path,
+    id: i64,
+    values: &Map<String, Value>,
+    budget: Duration,
+) -> Result<Value, String> {
+    let deadline = Instant::now() + budget;
     let path = root.join(format!("result-{id}.glb"));
     // One undo step in the window. A rejected value or a failing script
     // leaves the document as it was.
@@ -353,7 +372,20 @@ fn evaluate(
             if session.objects[index].script.source.is_empty() {
                 continue;
             }
-            session.regenerate_script(index)?;
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                return Err(timed_out("bake", budget));
+            }
+            // The script's own message would name the leftover seconds.
+            session
+                .regenerate_script_within(index, Some(left))
+                .map_err(|err| {
+                    if Instant::now() >= deadline {
+                        timed_out("bake", budget)
+                    } else {
+                        err
+                    }
+                })?;
         }
         let options = crate::export::MeshExport {
             vertex_colors: session.export.vertex_colors,
@@ -592,6 +624,7 @@ fn accept_loop(
     listener: TcpListener,
     token: String,
     auth_timeout: Duration,
+    reply_timeout: Duration,
     tx: Sender<BridgeJob>,
     wake: Arc<Mutex<Option<egui::Context>>>,
     shutdown: Arc<AtomicBool>,
@@ -606,7 +639,7 @@ fn accept_loop(
         if shutdown.load(Ordering::Relaxed) {
             break;
         }
-        if let Err(err) = serve_conn(conn, &token, auth_timeout, &tx, &wake) {
+        if let Err(err) = serve_conn(conn, &token, auth_timeout, reply_timeout, &tx, &wake) {
             eprintln!("bridge connection: {err}");
         }
     }
@@ -616,6 +649,7 @@ fn serve_conn(
     mut conn: TcpStream,
     token: &str,
     auth_timeout: Duration,
+    reply_timeout: Duration,
     tx: &Sender<BridgeJob>,
     wake: &Mutex<Option<egui::Context>>,
 ) -> io::Result<()> {
@@ -658,6 +692,10 @@ fn serve_conn(
                         authenticated = true;
                         conn.set_read_timeout(None)?;
                     }
+                    let what = match op {
+                        Op::Describe => "describe",
+                        Op::Evaluate(_) => "bake",
+                    };
                     let (reply_tx, reply_rx) = mpsc::channel();
                     if tx
                         .send(BridgeJob {
@@ -672,7 +710,7 @@ fn serve_conn(
                     if let Some(ctx) = wake.lock().expect("bridge wake").as_ref() {
                         ctx.request_repaint();
                     }
-                    let body = match reply_rx.recv_timeout(Duration::from_secs(60)) {
+                    let body = match reply_rx.recv_timeout(reply_timeout) {
                         Ok(Ok(mut value)) => {
                             if let Some(object) = value.as_object_mut() {
                                 object.insert("v".into(), json!(1));
@@ -681,7 +719,12 @@ fn serve_conn(
                             value
                         }
                         Ok(Err(message)) => error_body(id, &message),
-                        Err(_) => error_body(id, "timeout"),
+                        Err(RecvTimeoutError::Timeout) => {
+                            error_body(id, &timed_out(what, reply_timeout))
+                        }
+                        Err(RecvTimeoutError::Disconnected) => {
+                            error_body(id, &format!("{what} was dropped by Froxel"))
+                        }
                     };
                     write_json(&mut write, &body)?;
                 }
@@ -700,6 +743,10 @@ fn serve_conn(
         }
     }
     Ok(())
+}
+
+fn timed_out(what: &str, after: Duration) -> String {
+    format!("{what} timed out after {} s", after.as_secs_f64())
 }
 
 fn error_body(id: i64, message: &str) -> Value {
