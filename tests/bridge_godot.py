@@ -122,6 +122,40 @@ func aabb(box: AABB) -> Array:
 """
 
 
+# A script with a point list, for the list-parameter check.
+LIST_SCRIPT = """let path = param_vec2s("path", [[0.0, 0.0], [3.0, 0.0]], 0.0, 12.0, 4);
+for p in path {
+    fill_box(to_int(p[0]), to_int(p[1]), 0, to_int(p[0]), to_int(p[1]), 2, 1);
+}
+"""
+
+# The inspector type of the list parameter and what a set_parameter sends.
+CHECK_LIST = """extends SceneTree
+
+func _initialize() -> void:
+\tcall_deferred("run")
+
+func run() -> void:
+\tvar bridge: Node3D = load("res://addons/froxel_bridge/bridge.gd").new()
+\troot.add_child(bridge)
+\tbridge.session_file = OS.get_cmdline_user_args()[0]
+\tbridge.connect_bridge()
+\tvar error: String = await bridge.wait_schema()
+\tvar report := {"schema_error": error}
+\tfor entry in bridge.get_property_list():
+\t\tif str(entry.name).ends_with("/path"):
+\t\t\treport["type"] = entry.type
+\treport["value"] = typeof(bridge.values["0/path"])
+\treport["set"] = bridge.set_parameter("path", [[1, 2], [5, 6.5]])
+\treport["wire"] = bridge.wire_values()["0/path"]
+\treport["long"] = bridge.set_parameter("path", [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]])
+\treport["range"] = bridge.set_parameter("path", [[0, 13]])
+\treport["shape"] = bridge.set_parameter("path", [1, 2])
+\tprint("LIST=", JSON.stringify(report))
+\tquit(0)
+"""
+
+
 def near(a, b, tolerance=1e-3):
     return abs(a - b) <= tolerance * max(1.0, abs(b))
 
@@ -244,8 +278,84 @@ def main():
     assert near(y, 2.0) and near(x + w / 2, 1.0) and near(z + d / 2, 3.0), f"node transform not kept: {entry}"
     assert "capsule" in entry, entry
 
+    check_lists(work, project, run_godot, line)
+
     shutil.rmtree(work, ignore_errors=True)
-    print("ok: raw, placed, capsule and moved bakes; a failed bake kept the previous scene")
+    print("ok: raw, placed, capsule and moved bakes; a failed bake kept the previous scene;")
+    print("ok: a vec2s parameter is a PackedVector2Array, bakes from variants.json, and is refused too long")
+
+
+def make_list_vox(path):
+    """A .vox whose script declares a vec2s parameter, written by `froxel mcp`."""
+    calls = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+         "params": {"name": "set_script", "arguments": {"source": LIST_SCRIPT}}},
+        {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+         "params": {"name": "regenerate", "arguments": {}}},
+        {"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+         "params": {"name": "save_file", "arguments": {"path": str(path)}}},
+    ]
+    done = subprocess.run(
+        [str(BIN), "mcp"],
+        input="".join(json.dumps(call) + "\n" for call in calls),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    replies = [json.loads(entry) for entry in done.stdout.splitlines() if entry.strip()]
+    for reply in replies:
+        assert not reply.get("result", {}).get("isError"), reply
+    assert path.is_file(), done.stdout + done.stderr
+
+
+def check_lists(work, project, run_godot, line):
+    vox = work / "path.vox"
+    make_list_vox(vox)
+    (project / "check_list.gd").write_text(CHECK_LIST)
+    bridge = subprocess.Popen(
+        [str(BIN), "bridge", "--input", str(vox), "--port", "0"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    try:
+        session = ""
+        assert bridge.stdout is not None
+        for _ in range(20):
+            entry = bridge.stdout.readline()
+            if entry.startswith("FROXEL_SESSION="):
+                session = entry.strip().split("=", 1)[1]
+                break
+        if not session:
+            raise SystemExit("no FROXEL_SESSION line for the list document")
+        report = line(run_godot("--script", "res://check_list.gd", "--", session).stdout, "LIST=")
+        packed_vector2_array = 35
+        assert report["schema_error"] == "", report
+        assert report["type"] == packed_vector2_array and report["value"] == packed_vector2_array, report
+        assert report["set"] == "" and report["wire"] == [[1, 2], [5, 6.5]], report
+        assert "at most 4" in report["long"], report
+        assert "outside" in report["range"], report
+        assert "Expected a list" in report["shape"], report
+
+        def bake(out, values, check=True):
+            variants = work / "path_variants.json"
+            variants.write_text(json.dumps(values))
+            return run_godot(
+                "--script", "res://addons/froxel_bridge/bake.gd", "--",
+                "--session", session, "--out", out, "--variants", str(variants),
+                check=check,
+            )
+
+        bake("res://out/path_%d.tscn", [{"path": [[0, 0], [8, 0], [8, 6]]}, {"path": [[2, 2]]}])
+        assert (project / "out" / "path_0.tscn").is_file() and (project / "out" / "path_1.tscn").is_file()
+        refused = bake("res://out/path_long.tscn", [{"path": [[0, 0]] * 5}], check=False)
+        assert refused.returncode != 0, refused.stdout
+        assert "at most 4" in refused.stdout + refused.stderr, refused.stdout + refused.stderr
+        assert not (project / "out" / "path_long.tscn").exists()
+    finally:
+        bridge.terminate()
+        bridge.wait(timeout=10)
 
 
 if __name__ == "__main__":

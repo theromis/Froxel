@@ -427,3 +427,54 @@ impl Client {
         serde_json::from_str(&line).unwrap()
     }
 }
+
+#[test]
+fn list_parameters_are_in_the_schema_and_checked_on_evaluate() {
+    let mut session = Session::new();
+    session
+        .set_script(
+            0,
+            r#"
+let path = param_vec2s("path", [[0.0, 0.0], [2.0, 1.0]], 0.0, 8.0, 4);
+for p in path { set(to_int(p[0]), to_int(p[1]), 0, 1); }
+"#,
+        )
+        .unwrap();
+    let schema = dispatch(&mut session, Path::new("."), 1, &Op::Describe).unwrap();
+    let spec = &schema["parameters"][0];
+    assert_eq!(spec["type"], "vec2s");
+    assert_eq!(spec["value"], json!([[0, 0], [2, 1]]));
+    assert_eq!(spec["min"], json!(0.0));
+    assert_eq!(spec["max"], json!(8.0));
+    assert_eq!(spec["maxLen"], 4);
+
+    let root = temp_root("lists");
+    let err = dispatch(
+        &mut session,
+        &root,
+        2,
+        &Op::Evaluate(map(&[(
+            "path",
+            json!([[0, 0], [1, 1], [2, 2], [3, 3], [4, 4]]),
+        )])),
+    )
+    .unwrap_err();
+    assert!(err.contains("parameter `path`: has 5 entries"), "{err}");
+    let err = dispatch(
+        &mut session,
+        &root,
+        3,
+        &Op::Evaluate(map(&[("path", json!([[0, 9]]))])),
+    )
+    .unwrap_err();
+    assert!(err.contains("outside 0..=8"), "{err}");
+    dispatch(
+        &mut session,
+        &root,
+        4,
+        &Op::Evaluate(map(&[("path", json!([[5, 5], [6, 7]]))])),
+    )
+    .unwrap();
+    assert_eq!(session.objects[0].cells.get(&(6, 7, 0)), Some(&1));
+    let _ = fs::remove_dir_all(root);
+}

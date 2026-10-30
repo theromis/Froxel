@@ -134,6 +134,12 @@ func wire_values() -> Dictionary:
 		var value = values[key]
 		if value is Color:
 			value = [value.r, value.g, value.b]
+		elif value is PackedFloat32Array:
+			value = Array(value)
+		elif value is PackedVector2Array:
+			value = Array(value).map(func(point: Vector2): return [point.x, point.y])
+		elif value is PackedVector3Array:
+			value = Array(value).map(func(point: Vector3): return [point.x, point.y, point.z])
 		result[key] = value
 	return result
 
@@ -195,6 +201,8 @@ func apply_schema(incoming: Array) -> void:
 				value = bool(value)
 			"float":
 				value = float(value)
+			"floats", "vec2s", "vec3s":
+				value = to_list(value, str(spec.type))
 		var id := str(spec.id)
 		values[id] = previous[id] if still_valid(previous.get(id), spec) else value
 		var group := str(spec.objectName).replace("/", " ")
@@ -224,7 +232,67 @@ func still_valid(value: Variant, spec: Dictionary) -> bool:
 			return value is int and value >= int(spec.min) and value <= int(spec.max)
 		"float":
 			return value is float and value >= float(spec.min) and value <= float(spec.max)
+		"floats", "vec2s", "vec3s":
+			return typeof(value) == LIST_TYPES[str(spec.type)] and list_error(value, spec) == ""
 	return false
+
+const LIST_TYPES := {
+	"floats": TYPE_PACKED_FLOAT32_ARRAY,
+	"vec2s": TYPE_PACKED_VECTOR2_ARRAY,
+	"vec3s": TYPE_PACKED_VECTOR3_ARRAY,
+}
+
+## A list parameter as its packed array: numbers for floats, [x, y] or Vector2 for vec2s,
+## [x, y, z] or Vector3 for vec3s. Null when an entry has the wrong shape.
+func to_list(value: Variant, kind: String) -> Variant:
+	if typeof(value) == LIST_TYPES[kind]:
+		return value
+	if not (value is Array or value is PackedFloat32Array or value is PackedFloat64Array \
+			or value is PackedVector2Array or value is PackedVector3Array):
+		return null
+	var out: Variant
+	match kind:
+		"floats":
+			out = PackedFloat32Array()
+		"vec2s":
+			out = PackedVector2Array()
+		_:
+			out = PackedVector3Array()
+	for entry in value:
+		match kind:
+			"floats":
+				if not (entry is int or entry is float):
+					return null
+				out.append(float(entry))
+			"vec2s":
+				if entry is Vector2:
+					out.append(entry)
+				elif entry is Array and entry.size() == 2:
+					out.append(Vector2(float(entry[0]), float(entry[1])))
+				else:
+					return null
+			_:
+				if entry is Vector3:
+					out.append(entry)
+				elif entry is Array and entry.size() == 3:
+					out.append(Vector3(float(entry[0]), float(entry[1]), float(entry[2])))
+				else:
+					return null
+	return out
+
+## "" when a packed list fits the parameter's length and range, else the reason.
+func list_error(value: Variant, spec: Dictionary) -> String:
+	if value.size() > int(spec.maxLen):
+		return "has %d entries; at most %d are allowed" % [value.size(), int(spec.maxLen)]
+	var low := float(spec.min)
+	var high := float(spec.max)
+	for index in value.size():
+		var entry = value[index]
+		var parts: Array = [entry] if entry is float else ([entry.x, entry.y] if entry is Vector2 else [entry.x, entry.y, entry.z])
+		for part in parts:
+			if part < low or part > high:
+				return "entry %d is outside %s..=%s" % [index, spec.min, spec.max]
+	return ""
 
 func queue_evaluation() -> void:
 	dirty = true
@@ -237,6 +305,7 @@ func _get_property_list() -> Array[Dictionary]:
 		"usage": PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY,
 	}]
 	var types := {"bool": TYPE_BOOL, "int": TYPE_INT, "float": TYPE_FLOAT, "color": TYPE_COLOR}
+	types.merge(LIST_TYPES)
 	var opened := {}
 	for prop in fields:
 		var spec := spec_by_id(str(fields[prop]))
@@ -322,6 +391,15 @@ func set_parameter(parameter_name: String, value: Variant) -> String:
 				typed = Color(value[0], value[1], value[2])
 			elif not (value is Color):
 				fail("Expected color for " + parameter_name)
+				return fault
+		"floats", "vec2s", "vec3s":
+			typed = to_list(value, str(spec.type))
+			if typed == null:
+				fail("Expected a list of %s for %s" % [{"floats": "numbers", "vec2s": "[x, y] points", "vec3s": "[x, y, z] points"}[str(spec.type)], parameter_name])
+				return fault
+			var reason := list_error(typed, spec)
+			if reason != "":
+				fail("%s %s" % [parameter_name, reason])
 				return fault
 		_:
 			fail("Unsupported parameter type for " + parameter_name)

@@ -281,15 +281,16 @@ fn parameters(session: &Session) -> Vec<Value> {
     let mut out = Vec::new();
     for (index, object) in session.objects.iter().enumerate() {
         for param in &object.script.params {
-            let (kind, value, min, max) = match param.value {
-                ParamValue::Float { value, min, max } => {
+            let mut max_len = None;
+            let (kind, value, min, max) = match &param.value {
+                &ParamValue::Float { value, min, max } => {
                     ("float", json!(value), Some(json!(min)), Some(json!(max)))
                 }
-                ParamValue::Int { value, min, max } => {
+                &ParamValue::Int { value, min, max } => {
                     ("int", json!(value), Some(json!(min)), Some(json!(max)))
                 }
-                ParamValue::Bool(value) => ("bool", json!(value), None, None),
-                ParamValue::Color([r, g, b]) => (
+                &ParamValue::Bool(value) => ("bool", json!(value), None, None),
+                &ParamValue::Color([r, g, b]) => (
                     "color",
                     json!([
                         f64::from(r) / 255.0,
@@ -299,6 +300,21 @@ fn parameters(session: &Session) -> Vec<Value> {
                     None,
                     None,
                 ),
+                ParamValue::Floats {
+                    values,
+                    width,
+                    min,
+                    max,
+                    max_len: len,
+                } => {
+                    max_len = Some(*len);
+                    (
+                        crate::script::list_kind(*width),
+                        crate::script::floats_json(values, *width),
+                        Some(json!(min)),
+                        Some(json!(max)),
+                    )
+                }
             };
             let mut spec = json!({
                 "id": format!("{index}/{}", param.name),
@@ -311,6 +327,9 @@ fn parameters(session: &Session) -> Vec<Value> {
             if let (Some(min), Some(max)) = (min, max) {
                 spec["min"] = min;
                 spec["max"] = max;
+            }
+            if let Some(max_len) = max_len {
+                spec["maxLen"] = json!(max_len);
             }
             out.push(spec);
         }
@@ -462,6 +481,27 @@ fn coerce(key: &str, value: &Value, spec: &ParamValue) -> Result<ParamValue, Str
                 }
             }
             Ok(ParamValue::Color(rgb))
+        }
+        ParamValue::Floats {
+            width,
+            min,
+            max,
+            max_len,
+            ..
+        } => {
+            let values = crate::script::floats_from_json(value, *width)
+                .and_then(|values| {
+                    crate::script::check_floats(&values, *width, *min, *max, *max_len)
+                        .map(|_| values)
+                })
+                .map_err(|err| fail(&err))?;
+            Ok(ParamValue::Floats {
+                values,
+                width: *width,
+                min: *min,
+                max: *max,
+                max_len: *max_len,
+            })
         }
     }
 }

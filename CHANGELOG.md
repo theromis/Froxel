@@ -4,6 +4,14 @@
 
 ### Added
 
+- Script list parameters: `param_floats`, `param_vec2s`, and `param_vec3s`
+  declare a list of numbers or of 2D or 3D points with a range and a longest
+  length, for a polyline or a curve. The `.vox` keeps them with the other
+  parameters (`MVSC` kind 4). The Script panel edits a list as one line of
+  text. MCP `set_params`, the bridge `evaluate`, Godot `set_parameter`, and
+  `variants.json` take a JSON list and refuse one that is too long or out of
+  range. The Godot inspector shows them as packed arrays and Blender as a
+  JSON text field. Scripts can loop over an array with `for` and call `len()`.
 - Hand sculpting is a named workflow, described in `docs/hand-sculpting.md`:
   block out with fills, refine with `set_voxels`, render after every step.
   The MCP server instructions point to it.

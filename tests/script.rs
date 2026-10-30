@@ -308,3 +308,166 @@ fn version_one_script_metadata_remains_readable() {
     assert_eq!(scripts[0].script.source, ROW);
     assert_eq!(scripts[0].local_min, None);
 }
+
+const SHORE: &str = r#"
+let heights = param_floats("heights", [1.0, 2, 3.0], 0.0, 8.0, 16);
+let path = param_vec2s("path", [[0.0, 0.0], [4.0, 2.0]], -32.0, 32.0, 64);
+let posts = param_vec3s("posts", [], 0.0, 16.0, 8);
+let x = 0;
+for h in heights {
+    set(x, 0, to_int(h), 1);
+    x += 1;
+}
+for p in path {
+    set(to_int(p[0]), to_int(p[1]), 10, 2);
+}
+set(heights.len(), path.len(), 20 + posts.len(), 3);
+"#;
+
+#[test]
+fn list_parameters_are_arrays_of_numbers_and_points() {
+    let mut session = Session::new();
+    session.replace_empty();
+    session.set_script(0, SHORE).unwrap();
+    let params = &session.objects[0].script.params;
+    assert_eq!(
+        params[0].value,
+        ParamValue::Floats {
+            values: vec![1.0, 2.0, 3.0],
+            width: 1,
+            min: 0.0,
+            max: 8.0,
+            max_len: 16,
+        }
+    );
+    assert_eq!(
+        param_json(&params[1]),
+        serde_json::json!({
+            "name": "path", "kind": "vec2s", "value": [[0, 0], [4, 2]],
+            "min": -32, "max": 32, "maxLen": 64,
+        })
+    );
+    assert_eq!(param_json(&params[2])["kind"], "vec3s");
+    session.regenerate_script(0).unwrap();
+    let cells = cells_of(&session);
+    assert_eq!(cells.get(&(2, 0, 3)), Some(&1));
+    assert_eq!(cells.get(&(4, 2, 10)), Some(&2));
+    assert_eq!(cells.get(&(3, 2, 20)), Some(&3));
+
+    let spec = session.objects[0].script.params[1].value.clone();
+    let longer = parse_param(&spec, &serde_json::json!([[1, 1], [2, 5], [-3, 7.5]])).unwrap();
+    session
+        .set_script_params(0, &[("path".into(), longer)])
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    assert_eq!(session.objects[0].cells.get(&(2, 5, 10)), Some(&2));
+    assert_eq!(session.objects[0].cells.get(&(3, 3, 20)), Some(&3));
+}
+
+#[test]
+fn a_list_too_long_or_out_of_range_is_refused() {
+    let mut session = Session::new();
+    session.replace_empty();
+    session.set_script(0, SHORE).unwrap();
+    let floats = session.objects[0].script.params[0].value.clone();
+    let path = session.objects[0].script.params[1].value.clone();
+    let err = parse_param(&floats, &serde_json::json!(vec![0.0; 17])).unwrap_err();
+    assert!(err.contains("17 entries; at most 16"), "{err}");
+    let err = parse_param(&floats, &serde_json::json!([1, 9])).unwrap_err();
+    assert!(
+        err.contains("entry 1") && err.contains("outside 0..=8"),
+        "{err}"
+    );
+    let err = parse_param(&path, &serde_json::json!([[1, 2, 3]])).unwrap_err();
+    assert!(err.contains("point of 2 numbers"), "{err}");
+    let err = parse_param(&path, &serde_json::json!([1, 2])).unwrap_err();
+    assert!(err.contains("entry 0"), "{err}");
+    let err = parse_param(&floats, &serde_json::json!(3)).unwrap_err();
+    assert!(err.contains("a list of numbers"), "{err}");
+
+    let err = session
+        .write_script_floats(0, "heights", vec![9.0])
+        .unwrap_err();
+    assert!(err.contains("outside"), "{err}");
+    session
+        .write_script_floats(0, "heights", vec![4.0])
+        .unwrap();
+
+    for (source, needle) in [
+        (
+            r#"param_floats("a", [1.0, 9.0], 0.0, 4.0, 4);"#,
+            "default: entry 1",
+        ),
+        (
+            r#"param_floats("a", [], 0.0, 4.0, 0);"#,
+            "max_len must be 1..=4096",
+        ),
+        (
+            r#"param_vec3s("a", [], 0.0, 4.0, 2000);"#,
+            "max_len must be 1..=1365",
+        ),
+        (r#"param_vec2s("a", [[1.0]], 0.0, 4.0, 4);"#, "point of 2"),
+        (r#"param_floats("a", [], 4.0, 0.0, 4);"#, "empty range"),
+    ] {
+        let err = session.set_script(0, source).unwrap_err();
+        assert!(err.contains(needle), "{source}: {err}");
+    }
+}
+
+#[test]
+fn a_stored_list_is_kept_clamped_and_cut_to_the_new_declaration() {
+    let mut session = Session::new();
+    session.replace_empty();
+    session
+        .set_script(
+            0,
+            r#"param_floats("h", [1.0, 2.0, 3.0, 4.0], 0.0, 8.0, 8);"#,
+        )
+        .unwrap();
+    session
+        .write_script_floats(0, "h", vec![7.0, 6.0, 5.0])
+        .unwrap();
+    session
+        .set_script(0, r#"param_floats("h", [], 0.0, 5.5, 2);"#)
+        .unwrap();
+    assert_eq!(
+        session.objects[0].script.params[0].value,
+        ParamValue::Floats {
+            values: vec![5.5, 5.5],
+            width: 1,
+            min: 0.0,
+            max: 5.5,
+            max_len: 2,
+        }
+    );
+    // A list of another width starts from the default.
+    session
+        .set_script(0, r#"param_vec2s("h", [[1.0, 1.0]], 0.0, 5.5, 2);"#)
+        .unwrap();
+    assert_eq!(
+        param_json(&session.objects[0].script.params[0])["value"],
+        serde_json::json!([[1, 1]])
+    );
+}
+
+#[test]
+fn list_parameters_round_trip_through_the_chunk() {
+    let mut session = Session::new();
+    session.replace_empty();
+    session.set_script(0, SHORE).unwrap();
+    session
+        .write_script_floats(0, "posts", vec![1.5, 2.0, 3.25, 0.0, 16.0, 8.0])
+        .unwrap();
+    let body = encode_chunk(&session.objects).unwrap();
+    let scripts = decode_chunk(&body).unwrap();
+    assert_eq!(scripts[0].script.params, session.objects[0].script.params);
+
+    let mut bad = body.clone();
+    let at = bad.windows(5).rposition(|w| w == b"posts").unwrap() + 5;
+    assert_eq!(bad[at], 4);
+    bad[at + 1] = 5;
+    let Err(err) = decode_chunk(&bad) else {
+        panic!("width 5 was read");
+    };
+    assert!(err.contains("width"), "{err}");
+}

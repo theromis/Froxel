@@ -61,7 +61,9 @@ an example project with the plugin already enabled.
 
 Create a Node3D of type **FroxelBridge**. Set **Session File** to the printed
 path and click **Connect / Refresh**. Parameters show up under the object
-name. Edits update the preview after a short pause. Set **Bake Path** and
+name. A `floats`, `vec2s`, or `vec3s` parameter is a PackedFloat32Array,
+PackedVector2Array, or PackedVector3Array in the inspector; a list that is too
+long or out of range is reported in **Bridge Status**. Edits update the preview after a short pause. Set **Bake Path** and
 click **Bake standalone scene**. The `.tscn` is a normal scene with embedded
 resources. The bridge node does not poll during a running game.
 
@@ -110,6 +112,11 @@ godot --headless --path godot \
 ]
 ```
 
+A list parameter takes a JSON list, for example
+`{"shore": [[0, 0], [12, 4], [20, 3]]}` for a `vec2s`. A variant that is too
+long or out of range stops the bake with the reason, and no scene is written
+for it.
+
 The same bake settings, headless. Without them the scenes are the raw import.
 The headless node has no transform of its own.
 
@@ -132,6 +139,7 @@ bridge.session_file = session_path
 bridge.connect_bridge()
 var error := await bridge.wait_schema()
 error = bridge.set_parameter("radius", 12.0)
+error = bridge.set_parameter("shore", [[0, 0], [12, 4]])
 error = await bridge.bake_to("res://baked/pad.tscn")
 ```
 
@@ -158,7 +166,9 @@ python3 tools/package_bridge.py
 
 and install `dist/froxel_bridge.zip`. In the 3D View sidebar, open the **Froxel**
 tab, choose the session file, and click **Connect / Refresh**. Sliders match
-the script parameters and stop at their range. **Bake into scene** duplicates
+the script parameters and stop at their range. A list parameter is a text
+field holding JSON, such as `[[0, 0], [12, 4]]`; the label gives its longest
+length. **Bake into scene** duplicates
 the current import under an empty named `FroxelBake` and leaves the live
 preview in place.
 
@@ -191,7 +201,7 @@ connection open.
 
 Replies echo `v` and `id`:
 
-- `schema`: `parameters`, each `{id, name, object, objectName, type, value, min?, max?}`
+- `schema`: `parameters`, each `{id, name, object, objectName, type, value, min?, max?, maxLen?}`
 - `result`: absolute `path` of a glb inside the session directory
 - `error`: `message`
 
@@ -206,6 +216,12 @@ Types:
 | `int` | integer | inclusive `min` / `max` |
 | `float` | number | inclusive `min` / `max` |
 | `color` | `[r, g, b]` or `[r, g, b, a]` | components in 0..1; alpha is ignored |
+| `floats` | `[a, b, …]` | every number in `min` / `max`; at most `maxLen` entries |
+| `vec2s` | `[[x, y], …]` | each coordinate in `min` / `max`; at most `maxLen` points |
+| `vec3s` | `[[x, y, z], …]` | each coordinate in `min` / `max`; at most `maxLen` points |
+
+A frame is at most 65536 bytes, so keep the lists of one `evaluate` below
+about 4000 numbers in all.
 
 Omitted keys keep their current values. Unknown keys, a wrong type, or a
 value outside the range is an error and does not write a new glb. The latest

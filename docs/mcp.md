@@ -482,10 +482,14 @@ omitted) and runs it once only to discover parameters. The voxels stay as
 they were. A script that does not run is still stored, and the error text
 includes the line. `set_params` takes `values`, an object whose keys are
 parameter names. Numbers fill float and int parameters, booleans fill bool
-parameters, and `[r, g, b]` fills a color. Values outside the declared range
-are an error. `list_params` and `get_script` return each parameter as
-`{name, kind, value}` plus `min` and `max` for float and int. `kind` is
-`float`, `int`, `bool`, or `color`.
+parameters, and `[r, g, b]` fills a color. A list of numbers fills a
+`floats` parameter, and a list of `[x, y]` or `[x, y, z]` arrays fills `vec2s`
+or `vec3s`. Values outside the declared range, and a list with more than
+`maxLen` entries, are an error that names the parameter and the entry; nothing
+is written. `list_params` and `get_script` return each parameter as
+`{name, kind, value}` plus `min` and `max` for float, int, and the lists, and
+`maxLen` for the lists. `kind` is `float`, `int`, `bool`, `color`, `floats`,
+`vec2s`, or `vec3s`. The script calls are in `docs/scripting.md`.
 
 `regenerate` runs the stored script in the sandbox and, on success, replaces
 every object the script wrote. That is one undo step. There is no operation

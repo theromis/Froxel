@@ -2,7 +2,7 @@
 
 A Froxel script is a [Rhai](https://rhai.rs/) program stored on an object.
 It declares parameters, then fills voxels. The editor shows one slider (or a
-checkbox, or a color) per parameter. **Regenerate** runs the script.
+checkbox, a color, or a text field for a list) per parameter. **Regenerate** runs the script.
 Opening a file never runs it: the `.vox` already contains the voxels the
 script produced last time, so MagicaVoxel opens it as an ordinary model.
 
@@ -49,6 +49,36 @@ let tint = param_color("tint", [40, 160, 60]); // [r, g, b], each 0..255
 
 `param_float` returns a float. `param_int` returns an integer. `param_bool`
 returns a bool. `param_color` returns `[r, g, b]`.
+
+### Lists
+
+A list parameter holds numbers or 2D or 3D points, for a polyline, a curve's
+control points, or a row of posts:
+
+```rhai
+// name, default, min, max, max_len
+let heights = param_floats("heights", [1.0, 2.0, 3.0], 0.0, 8.0, 16);
+let shore = param_vec2s("shore", [[0.0, 0.0], [12.0, 4.0]], -64.0, 64.0, 256);
+let posts = param_vec3s("posts", [], 0.0, 32.0, 8);
+
+for p in shore {
+    set(to_int(p[0]), to_int(p[1]), 0, 1);
+}
+let count = shore.len();
+```
+
+`param_floats` returns `[a, b, …]`, `param_vec2s` returns `[[x, y], …]`, and
+`param_vec3s` returns `[[x, y, z], …]`, all floats. Integers in the default
+are accepted. `min` and `max` bound every number, each coordinate of a point
+included. `max_len` is the most entries the list may have; a list may also be
+empty. The array-length limit counts numbers, so `max_len` is at most 4 096
+for `param_floats`, 2 048 for `param_vec2s`, and 1 365 for `param_vec3s`. A
+default that is too long or out of range is an error at that line.
+
+A stored list is used when it has the same kind. It is cut to `max_len` and
+every number is clamped to the range, as the scalar kinds are. A list set from
+the editor, MCP, or the bridge that is too long or out of range is refused with
+an error that names the entry; the stored list does not change.
 
 ## Palette
 
@@ -106,15 +136,18 @@ let face = roll.int(1, 6);       // inclusive
 and `atan2(y, x)` (radians, the same argument order as the C function).
 
 Loops, `if`, `let`, and array literals such as `[r, g, b]` are the language.
-Array indexing works. Methods that grow an array, and any function that is
-not listed here, are not registered.
+Array indexing, `for item in array`, and `array.len()` work. Methods that grow
+an array, and any function that is not listed here, are not registered.
 
 ## Storage
 
 Scripts live in an `MVSC` chunk, version 2 (version 1 is still readable). MagicaVoxel skips chunks it does
 not know. The chunk holds, for each object whose source is non-empty, the
 object name, the source, the auto-regenerate flag, and the current parameter
-values, plus the occupied local minimum. Loading restores the generator's
+values, plus the occupied local minimum. A list parameter is kind 4: width
+(1, 2, or 3), `min`, `max`, `max_len`, the count of numbers, then the numbers
+as little-endian f32. A document without lists is written as before; an older
+Froxel refuses a file that has one. Loading restores the generator's
 coordinate frame without running the script, so Regenerate after reopening
 does not shift the object. Version 1 files lack that origin metadata; existing
 generators should be re-authored in their intended local frame and saved once
@@ -126,7 +159,11 @@ after a regenerate if you want the file to contain both.
 ## Editor
 
 The Script panel is on the right, for the active object. The code field is a
-plain multiline editor. Sliders appear after a successful run (when the field
+plain multiline editor. A list is one line of text under its name, count,
+and range: numbers split by commas or spaces, and points split by `;`, as in
+`0 0; 12 4`. It applies when the field loses focus; text that does not parse,
+is too long, or is out of range is kept in the field and the reason is shown
+under the button. Sliders appear after a successful run (when the field
 loses focus, or when you press Regenerate). **Auto** reruns about a third of
 a second after a parameter change. The error line is shown under the button.
 A file that carries a script says so in the panel and in the status line

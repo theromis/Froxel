@@ -123,6 +123,26 @@ pub(super) fn script(ui: &mut Ui, session: &mut Session) {
 }
 
 fn param_row(ui: &mut Ui, session: &mut Session, index: usize, param: &ScriptParam) {
+    if let ParamValue::Floats {
+        values,
+        width,
+        min,
+        max,
+        max_len,
+    } = &param.value
+    {
+        list_row(
+            ui,
+            session,
+            index,
+            param,
+            values,
+            *width,
+            (*min, *max),
+            *max_len,
+        );
+        return;
+    }
     match param.value {
         ParamValue::Float { value, min, max } => {
             let mut shown = value;
@@ -185,7 +205,99 @@ fn param_row(ui: &mut Ui, session: &mut Session, index: usize, param: &ScriptPar
                 }
             });
         }
+        ParamValue::Floats { .. } => {}
     }
+}
+
+/// A list parameter as one line of text: `1, 2, 3`, or points split by `;`
+/// as in `0 4; 8 2`. It is applied when the field loses focus; a value that
+/// does not parse, is too long, or is out of range is reported and kept in
+/// the field for fixing.
+#[allow(clippy::too_many_arguments)]
+fn list_row(
+    ui: &mut Ui,
+    session: &mut Session,
+    index: usize,
+    param: &ScriptParam,
+    values: &[f32],
+    width: u8,
+    (min, max): (f32, f32),
+    max_len: u32,
+) {
+    let id = ui.make_persistent_id(("script-list", index, &param.name));
+    let entries = values.len() / usize::from(width);
+    ui.label(
+        RichText::new(format!(
+            "{}  {entries}/{max_len}, {min}..={max}",
+            param.name
+        ))
+        .small()
+        .color(DIM),
+    );
+    let mut text = ui
+        .data_mut(|data| data.get_temp::<String>(id))
+        .unwrap_or_else(|| format_list(values, width));
+    let resp = ui.add(
+        TextEdit::singleline(&mut text)
+            .id(id.with("edit"))
+            .font(egui::TextStyle::Monospace)
+            .desired_width(f32::INFINITY),
+    );
+    if resp.changed() {
+        ui.data_mut(|data| data.insert_temp(id, text.clone()));
+    }
+    if resp.lost_focus() && ui.data_mut(|data| data.get_temp::<String>(id)).is_some() {
+        let applied = parse_list(&text, width).and_then(|parsed| {
+            session.begin_edit();
+            let result = session.write_script_floats(index, &param.name, parsed);
+            session.end_edit();
+            result
+        });
+        match applied {
+            Ok(()) => {
+                ui.data_mut(|data| data.remove::<String>(id));
+                session.script_error.clear();
+                schedule(ui, session, index);
+            }
+            Err(err) => session.script_error = format!("`{}`: {err}", param.name),
+        }
+    }
+}
+
+fn format_list(values: &[f32], width: u8) -> String {
+    values
+        .chunks(usize::from(width))
+        .map(|point| {
+            point
+                .iter()
+                .map(|value| format!("{value}"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect::<Vec<_>>()
+        .join(if width == 1 { ", " } else { "; " })
+}
+
+/// Numbers split by commas, spaces, or `;`. Points are read `width` numbers
+/// at a time, so `0 4; 8 2` and `0, 4, 8, 2` are the same two points.
+fn parse_list(text: &str, width: u8) -> Result<Vec<f32>, String> {
+    let mut out = Vec::new();
+    for word in text
+        .split(|ch: char| ch == ',' || ch == ';' || ch.is_whitespace())
+        .filter(|word| !word.is_empty())
+    {
+        let value: f32 = word
+            .parse()
+            .map_err(|_| format!("`{word}` is not a number"))?;
+        if !value.is_finite() {
+            return Err(format!("`{word}` is not finite"));
+        }
+        out.push(value);
+    }
+    if !out.len().is_multiple_of(usize::from(width)) {
+        return Err(format!("expected points of {width} numbers"));
+    }
+    Ok(out)
 }
 
 fn schedule(ui: &Ui, session: &mut Session, index: usize) {

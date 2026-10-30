@@ -214,6 +214,57 @@ fn set_script_params_regenerate_and_export() {
     let _ = std::fs::remove_file(&path);
 }
 
+#[test]
+fn set_params_takes_a_point_list() {
+    let mut state = Proto::default();
+    let mut session = Session::new();
+    session.replace_empty();
+    dispatch(
+        &mut state,
+        &mut session,
+        None,
+        &json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
+    );
+    let source = "let p = param_vec3s(\"posts\", [], 0.0, 9.0, 2);\nfor q in p { set(to_int(q[0]), to_int(q[1]), to_int(q[2]), 2); }\n";
+    let call = |state: &mut Proto, session: &mut Session, id: i64, name: &str, arguments: Value| {
+        dispatch(
+            state,
+            session,
+            None,
+            &json!({"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": {"name": name, "arguments": arguments}}),
+        )
+        .unwrap()
+    };
+    let stored = call(
+        &mut state,
+        &mut session,
+        2,
+        "set_script",
+        json!({"source": source}),
+    );
+    assert_eq!(stored["result"]["isError"], false, "{stored}");
+    let refused = call(
+        &mut state,
+        &mut session,
+        3,
+        "set_params",
+        json!({"values": {"posts": [[1, 1, 1], [2, 2, 2], [3, 3, 3]]}}),
+    );
+    assert_eq!(refused["result"]["isError"], true, "{refused}");
+    assert!(refused.to_string().contains("at most 2"), "{refused}");
+    let tuned = call(
+        &mut state,
+        &mut session,
+        4,
+        "set_params",
+        json!({"values": {"posts": [[1, 2, 3], [4, 5, 6]]}}),
+    );
+    assert_eq!(tuned["result"]["isError"], false, "{tuned}");
+    let built = call(&mut state, &mut session, 5, "regenerate", json!({}));
+    assert_eq!(built["result"]["isError"], false, "{built}");
+    assert_eq!(session.objects[0].cells.get(&(4, 5, 6)), Some(&2));
+}
+
 struct Headless {
     proto: Proto,
     session: Session,

@@ -79,10 +79,27 @@ pub struct ScriptParam {
 
 #[derive(Clone, Debug)]
 pub enum ParamValue {
-    Float { value: f32, min: f32, max: f32 },
-    Int { value: i32, min: i32, max: i32 },
+    Float {
+        value: f32,
+        min: f32,
+        max: f32,
+    },
+    Int {
+        value: i32,
+        min: i32,
+        max: i32,
+    },
     Bool(bool),
     Color([u8; 3]),
+    /// A list of numbers (`width` 1) or of 2D or 3D points, flat. Every
+    /// component is in `min..=max`; there are at most `max_len` entries.
+    Floats {
+        values: Vec<f32>,
+        width: u8,
+        min: f32,
+        max: f32,
+        max_len: u32,
+    },
 }
 
 impl PartialEq for ParamValue {
@@ -118,6 +135,29 @@ impl PartialEq for ParamValue {
             ) => a == b && amin == bmin && amax == bmax,
             (ParamValue::Bool(a), ParamValue::Bool(b)) => a == b,
             (ParamValue::Color(a), ParamValue::Color(b)) => a == b,
+            (
+                ParamValue::Floats {
+                    values: a,
+                    width: aw,
+                    min: amin,
+                    max: amax,
+                    max_len: alen,
+                },
+                ParamValue::Floats {
+                    values: b,
+                    width: bw,
+                    min: bmin,
+                    max: bmax,
+                    max_len: blen,
+                },
+            ) => {
+                aw == bw
+                    && alen == blen
+                    && amin.to_bits() == bmin.to_bits()
+                    && amax.to_bits() == bmax.to_bits()
+                    && a.len() == b.len()
+                    && a.iter().zip(b).all(|(a, b)| a.to_bits() == b.to_bits())
+            }
             _ => false,
         }
     }
@@ -227,6 +267,9 @@ pub(crate) fn execute(
     engine.set_max_expr_depths(64, 32);
     engine.set_strict_variables(true);
     engine.register_iterator::<std::ops::Range<INT>>();
+    // `for p in points` and `points.len()` read a list parameter; neither grows an array.
+    engine.register_iterator::<Array>();
+    engine.register_fn("len", |array: &mut Array| array.len() as INT);
     register(&mut engine, &scratch);
     engine.run(source).map_err(|err| explain(&err))?;
     let scratch = scratch.borrow();
@@ -329,6 +372,24 @@ fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
                 .collect())
         },
     );
+    for (function, width) in [("param_floats", 1), ("param_vec2s", 2), ("param_vec3s", 3)] {
+        let state = scratch.clone();
+        engine.register_fn(
+            function,
+            move |name: &str,
+                  defaults: Array,
+                  min: f64,
+                  max: f64,
+                  max_len: INT|
+                  -> Result<Array, Box<EvalAltResult>> {
+                let values = state
+                    .borrow_mut()
+                    .param_floats(name, &defaults, min, max, max_len, width)
+                    .map_err(runtime)?;
+                Ok(floats_array(&values, width))
+            },
+        );
+    }
     let state = scratch.clone();
     engine.register_fn(
         "set_slot",
@@ -463,6 +524,51 @@ impl Scratch {
         };
         self.declare(name, ParamValue::Color(value))?;
         Ok(value)
+    }
+
+    fn param_floats(
+        &mut self,
+        name: &str,
+        defaults: &Array,
+        min: f64,
+        max: f64,
+        max_len: INT,
+        width: u8,
+    ) -> Result<Vec<f32>, String> {
+        let function = list_function(width);
+        let (_, min, max) = finite3(0.0, min, max)?;
+        if min > max {
+            return Err(format!("parameter `{name}` has an empty range"));
+        }
+        let longest = max_list_len(width);
+        if max_len < 1 || max_len > longest as INT {
+            return Err(format!(
+                "{function} `{name}`: max_len must be 1..={longest}"
+            ));
+        }
+        let max_len = max_len as u32;
+        let default = floats_from_array(defaults, width)
+            .and_then(|values| check_floats(&values, width, min, max, max_len).map(|_| values))
+            .map_err(|err| format!("{function} `{name}` default: {err}"))?;
+        let values = match self.stored(name) {
+            Some(ParamValue::Floats {
+                values,
+                width: stored,
+                ..
+            }) if *stored == width => clamp_floats(values, width, min, max, max_len),
+            _ => default,
+        };
+        self.declare(
+            name,
+            ParamValue::Floats {
+                values: values.clone(),
+                width,
+                min,
+                max,
+                max_len,
+            },
+        )?;
+        Ok(values)
     }
 
     fn set_slot(&mut self, index: INT, color: &Array) -> Result<(), String> {
@@ -717,6 +823,166 @@ fn rgb(color: &Array) -> Result<[u8; 3], String> {
     Ok(out)
 }
 
+fn list_function(width: u8) -> &'static str {
+    match width {
+        1 => "param_floats",
+        2 => "param_vec2s",
+        _ => "param_vec3s",
+    }
+}
+
+/// The JSON and schema name of a list parameter.
+pub fn list_kind(width: u8) -> &'static str {
+    match width {
+        1 => "floats",
+        2 => "vec2s",
+        _ => "vec3s",
+    }
+}
+
+/// Entries a list of this width may hold: `MAX_ARRAY` numbers in all.
+pub fn max_list_len(width: u8) -> usize {
+    MAX_ARRAY / usize::from(width.max(1))
+}
+
+fn number(value: &Dynamic) -> Option<f64> {
+    value
+        .as_float()
+        .ok()
+        .or_else(|| value.as_int().ok().map(|int| int as f64))
+}
+
+/// `[a, b, …]` for width 1, `[[x, y], …]` or `[[x, y, z], …]` otherwise.
+fn floats_from_array(array: &Array, width: u8) -> Result<Vec<f32>, String> {
+    let mut out = Vec::with_capacity(array.len() * usize::from(width));
+    for (index, entry) in array.iter().enumerate() {
+        if width == 1 {
+            let value = number(entry).ok_or(format!("entry {index} is not a number"))?;
+            out.push(finite_f32(value, index)?);
+            continue;
+        }
+        let point = entry
+            .read_lock::<Array>()
+            .filter(|point| point.len() == usize::from(width))
+            .ok_or(format!("entry {index} is not a point of {width} numbers"))?;
+        for component in point.iter() {
+            let value = number(component).ok_or(format!("entry {index} is not a number"))?;
+            out.push(finite_f32(value, index)?);
+        }
+    }
+    Ok(out)
+}
+
+fn floats_array(values: &[f32], width: u8) -> Array {
+    let float = |value: &f32| Dynamic::from_float(f64::from(*value));
+    if width == 1 {
+        return values.iter().map(float).collect();
+    }
+    values
+        .chunks(usize::from(width))
+        .map(|point| Dynamic::from_array(point.iter().map(float).collect()))
+        .collect()
+}
+
+fn finite_f32(value: f64, index: usize) -> Result<f32, String> {
+    let narrow = value as f32;
+    if !value.is_finite() || !narrow.is_finite() {
+        return Err(format!("entry {index} is not finite"));
+    }
+    Ok(narrow)
+}
+
+/// Length and range of a flat list. The message names the first entry at fault.
+pub fn check_floats(
+    values: &[f32],
+    width: u8,
+    min: f32,
+    max: f32,
+    max_len: u32,
+) -> Result<(), String> {
+    let width = usize::from(width.max(1));
+    let entries = values.len() / width;
+    if !values.len().is_multiple_of(width) {
+        return Err(format!("expected points of {width} numbers"));
+    }
+    if entries > max_len as usize {
+        return Err(format!(
+            "has {entries} entries; at most {max_len} are allowed"
+        ));
+    }
+    for (index, value) in values.iter().enumerate() {
+        if !value.is_finite() {
+            return Err(format!("entry {} is not finite", index / width));
+        }
+        if *value < min || *value > max {
+            return Err(format!(
+                "entry {} has {value}, outside {min}..={max}",
+                index / width
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn clamp_floats(values: &[f32], width: u8, min: f32, max: f32, max_len: u32) -> Vec<f32> {
+    let keep = (max_len as usize * usize::from(width)).min(values.len());
+    let keep = keep - keep % usize::from(width);
+    values[..keep]
+        .iter()
+        .map(|value| value.clamp(min, max))
+        .collect()
+}
+
+/// A JSON list for a list parameter: numbers for width 1, otherwise arrays
+/// of `width` numbers. Range and length are checked by `check_floats`.
+pub fn floats_from_json(value: &serde_json::Value, width: u8) -> Result<Vec<f32>, String> {
+    let shape = if width == 1 {
+        "a list of numbers".to_string()
+    } else {
+        format!(
+            "a list of [{}] points",
+            ["x", "y", "z"][..usize::from(width)].join(", ")
+        )
+    };
+    let entries = value.as_array().ok_or(format!("expected {shape}"))?;
+    let mut out = Vec::with_capacity(entries.len() * usize::from(width));
+    for (index, entry) in entries.iter().enumerate() {
+        if width == 1 {
+            let value = entry
+                .as_f64()
+                .ok_or(format!("entry {index} is not a number"))?;
+            out.push(finite_f32(value, index)?);
+            continue;
+        }
+        let point = entry
+            .as_array()
+            .filter(|point| point.len() == usize::from(width))
+            .ok_or(format!("entry {index} is not a point of {width} numbers"))?;
+        for component in point {
+            let value = component
+                .as_f64()
+                .ok_or(format!("entry {index} is not a number"))?;
+            out.push(finite_f32(value, index)?);
+        }
+    }
+    Ok(out)
+}
+
+/// `[a, …]` or `[[x, y], …]`, components trimmed as `json_f32` does.
+pub fn floats_json(values: &[f32], width: u8) -> serde_json::Value {
+    if width == 1 {
+        return serde_json::Value::Array(values.iter().map(|value| json_f32(*value)).collect());
+    }
+    serde_json::Value::Array(
+        values
+            .chunks(usize::from(width))
+            .map(|point| {
+                serde_json::Value::Array(point.iter().map(|value| json_f32(*value)).collect())
+            })
+            .collect(),
+    )
+}
+
 impl Session {
     pub fn set_script(&mut self, index: usize, source: &str) -> Result<(), String> {
         self.script_index(index)?;
@@ -814,6 +1080,29 @@ impl Session {
         if let Some(ParamValue::Color(slot)) = self.param_slot(index, name) {
             *slot = value;
         }
+    }
+
+    /// Replace a list parameter. A value too long or out of range is refused
+    /// and the parameter keeps what it had.
+    pub fn write_script_floats(
+        &mut self,
+        index: usize,
+        name: &str,
+        values: Vec<f32>,
+    ) -> Result<(), String> {
+        let Some(ParamValue::Floats {
+            values: slot,
+            width,
+            min,
+            max,
+            max_len,
+        }) = self.param_slot(index, name)
+        else {
+            return Err(format!("`{name}` is not a list parameter"));
+        };
+        check_floats(&values, *width, *min, *max, *max_len)?;
+        *slot = values;
+        Ok(())
     }
 
     /// Run the object's script on this thread, stopping at `SCRIPT_TIMEOUT`.
@@ -1068,6 +1357,23 @@ pub fn parse_param(spec: &ParamValue, value: &serde_json::Value) -> Result<Param
             }
             Ok(ParamValue::Color(rgb))
         }
+        ParamValue::Floats {
+            width,
+            min,
+            max,
+            max_len,
+            ..
+        } => {
+            let values = floats_from_json(value, *width)?;
+            check_floats(&values, *width, *min, *max, *max_len)?;
+            Ok(ParamValue::Floats {
+                values,
+                width: *width,
+                min: *min,
+                max: *max,
+                max_len: *max_len,
+            })
+        }
     }
 }
 
@@ -1085,21 +1391,37 @@ fn json_f32(value: f32) -> serde_json::Value {
 }
 
 pub fn param_json(param: &ScriptParam) -> serde_json::Value {
-    let (kind, value, min, max) = match param.value {
-        ParamValue::Float { value, min, max } => (
+    let (kind, value, min, max) = match &param.value {
+        ParamValue::Floats {
+            values,
+            width,
+            min,
+            max,
+            max_len,
+        } => {
+            return serde_json::json!({
+                "name": param.name,
+                "kind": list_kind(*width),
+                "value": floats_json(values, *width),
+                "min": json_f32(*min),
+                "max": json_f32(*max),
+                "maxLen": max_len,
+            });
+        }
+        &ParamValue::Float { value, min, max } => (
             "float",
             json_f32(value),
             Some(json_f32(min)),
             Some(json_f32(max)),
         ),
-        ParamValue::Int { value, min, max } => (
+        &ParamValue::Int { value, min, max } => (
             "int",
             serde_json::json!(value),
             Some(serde_json::json!(min)),
             Some(serde_json::json!(max)),
         ),
-        ParamValue::Bool(value) => ("bool", serde_json::json!(value), None, None),
-        ParamValue::Color(rgb) => ("color", serde_json::json!(rgb), None, None),
+        &ParamValue::Bool(value) => ("bool", serde_json::json!(value), None, None),
+        &ParamValue::Color(rgb) => ("color", serde_json::json!(rgb), None, None),
     };
     let mut body = serde_json::json!({
         "name": param.name,
@@ -1129,6 +1451,26 @@ fn replace_value(spec: &ParamValue, incoming: &ParamValue) -> ParamValue {
         },
         (_, ParamValue::Bool(value)) => ParamValue::Bool(*value),
         (_, ParamValue::Color(value)) => ParamValue::Color(*value),
+        (
+            ParamValue::Floats {
+                width,
+                min,
+                max,
+                max_len,
+                ..
+            },
+            ParamValue::Floats {
+                values,
+                width: incoming,
+                ..
+            },
+        ) if width == incoming => ParamValue::Floats {
+            values: clamp_floats(values, *width, *min, *max, *max_len),
+            width: *width,
+            min: *min,
+            max: *max,
+            max_len: *max_len,
+        },
         (spec, _) => spec.clone(),
     }
 }
@@ -1168,26 +1510,43 @@ pub(crate) fn encode_chunk(objects: &[Volume]) -> Option<Vec<u8>> {
         push_u32(&mut body, object.script.params.len() as u32);
         for param in &object.script.params {
             push_str(&mut body, &param.name);
-            match param.value {
-                ParamValue::Float { value, min, max } => {
+            match &param.value {
+                &ParamValue::Float { value, min, max } => {
                     body.push(0);
                     push_f32(&mut body, value);
                     push_f32(&mut body, min);
                     push_f32(&mut body, max);
                 }
-                ParamValue::Int { value, min, max } => {
+                &ParamValue::Int { value, min, max } => {
                     body.push(1);
                     push_i32(&mut body, value);
                     push_i32(&mut body, min);
                     push_i32(&mut body, max);
                 }
-                ParamValue::Bool(value) => {
+                &ParamValue::Bool(value) => {
                     body.push(2);
                     body.push(u8::from(value));
                 }
                 ParamValue::Color(rgb) => {
                     body.push(3);
-                    body.extend_from_slice(&rgb);
+                    body.extend_from_slice(rgb);
+                }
+                ParamValue::Floats {
+                    values,
+                    width,
+                    min,
+                    max,
+                    max_len,
+                } => {
+                    body.push(4);
+                    body.push(*width);
+                    push_f32(&mut body, *min);
+                    push_f32(&mut body, *max);
+                    push_u32(&mut body, *max_len);
+                    push_u32(&mut body, values.len() as u32);
+                    for value in values {
+                        push_f32(&mut body, *value);
+                    }
                 }
             }
         }
@@ -1262,6 +1621,35 @@ pub(crate) fn decode_chunk(body: &[u8]) -> Result<Vec<StoredScript>, String> {
                     read_u8(body, &mut cursor)?,
                     read_u8(body, &mut cursor)?,
                 ]),
+                4 => {
+                    let width = read_u8(body, &mut cursor)?;
+                    if !(1..=3).contains(&width) {
+                        return Err(format!("MVSC list width {width} is not 1, 2, or 3"));
+                    }
+                    let min = read_f32(body, &mut cursor)?;
+                    let max = read_f32(body, &mut cursor)?;
+                    let max_len = read_u32(body, &mut cursor)?;
+                    if max_len as usize > max_list_len(width) {
+                        return Err("MVSC list is longer than the array limit".into());
+                    }
+                    let count = read_u32(body, &mut cursor)? as usize;
+                    if count > max_len as usize * usize::from(width)
+                        || !count.is_multiple_of(usize::from(width))
+                    {
+                        return Err("MVSC list does not fit its length".into());
+                    }
+                    let mut values = Vec::with_capacity(count);
+                    for _ in 0..count {
+                        values.push(read_f32(body, &mut cursor)?);
+                    }
+                    ParamValue::Floats {
+                        values,
+                        width,
+                        min,
+                        max,
+                        max_len,
+                    }
+                }
                 _ => return Err(format!("MVSC parameter kind {kind} is not supported")),
             };
             params.push(ScriptParam { name, value });

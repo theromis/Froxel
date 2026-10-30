@@ -624,7 +624,7 @@ fn tools() -> Vec<Value> {
         }), &[]),
         tool("set_params", "Set script parameters by name. One undo step. Does not run the script.", json!({
             "object": int_prop("Object index. Omit for the active object."),
-            "values": {"type": "object", "description": "Map of parameter name to a number, bool, or [r, g, b]."}
+            "values": {"type": "object", "description": "Map of parameter name to a number, bool, [r, g, b], a list of numbers (floats), or a list of [x, y] or [x, y, z] points (vec2s, vec3s). Out of range or too long is an error."}
         }), &["values"]),
         tool("list_params", "Parameters from the last successful run of the object's script.", json!({
             "object": int_prop("Object index. Omit for the active object.")

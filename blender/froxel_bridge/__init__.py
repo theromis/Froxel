@@ -11,6 +11,7 @@ bl_info = {
     "category": "Import-Export",
 }
 
+import json
 import time
 
 import bpy
@@ -27,6 +28,9 @@ from . import protocol
 
 _suspend = False
 _client = None
+
+# floats, vec2s and vec3s are edited as JSON text: [1, 2] or [[0, 0], [4, 2]].
+LISTS = ("floats", "vec2s", "vec3s")
 
 
 def _tag(self, context):
@@ -62,6 +66,7 @@ class FroxelParam(bpy.types.PropertyGroup):
     integer: IntProperty(update=_tag)
     flag: BoolProperty(update=_tag)
     color: FloatVectorProperty(subtype="COLOR", size=3, min=0.0, max=1.0, update=_tag)
+    text: StringProperty(update=_tag)
     low: FloatProperty()
     high: FloatProperty()
 
@@ -188,6 +193,12 @@ def snapshot():
             values[item.socket_id] = bool(item.flag)
         elif item.kind == "color":
             values[item.socket_id] = [float(item.color[0]), float(item.color[1]), float(item.color[2])]
+        elif item.kind in LISTS:
+            # Text that is not JSON is sent as it is, and Froxel's error names the parameter.
+            try:
+                values[item.socket_id] = json.loads(item.text)
+            except ValueError:
+                values[item.socket_id] = item.text
     return values
 
 
@@ -216,6 +227,9 @@ def apply_schema(parameters):
                 item.flag = bool(value)
             elif spec["type"] == "color":
                 item.color = (float(value[0]), float(value[1]), float(value[2]))
+            elif spec["type"] in LISTS:
+                item.text = json.dumps(value)
+                item.label += " (at most %s)" % spec.get("maxLen")
     finally:
         _suspend = False
 
@@ -413,6 +427,9 @@ class FROXEL_PT_bridge(bpy.types.Panel):
                 layout.prop(item, "flag", text=item.label)
             elif item.kind == "color":
                 layout.prop(item, "color", text=item.label)
+            elif item.kind in LISTS:
+                layout.label(text=item.label)
+                layout.prop(item, "text", text="")
         layout.operator("froxel.bake", text="Bake into scene")
 
 

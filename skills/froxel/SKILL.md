@@ -19,6 +19,8 @@ If the tools are missing, the server is not configured. Point the user to
   creature, a character, a hero prop. This is the default for living things.
 - **A Rhai script** (`set_script`, `set_params`, `regenerate`) for a family of
   variants or large regular geometry: buildings, terrain, fences, rocks.
+  A curve or polyline is one `param_vec2s` / `param_vec3s` list parameter,
+  set as `[[x, y], …]` through `set_params`, not one float per coordinate.
 
 ## Coordinates and rules
 
