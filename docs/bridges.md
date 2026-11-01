@@ -10,7 +10,9 @@ scene or a Blender object after Froxel stops.
 The export is the same glTF as File → Export Mesh: Y-up, a palette texture,
 bones, and clips when the document has them. From the editor, the bridge uses
 the options on the Export panel. The headless command uses the defaults
-(merged faces, palette texture, hidden objects left out, one mesh).
+(merged faces, palette texture, hidden objects left out, one mesh);
+`--color-atlas` switches it to the colour atlas (see `export_mesh` in
+`docs/mcp.md`), which needs a model without bones.
 
 An `evaluate` reruns every object script, then writes the glTF. Hand edits on
 a scripted object are replaced by that run. An object with no script is

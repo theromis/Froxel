@@ -46,6 +46,7 @@ fn vertex_colors_keep_a_linear_color_attribute() {
             merge: false,
             export_hidden: false,
             split_objects: false,
+            color_atlas: false,
         },
     )
     .unwrap();
@@ -70,6 +71,7 @@ fn unmerged_row_keeps_one_quad_per_face() {
             merge: false,
             export_hidden: false,
             split_objects: false,
+            color_atlas: false,
         },
     );
     assert_eq!(built.indices.len() / 6, 10);
@@ -210,6 +212,7 @@ fn still_export_omits_texcoord_1_and_stays_stable() {
         merge: true,
         export_hidden: false,
         split_objects: false,
+        color_atlas: false,
     };
     let first = super::encode(&session, &options).unwrap();
     let second = super::encode(&session, &options).unwrap();
@@ -224,6 +227,7 @@ fn still_export_omits_texcoord_1_and_stays_stable() {
             merge: false,
             export_hidden: false,
             split_objects: false,
+            color_atlas: false,
         },
     )
     .unwrap();
@@ -248,6 +252,7 @@ fn motion_writes_texcoord_1_for_each_slot() {
         merge: true,
         export_hidden: false,
         split_objects: false,
+        color_atlas: false,
     };
     let bytes = super::encode(&session, &options).unwrap();
     let uvs = texcoord_1(&bytes);
@@ -262,6 +267,7 @@ fn motion_writes_texcoord_1_for_each_slot() {
             merge: false,
             export_hidden: false,
             split_objects: false,
+            color_atlas: false,
         },
     )
     .unwrap();
@@ -294,6 +300,7 @@ fn different_motion_stays_on_separate_quads() {
             merge: true,
             export_hidden: false,
             split_objects: false,
+            color_atlas: false,
         },
     );
     assert_eq!(built.indices.len() / 6, 10);
@@ -333,6 +340,7 @@ fn a_clip_is_a_gltf_animation_and_hidden_parts_can_be_their_own_nodes() {
         merge: false,
         export_hidden: false,
         split_objects: false,
+        color_atlas: false,
     };
     let bytes = super::encode(&session, &options).unwrap();
     let json = glb_json(&bytes);
@@ -346,6 +354,7 @@ fn a_clip_is_a_gltf_animation_and_hidden_parts_can_be_their_own_nodes() {
         merge: false,
         export_hidden: true,
         split_objects: true,
+        color_atlas: false,
     };
     let bytes = super::encode(&session, &split).unwrap();
     let text = serde_json::to_string(&glb_json(&bytes)).unwrap();
@@ -365,6 +374,7 @@ fn neighbouring_quads_share_corners_of_one_slot_and_face() {
         merge: false,
         export_hidden: false,
         split_objects: false,
+        color_atlas: false,
     };
     let built = build_with(&session, &options);
     // Ten faces; the four long sides each share two corners between the two
@@ -404,6 +414,7 @@ fn split_export() -> MeshExport {
         merge: false,
         export_hidden: false,
         split_objects: true,
+        color_atlas: false,
     }
 }
 
@@ -559,4 +570,185 @@ fn a_clip_without_rotations_keeps_the_bind_rotation() {
         assert!((got - want).abs() < 1e-6);
     }
     assert!((values[7] - 1.0).abs() < 1e-6);
+}
+
+fn atlas_export() -> MeshExport {
+    MeshExport {
+        vertex_colors: false,
+        merge: false,
+        export_hidden: false,
+        split_objects: false,
+        color_atlas: true,
+    }
+}
+
+#[test]
+fn colour_atlas_merges_across_slots_and_paints_each_cell() {
+    let mut session = Session::new();
+    session.objects[0].cells.clear();
+    session.objects[0].cells.insert((0, 0, 0), 1);
+    session.objects[0].cells.insert((1, 0, 0), 2);
+    session.palette[1] = [200, 10, 20, 255];
+    session.palette[2] = [30, 40, 250, 255];
+    let built = build_with(&session, &atlas_export());
+    // A 2x1x1 box: six quads, as one slot would give, not ten.
+    assert_eq!(built.indices.len() / 6, 6);
+    let (width, height, pixels) = &built.atlas;
+    assert_eq!(pixels.len(), (width * height * 4) as usize);
+    // Each vertex's UV sits on a texel corner, and the texel just inside every
+    // corner of the top face holds that cell's colour.
+    let uvs: Vec<[f32; 2]> = built.extra.chunks(2).map(|uv| [uv[0], uv[1]]).collect();
+    let texel = |u: f32, v: f32| {
+        let x = (u * *width as f32).floor() as u32;
+        let y = (v * *height as f32).floor() as u32;
+        let at = ((y * width + x) * 4) as usize;
+        [pixels[at], pixels[at + 1], pixels[at + 2], pixels[at + 3]]
+    };
+    for quad in built.indices.chunks(6) {
+        let corners = [quad[0], quad[1], quad[2], quad[5]];
+        let center_u = corners.iter().map(|&i| uvs[i as usize][0]).sum::<f32>() / 4.0;
+        let center_v = corners.iter().map(|&i| uvs[i as usize][1]).sum::<f32>() / 4.0;
+        for &i in &corners {
+            let uv = uvs[i as usize];
+            assert_eq!((uv[0] * *width as f32).fract(), 0.0);
+            assert_eq!((uv[1] * *height as f32).fract(), 0.0);
+            // A step from the corner toward the quad's centre lands in the
+            // texel of the cell at that corner.
+            let inside = texel(
+                uv[0] + (center_u - uv[0]).signum() * 0.5 / *width as f32,
+                uv[1] + (center_v - uv[1]).signum() * 0.5 / *height as f32,
+            );
+            assert!(inside == session.palette[1] || inside == session.palette[2]);
+        }
+    }
+    // Both colours are in the atlas, one texel per exposed cell face (10).
+    let painted: Vec<[u8; 4]> = pixels.chunks(4).map(|c| [c[0], c[1], c[2], c[3]]).collect();
+    assert_eq!(
+        painted.iter().filter(|c| **c == session.palette[1]).count(),
+        5
+    );
+    assert_eq!(
+        painted.iter().filter(|c| **c == session.palette[2]).count(),
+        5
+    );
+}
+
+#[test]
+fn colour_atlas_keeps_cells_of_the_top_face_in_place() {
+    let mut session = Session::new();
+    session.objects[0].cells.clear();
+    session.objects[0].cells.insert((0, 0, 0), 1);
+    session.objects[0].cells.insert((1, 0, 0), 2);
+    session.palette[1] = [200, 10, 20, 255];
+    session.palette[2] = [30, 40, 250, 255];
+    let built = build_with(&session, &atlas_export());
+    let (width, height, pixels) = &built.atlas;
+    let positions: Vec<[f32; 3]> = built
+        .positions
+        .chunks(3)
+        .map(|p| [p[0], p[1], p[2]])
+        .collect();
+    let uvs: Vec<[f32; 2]> = built.extra.chunks(2).map(|uv| [uv[0], uv[1]]).collect();
+    // The top face (+z in the document, +y in glTF) spans x 0..2. Interpolate
+    // the UV at x 0.5 and 1.5 along its edge and read the texel there.
+    let top: Vec<usize> = built
+        .indices
+        .chunks(6)
+        .find(|quad| quad.iter().all(|&i| positions[i as usize][1] == 1.0))
+        .unwrap()
+        .iter()
+        .map(|&i| i as usize)
+        .collect();
+    let corner = |x: f32, z: f32| {
+        top.iter()
+            .copied()
+            .find(|&i| positions[i][0] == x && positions[i][2] == z)
+            .unwrap()
+    };
+    let (a, b, c) = (corner(0.0, 0.0), corner(2.0, 0.0), corner(0.0, -1.0));
+    let sample = |s: f32, t: f32| {
+        let u = uvs[a][0] + (uvs[b][0] - uvs[a][0]) * s + (uvs[c][0] - uvs[a][0]) * t;
+        let v = uvs[a][1] + (uvs[b][1] - uvs[a][1]) * s + (uvs[c][1] - uvs[a][1]) * t;
+        let x = (u * *width as f32) as u32;
+        let y = (v * *height as f32) as u32;
+        let at = ((y * width + x) * 4) as usize;
+        [pixels[at], pixels[at + 1], pixels[at + 2], pixels[at + 3]]
+    };
+    assert_eq!(sample(0.25, 0.5), session.palette[1]);
+    assert_eq!(sample(0.75, 0.5), session.palette[2]);
+}
+
+#[test]
+fn colour_atlas_keeps_different_motion_apart_and_refuses_split_meshes() {
+    let mut session = Session::new();
+    session.objects[0].cells.clear();
+    session.objects[0].cells.insert((0, 0, 0), 1);
+    session.objects[0].cells.insert((1, 0, 0), 2);
+    session.objects[0].cells.insert((2, 0, 0), 3);
+    session.materials[1].motion = Motion::Sway;
+    session.materials[1].motion_amount = 1.0;
+    session.materials[2].motion = Motion::Sway;
+    session.materials[2].motion_amount = 1.0;
+    // Slots 1 and 2 sway alike and merge; still slot 3 stays apart.
+    let built = build_with(&session, &atlas_export());
+    assert_eq!(built.indices.len() / 6, 10);
+    let bytes = super::encode(&session, &atlas_export()).unwrap();
+    let json = glb_json(&bytes);
+    assert_eq!(json["materials"][0]["name"], "voxel-atlas");
+    assert_eq!(json["images"].as_array().unwrap().len(), 1);
+    let uvs = texcoord_1(&bytes);
+    assert!(uvs.iter().any(|uv| uv == &[1.0, 0.0]));
+    assert!(uvs.iter().any(|uv| uv == &[0.0, 0.0]));
+    let mut split = atlas_export();
+    split.split_objects = true;
+    assert!(super::encode(&session, &split).is_err());
+}
+
+#[test]
+fn colour_atlas_leaves_no_t_junction() {
+    let mut session = Session::new();
+    session.objects[0].cells.clear();
+    // A 3x2 floor with a one-cell step and a cell of another colour: the
+    // step's faces end in the middle of the merged floor's edges.
+    for x in 0..3 {
+        for y in 0..2 {
+            session.objects[0]
+                .cells
+                .insert((x, y, 0), 1 + (x == 2) as u8);
+        }
+    }
+    session.objects[0].cells.insert((1, 0, 1), 1);
+    let mut options = atlas_export();
+    options.merge = true;
+    let built = build_with(&session, &options);
+    let positions: Vec<[f32; 3]> = built
+        .positions
+        .chunks(3)
+        .map(|p| [p[0], p[1], p[2]])
+        .collect();
+    // No vertex of the mesh lies strictly inside any triangle edge.
+    for tri in built.indices.chunks(3) {
+        for edge in 0..3 {
+            let a = positions[tri[edge] as usize];
+            let b = positions[tri[(edge + 1) % 3] as usize];
+            for p in &positions {
+                let ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+                let ap = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
+                let cross = [
+                    ab[1] * ap[2] - ab[2] * ap[1],
+                    ab[2] * ap[0] - ab[0] * ap[2],
+                    ab[0] * ap[1] - ab[1] * ap[0],
+                ];
+                let t = (ab[0] * ap[0] + ab[1] * ap[1] + ab[2] * ap[2])
+                    / (ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2]);
+                let on_line = cross.iter().all(|c| c.abs() < 1e-6);
+                assert!(
+                    !(on_line && t > 1e-6 && t < 1.0 - 1e-6),
+                    "T-junction at {p:?} on {a:?}-{b:?}"
+                );
+            }
+        }
+    }
+    // Fewer triangles than the per-slot merge with its splits.
+    assert!(built.indices.len() < build(&session).indices.len());
 }

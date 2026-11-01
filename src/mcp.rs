@@ -638,10 +638,11 @@ fn tools() -> Vec<Value> {
             "merge": {"type": "boolean", "description": "Greedy-merge coplanar faces of one palette slot. Defaults to false."},
             "vertexColors": {"type": "boolean", "description": "Store a linear COLOR_0 on each vertex instead of the palette texture. Defaults to false."},
             "exportHidden": {"type": "boolean", "description": "Include hidden objects. Default false, which omits them."},
-            "splitObjects": {"type": "boolean", "description": "One mesh node per object, still sharing one skin, so a game can hide a part. Default false is a single mesh."}
+            "splitObjects": {"type": "boolean", "description": "One mesh node per object, still sharing one skin, so a game can hide a part. Default false is a single mesh."},
+            "colorAtlas": {"type": "boolean", "description": "Merge coplanar faces whatever their palette slot and paint each cell into a per-mesh colour atlas texture (nearest filtering) instead of the palette, for far fewer triangles on noisy palettes. Faces of different motion or opacity stay apart. One rigid mesh only: not with a skeleton, splitObjects or vertexColors. Defaults to false."}
         }), &["path"]),
         tool("export_models", "Write 1 to 16 .glb files and report each file's structure: nodes, meshes (vertices, indices, bounds), skins, and animations. A warning names an empty mesh, a skin with no joints, a nameless or duplicated node, or an animation with no channels. source opens that .vox in its own session, so the open document is not replaced. Omit source to export the open document. One model's failure is reported on that model and does not skip the others.", json!({
-            "models": {"type": "array", "minItems": 1, "maxItems": 16, "description": "Each item is {path, source?, merge?, vertexColors?, exportHidden?, splitObjects?}. path ends in .glb. source, when set, is a .vox file.", "items": {"type": "object"}}
+            "models": {"type": "array", "minItems": 1, "maxItems": 16, "description": "Each item is {path, source?, merge?, vertexColors?, exportHidden?, splitObjects?, colorAtlas?}. path ends in .glb. source, when set, is a .vox file.", "items": {"type": "object"}}
         }), &["models"]),
     ]
 }

@@ -647,6 +647,7 @@ fn export_mesh(session: &Session, params: &Value) -> Result<Value, String> {
         "quads": written["quads"],
         "merge": options.merge,
         "vertexColors": options.vertex_colors,
+        "colorAtlas": options.color_atlas,
         "structure": written["structure"],
     }))
 }
@@ -809,6 +810,7 @@ fn mesh_options(params: &Value) -> Result<crate::export::MeshExport, String> {
         vertex_colors: opt_bool(params, "vertexColors")?.unwrap_or(false),
         export_hidden: opt_bool(params, "exportHidden")?.unwrap_or(false),
         split_objects: opt_bool(params, "splitObjects")?.unwrap_or(false),
+        color_atlas: opt_bool(params, "colorAtlas")?.unwrap_or(false),
     })
 }
 

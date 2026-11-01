@@ -529,6 +529,9 @@ impl Session {
         if options.export_hidden {
             parts.push("hidden objects included");
         }
+        if options.color_atlas {
+            parts.push("colour atlas");
+        }
         format!("Export Mesh — glTF binary (.glb): {}", parts.join(", "))
     }
 
@@ -688,6 +691,7 @@ impl Session {
                     ExportFlag::VertexColors => &mut self.export.vertex_colors,
                     ExportFlag::Hidden => &mut self.export.export_hidden,
                     ExportFlag::Split => &mut self.export.split_objects,
+                    ExportFlag::Atlas => &mut self.export.color_atlas,
                 };
                 *value = !*value;
             }

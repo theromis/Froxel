@@ -355,6 +355,7 @@ pub enum ExportFlag {
     VertexColors,
     Hidden,
     Split,
+    Atlas,
 }
 
 /// A slider `ui_click` can set. `min` and `max` match the widget range.

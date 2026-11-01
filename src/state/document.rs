@@ -81,6 +81,7 @@ impl Session {
                 merge: true,
                 export_hidden: false,
                 split_objects: false,
+                color_atlas: false,
             },
             editor_mode: EditorMode::Model,
             render_mode: RenderMode::Edit,

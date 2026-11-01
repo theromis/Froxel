@@ -192,7 +192,7 @@ impl Drop for DirGuard {
 pub fn run(args: &[String]) -> i32 {
     match run_args(args) {
         Ok(None) => 0,
-        Ok(Some((port, input))) => match serve(&input, port) {
+        Ok(Some((port, input, color_atlas))) => match serve(&input, port, color_atlas) {
             Ok(()) => 0,
             Err(err) => {
                 eprintln!("{err}");
@@ -206,9 +206,10 @@ pub fn run(args: &[String]) -> i32 {
     }
 }
 
-fn run_args(args: &[String]) -> Result<Option<(u16, PathBuf)>, String> {
+fn run_args(args: &[String]) -> Result<Option<(u16, PathBuf, bool)>, String> {
     let mut port = DEFAULT_PORT;
     let mut input = None;
+    let mut color_atlas = false;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -234,6 +235,7 @@ fn run_args(args: &[String]) -> Result<Option<(u16, PathBuf)>, String> {
                     .ok_or_else(|| "--input needs a .vox path".to_string())?;
                 input = Some(PathBuf::from(text));
             }
+            "--color-atlas" => color_atlas = true,
             other => return Err(format!("unknown argument `{other}`")),
         }
         index += 1;
@@ -242,23 +244,26 @@ fn run_args(args: &[String]) -> Result<Option<(u16, PathBuf)>, String> {
         print_help();
         return Err("missing --input".into());
     };
-    Ok(Some((port, input)))
+    Ok(Some((port, input, color_atlas)))
 }
 
 fn print_help() {
     eprintln!(
         "\
-usage: froxel bridge --input <file.vox> [--port PORT]
+usage: froxel bridge --input <file.vox> [--port PORT] [--color-atlas]
 
 Listens on 127.0.0.1. PORT defaults to {DEFAULT_PORT}; 0 picks a free port.
 Prints FROXEL_SESSION=<path> and serves that .vox until the process stops.
+--color-atlas merges faces across palette slots and paints the cells into a
+per-mesh colour atlas, as the export_mesh option colorAtlas.
 Godot and Blender connect with the session file. See docs/bridges.md."
     );
 }
 
-fn serve(input: &Path, port: u16) -> Result<(), String> {
+fn serve(input: &Path, port: u16, color_atlas: bool) -> Result<(), String> {
     let mut session = Session::new();
     session.open_vox(input)?;
+    session.export.color_atlas = color_atlas;
     let server = BridgeServer::start(port).map_err(|err| err.to_string())?;
     loop {
         match server.wait(Duration::from_secs(1)) {
@@ -392,6 +397,7 @@ fn evaluate_within(
             merge: session.export.merge,
             export_hidden: session.export.export_hidden,
             split_objects: session.export.split_objects,
+            color_atlas: session.export.color_atlas,
         };
         crate::export::export_with(session, &path, &options)
     })?;

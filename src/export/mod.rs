@@ -3,7 +3,8 @@
 //! Coplanar faces of one palette slot become one rectangle when merging is
 //! on. Translations are baked into the vertices. Positions are glTF Y-up
 //! `(x, z, -y)`. The default material is a 256-wide palette texture;
-//! `vertex_colors` stores a linear `COLOR_0` instead.
+//! `vertex_colors` stores a linear `COLOR_0` instead, and `color_atlas`
+//! merges across slots and paints each cell into a per-mesh texture.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -25,6 +26,10 @@ pub struct MeshExport {
     pub export_hidden: bool,
     /// One mesh node per object, still sharing one skin. Default is one mesh.
     pub split_objects: bool,
+    /// Greedy-merge coplanar faces whatever their palette slot and paint each
+    /// cell into a per-mesh colour atlas instead of the 256-wide palette. Faces
+    /// with different motion or opacity still stay apart. One rigid mesh only.
+    pub color_atlas: bool,
 }
 
 struct Built {
@@ -39,12 +44,23 @@ struct Built {
     /// `TEXCOORD_1` pairs (sway, bob). Empty when no slot has motion, so the
     /// glTF bytes stay the same as a still document.
     motion: Vec<f32>,
+    /// The colour atlas: width, height and sRGB RGBA bytes. Empty unless
+    /// `color_atlas` is set.
+    atlas: (u32, u32, Vec<u8>),
     min: [f32; 3],
     max: [f32; 3],
     blend: bool,
 }
 
 fn encode(session: &Session, options: &MeshExport) -> Result<Vec<u8>, String> {
+    if options.color_atlas
+        && (options.split_objects || options.vertex_colors || !session.skeleton.bones.is_empty())
+    {
+        return Err(
+            "The colour atlas needs one rigid mesh: no skeleton, splitObjects or vertexColors."
+                .into(),
+        );
+    }
     if options.split_objects {
         return encode_split(session, options);
     }
@@ -64,6 +80,9 @@ fn encode(session: &Session, options: &MeshExport) -> Result<Vec<u8>, String> {
     let idx_bytes = built.indices.len() * 4;
     let png = if options.vertex_colors {
         Vec::new()
+    } else if options.color_atlas {
+        let (width, height, pixels) = &built.atlas;
+        rgba_png(*width, *height, pixels)?
     } else {
         palette_png(&session.palette)?
     };
@@ -99,6 +118,8 @@ fn encode(session: &Session, options: &MeshExport) -> Result<Vec<u8>, String> {
     let alpha = if built.blend { "BLEND" } else { "OPAQUE" };
     let material_name = if options.vertex_colors {
         "voxel-vertex-color"
+    } else if options.color_atlas {
+        "voxel-atlas"
     } else {
         "voxel-palette"
     };
@@ -1052,20 +1073,25 @@ fn palette_png(palette: &[[u8; 4]; 256]) -> Result<Vec<u8>, String> {
     for color in palette {
         pixels.extend_from_slice(color);
     }
+    rgba_png(256, 1, &pixels)
+}
+
+/// sRGB RGBA PNG of `width` by `height` pixels.
+fn rgba_png(width: u32, height: u32, pixels: &[u8]) -> Result<Vec<u8>, String> {
     let mut buf = Vec::new();
-    let mut encoder = png::Encoder::new(&mut buf, 256, 1);
+    let mut encoder = png::Encoder::new(&mut buf, width, height);
     encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);
     encoder.set_source_srgb(png::SrgbRenderingIntent::Perceptual);
     let mut writer = encoder
         .write_header()
-        .map_err(|err| format!("palette image: {err}"))?;
+        .map_err(|err| format!("texture image: {err}"))?;
     writer
         .write_image_data(&pixels)
-        .map_err(|err| format!("palette image: {err}"))?;
+        .map_err(|err| format!("texture image: {err}"))?;
     writer
         .finish()
-        .map_err(|err| format!("palette image: {err}"))?;
+        .map_err(|err| format!("texture image: {err}"))?;
     Ok(buf)
 }
 

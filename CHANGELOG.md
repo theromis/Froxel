@@ -4,6 +4,17 @@
 
 ### Added
 
+- Colour atlas mesh export: MCP `export_mesh` and `export_models` take
+  `colorAtlas`, the Export panel has **Colour atlas**, and `froxel bridge`
+  takes `--color-atlas`. Coplanar faces merge whatever their palette slot, and
+  each cell's colour goes into a per-mesh texture with nearest filtering.
+  Faces of different motion or opacity still stay apart. Where a corner of
+  another face lands on an edge, it becomes a vertex of the merged face's
+  outline instead of cutting the face, so seams stay closed without
+  multiplying quads. On noisy palettes this roughly halves the triangles
+  (a pond bed 79.5k to 34.2k). One rigid mesh only: not with a skeleton,
+  `splitObjects`, or `vertexColors`.
+
 - Script list parameters: `param_floats`, `param_vec2s`, and `param_vec3s`
   declare a list of numbers or of 2D or 3D points with a range and a longest
   length, for a polyline or a curve. The `.vox` keeps them with the other

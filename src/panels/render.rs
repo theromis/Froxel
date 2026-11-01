@@ -66,6 +66,12 @@ pub(super) fn export(ui: &mut Ui, session: &mut Session) {
             session.export.split_objects,
             ExportFlag::Split,
         ),
+        (
+            "export.atlas",
+            "Colour atlas",
+            session.export.color_atlas,
+            ExportFlag::Atlas,
+        ),
     ];
     for (id, label, on, flag) in options {
         action_checkbox(ui, session, id, label, on, UiAction::Export(flag));

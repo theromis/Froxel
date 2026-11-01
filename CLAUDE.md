@@ -40,6 +40,10 @@ Cells of a rotated model are baked into world space for editing. `Volume.rot`,
 open span. The same plane and the same slot is not a cut. Positions are glTF
 Y-up `(x, z, -y)`. The menu export uses a palette texture. `COLOR_0` is
 linear. MCP `export_mesh` leaves merge off unless the caller sets it.
+`colorAtlas` (`color_atlas`, `froxel bridge --color-atlas`) merges across
+slots of one motion and opacity, paints cells into a per-mesh atlas, and
+closes T-junctions by inserting the corner into the face outline and
+ear-clipping it (`emit_atlas`), not by `split_junctions`.
 `exportHidden` and `splitObjects` default to false. Clips are glTF
 animations on the joint nodes. The preview pose is not the bind pose:
 it is a local quaternion per bone, and an empty pose leaves the mesh and

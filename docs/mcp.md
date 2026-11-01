@@ -348,8 +348,16 @@ texture keeps the sRGB bytes. `COLOR_0` is converted with the sRGB transfer
 curve. When any palette slot has motion, every vertex also gets
 `TEXCOORD_1`: x is the sway amount and y is the bob amount, or 0 for a still
 slot. Godot imports that as UV2. A document with no motion omits
-`TEXCOORD_1`. The file is Y-up, positions `(x, z, −y)`. File → Export Mesh…
-uses the palette texture and always merges. An empty scene is an error.
+`TEXCOORD_1`. `colorAtlas` defaults to false. `true` merges coplanar faces
+whatever their slot and stores each cell's colour in a per-mesh atlas
+texture (nearest filtering, one texel per cell face) that `TEXCOORD_0`
+points into; faces of different motion or opacity stay apart. Instead of
+cutting a face where another face's corner lands on its edge, that corner
+becomes a vertex of the face's outline, which is ear-clipped into triangles,
+so there are no T-junctions and far fewer triangles. It needs one rigid
+mesh: not with a skeleton, `splitObjects`, or `vertexColors`. The file is
+Y-up, positions `(x, z, −y)`. File → Export Mesh… uses the Export panel
+options. An empty scene is an error.
 The reply's `structure` is the JSON chunk: node names, mesh primitive vertex
 and index counts, position bounds, skin joint counts, and animation channel
 counts. A warning names an empty mesh, a skin with no joints, a missing or

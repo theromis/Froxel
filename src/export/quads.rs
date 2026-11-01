@@ -72,6 +72,7 @@ pub(super) fn build(session: &Session) -> Built {
             merge: true,
             export_hidden: false,
             split_objects: false,
+            color_atlas: false,
         },
     )
 }
@@ -95,8 +96,18 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
         min: [f32::MAX; 3],
         max: [f32::MIN; 3],
         blend: false,
+        atlas: (0, 0, Vec::new()),
     };
     let with_motion = session.has_motion();
+    let atlas = options.color_atlas;
+    // With the colour atlas a quad's `slot` is its merge class (motion and
+    // opacity) plus one, and `colors` keeps each cell's real slot for painting.
+    let classes = if atlas {
+        merge_classes(session)
+    } else {
+        Vec::new()
+    };
+    let mut colors: HashMap<Cell, u8> = HashMap::new();
     let mut quads = Vec::new();
     for (index, object) in session.objects.iter().enumerate() {
         if only.is_some_and(|only| only != index) {
@@ -113,7 +124,29 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
                 .joint_or_root(object.bone.as_deref())
                 .unwrap_or(0)
         };
-        for mut quad in merged_quads(&object.cells, options.merge) {
+        let classed;
+        let cells = if atlas {
+            classed = object
+                .cells
+                .iter()
+                .filter(|(_, slot)| **slot != 0)
+                .map(|(cell, slot)| (*cell, classes[*slot as usize].0))
+                .collect::<HashMap<Cell, u8>>();
+            for (cell, slot) in &object.cells {
+                if *slot != 0 {
+                    let world = (
+                        cell.0 + object.translation.0,
+                        cell.1 + object.translation.1,
+                        cell.2 + object.translation.2,
+                    );
+                    colors.insert(world, *slot);
+                }
+            }
+            &classed
+        } else {
+            &object.cells
+        };
+        for mut quad in merged_quads(cells, options.merge || atlas) {
             quad.cell = (
                 quad.cell.0 + object.translation.0,
                 quad.cell.1 + object.translation.1,
@@ -123,8 +156,41 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
             quads.push(quad);
         }
     }
-    if options.merge {
+    if options.merge && !atlas {
         quads = split_per_bone(quads);
+    }
+    if atlas {
+        let (width, height, blocks) = pack(&quads);
+        let mut pixels = vec![0u8; (width * height * 4) as usize];
+        for (quad, (x0, y0)) in quads.iter().zip(&blocks) {
+            let (normal, _, _) = face_axes(quad.face);
+            let origin = split_origin(quad);
+            let (_, u_axis, v_axis) = face_axes(quad.face);
+            for j in 0..quad.h {
+                for i in 0..quad.w {
+                    let cell = cell_on(
+                        quad.face,
+                        axis_of(quad.cell, normal),
+                        origin[u_axis] + i,
+                        origin[v_axis] + j,
+                    );
+                    let slot = colors.get(&cell).copied().unwrap_or(0);
+                    let rgba = session.palette[slot as usize];
+                    if rgba[3] != 255 {
+                        built.blend = true;
+                    }
+                    let at = (((y0 + j as u32) * width + x0 + i as u32) * 4) as usize;
+                    pixels[at..at + 4].copy_from_slice(&rgba);
+                }
+            }
+        }
+        built.atlas = (width, height, pixels);
+        emit_atlas(&mut built, session, &quads, &blocks, &classes, with_motion);
+        if built.positions.is_empty() {
+            built.min = [0.0; 3];
+            built.max = [0.0; 3];
+        }
+        return built;
     }
     // Every attribute follows from the corner, the face, the slot, and the
     // bone, so neighbouring quads that agree on all four share the vertex.
@@ -183,6 +249,198 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
         built.max = [0.0; 3];
     }
     built
+}
+
+/// Colour-atlas faces. Instead of cutting a quad where a corner of another
+/// face lands on its edge (which multiplies quads), each such corner becomes
+/// a vertex on the quad's outline, and the outline is ear-clipped into
+/// `n - 2` triangles with no zero-area ones. The seams stay closed, with one
+/// pass, because the added vertices are corners that already exist.
+fn emit_atlas(
+    built: &mut Built,
+    session: &Session,
+    quads: &[GreedyQuad],
+    blocks: &[(u32, u32)],
+    classes: &[(u8, u8)],
+    with_motion: bool,
+) {
+    // Every corner on every axis plane through it, so a perpendicular face
+    // that ends on a quad's edge is found as well as a coplanar one.
+    let mut on_plane: HashMap<(usize, i32), Vec<[i32; 3]>> = HashMap::new();
+    for quad in quads {
+        for corner in quad_corners(quad.face, quad.cell, quad.w, quad.h) {
+            for axis in 0..3 {
+                on_plane
+                    .entry((axis, corner[axis]))
+                    .or_default()
+                    .push(corner);
+            }
+        }
+    }
+    for corners in on_plane.values_mut() {
+        corners.sort_unstable();
+        corners.dedup();
+    }
+    let (width, height) = (built.atlas.0 as f32, built.atlas.1 as f32);
+    for (quad, (x0, y0)) in quads.iter().zip(blocks) {
+        let (normal, u_axis, v_axis) = face_axes(quad.face);
+        let origin = split_origin(quad);
+        let corners = quad_corners(quad.face, quad.cell, quad.w, quad.h);
+        // The outline in the corners' order, with every other corner that
+        // lies inside an edge inserted in order along that edge.
+        let hits = &on_plane[&(normal, origin[normal])];
+        let mut outline: Vec<[i32; 3]> = Vec::with_capacity(4);
+        for edge in 0..4 {
+            let (a, b) = (corners[edge], corners[(edge + 1) % 4]);
+            outline.push(a);
+            let axis = if a[u_axis] != b[u_axis] {
+                u_axis
+            } else {
+                v_axis
+            };
+            let other = if axis == u_axis { v_axis } else { u_axis };
+            let (lo, hi) = (a[axis].min(b[axis]), a[axis].max(b[axis]));
+            let mut inside: Vec<[i32; 3]> = hits
+                .iter()
+                .filter(|hit| hit[other] == a[other] && hit[axis] > lo && hit[axis] < hi)
+                .copied()
+                .collect();
+            inside.sort_unstable_by_key(|hit| (hit[axis] - a[axis]).abs());
+            outline.extend(inside);
+        }
+        let first = (built.positions.len() / 3) as u32;
+        let normal_vec = y_up(NORMALS[quad.face]);
+        let motion = session.motion_uv(classes[quad.slot as usize - 1].1);
+        for corner in &outline {
+            let point = y_up([corner[0] as f32, corner[1] as f32, corner[2] as f32]);
+            for axis in 0..3 {
+                built.min[axis] = built.min[axis].min(point[axis]);
+                built.max[axis] = built.max[axis].max(point[axis]);
+                built.positions.push(point[axis]);
+                built.normals.push(normal_vec[axis]);
+            }
+            let u = (*x0 as i32 + corner[u_axis] - origin[u_axis]) as f32 / width;
+            let v = (*y0 as i32 + corner[v_axis] - origin[v_axis]) as f32 / height;
+            built.extra.extend_from_slice(&[u, v]);
+            if with_motion {
+                built.motion.extend_from_slice(&motion);
+            }
+            if !session.skeleton.bones.is_empty() {
+                built.joints.extend_from_slice(&[quad.bone, 0, 0, 0]);
+            }
+        }
+        // Ear clipping on a convex outline: a vertex where the outline turns
+        // is an ear. It is taken only if the rest keeps an area, or the points
+        // left on one line would have no triangle.
+        let flat: Vec<(i64, i64)> = outline
+            .iter()
+            .map(|p| (p[u_axis] as i64, p[v_axis] as i64))
+            .collect();
+        let turn = |a: usize, b: usize, c: usize| {
+            let (a, b, c) = (flat[a], flat[b], flat[c]);
+            (b.0 - a.0) * (c.1 - b.1) - (b.1 - a.1) * (c.0 - b.0)
+        };
+        let area = |points: &[usize]| {
+            let n = points.len();
+            (0..n)
+                .map(|i| {
+                    let (a, b) = (flat[points[i]], flat[points[(i + 1) % n]]);
+                    a.0 * b.1 - b.0 * a.1
+                })
+                .sum::<i64>()
+        };
+        let mut left: Vec<usize> = (0..outline.len()).collect();
+        while left.len() > 3 {
+            let n = left.len();
+            let ear = (0..n)
+                .find(|&i| {
+                    if turn(left[(i + n - 1) % n], left[i], left[(i + 1) % n]) == 0 {
+                        return false;
+                    }
+                    let mut rest = left.clone();
+                    rest.remove(i);
+                    area(&rest) != 0
+                })
+                .expect("a convex outline with area has an ear");
+            let (a, b, c) = (left[(ear + n - 1) % n], left[ear], left[(ear + 1) % n]);
+            built.indices.extend_from_slice(&[
+                first + a as u32,
+                first + b as u32,
+                first + c as u32,
+            ]);
+            left.remove(ear);
+        }
+        built.indices.extend_from_slice(&[
+            first + left[0] as u32,
+            first + left[1] as u32,
+            first + left[2] as u32,
+        ]);
+    }
+}
+
+/// The colour-atlas merge class of every palette slot, plus one so that 0
+/// stays empty, and for each class a slot that carries its motion. Slots of
+/// one motion and opacity share a class.
+pub(super) fn merge_classes(session: &Session) -> Vec<(u8, u8)> {
+    let mut keys: Vec<([u32; 2], bool)> = Vec::new();
+    let mut representative: Vec<u8> = Vec::new();
+    let mut classes = vec![(0u8, 0u8); 256];
+    for slot in 1..=255u8 {
+        let motion = session.motion_uv(slot);
+        let key = (
+            [motion[0].to_bits(), motion[1].to_bits()],
+            session.palette[slot as usize][3] != 255,
+        );
+        let class = match keys.iter().position(|known| *known == key) {
+            Some(class) => class,
+            None => {
+                keys.push(key);
+                representative.push(slot);
+                keys.len() - 1
+            }
+        };
+        classes[slot as usize].0 = class as u8 + 1;
+    }
+    // Index by class - 1 for the representative slot.
+    for (class, slot) in representative.into_iter().enumerate() {
+        classes[class].1 = slot;
+    }
+    classes
+}
+
+/// Shelf-pack one block of `w` by `h` texels per quad, tallest first. The
+/// width is a power of two near the square root of the texel count. Returns
+/// the width, the height and each quad's block corner.
+pub(super) fn pack(quads: &[GreedyQuad]) -> (u32, u32, Vec<(u32, u32)>) {
+    let texels: u64 = quads.iter().map(|quad| (quad.w * quad.h) as u64).sum();
+    let widest = quads.iter().map(|quad| quad.w as u32).max().unwrap_or(1);
+    let mut width = 16u32;
+    while (width as u64) * (width as u64) < texels + texels / 8 {
+        width *= 2;
+    }
+    width = width.max(widest.next_power_of_two());
+    let mut order: Vec<usize> = (0..quads.len()).collect();
+    order.sort_by_key(|&index| {
+        (
+            std::cmp::Reverse(quads[index].h),
+            std::cmp::Reverse(quads[index].w),
+        )
+    });
+    let mut blocks = vec![(0u32, 0u32); quads.len()];
+    let (mut x, mut y, mut row) = (0u32, 0u32, 0u32);
+    for index in order {
+        let (w, h) = (quads[index].w as u32, quads[index].h as u32);
+        if x + w > width {
+            y += row;
+            x = 0;
+            row = 0;
+        }
+        blocks[index] = (x, y);
+        x += w;
+        row = row.max(h);
+    }
+    let height = (y + row).max(1).next_multiple_of(4);
+    (width, height, blocks)
 }
 
 #[derive(Clone, Copy)]
