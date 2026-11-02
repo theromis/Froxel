@@ -30,6 +30,17 @@ mod imp {
             .pick_file()
     }
 
+    pub fn pick_open_many(filter: &str, extensions: &[&str]) -> Vec<PathBuf> {
+        rfd::FileDialog::new()
+            .add_filter(filter, extensions)
+            .pick_files()
+            .unwrap_or_default()
+    }
+
+    pub fn pick_folder(title: &str) -> Option<PathBuf> {
+        rfd::FileDialog::new().set_title(title).pick_folder()
+    }
+
     pub fn pick_save(
         title: Option<&str>,
         filter: &str,
@@ -75,6 +86,14 @@ mod imp {
         None
     }
 
+    pub fn pick_open_many(_filter: &str, _extensions: &[&str]) -> Vec<PathBuf> {
+        Vec::new()
+    }
+
+    pub fn pick_folder(_title: &str) -> Option<PathBuf> {
+        None
+    }
+
     pub fn pick_save(
         _title: Option<&str>,
         _filter: &str,
@@ -91,6 +110,14 @@ mod imp {
 
 pub(super) fn pick_open(filter: &str, extensions: &[&str]) -> Option<PathBuf> {
     imp::pick_open(filter, extensions)
+}
+
+pub(super) fn pick_open_many(filter: &str, extensions: &[&str]) -> Vec<PathBuf> {
+    imp::pick_open_many(filter, extensions)
+}
+
+pub(super) fn pick_folder(title: &str) -> Option<PathBuf> {
+    imp::pick_folder(title)
 }
 
 pub(super) fn pick_save(

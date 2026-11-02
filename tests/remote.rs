@@ -123,3 +123,19 @@ fn inspect_lists_only_used_palette_slots_unless_asked() {
     assert_eq!(got["palette"].as_object().unwrap().len(), 256);
     assert!(apply(&mut session, "document.inspect", &json!({"fullPalette": 1})).is_err());
 }
+
+#[test]
+fn mesh_params_round_trip_through_the_export_options() {
+    let options = crate::export::MeshExport {
+        merge: true,
+        vertex_colors: true,
+        export_hidden: false,
+        split_objects: true,
+        color_atlas: false,
+        ao_strength: 0.5,
+        ao_radius: 3,
+        ao_target: crate::export::AoTarget::Both,
+    };
+    let back = mesh_options(&mesh_params(&options)).unwrap();
+    assert_eq!(mesh_params(&back), mesh_params(&options));
+}

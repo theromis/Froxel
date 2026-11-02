@@ -76,9 +76,54 @@ pub(super) fn export(ui: &mut Ui, session: &mut Session) {
     for (id, label, on, flag) in options {
         action_checkbox(ui, session, id, label, on, UiAction::Export(flag));
     }
-    if ui.button("Export mesh…").clicked() {
-        session.export_mesh_dialog();
-    }
+    slider_f32(
+        ui,
+        session,
+        "Occlusion",
+        SliderTarget::ExportAo,
+        0.0..=1.0,
+        2,
+    );
+    ui.add_enabled_ui(session.export.ao_strength > 0.0, |ui| {
+        slider_i32(
+            ui,
+            session,
+            "AO radius",
+            SliderTarget::ExportAoRadius,
+            0..=crate::export::occlusion::MAX_RADIUS as i32,
+        );
+        ui.horizontal(|ui| {
+            ui.add_sized(
+                [64.0, 16.0],
+                egui::Label::new(RichText::new("AO target").small().color(DIM)),
+            );
+            let target = &mut session.export.ao_target;
+            egui::ComboBox::from_id_salt("ao-target")
+                .selected_text(target.name())
+                .show_ui(ui, |ui| {
+                    for choice in [
+                        crate::export::AoTarget::Auto,
+                        crate::export::AoTarget::Vertex,
+                        crate::export::AoTarget::Texture,
+                        crate::export::AoTarget::Both,
+                    ] {
+                        ui.selectable_value(target, choice, choice.name());
+                    }
+                });
+        });
+    });
+    ui.horizontal(|ui| {
+        if ui.button("Export mesh…").clicked() {
+            session.export_mesh_dialog();
+        }
+        if ui
+            .button("Export models…")
+            .on_hover_text("Export .vox files on disk to .glb with these options")
+            .clicked()
+        {
+            session.export_models_dialog();
+        }
+    });
 }
 
 pub(super) fn render(ui: &mut Ui, session: &mut Session) {
@@ -106,6 +151,8 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
     });
     slider_i32(ui, session, "Samples", SliderTarget::MaxSamples, 16..=8192);
     section(ui, "Camera");
+    ui.checkbox(&mut session.orthographic, "Orthographic")
+        .on_hover_text("Parallel projection in the viewport, the tracer, and saved images");
     ui.checkbox(&mut session.aces, "ACES tonemap");
     ui.checkbox(&mut session.denoise, "Denoise")
         .on_hover_text(crate::denoise::hover());
@@ -135,6 +182,22 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
     if ui.button("Save render…").clicked() {
         session.save_render();
     }
+    ui.horizontal(|ui| {
+        if ui
+            .button("Save preview…")
+            .on_hover_text("The fast lit raster of the viewport, from this camera angle")
+            .clicked()
+        {
+            session.save_still("render.preview");
+        }
+        if ui
+            .button("Save model view…")
+            .on_hover_text("Flat palette colours, no light, from this camera angle")
+            .clicked()
+        {
+            session.save_still("render.flat");
+        }
+    });
     let show_bones = session.show_bones;
     action_checkbox(
         ui,
@@ -390,6 +453,33 @@ pub(super) fn selection(ui: &mut Ui, session: &mut Session) {
             "⌘-drag moves it. Paste lands on the hovered face."
         };
         ui.label(RichText::new(hint).small().color(DIM));
+    });
+}
+
+/// MCP `smooth`: the majority filter over the selection's box, or the
+/// whole active object.
+pub(super) fn smooth(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.voxel_count() > 0 && session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Smooth");
+        slider_i32(ui, session, "Passes", SliderTarget::SmoothIterations, 1..=8);
+        slider_i32(ui, session, "Fill at", SliderTarget::SmoothFillAt, 1..=27);
+        slider_i32(ui, session, "Remove at", SliderTarget::SmoothRemoveAt, -1..=25);
+        let scope = if session.picked.is_empty() {
+            "Smooth object"
+        } else {
+            "Smooth selection"
+        };
+        if ui.button(scope).clicked() {
+            session.smooth_picked();
+        }
+        ui.label(
+            RichText::new(
+                "Fills pits and removes spikes, keeping colours. It also removes anything one cell thick.",
+            )
+            .small()
+            .color(DIM),
+        );
     });
 }
 

@@ -45,6 +45,9 @@ pub fn tool(tool: Tool) -> char {
         Tool::Box => glyph::CUBE,
         Tool::Face => glyph::TEXTURE,
         Tool::Generator => glyph::SPARKLE,
+        // The subset has no tube glyph; the desktop strip draws one with
+        // [`paint_tool`].
+        Tool::Tube => glyph::POLYLINE,
         Tool::Mutator => glyph::BUBBLES,
         Tool::Marquee => glyph::MARQUEE,
         Tool::BoxSelect => glyph::SELECT_ALL,
@@ -57,6 +60,41 @@ pub fn mode(mode: ToolMode) -> char {
         ToolMode::Add => glyph::ADD,
         ToolMode::Remove => glyph::REMOVE,
         ToolMode::Paint => glyph::BUCKET,
+    }
+}
+
+/// Draw a tool's icon in the middle of a button: its glyph, or for Tube a
+/// tapering curve.
+pub fn paint_tool(ui: &egui::Ui, response: &egui::Response, tool: Tool, selected: bool) {
+    if tool != Tool::Tube {
+        paint(ui, response, self::tool(tool), selected);
+        return;
+    }
+    let color = if selected || response.hovered() {
+        egui::Color32::WHITE
+    } else {
+        ui.visuals().widgets.inactive.fg_stroke.color
+    };
+    let rect = response.rect.shrink(response.rect.width() * 0.22);
+    let steps = 12;
+    let at = |t: f32| {
+        // A quadratic curve from the lower left over the top to the right.
+        let a = rect.left_bottom();
+        let b = egui::pos2(rect.center().x, rect.top());
+        let c = rect.right_center();
+        let u = 1.0 - t;
+        egui::pos2(
+            u * u * a.x + 2.0 * u * t * b.x + t * t * c.x,
+            u * u * a.y + 2.0 * u * t * b.y + t * t * c.y,
+        )
+    };
+    for step in 0..steps {
+        let t0 = step as f32 / steps as f32;
+        let t1 = (step + 1) as f32 / steps as f32;
+        let width = 6.0 - 4.5 * t0;
+        ui.painter()
+            .line_segment([at(t0), at(t1)], egui::Stroke::new(width, color));
+        ui.painter().circle_filled(at(t1), width * 0.5, color);
     }
 }
 

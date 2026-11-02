@@ -9,11 +9,11 @@ pub(super) fn active_color(ui: &mut Ui, session: &mut Session) {
     ui.label(RichText::new("Active").small().color(DIM));
     ui.horizontal(|ui| {
         ui.monospace(format!("{:>3}", session.active_slot));
-        let mut rgb = session.color(session.active_slot);
-        let resp = ui.color_edit_button_srgb(&mut rgb);
+        let mut rgba = session.palette[session.active_slot as usize];
+        let resp = ui.color_edit_button_srgba_unmultiplied(&mut rgba);
         if resp.changed() {
             session.begin_edit();
-            session.set_color(session.active_slot, rgb);
+            session.set_rgba(session.active_slot, rgba);
         }
         if resp.drag_stopped() || (resp.changed() && !resp.dragged()) {
             session.end_edit();

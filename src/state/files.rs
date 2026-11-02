@@ -304,6 +304,38 @@ impl Session {
 
     /// Write cells of the active object. Palette 0 erases. One undo step.
     /// Coordinates are local to that object and must lie in `[-1024, 1024)`.
+    /// MCP `smooth` and the Smooth panel: the majority filter of
+    /// [`crate::tools::smooth`] over an inclusive box of the active object,
+    /// written as one undo step.
+    pub(crate) fn smooth_region(
+        &mut self,
+        min: Cell,
+        max: Cell,
+        iterations: u32,
+        fill_at: i32,
+        remove_at: i32,
+    ) -> Result<crate::tools::Smoothed, String> {
+        let count = (i64::from(max.0 - min.0) + 1)
+            * (i64::from(max.1 - min.1) + 1)
+            * (i64::from(max.2 - min.2) + 1);
+        if count > crate::tools::MAX_SCULPT_CELLS {
+            return Err(format!(
+                "box is larger than {} cells; smooth a smaller region",
+                crate::tools::MAX_SCULPT_CELLS
+            ));
+        }
+        let report = crate::tools::smooth(
+            &self.active().cells,
+            min,
+            max,
+            iterations,
+            fill_at,
+            remove_at,
+        );
+        self.write_cells(&report.writes)?;
+        Ok(report)
+    }
+
     pub(crate) fn write_cells(&mut self, writes: &[(i32, i32, i32, i32)]) -> Result<i64, String> {
         let mut deduped: HashMap<Cell, u8> = HashMap::new();
         for (x, y, z, palette) in writes {
@@ -608,6 +640,122 @@ impl Session {
         }
     }
 
+    /// The Smooth panel: MCP `smooth` over the selection's box, or the whole
+    /// active object and one cell around it.
+    pub fn smooth_picked(&mut self) {
+        let region = if self.picked.is_empty() {
+            cell_bounds(self.active().cells.keys().copied()).map(|(min, max)| {
+                (
+                    crate::tools::add(min, (-1, -1, -1)),
+                    crate::tools::add(max, (1, 1, 1)),
+                )
+            })
+        } else {
+            cell_bounds(self.picked.iter().copied())
+        };
+        let Some((min, max)) = region else {
+            self.status = "Nothing to smooth.".into();
+            return;
+        };
+        let result = self.smooth_region(
+            min,
+            max,
+            self.smooth_iterations.clamp(1, 8) as u32,
+            self.smooth_fill_at,
+            self.smooth_remove_at,
+        );
+        self.status = match result {
+            Ok(report) => format!(
+                "Smoothed: {} filled, {} removed in {} {}.",
+                report.filled,
+                report.removed,
+                report.iterations,
+                if report.iterations == 1 {
+                    "pass"
+                } else {
+                    "passes"
+                }
+            ),
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// Save Preview and Save Model View: MCP `preview` and `model_view` from
+    /// the window's camera angles and projection.
+    pub fn save_still(&mut self, method: &str) {
+        let Some(path) = self.pick_render_path() else {
+            return;
+        };
+        let params = serde_json::json!({
+            "path": path.to_string_lossy(),
+            "yaw": self.yaw.to_degrees(),
+            "pitch": self.pitch.to_degrees(),
+            "orthographic": self.orthographic,
+        });
+        self.status = match crate::remote::apply(self, method, &params) {
+            Ok(_) => format!("Saved {}.", path.display()),
+            Err(err) => err,
+        };
+    }
+
+    /// File > Export Models: MCP `export_models` for .vox files on disk, each
+    /// to a .glb of the same name in one folder, with the Export panel's
+    /// options. The open document is left as it is.
+    pub fn export_models_dialog(&mut self) {
+        let sources = dialog::pick_open_many("MagicaVoxel", &["vox"]);
+        if sources.is_empty() {
+            return;
+        }
+        let Some(folder) = dialog::pick_folder("Export the models to") else {
+            return;
+        };
+        let options = crate::remote::mesh_params(&self.export);
+        let mut written = 0;
+        let mut errors = Vec::new();
+        for chunk in sources.chunks(16) {
+            let models: Vec<serde_json::Value> = chunk
+                .iter()
+                .map(|source| {
+                    let stem = source
+                        .file_stem()
+                        .map(|stem| stem.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| "model".into());
+                    let mut model = options.clone();
+                    model["source"] = source.to_string_lossy().into_owned().into();
+                    model["path"] = folder
+                        .join(format!("{stem}.glb"))
+                        .to_string_lossy()
+                        .into_owned()
+                        .into();
+                    model
+                })
+                .collect();
+            match crate::remote::apply(
+                self,
+                "mesh.export_batch",
+                &serde_json::json!({"models": models}),
+            ) {
+                Ok(reply) => {
+                    for item in reply["models"].as_array().into_iter().flatten() {
+                        match item["error"].as_str() {
+                            Some(error) => errors.push(error.to_string()),
+                            None => written += 1,
+                        }
+                    }
+                }
+                Err(err) => errors.push(err),
+            }
+        }
+        self.status = match errors.first() {
+            None => format!("Exported {written} models to {}.", folder.display()),
+            Some(first) => format!(
+                "Exported {written} models; {} failed: {first}",
+                errors.len()
+            ),
+        };
+    }
+
     pub(super) fn pick_render_path(&self) -> Option<PathBuf> {
         let name = format!("{}.png", self.active().name);
         let path = dialog::pick_save(None, "PNG", &["png"], &name)?;
@@ -779,6 +927,19 @@ impl Session {
             SliderTarget::SunAzimuth => self.sun_azimuth = value.clamp(0.0, 360.0),
             SliderTarget::SunDisc => self.sun_disc = value.clamp(0.1, 30.0),
             SliderTarget::SunIntensity => self.sun_intensity = value.clamp(0.0, 10.0),
+            SliderTarget::TubeStart => self.tube_start = value.clamp(0.5, 32.0),
+            SliderTarget::TubeEnd => self.tube_end = value.clamp(0.5, 32.0),
+            SliderTarget::TubeSecond => self.tube_second = whole.clamp(1, 255),
+            SliderTarget::TubePeriod => self.tube_period = value.clamp(1.0, 16.0),
+            SliderTarget::TubeSectors => self.tube_sectors = whole.clamp(1, 32),
+            SliderTarget::SmoothIterations => self.smooth_iterations = whole.clamp(1, 8),
+            SliderTarget::SmoothFillAt => self.smooth_fill_at = whole.clamp(1, 27),
+            SliderTarget::SmoothRemoveAt => self.smooth_remove_at = whole.clamp(-1, 25),
+            SliderTarget::ExportAo => self.export.ao_strength = value.clamp(0.0, 1.0),
+            SliderTarget::ExportAoRadius => {
+                self.export.ao_radius =
+                    whole.clamp(0, crate::export::occlusion::MAX_RADIUS as i32) as u32;
+            }
         }
     }
 

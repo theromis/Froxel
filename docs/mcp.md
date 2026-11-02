@@ -616,6 +616,39 @@ language and the `MVSC` chunk are described in `docs/scripting.md`.
 A creature or other one-off shape is modelled without a script: see
 [hand-sculpting.md](hand-sculpting.md).
 
+### In the editor
+
+Every tool that edits or writes the document has a place in the editor
+window, and the two share one code path. The window's Add, Remove, and
+Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
+
+| Tool | Editor |
+|---|---|
+| `new_document`, `open_file`, `save_file` | File menu |
+| `inspect_document`, `get_voxel`, `get_voxels` | Document section, the hovered cell |
+| `set_voxel`, `set_voxels` | Brush, Line, Circle, Square, Face, Mutator |
+| `fill_box` | Box tool with Fill |
+| `fill_ellipsoid`, `fill_rounded_box` | Generator: Ellipsoid, Rounded box |
+| `fill_tube` | Tube tool: drag from the start radius to the end radius; Chain adds a point per drag and Smooth curves through them until Finish; Solid, Rings, Stripes, or Random with a second slot |
+| `carve` | Remove mode with Box, Generator, or Tube |
+| `smooth` | Smooth section: Passes, Fill at, Remove at, over the selection or the whole object |
+| `set_palette` | Palette dock (colour and alpha) and the Material section (motion) |
+| `set_active_object`, `add_object`, `set_object`, `remove_object` | Objects tree and the Object inspector |
+| `mirror_object` | Object inspector: Mirror X, Y, Z and Mirror bones too |
+| `add_bone`, `set_bone`, `remove_bone`, `bind_object`, `list_bones` | Bones tree, the Bone inspector, the Object inspector's Bone |
+| `set_pose`, `clear_pose` | Pose section |
+| `add_clip`, `set_clip_keys`, `list_clips`, `remove_clip` | Clips section: Add, Key pose at a time, Delete |
+| `undo`, `redo` | Edit menu |
+| `render` | Render mode and Save render |
+| `preview`, `model_view` | Render section: Save preview, Save model view, from the window's camera |
+| `set_view` | Orbit, pan, and zoom in the viewport; Camera section: Orthographic |
+| `set_script`, `get_script`, `set_params`, `list_params`, `regenerate` | Script section |
+| `export_mesh` | Export section and File > Export Mesh, with Occlusion, AO radius, AO target |
+| `export_models` | File > Export Models and the Export section's Export models: pick `.vox` files and a folder |
+
+The screenshot, `ui_inspect`, and `ui_click` tools drive the window and have
+no control of their own.
+
 ### What this server does not do
 
 Render mode in the window path-traces on the GPU; saving that frame is a

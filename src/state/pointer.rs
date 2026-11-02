@@ -92,6 +92,9 @@ impl Session {
         if primary_released && self.grab == Grab::Paint {
             // The release frame is not "down", but it carries the end of the drag.
             self.apply_stroke(ray, drag);
+            if self.tool == Tool::Tube {
+                self.finish_tube_drag();
+            }
             self.stroke = None;
             self.commit();
             self.grab = Grab::None;
@@ -160,6 +163,7 @@ impl Session {
                 | Tool::Box
                 | Tool::Face
                 | Tool::Generator
+                | Tool::Tube
                 | Tool::Mutator
         )
     }
@@ -312,7 +316,7 @@ impl Session {
                 let n = steps.abs();
                 crate::tools::extrude(&seeds, axis, sign, n, outward)
             }
-            Tool::Generator => Vec::new(),
+            Tool::Generator | Tool::Tube => Vec::new(),
             Tool::Mutator => {
                 let offsets = footprint(self.brush_size, self.brush_shape, self.brush_3d);
                 let mapped = map_footprint(&offsets, axis);
@@ -327,6 +331,13 @@ impl Session {
             }
             _ => Vec::new(),
         };
+        if self.tool == Tool::Tube {
+            self.preview_tube(base, anchor, end);
+            if let Some(stroke) = self.stroke.as_mut() {
+                stroke.key = Some((end, face_steps, stamp));
+            }
+            return;
+        }
         let edits = if self.tool == Tool::Generator {
             let min = (
                 anchor.0.min(end.0),
@@ -397,6 +408,92 @@ impl Session {
         if let Some(stroke) = self.stroke.as_mut() {
             stroke.key = Some((end, face_steps, stamp));
         }
+    }
+
+    /// One Tube drag: a tube from `anchor` to `end`, or with Chain on, the
+    /// chain so far plus `end`, drawn over the cells from before the chain.
+    fn preview_tube(&mut self, base: HashMap<Cell, u8>, anchor: Cell, end: Cell) {
+        let point = |cell: Cell, radius: f32| crate::tools::TubePoint {
+            at: [f64::from(cell.0), f64::from(cell.1), f64::from(cell.2)],
+            radius: f64::from(radius),
+        };
+        let continuing = self.tube_chain
+            && !self.tube_points.is_empty()
+            && self.tube_after.as_ref() == Some(&base);
+        let (points, under) = if continuing {
+            let mut points = self.tube_points.clone();
+            points.push(point(end, self.tube_end));
+            (points, self.tube_base.clone().unwrap_or(base))
+        } else {
+            (
+                vec![point(anchor, self.tube_start), point(end, self.tube_end)],
+                base,
+            )
+        };
+        let edits = match self.tube_cells(&points) {
+            Ok(edits) => edits,
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
+        self.tube_preview = Some((points, under.clone()));
+        self.write_preview(under, edits);
+    }
+
+    /// The cells of a tube through `points` with the Tube tool's colours,
+    /// from the same [`crate::tools::tube`] as MCP `fill_tube`.
+    pub(crate) fn tube_cells(
+        &self,
+        points: &[crate::tools::TubePoint],
+    ) -> Result<Vec<(Cell, u8)>, String> {
+        let cells = crate::tools::tube(points, self.tube_smooth)?;
+        let slots = [
+            self.paint_slot(),
+            match self.tool_mode {
+                ToolMode::Remove => 0,
+                _ => self.tube_second.clamp(1, 255) as u8,
+            },
+        ];
+        let pattern = match self.tube_colors {
+            TubeColors::Solid => None,
+            TubeColors::Rings => Some(crate::tools::TubePattern::Rings {
+                period: f64::from(self.tube_period),
+            }),
+            TubeColors::Stripes => Some(crate::tools::TubePattern::Stripes {
+                sectors: self.tube_sectors.max(1) as u32,
+            }),
+            TubeColors::Random => Some(crate::tools::TubePattern::Random { seed: 0 }),
+        };
+        Ok(cells
+            .iter()
+            .map(|cell| {
+                let slot = pattern.map_or(slots[0], |pattern| slots[pattern.pick(cell, 2)]);
+                (cell.cell, slot)
+            })
+            .collect())
+    }
+
+    /// The end of a Tube drag: with Chain on, its points become the chain.
+    fn finish_tube_drag(&mut self) {
+        let preview = self.tube_preview.take();
+        if !self.tube_chain {
+            self.finish_tube();
+            return;
+        }
+        if let Some((points, under)) = preview {
+            self.tube_points = points;
+            self.tube_base = Some(under);
+            self.tube_after = Some(self.active().cells.clone());
+        }
+    }
+
+    /// Forget the Tube chain. The next drag starts a new tube.
+    pub fn finish_tube(&mut self) {
+        self.tube_points.clear();
+        self.tube_base = None;
+        self.tube_after = None;
+        self.tube_preview = None;
     }
 
     pub(super) fn begin_stroke(&mut self, hit: Hit) {
@@ -578,6 +675,18 @@ impl Session {
             .wrapping_mul(16777619)
             .wrapping_add(self.circle_fill as u64);
         h = h.wrapping_mul(16777619).wrapping_add(self.box_fill as u64);
+        for value in [self.tube_start, self.tube_end, self.tube_period] {
+            h = h
+                .wrapping_mul(16777619)
+                .wrapping_add(u64::from(value.to_bits()));
+        }
+        h = h.wrapping_mul(16777619).wrapping_add(
+            (self.tube_sectors as u64) << 16
+                | (self.tube_second as u64) << 8
+                | (self.tube_colors as u64) << 2
+                | (self.tube_smooth as u64) << 1
+                | self.tube_chain as u64,
+        );
         h = h
             .wrapping_mul(16777619)
             .wrapping_add(self.foliage_seed as u64);

@@ -54,6 +54,21 @@ impl Session {
             perlin_hi: 8,
             foliage_seed: 1,
             foliage_density: 0.30,
+            tube_start: 3.0,
+            tube_end: 1.0,
+            tube_smooth: true,
+            tube_chain: false,
+            tube_colors: TubeColors::Solid,
+            tube_second: 1,
+            tube_period: 2.0,
+            tube_sectors: 6,
+            tube_points: Vec::new(),
+            tube_base: None,
+            tube_after: None,
+            tube_preview: None,
+            smooth_iterations: 1,
+            smooth_fill_at: 17,
+            smooth_remove_at: 9,
             palette: default_palette(),
             materials: [Material::default(); 256],
             active_slot: 36,
@@ -265,11 +280,11 @@ impl Session {
         [c[0], c[1], c[2]]
     }
 
-    pub fn set_color(&mut self, slot: u8, rgb: [u8; 3]) {
+    /// A slot's colour and alpha, as MCP `set_palette`'s `a`.
+    pub fn set_rgba(&mut self, slot: u8, next: [u8; 4]) {
         if slot == 0 {
             return;
         }
-        let next = [rgb[0], rgb[1], rgb[2], 255];
         if self.palette[slot as usize] == next {
             return;
         }

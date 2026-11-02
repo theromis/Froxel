@@ -21,6 +21,7 @@ pub enum Tool {
     Box,
     Face,
     Generator,
+    Tube,
     Mutator,
     Marquee,
     BoxSelect,
@@ -37,12 +38,24 @@ impl Tool {
             Tool::Box => "Box",
             Tool::Face => "Face",
             Tool::Generator => "Generator",
+            Tool::Tube => "Tube",
             Tool::Mutator => "Mutator",
             Tool::Marquee => "Marquee",
             Tool::BoxSelect => "Box Select",
             Tool::FloodSelect => "Flood Select",
         }
     }
+}
+
+/// How the Tube tool colours its cells: the active slot alone, or the
+/// active slot and the Tube's second slot in a pattern, as MCP `fill_tube`'s
+/// `palettes` and `pattern`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TubeColors {
+    Solid,
+    Rings,
+    Stripes,
+    Random,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -414,6 +427,16 @@ pub enum SliderTarget {
     SunAzimuth,
     SunDisc,
     SunIntensity,
+    TubeStart,
+    TubeEnd,
+    TubeSecond,
+    TubePeriod,
+    TubeSectors,
+    SmoothIterations,
+    SmoothFillAt,
+    SmoothRemoveAt,
+    ExportAo,
+    ExportAoRadius,
 }
 
 impl SliderTarget {
@@ -465,6 +488,16 @@ impl SliderTarget {
             SliderTarget::SunAzimuth => "slider.sun-azimuth",
             SliderTarget::SunDisc => "slider.sun-disc",
             SliderTarget::SunIntensity => "slider.sun-intensity",
+            SliderTarget::TubeStart => "slider.tube-start",
+            SliderTarget::TubeEnd => "slider.tube-end",
+            SliderTarget::TubeSecond => "slider.tube-second",
+            SliderTarget::TubePeriod => "slider.tube-period",
+            SliderTarget::TubeSectors => "slider.tube-sectors",
+            SliderTarget::SmoothIterations => "slider.smooth-iterations",
+            SliderTarget::SmoothFillAt => "slider.smooth-fill-at",
+            SliderTarget::SmoothRemoveAt => "slider.smooth-remove-at",
+            SliderTarget::ExportAo => "slider.export-ao",
+            SliderTarget::ExportAoRadius => "slider.export-ao-radius",
         }
     }
 
@@ -595,6 +628,28 @@ pub struct Session {
     pub perlin_hi: i32,
     pub foliage_seed: i32,
     pub foliage_density: f32,
+    /// Tube tool: the radius at the start and at the end of a drag.
+    pub tube_start: f32,
+    pub tube_end: f32,
+    /// Tube tool: a Catmull-Rom curve through a chain's points.
+    pub tube_smooth: bool,
+    /// Tube tool: each drag adds a point to one tube until Finish.
+    pub tube_chain: bool,
+    pub tube_colors: TubeColors,
+    pub tube_second: i32,
+    pub tube_period: f32,
+    pub tube_sectors: i32,
+    /// The chain so far, the cells before it, and the cells after its last
+    /// drag. A stroke continues the chain only when it starts from those
+    /// cells, so an undo or any other edit starts a new tube.
+    pub(crate) tube_points: Vec<crate::tools::TubePoint>,
+    pub(crate) tube_base: Option<HashMap<Cell, u8>>,
+    pub(crate) tube_after: Option<HashMap<Cell, u8>>,
+    pub(crate) tube_preview: Option<(Vec<crate::tools::TubePoint>, HashMap<Cell, u8>)>,
+    /// Smooth: passes and the neighbour thresholds of MCP `smooth`.
+    pub smooth_iterations: i32,
+    pub smooth_fill_at: i32,
+    pub smooth_remove_at: i32,
 
     pub palette: [[u8; 4]; 256],
     pub materials: [Material; 256],

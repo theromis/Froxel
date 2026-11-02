@@ -1632,7 +1632,7 @@ fn color_and_material_edits_are_one_undo_step() {
     session.picked.insert((0, 0, 0));
     let before = session.palette[36];
     session.begin_edit();
-    session.set_color(36, [9, 8, 7]);
+    session.set_rgba(36, [9, 8, 7, 255]);
     session.end_edit();
     session.begin_edit();
     session.material_mut().roughness = 0.25;
@@ -1999,4 +1999,110 @@ fn the_export_dialog_names_its_options() {
     assert!(session
         .export_summary()
         .ends_with("vertex colors, one mesh per object"));
+}
+
+fn tube_floor() -> Session {
+    let mut session = Session::new();
+    session.replace_empty();
+    for x in 0..=20 {
+        for y in -3..=3 {
+            session.objects[0].cells.insert((x, y, 0), 4);
+        }
+    }
+    session.tool = Tool::Tube;
+    session.tool_mode = ToolMode::Add;
+    session.active_slot = 7;
+    session
+}
+
+fn tube_drag(session: &mut Session, from: f32, to: f32) {
+    let down = Vec3::new(0.0, 0.0, -1.0);
+    let start = (Vec3::new(from + 0.5, 0.5, 20.0), down);
+    let end = (Vec3::new(to + 0.5, 0.5, 20.0), down);
+    point(session, true, true, false, start);
+    point(session, true, false, false, end);
+    point(session, false, false, true, end);
+}
+
+#[test]
+fn tube_drag_fills_a_tapered_tube_as_one_undo_step() {
+    let mut session = tube_floor();
+    let before = session.active().cells.clone();
+    session.tube_start = 3.0;
+    session.tube_end = 1.0;
+    tube_drag(&mut session, 3.0, 16.0);
+    let cells = &session.active().cells;
+    assert_eq!(
+        cells.get(&(3, 0, 4)),
+        Some(&7),
+        "start radius 3 above (3, 0, 1)"
+    );
+    assert_eq!(cells.get(&(16, 0, 1)), Some(&7));
+    assert!(!cells.contains_key(&(16, 0, 3)), "end radius 1");
+    // Add never overwrites: the floor keeps its colour.
+    assert_eq!(cells.get(&(3, 0, 0)), Some(&4));
+    session.undo();
+    assert_eq!(session.active().cells, before);
+}
+
+#[test]
+fn tube_chain_runs_one_tube_until_an_edit_breaks_it() {
+    let mut session = tube_floor();
+    session.tube_chain = true;
+    session.tube_start = 1.0;
+    session.tube_end = 1.0;
+    tube_drag(&mut session, 2.0, 8.0);
+    assert_eq!(session.tube_points.len(), 2);
+    tube_drag(&mut session, 8.0, 14.0);
+    assert_eq!(session.tube_points.len(), 3);
+    session.undo();
+    tube_drag(&mut session, 8.0, 14.0);
+    assert_eq!(session.tube_points.len(), 2, "an undo starts a new tube");
+    session.finish_tube();
+    assert!(session.tube_points.is_empty());
+}
+
+#[test]
+fn tube_remove_carves_and_stripes_use_the_second_slot() {
+    let mut session = tube_floor();
+    session.tool_mode = ToolMode::Remove;
+    session.tube_start = 1.0;
+    session.tube_end = 1.0;
+    tube_drag(&mut session, 4.0, 12.0);
+    assert!(!session.active().cells.contains_key(&(8, 0, 0)));
+    assert!(session.active().cells.contains_key(&(8, 3, 0)));
+
+    let mut session = tube_floor();
+    session.tube_colors = TubeColors::Stripes;
+    session.tube_second = 9;
+    session.tube_sectors = 4;
+    session.tube_start = 3.0;
+    session.tube_end = 3.0;
+    tube_drag(&mut session, 4.0, 14.0);
+    let used: HashSet<u8> = session.active().cells.values().copied().collect();
+    assert!(used.contains(&7) && used.contains(&9), "{used:?}");
+}
+
+#[test]
+fn smooth_panel_fills_a_pit_in_the_object() {
+    let mut session = Session::new();
+    session.replace_empty();
+    for x in 0..8 {
+        for y in 0..8 {
+            for z in 0..3 {
+                session.objects[0].cells.insert((x, y, z), 3);
+            }
+        }
+    }
+    session.objects[0].cells.remove(&(4, 4, 2));
+    session.smooth_picked();
+    assert_eq!(
+        session.active().cells.get(&(4, 4, 2)),
+        Some(&3),
+        "{}",
+        session.status
+    );
+    assert!(session.status.contains("1 filled"), "{}", session.status);
+    session.undo();
+    assert!(!session.active().cells.contains_key(&(4, 4, 2)));
 }

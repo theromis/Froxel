@@ -40,6 +40,37 @@ pub struct TubeCell {
     pub around: f64,
 }
 
+/// How a tube with several palette indices lays them out.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum TubePattern {
+    /// Bands along the length, `period` cells each.
+    Rings { period: f64 },
+    /// `sectors` slices of the circumference, running along the tube.
+    Stripes { sectors: u32 },
+    /// A stable per-cell pick.
+    Random { seed: u64 },
+}
+
+impl TubePattern {
+    /// Which of `count` palette indices `cell` takes.
+    pub fn pick(self, cell: &TubeCell, count: usize) -> usize {
+        let index = match self {
+            TubePattern::Rings { period } => (cell.along / period.max(1.0e-6)).floor() as usize,
+            TubePattern::Stripes { sectors } => (cell.around * f64::from(sectors)).floor() as usize,
+            TubePattern::Random { seed } => {
+                let mut h = seed ^ 0x9e37_79b9_7f4a_7c15;
+                for v in [cell.cell.0, cell.cell.1, cell.cell.2] {
+                    h ^= u64::from(v as u32);
+                    h = h.wrapping_mul(0xbf58_476d_1ce4_e5b9);
+                    h ^= h >> 31;
+                }
+                h as usize
+            }
+        };
+        index % count.max(1)
+    }
+}
+
 struct Segment {
     a: [f64; 3],
     b: [f64; 3],

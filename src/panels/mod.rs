@@ -120,6 +120,8 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
                     render::light(ui, session);
                     ui.separator();
                     render::selection(ui, session);
+                    ui.separator();
+                    render::smooth(ui, session);
                 });
         },
     );
@@ -433,6 +435,16 @@ pub(super) fn slider_value(session: &Session, target: SliderTarget) -> f32 {
         SliderTarget::SunAzimuth => session.sun_azimuth,
         SliderTarget::SunDisc => session.sun_disc,
         SliderTarget::SunIntensity => session.sun_intensity,
+        SliderTarget::TubeStart => session.tube_start,
+        SliderTarget::TubeEnd => session.tube_end,
+        SliderTarget::TubeSecond => session.tube_second as f32,
+        SliderTarget::TubePeriod => session.tube_period,
+        SliderTarget::TubeSectors => session.tube_sectors as f32,
+        SliderTarget::SmoothIterations => session.smooth_iterations as f32,
+        SliderTarget::SmoothFillAt => session.smooth_fill_at as f32,
+        SliderTarget::SmoothRemoveAt => session.smooth_remove_at as f32,
+        SliderTarget::ExportAo => session.export.ao_strength,
+        SliderTarget::ExportAoRadius => session.export.ao_radius as f32,
     }
 }
 

@@ -1062,6 +1062,21 @@ fn write_mesh(
     Ok(json!({"quads": quads, "bytes": bytes.len(), "structure": structure}))
 }
 
+/// The export fields of [`mesh_options`] for `options`, so the editor's
+/// Export panel can call the batch export with its settings.
+pub fn mesh_params(options: &crate::export::MeshExport) -> Value {
+    json!({
+        "merge": options.merge,
+        "vertexColors": options.vertex_colors,
+        "exportHidden": options.export_hidden,
+        "splitObjects": options.split_objects,
+        "colorAtlas": options.color_atlas,
+        "aoStrength": options.ao_strength,
+        "aoRadius": options.ao_radius,
+        "aoTarget": options.ao_target.name(),
+    })
+}
+
 fn mesh_options(params: &Value) -> Result<crate::export::MeshExport, String> {
     Ok(crate::export::MeshExport {
         merge: opt_bool(params, "merge")?.unwrap_or(false),
@@ -1696,31 +1711,21 @@ fn tube_fill(session: &mut Session, params: &Value) -> Result<Value, String> {
             "pattern must be rings, stripes, or random, not `{pattern}`"
         ));
     }
-    let count = palettes.len();
+    let pattern = match pattern.as_str() {
+        "rings" => crate::tools::TubePattern::Rings { period },
+        "stripes" => crate::tools::TubePattern::Stripes {
+            sectors: sectors as u32,
+        },
+        _ => crate::tools::TubePattern::Random { seed },
+    };
     let writes = tube_cells(params)?
         .into_iter()
         .map(|cell| {
             let (x, y, z) = cell.cell;
-            let pick = match pattern.as_str() {
-                "rings" => (cell.along / period).floor() as usize,
-                "stripes" => (cell.around * sectors as f64).floor() as usize,
-                _ => cell_hash(cell.cell, seed) as usize,
-            };
-            (x, y, z, palettes[pick % count])
+            (x, y, z, palettes[pattern.pick(&cell, palettes.len())])
         })
         .collect();
     fill_with_mode(session, params, writes)
-}
-
-/// A stable hash of one cell, for the `random` tube pattern.
-fn cell_hash((x, y, z): Cell, seed: u64) -> u64 {
-    let mut h = seed ^ 0x9e37_79b9_7f4a_7c15;
-    for v in [x, y, z] {
-        h ^= u64::from(v as u32);
-        h = h.wrapping_mul(0xbf58_476d_1ce4_e5b9);
-        h ^= h >> 31;
-    }
-    h
 }
 
 fn carve(session: &mut Session, params: &Value) -> Result<Value, String> {
@@ -1762,13 +1767,6 @@ fn carve(session: &mut Session, params: &Value) -> Result<Value, String> {
 
 fn smooth(session: &mut Session, params: &Value) -> Result<Value, String> {
     let (x0, y0, z0, x1, y1, z1) = box_corners(params)?;
-    let count = (i64::from(x1 - x0) + 1) * (i64::from(y1 - y0) + 1) * (i64::from(z1 - z0) + 1);
-    if count > crate::tools::MAX_SCULPT_CELLS {
-        return Err(format!(
-            "box is larger than {} cells; smooth a smaller region",
-            crate::tools::MAX_SCULPT_CELLS
-        ));
-    }
     let whole = |key: &str, default: i32, range: std::ops::RangeInclusive<i32>| {
         let value = match params.get(key) {
             None => default,
@@ -1790,15 +1788,14 @@ fn smooth(session: &mut Session, params: &Value) -> Result<Value, String> {
     )?;
     let fill_at = whole("fillAt", 17, 1..=27)?;
     let remove_at = whole("removeAt", 9, -1..=25)?;
-    let report = crate::tools::smooth(
-        &session.active().cells,
+    let report = session.smooth_region(
         (x0, y0, z0),
         (x1, y1, z1),
         iterations as u32,
         fill_at,
         remove_at,
-    );
-    let changed = session.write_cells(&report.writes)?;
+    )?;
+    let changed = report.writes.len();
     Ok(json!({
         "changed": changed,
         "filled": report.filled,

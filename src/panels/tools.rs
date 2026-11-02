@@ -11,7 +11,7 @@ const STRIP_GAP: f32 = 4.0;
 /// The tool strip: one column of tool icons, then the Add, Remove, and
 /// Paint modes. Their settings are in [`options`].
 pub(super) fn strip(ui: &mut Ui, session: &mut Session) {
-    const TOOLS: [(Tool, &str, &str); 11] = [
+    const TOOLS: [(Tool, &str, &str); 12] = [
         (Tool::Brush, "Brush", "V"),
         (Tool::Line, "Line", "L"),
         (Tool::Circle, "Circle", ""),
@@ -19,6 +19,7 @@ pub(super) fn strip(ui: &mut Ui, session: &mut Session) {
         (Tool::Box, "Box", "B"),
         (Tool::Face, "Face", "F"),
         (Tool::Generator, "Generator", ""),
+        (Tool::Tube, "Tube", ""),
         (Tool::Mutator, "Mutator", "U"),
         (Tool::Marquee, "Marquee", "M"),
         (Tool::BoxSelect, "Box Select", ""),
@@ -41,7 +42,7 @@ pub(super) fn strip(ui: &mut Ui, session: &mut Session) {
                     .selected(on),
             )
             .on_hover_text(tip);
-        crate::icons::paint(ui, &resp, crate::icons::tool(tool), on);
+        crate::icons::paint_tool(ui, &resp, tool, on);
         let rect = resp.rect;
         let clicked = resp.clicked();
         let id = format!("tool.{}", label.to_ascii_lowercase().replace(' ', "-"));
@@ -86,7 +87,7 @@ pub(super) fn options(ui: &mut Ui, session: &mut Session) {
     ui.label(RichText::new(session.tool.name()).strong());
     ui.separator();
 
-    if session.tool != Tool::Face && session.tool != Tool::Generator {
+    if !matches!(session.tool, Tool::Face | Tool::Generator | Tool::Tube) {
         slider_i32(ui, session, "Size", SliderTarget::BrushSize, 1..=63);
         session.brush_size = session.brush_size.clamp(1, 63);
         segment(
@@ -204,6 +205,7 @@ pub(super) fn options(ui: &mut Ui, session: &mut Session) {
                 });
             generator(ui, session);
         }
+        Tool::Tube => tube(ui, session),
         Tool::Mutator => {
             ui.add_enabled_ui(false, |ui| {
                 let mut foliage = 0;
@@ -227,6 +229,66 @@ pub(super) fn options(ui: &mut Ui, session: &mut Session) {
                 0.0..=1.0,
                 2,
             );
+        }
+        _ => {}
+    }
+}
+
+/// The Tube tool: MCP `fill_tube` by drag. A drag runs a tube from the
+/// start radius to the end radius. With Chain each drag adds a point to one
+/// tube, smoothed through all of them, until Finish. Remove carves it.
+fn tube(ui: &mut Ui, session: &mut Session) {
+    slider_f32(ui, session, "Start", SliderTarget::TubeStart, 0.5..=32.0, 1);
+    slider_f32(ui, session, "End", SliderTarget::TubeEnd, 0.5..=32.0, 1);
+    row(ui, |ui| {
+        ui.toggle_value(&mut session.tube_smooth, "Smooth")
+            .on_hover_text("A curve through the chain's points instead of straight segments");
+        let chain = session.tube_chain;
+        ui.toggle_value(&mut session.tube_chain, "Chain")
+            .on_hover_text("Each drag adds a point to one tube");
+        if chain && !session.tube_chain {
+            session.finish_tube();
+        }
+    });
+    if session.tube_chain {
+        let points = session.tube_points.len();
+        ui.add_enabled_ui(points > 0, |ui| {
+            if ui.button(format!("Finish ({points} points)")).clicked() {
+                session.finish_tube();
+            }
+        });
+    }
+    ui.separator();
+    segment(
+        ui,
+        &mut session.tube_colors,
+        &[
+            ("Solid", TubeColors::Solid),
+            ("Rings", TubeColors::Rings),
+            ("Stripes", TubeColors::Stripes),
+            ("Random", TubeColors::Random),
+        ],
+    );
+    if session.tube_colors != TubeColors::Solid {
+        slider_i32(
+            ui,
+            session,
+            "Second slot",
+            SliderTarget::TubeSecond,
+            1..=255,
+        );
+    }
+    match session.tube_colors {
+        TubeColors::Rings => slider_f32(
+            ui,
+            session,
+            "Period",
+            SliderTarget::TubePeriod,
+            1.0..=16.0,
+            1,
+        ),
+        TubeColors::Stripes => {
+            slider_i32(ui, session, "Sectors", SliderTarget::TubeSectors, 1..=32)
         }
         _ => {}
     }
