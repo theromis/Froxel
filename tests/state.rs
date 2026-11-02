@@ -2128,3 +2128,16 @@ fn break_panel_breaks_the_object_and_names_a_bad_slot() {
     session.undo();
     assert_eq!(session.active().cells, before);
 }
+
+#[test]
+fn scatter_panel_drops_pieces_onto_the_object() {
+    let mut session = tube_floor();
+    session.scatter_panel.palettes = "8".into();
+    session.scatter_panel.count = 12;
+    let before = session.active().cells.len();
+    session.scatter_from_panel();
+    assert!(session.active().cells.len() > before, "{}", session.status);
+    assert!(session.active().cells.values().any(|slot| *slot == 8));
+    session.undo();
+    assert_eq!(session.active().cells.len(), before);
+}

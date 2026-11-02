@@ -381,6 +381,7 @@ fn map_tool(name: &str, args: &Value) -> Result<(String, Value), String> {
         "carve" => "voxel.carve",
         "smooth" => "voxel.smooth",
         "break_end" => "voxel.break",
+        "scatter" => "voxel.scatter",
         "get_voxels" => "voxel.get_box",
         "set_palette" => "palette.set",
         "set_active_object" => "object.set_active",
@@ -613,6 +614,20 @@ fn tools() -> Vec<Value> {
             "tips": int_prop("Palette index for the outer part of each splinter, often a lighter wood. Omit to use the sapwood."),
             "seed": int_prop("Seed. Defaults to 0.")
         }), &["point", "normal"]),
+        tool("scatter", "Scatter small pieces of debris (shard, chip, pebble, chunk) into the active object, for a heap at a break, chips at a stump, gravel. Each piece starts inside the inclusive box's x and y at its top and falls straight down until the next step would touch a solid cell (the model or a piece before it) or pass floor, so pieces rest on what is below and pile up. Only cells, no physics; only empty cells are written. A piece that meets a solid cell at the top of the box is skipped. Deterministic for a seed. At most 2000 pieces, a box of 2000000 cells, and 200000 new cells. One undo step. Replies with pieces and skipped.", {
+            let mut p = json!({});
+            for key in ["x0", "y0", "z0", "x1", "y1", "z1"] {
+                p[key] = int_prop("Inclusive box corner");
+            }
+            p["palettes"] = json!({"type": "array", "items": {"type": "integer"}, "description": "Palette indices, one picked per piece. A single integer works too."});
+            p["count"] = int_prop("Pieces, 0..=2000. Defaults to 20.");
+            p["kinds"] = json!({"type": "array", "items": {"type": "string", "enum": ["shard", "chip", "pebble", "chunk"]}, "description": "Piece kinds to mix. shard is a flat wedge, chip a flake one cell thick, pebble a squashed ellipsoid, chunk a block with chipped corners. Defaults to all four."});
+            p["size"] = json!({"type": "array", "items": {"type": "integer"}, "description": "Piece size [min, max] in cells, 1..=16, or one number. Defaults to [1, 3]."});
+            p["seed"] = int_prop("Seed. Defaults to 0.");
+            p["floor"] = int_prop("Lowest z a piece may rest at. Defaults to the box's bottom.");
+            p["clump"] = num_prop("0 spreads pieces evenly over the box; 1 piles them in its middle. Defaults to 0.5.");
+            p
+        }, &["x0", "y0", "z0", "x1", "y1", "z1", "palettes"]),
         tool("mirror_object", "Copy an object mirrored across a world axis through the origin. Cells use -coord-1 on that axis. One undo step. mirrorBones also copies the bound bone and its descendants, swapping an _l/_r suffix. The copy is unbound unless mirrorBones is true.", json!({
             "index": int_prop("Object index to copy"),
             "axis": str_prop("x, y, or z"),
@@ -827,6 +842,7 @@ fn hints(name: &str) -> [bool; 3] {
         | "carve"
         | "smooth"
         | "break_end"
+        | "scatter"
         | "set_palette"
         | "set_object"
         | "set_bone"

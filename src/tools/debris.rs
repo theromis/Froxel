@@ -32,6 +32,10 @@ impl Rng {
     pub(super) fn range(&mut self, lo: f64, hi: f64) -> f64 {
         lo + (hi - lo) * self.unit()
     }
+
+    pub(super) fn pick<T: Copy>(&mut self, items: &[T]) -> T {
+        items[(self.next() % items.len() as u64) as usize]
+    }
 }
 
 /// A stable 0..1 value for integer coordinates and a salt.

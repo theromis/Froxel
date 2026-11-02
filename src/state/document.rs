@@ -70,6 +70,7 @@ impl Session {
             tube_after: None,
             tube_preview: None,
             break_panel: BreakPanel::default(),
+            scatter_panel: ScatterPanel::default(),
             smooth_iterations: 1,
             smooth_fill_at: 17,
             smooth_remove_at: 9,

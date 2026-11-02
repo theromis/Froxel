@@ -1451,3 +1451,31 @@ fn break_end_breaks_the_active_object_as_one_undo_step() {
     let none = error_text(&head.call("break_end", json!({"point": [16, 0, 0]})));
     assert!(none.contains("normal"), "{none}");
 }
+
+#[test]
+fn scatter_piles_pieces_as_one_undo_step() {
+    let mut head = Headless::new();
+    head.ok(
+        "fill_box",
+        json!({"x0": 0, "y0": 0, "z0": 0, "x1": 12, "y1": 12, "z1": 0, "palette": 2}),
+    );
+    let before = head.session.active().cells.clone();
+    let reply = head.ok(
+        "scatter",
+        json!({"x0": 2, "y0": 2, "z0": 1, "x1": 10, "y1": 10, "z1": 20, "palettes": [3, 4], "count": 25, "kinds": ["chip", "chunk"], "size": [1, 2], "seed": 4}),
+    );
+    assert!(reply["pieces"].as_i64().unwrap() > 0, "{reply}");
+    assert!(head.session.active().cells.len() > before.len());
+    head.ok("undo", json!({}));
+    assert_eq!(head.session.active().cells, before);
+    let kind = error_text(&head.call(
+        "scatter",
+        json!({"x0": 0, "y0": 0, "z0": 1, "x1": 4, "y1": 4, "z1": 9, "palettes": 3, "kinds": ["leaf"]}),
+    ));
+    assert!(kind.contains("shard, chip, pebble, or chunk"), "{kind}");
+    let none = error_text(&head.call(
+        "scatter",
+        json!({"x0": 0, "y0": 0, "z0": 1, "x1": 4, "y1": 4, "z1": 9}),
+    ));
+    assert!(none.contains("palettes"), "{none}");
+}

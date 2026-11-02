@@ -97,6 +97,32 @@ impl Default for BreakPanel {
     }
 }
 
+/// The Scatter panel: the fields of MCP `scatter`.
+#[derive(Clone, PartialEq)]
+pub struct ScatterPanel {
+    pub count: i32,
+    /// Shard, chip, pebble, chunk, in [`crate::tools::PieceKind::ALL`] order.
+    pub kinds: [bool; 4],
+    pub size: [i32; 2],
+    /// Palette indices separated by commas or spaces; empty is the active slot.
+    pub palettes: String,
+    pub seed: i32,
+    pub clump: f32,
+}
+
+impl Default for ScatterPanel {
+    fn default() -> Self {
+        Self {
+            count: 30,
+            kinds: [true; 4],
+            size: [1, 3],
+            palettes: String::new(),
+            seed: 0,
+            clump: 0.5,
+        }
+    }
+}
+
 /// Palette indices in `text`, separated by commas or spaces.
 pub fn parse_slots(text: &str) -> Result<Vec<u8>, String> {
     text.split(|c: char| c == ',' || c.is_whitespace())
@@ -708,6 +734,7 @@ pub struct Session {
     pub(crate) tube_after: Option<HashMap<Cell, u8>>,
     pub(crate) tube_preview: Option<(Vec<crate::tools::TubePoint>, HashMap<Cell, u8>)>,
     pub break_panel: BreakPanel,
+    pub scatter_panel: ScatterPanel,
     /// Smooth: passes and the neighbour thresholds of MCP `smooth`.
     pub smooth_iterations: i32,
     pub smooth_fill_at: i32,

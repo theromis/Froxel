@@ -46,7 +46,8 @@ If the tools are missing, the server is not configured. Point the user to
    `fill_ellipsoid`. Grow limbs, roots, branches, and twigs with `fill_tube`
    (a radius per point, so it tapers; `curve: "smooth"` bends it). Cut
    hollows, tunnels, and pits with `carve`. Snap wood with `break_end` (a
-   ragged face with splinters) instead of cutting it clean. Do not compute tubes or carves in
+   ragged face with splinters) instead of cutting it clean, and pile debris
+   with `scatter`. Do not compute tubes or carves in
    an outside script. Get the silhouette and proportions right first.
 3. **Look.** Use `preview` for a quick lit look at shape and framing after
    every edit: it is the viewport's light, rasterised in well under a second,

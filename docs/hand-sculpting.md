@@ -64,6 +64,12 @@ stick out along the normal with lighter `tips`, longer near the rim with
 `rimBias`. Break the two halves of a fallen tree with opposite normals and
 different seeds so the faces do not match exactly.
 
+`scatter` drops small pieces into a box: shards, chips, pebbles, and
+chunks. Each falls until it rests on a cell of the active object or an
+earlier piece, so they pile into a heap at a break or a stump. Sculpt the
+ground in the same object, or pass `floor`, since other objects do not stop
+a falling piece. `clump` 1 piles them in the middle of the box.
+
 `smooth` softens a blocky region. It fills an empty cell that most of its
 26 neighbours surround and removes a solid cell that few of them touch, and
 a filled cell takes the colour most of its neighbours hold. One pass with
@@ -77,6 +83,7 @@ set_palette          entries=[{index: 3, r: 92, g: 64, b: 40}, {index: 4, r: 60,
 fill_tube            points=[[0, 0, 4, 4], [14, 2, 5, 3.5], [30, 3, 4, 3]] palettes=[3, 4] pattern="stripes" sectors=10   # fallen trunk with bark grooves
 smooth               x0=-5 y0=-5 z0=-1 x1=34 y1=8 z1=9                    # before thin walls and twigs exist
 break_end            point=[30, 3, 4] normal=[1, 0, 0.15] depth=4 density=0.2 length=[4, 14] bark=4 sapwood=[5, 6] tips=7 seed=3   # snapped end
+scatter              x0=28 y0=-6 z0=0 x1=40 y1=10 z1=16 palettes=[5, 6, 7, 3] count=60 size=[1, 3] floor=0 seed=5   # debris under the break
 carve                shape="tube" points=[[-1, 0, 4], [12, 1, 4]] radius=2.5      # hollow end
 fill_tube            points=[[30, 3, 6, 2], [36, 6, 10, 1.2], [40, 6, 15, 0.5]] curve="smooth" palette=3 mode="empty"   # crown limb
 fill_tube            points=[[2, -3, 3, 2], [-2, -7, 0, 1], [-5, -9, -1, 0.5]] palette=4 mode="empty"   # buttress root

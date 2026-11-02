@@ -158,6 +158,7 @@ tracer. A file with no scene graph still loads its first model.
 | `fill_tube` | `points`, `palette` or `palettes` | Fill a tube through 2..=1024 **local** points, each with its own radius. Optional `radius`, `curve` (`polyline`, `smooth`), `aspect`, `roll`, `profile` (`round`, `blade`), `pattern` (`rings`, `stripes`, `random`), `period`, `sectors`, `seed`, `mode`. At most 2000000 cells, one undo step |
 | `carve` | `shape` | Remove the solid cells inside a `box`, `ellipsoid`, `rounded_box`, or `tube`, given as for the fill tools. Replies with `removed`. One undo step |
 | `break_end` | `point`, `normal` | Break the active object across a plane: a jagged face, bark on its rim, sapwood inside, and tapered splinters out along the normal. Optional `depth`, `splinters` or `density`, `length`, `thickness`, `taper`, `rimBias`, `bark`, `sapwood`, `tips`, `seed`. One undo step |
+| `scatter` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Drop small pieces (shard, chip, pebble, chunk) that settle on what is below into a heap. Optional `count`, `kinds`, `size`, `seed`, `floor`, `clump`. One undo step |
 | `smooth` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Majority filter in an inclusive box of at most 2000000 cells that keeps colours. Optional `iterations` (1..=8), `fillAt`, `removeAt`. Replies with `filled`, `removed`, `iterations`. One undo step |
 | `get_voxels` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Non-empty **local** cells inside an inclusive box, at most 100000 |
 | `set_palette` | `index`, `r`, `g`, `b` or `entries` | Replace one slot, or many via `entries`, as one undo step. `a` defaults to 255. Optional `motion` (`none`, `sway`, `bob`) and `motion_amount` (0..4) |
@@ -256,6 +257,19 @@ rim. A splinter is sapwood near its base, `bark` for its first two cells on
 the rim, and `tips` beyond the middle. Splinters fill only empty cells. The
 same `seed` gives the same break. The reply counts `removed`, `recoloured`,
 and `splinters`.
+
+`scatter` drops `count` pieces (default 20, at most 2000) into the active
+object, one after another. Each starts at a point inside the box's x and y,
+at its top, and falls straight down until the next step would touch a solid
+cell of the active object (the model or a piece before it) or pass `floor`
+(default the box's bottom); other objects do not stop it. `kinds` mixes
+`shard` (a flat wedge), `chip` (a flake one cell thick), `pebble` (a
+squashed ellipsoid), and `chunk` (a block with chipped corners), all four by
+default. `size` is [min, max] cells (1..=16, default [1, 3]). Each piece
+takes one of `palettes`. `clump` 0 spreads the points evenly over the box
+and 1 piles them in its middle (default 0.5). A piece that meets a solid
+cell at the top of the box is skipped and counted in `skipped`. Only empty
+cells are written, at most 200000; the same `seed` gives the same pile.
 
 `smooth` reads each cell's 26 neighbours inside the box (cells outside it
 are read, never changed). An empty cell with at least `fillAt` solid
@@ -657,6 +671,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `fill_tube` | Tube tool: drag from the start radius to the end radius; Chain adds a point per drag and Smooth curves through them until Finish; Flatten, Roll, and Blade shape it; Solid, Rings, Stripes, or Random with a second slot |
 | `carve` | Remove mode with Box, Generator, or Tube |
 | `break_end` | Break section: Point (or Point at selection), Normal with ±X/Y/Z, Depth, Splinters, Length, Thickness, Taper, Rim bias, Bark, Sapwood, and Tip slots, Seed |
+| `scatter` | Scatter section: Pieces, Kinds, Size, Palettes, Clump, Seed, over the selection's box or above the whole object |
 | `smooth` | Smooth section: Passes, Fill at, Remove at, over the selection or the whole object |
 | `set_palette` | Palette dock (colour and alpha) and the Material section (motion) |
 | `set_active_object`, `add_object`, `set_object`, `remove_object` | Objects tree and the Object inspector |

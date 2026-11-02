@@ -7,11 +7,13 @@ use crate::state::Cell;
 
 mod debris;
 mod generate;
+mod scatter;
 mod sculpt;
 mod shapes;
 
 pub use debris::{break_end, BreakSpec, Broken, Splinters};
 pub use generate::{foliage, generate, Gen, MAX_GENERATOR_CELLS};
+pub use scatter::{scatter, PieceKind, ScatterSpec, Scattered, MAX_PIECES};
 #[cfg(test)]
 pub use sculpt::tube;
 pub use sculpt::{

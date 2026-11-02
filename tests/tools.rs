@@ -388,3 +388,76 @@ fn break_end_refuses_bad_input() {
     spec.splinters = Splinters::Count(600);
     assert!(break_end(&cells, &spec).unwrap_err().contains("splinters"));
 }
+
+fn scatter_spec() -> ScatterSpec {
+    ScatterSpec {
+        min: (0, 0, 1),
+        max: (9, 9, 30),
+        count: 40,
+        kinds: PieceKind::ALL.to_vec(),
+        size: (1, 3),
+        palettes: vec![4, 5],
+        seed: 9,
+        floor: None,
+        clump: 0.5,
+    }
+}
+
+#[test]
+fn scatter_settles_pieces_into_a_heap_on_the_floor() {
+    let mut ground = HashMap::new();
+    for x in -5..15 {
+        for y in -5..15 {
+            ground.insert((x, y, 0), 1u8);
+        }
+    }
+    let spec = scatter_spec();
+    let done = scatter(&ground, &spec).unwrap();
+    assert_eq!(done, scatter(&ground, &spec).unwrap(), "deterministic");
+    assert_eq!(done.placed + done.skipped, 40);
+    assert!(done.placed > 30, "{}", done.placed);
+    let added: HashMap<Cell, u8> = done
+        .writes
+        .iter()
+        .map(|&(x, y, z, slot)| ((x, y, z), slot as u8))
+        .collect();
+    assert!(added.keys().all(|cell| !ground.contains_key(cell)));
+    assert!(added.values().all(|slot| *slot == 4 || *slot == 5));
+    // Every piece rests: some cell of the pile sits on the ground, and no
+    // cell floats with nothing at all under its column.
+    assert!(added.keys().any(|c| c.2 == 1));
+    for cell in added.keys() {
+        let below = (cell.2 - 1..cell.2).any(|z| {
+            ground.contains_key(&(cell.0, cell.1, z)) || added.contains_key(&(cell.0, cell.1, z))
+        });
+        let any_under = (0..cell.2).any(|z| {
+            ground.contains_key(&(cell.0, cell.1, z)) || added.contains_key(&(cell.0, cell.1, z))
+        });
+        assert!(below || any_under || cell.2 == 1, "{cell:?} floats");
+    }
+    // A pile: it stacks higher than one piece in the middle.
+    assert!(added.keys().map(|c| c.2).max().unwrap() > 3);
+}
+
+#[test]
+fn scatter_lands_on_the_floor_without_ground_and_refuses_bad_input() {
+    let mut spec = scatter_spec();
+    spec.floor = Some(5);
+    spec.kinds = vec![PieceKind::Pebble];
+    let done = scatter(&HashMap::new(), &spec).unwrap();
+    assert!(done.writes.iter().all(|w| w.2 >= 5));
+    assert!(done.writes.iter().any(|w| w.2 == 5));
+    let mut bad = scatter_spec();
+    bad.size = (0, 3);
+    assert!(scatter(&HashMap::new(), &bad).unwrap_err().contains("size"));
+    let mut bad = scatter_spec();
+    bad.palettes = vec![];
+    assert!(scatter(&HashMap::new(), &bad)
+        .unwrap_err()
+        .contains("palettes"));
+    let mut bad = scatter_spec();
+    bad.count = 5000;
+    assert!(scatter(&HashMap::new(), &bad)
+        .unwrap_err()
+        .contains("count"));
+}

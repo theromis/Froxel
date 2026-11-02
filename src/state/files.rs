@@ -393,6 +393,66 @@ impl Session {
         }
     }
 
+    /// MCP `scatter` and the Scatter panel: [`crate::tools::scatter`] into
+    /// the active object as one undo step.
+    pub(crate) fn scatter_active(
+        &mut self,
+        spec: &crate::tools::ScatterSpec,
+    ) -> Result<crate::tools::Scattered, String> {
+        let scattered = crate::tools::scatter(&self.active().cells, spec)?;
+        self.write_cells(&scattered.writes)?;
+        Ok(scattered)
+    }
+
+    /// The Scatter panel's button: over the selection's box, or the active
+    /// object's box raised by the largest piece so pieces can land on top.
+    pub fn scatter_from_panel(&mut self) {
+        let panel = self.scatter_panel.clone();
+        let palettes = match parse_slots(&panel.palettes) {
+            Ok(slots) if slots.is_empty() => vec![self.active_slot.max(1)],
+            Ok(slots) => slots,
+            Err(err) => {
+                self.status = format!("Palettes: {err}");
+                return;
+            }
+        };
+        let region = if self.picked.is_empty() {
+            cell_bounds(self.active().cells.keys().copied())
+                .map(|(min, max)| (min, crate::tools::add(max, (0, 0, panel.size[1] * 2))))
+        } else {
+            cell_bounds(self.picked.iter().copied())
+        };
+        let Some((min, max)) = region else {
+            self.status = "Select a region or add voxels to scatter onto.".into();
+            return;
+        };
+        let kinds: Vec<_> = crate::tools::PieceKind::ALL
+            .into_iter()
+            .zip(panel.kinds)
+            .filter(|(_, on)| *on)
+            .map(|(kind, _)| kind)
+            .collect();
+        let spec = crate::tools::ScatterSpec {
+            min,
+            max,
+            count: panel.count.clamp(0, crate::tools::MAX_PIECES as i32) as u32,
+            kinds,
+            size: (panel.size[0], panel.size[1].max(panel.size[0])),
+            palettes,
+            seed: panel.seed.max(0) as u64,
+            floor: None,
+            clump: f64::from(panel.clump),
+        };
+        self.status = match self.scatter_active(&spec) {
+            Ok(done) => format!(
+                "Scattered {} pieces; {} found no room.",
+                done.placed, done.skipped
+            ),
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
     pub(crate) fn break_active(
         &mut self,
         spec: &crate::tools::BreakSpec,

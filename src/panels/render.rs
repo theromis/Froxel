@@ -590,6 +590,69 @@ pub(super) fn break_end(ui: &mut Ui, session: &mut Session) {
     });
 }
 
+/// MCP `scatter`: small pieces that settle into a heap.
+pub(super) fn scatter(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Scatter");
+        let panel = &mut session.scatter_panel;
+        egui::Grid::new("scatter-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                let label = |ui: &mut Ui, text: &str| {
+                    ui.label(RichText::new(text).small().color(DIM));
+                };
+                label(ui, "Pieces");
+                ui.add(egui::Slider::new(&mut panel.count, 0..=2000));
+                ui.end_row();
+                label(ui, "Kinds");
+                ui.horizontal(|ui| {
+                    for (on, name) in panel
+                        .kinds
+                        .iter_mut()
+                        .zip(["Shard", "Chip", "Pebble", "Chunk"])
+                    {
+                        ui.toggle_value(on, name);
+                    }
+                });
+                ui.end_row();
+                label(ui, "Size");
+                ui.horizontal(|ui| {
+                    ui.add(egui::DragValue::new(&mut panel.size[0]).range(1..=16));
+                    ui.add(egui::DragValue::new(&mut panel.size[1]).range(1..=16));
+                });
+                ui.end_row();
+                label(ui, "Palettes");
+                ui.add(
+                    egui::TextEdit::singleline(&mut panel.palettes)
+                        .hint_text("active slot")
+                        .desired_width(120.0),
+                );
+                ui.end_row();
+                label(ui, "Clump");
+                ui.add(egui::Slider::new(&mut panel.clump, 0.0..=1.0).max_decimals(2));
+                ui.end_row();
+                label(ui, "Seed");
+                ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
+                ui.end_row();
+            });
+        let scope = if session.picked.is_empty() {
+            "Scatter over object"
+        } else {
+            "Scatter over selection"
+        };
+        if ui.button(scope).clicked() {
+            session.scatter_from_panel();
+        }
+        ui.label(
+            RichText::new("Pieces fall from the top of the box and rest on what is below.")
+                .small()
+                .color(DIM),
+        );
+    });
+}
+
 pub(super) fn axis_buttons(ui: &mut Ui, _which: &str, mut act: impl FnMut(Axis)) {
     ui.horizontal(|ui| {
         if ui.button("X").clicked() {

@@ -625,6 +625,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "voxel.carve" => carve(session, &params),
         "voxel.smooth" => smooth(session, &params),
         "voxel.break" => break_end(session, &params),
+        "voxel.scatter" => scatter(session, &params),
         "voxel.get_box" => {
             let (x0, y0, z0, x1, y1, z1) = box_corners(&params)?;
             let mut cells = Vec::new();
@@ -1133,6 +1134,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.tube", "points, radius?, curve?, palette | palettes, pattern?, period?, sectors?, seed?, mode?", "Fill a tapered tube through 2..=1024 points, at most 2000000 cells"),
     ("voxel.carve", "shape, x0..z1 | points, radius?, curve?", "Remove the cells inside a box, ellipsoid, rounded_box, or tube"),
     ("voxel.break", "point, normal, depth?, splinters? | density?, length?, thickness?, taper?, rimBias?, bark?, sapwood?, tips?, seed?", "Jagged fracture across a plane with splinters"),
+    ("voxel.scatter", "x0, y0, z0, x1, y1, z1, palettes, count?, kinds?, size?, seed?, floor?, clump?", "Drop small pieces that settle into a heap"),
     ("voxel.smooth", "x0, y0, z0, x1, y1, z1, iterations?, fillAt?, removeAt?", "Majority filter in a box that keeps colours"),
     ("voxel.get_box", "x0, y0, z0, x1, y1, z1", "Non-empty cells inside an inclusive box, at most 100000"),
     ("palette.set", "index, r, g, b, a?, motion?, motion_amount? | entries", "Replace one slot, or many, as one undo step"),
@@ -1878,6 +1880,64 @@ fn break_end(session: &mut Session, params: &Value) -> Result<Value, String> {
         "removed": broken.removed,
         "recoloured": broken.recoloured,
         "splinters": broken.splinters,
+        "voxels": session.voxel_count()
+    }))
+}
+
+fn scatter(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let (x0, y0, z0, x1, y1, z1) = box_corners(params)?;
+    let kinds = match params.get("kinds") {
+        None | Some(Value::Null) => crate::tools::PieceKind::ALL.to_vec(),
+        Some(Value::Array(list)) => list
+            .iter()
+            .map(|kind| {
+                kind.as_str()
+                    .and_then(crate::tools::PieceKind::parse)
+                    .ok_or_else(|| {
+                        "kinds must be a list of shard, chip, pebble, or chunk".to_string()
+                    })
+            })
+            .collect::<Result<_, _>>()?,
+        Some(_) => return Err("kinds must be a list of shard, chip, pebble, or chunk".into()),
+    };
+    let (lo, hi) = range_pair(params, "size", (1.0, 3.0))?;
+    if lo.fract() != 0.0 || hi.fract() != 0.0 {
+        return Err("size must be whole numbers".into());
+    }
+    let palettes = slot_list(params, "palettes")?;
+    if palettes.is_empty() {
+        return Err("palettes is required: a palette index or a list of them".into());
+    }
+    let spec = crate::tools::ScatterSpec {
+        min: (x0, y0, z0),
+        max: (x1, y1, z1),
+        count: match params.get("count") {
+            None => 20,
+            Some(found) => found
+                .as_u64()
+                .and_then(|n| u32::try_from(n).ok())
+                .ok_or("count must be a whole number")?,
+        },
+        kinds,
+        size: (lo as i32, hi as i32),
+        palettes,
+        seed: match params.get("seed") {
+            None => 0,
+            Some(found) => found
+                .as_u64()
+                .ok_or("seed must be a whole number of at least 0")?,
+        },
+        floor: match params.get("floor") {
+            None | Some(Value::Null) => None,
+            Some(found) => Some(as_i32(found).ok_or("floor must be an integer")?),
+        },
+        clump: opt_f64(params, "clump")?.unwrap_or(0.5),
+    };
+    let done = session.scatter_active(&spec)?;
+    Ok(json!({
+        "changed": done.writes.len(),
+        "pieces": done.placed,
+        "skipped": done.skipped,
         "voxels": session.voxel_count()
     }))
 }
