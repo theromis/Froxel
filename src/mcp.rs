@@ -279,7 +279,7 @@ fn dispatch(
                 "protocolVersion": version,
                 "capabilities": {"tools": {"listChanged": false}},
                 "serverInfo": {"name": "Froxel", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. preview writes a fast lit PNG (the viewport mesh and light, rasterised, well under a second) framed on the model or one object; use it to look after every step. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, refine with set_voxels, and render after every step."
+                "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. preview writes a fast lit PNG (the viewport mesh and light, rasterised, well under a second) framed on the model or one object; use it to look after every step. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, grow limbs and roots with fill_tube, cut hollows with carve, soften with smooth, refine with set_voxels, and render after every step."
             }),
         ));
     }
@@ -377,6 +377,9 @@ fn map_tool(name: &str, args: &Value) -> Result<(String, Value), String> {
         "fill_box" => "voxel.fill",
         "fill_ellipsoid" => "voxel.ellipsoid",
         "fill_rounded_box" => "voxel.rounded",
+        "fill_tube" => "voxel.tube",
+        "carve" => "voxel.carve",
+        "smooth" => "voxel.smooth",
         "get_voxels" => "voxel.get_box",
         "set_palette" => "palette.set",
         "set_active_object" => "object.set_active",
@@ -497,6 +500,7 @@ fn tools() -> Vec<Value> {
                 p[key] = int_prop("Inclusive box corner");
             }
             p["palette"] = int_prop("Palette index. 0 erases.");
+            p["mode"] = mode_prop();
             p
         }, &["x0", "y0", "z0", "x1", "y1", "z1", "palette"]),
         tool("get_voxels", "List non-empty local cells of the active object inside an inclusive box. At most 100000.", {
@@ -539,7 +543,8 @@ fn tools() -> Vec<Value> {
             "x1": int_prop("Inclusive maximum x"),
             "y1": int_prop("Inclusive maximum y"),
             "z1": int_prop("Inclusive maximum z"),
-            "palette": int_prop("Palette index. 0 erases.")
+            "palette": int_prop("Palette index. 0 erases."),
+            "mode": mode_prop()
         }), &["x0", "y0", "z0", "x1", "y1", "z1", "palette"]),
         tool("fill_rounded_box", "Fill an inclusive local box with rounded edges. radius is the bevel, clamped to half the shortest side. radius 0 fills the whole box. Same limits and one undo step as fill_box.", json!({
             "x0": int_prop("Inclusive minimum x"),
@@ -549,8 +554,43 @@ fn tools() -> Vec<Value> {
             "y1": int_prop("Inclusive maximum y"),
             "z1": int_prop("Inclusive maximum z"),
             "palette": int_prop("Palette index. 0 erases."),
-            "radius": num_prop("Edge bevel in voxels. 0 fills the box.")
+            "radius": num_prop("Edge bevel in voxels. 0 fills the box."),
+            "mode": mode_prop()
         }), &["x0", "y0", "z0", "x1", "y1", "z1", "palette", "radius"]),
+        tool("fill_tube", "Fill a round tube through 2..=1024 local points, for limbs, roots, branches, and twigs. Each point has its own radius, so the tube tapers; joints and ends are round. A whole-number point is the centre of that cell, and a cell is filled when its centre is within the radius of the axis. curve smooth passes a Catmull-Rom curve through the points; polyline (default) joins them straight. Colour with palette, or with palettes and a pattern: rings bands along the length every period cells, stripes divides the circumference into sectors (grooves along the tube), random picks per cell from seed. At most 2000000 cells; refused before any cell is written. One undo step.", json!({
+            "points": {"type": "array", "description": "Each item is [x, y, z], [x, y, z, radius], or {x, y, z, radius?} in the active object's local cells. Numbers may be fractional."},
+            "radius": num_prop("Radius for points that give none, 0.5..=128. 0.5 is one cell thick."),
+            "curve": {"type": "string", "enum": ["polyline", "smooth"], "description": "polyline (default) or smooth."},
+            "palette": int_prop("Palette index. 0 erases. Pass this or palettes."),
+            "palettes": {"type": "array", "items": {"type": "integer"}, "description": "1..=64 palette indices cycled by pattern. Repeat an index to weight it."},
+            "pattern": {"type": "string", "enum": ["rings", "stripes", "random"], "description": "How palettes are laid out. Defaults to rings."},
+            "period": num_prop("rings: band length along the tube in cells. Defaults to 2."),
+            "sectors": int_prop("stripes: sectors around the tube, 1..=256. Defaults to the number of palettes."),
+            "seed": int_prop("random: seed. Defaults to 0."),
+            "mode": mode_prop()
+        }), &["points"]),
+        tool("carve", "Remove the solid cells inside a box, ellipsoid, rounded_box, or tube of the active object, for hollows, tunnels, and pits. box, ellipsoid, and rounded_box take x0..z1 (and radius for rounded_box) exactly as their fill tools; tube takes points, radius, and curve as fill_tube. Same 2000000-cell limits, checked before any cell changes. One undo step. Replies with removed.", json!({
+            "shape": {"type": "string", "enum": ["box", "ellipsoid", "rounded_box", "tube"], "description": "Shape to remove."},
+            "x0": int_prop("box, ellipsoid, rounded_box: inclusive corner"),
+            "y0": int_prop("Inclusive corner"),
+            "z0": int_prop("Inclusive corner"),
+            "x1": int_prop("Inclusive corner"),
+            "y1": int_prop("Inclusive corner"),
+            "z1": int_prop("Inclusive corner"),
+            "radius": num_prop("rounded_box: edge bevel. tube: radius for points that give none."),
+            "points": {"type": "array", "description": "tube: points as in fill_tube."},
+            "curve": {"type": "string", "enum": ["polyline", "smooth"], "description": "tube: polyline (default) or smooth."}
+        }), &["shape"]),
+        tool("smooth", "Soften a blocky region of the active object with a majority filter over each cell's 26 neighbours, inside an inclusive local box of at most 2000000 cells. An empty cell with at least fillAt solid neighbours is filled with the colour most of them hold; a solid cell with at most removeAt solid neighbours is removed. The defaults fill single-cell pits and inside corners and remove single-cell spikes and outside corners, and keep flat faces and edges. It also removes features one cell thick (twigs, thin walls), so leave those out of the box. Cells outside the box are read, never changed. One undo step. Replies with filled, removed, and the passes run.", {
+            let mut p = json!({});
+            for key in ["x0", "y0", "z0", "x1", "y1", "z1"] {
+                p[key] = int_prop("Inclusive box corner");
+            }
+            p["iterations"] = int_prop("Passes, 1..=8. Defaults to 1. Stops early when a pass changes nothing.");
+            p["fillAt"] = int_prop("Fill an empty cell with at least this many solid neighbours, 1..=27. Defaults to 17; 14 also rounds inside edges; 27 never fills.");
+            p["removeAt"] = int_prop("Remove a solid cell with at most this many solid neighbours, -1..=25. Defaults to 9; 12 also rounds outside edges; -1 never removes.");
+            p
+        }, &["x0", "y0", "z0", "x1", "y1", "z1"]),
         tool("mirror_object", "Copy an object mirrored across a world axis through the origin. Cells use -coord-1 on that axis. One undo step. mirrorBones also copies the bound bone and its descendants, swapping an _l/_r suffix. The copy is unbound unless mirrorBones is true.", json!({
             "index": int_prop("Object index to copy"),
             "axis": str_prop("x, y, or z"),
@@ -761,6 +801,9 @@ fn hints(name: &str) -> [bool; 3] {
         | "fill_box"
         | "fill_ellipsoid"
         | "fill_rounded_box"
+        | "fill_tube"
+        | "carve"
+        | "smooth"
         | "set_palette"
         | "set_object"
         | "set_bone"
@@ -782,6 +825,10 @@ fn hints(name: &str) -> [bool; 3] {
         | "export_models" => [false, true, true],
         other => panic!("no annotation hints for tool `{other}`"),
     }
+}
+
+fn mode_prop() -> Value {
+    json!({"type": "string", "enum": ["replace", "empty", "paint"], "description": "replace (default) writes every cell of the shape; empty writes only empty cells, so existing detail stays; paint recolours only solid cells."})
 }
 
 fn str_prop(description: &str) -> Value {

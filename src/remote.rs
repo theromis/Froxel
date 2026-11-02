@@ -7,7 +7,7 @@ use std::path::{Component, Path, PathBuf};
 
 use serde_json::{json, Map, Value};
 
-use crate::state::{GlassMode, Session};
+use crate::state::{Cell, GlassMode, Session};
 
 pub const NO_WINDOW: &str = "No window. Start the editor with `froxel --control PORT`, then `froxel mcp --connect 127.0.0.1:PORT`. Add `--launch` to open the window.";
 
@@ -617,11 +617,13 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
                     }
                 }
             }
-            let changed = session.write_cells(&writes)?;
-            Ok(json!({"changed": changed, "voxels": session.voxel_count()}))
+            fill_with_mode(session, &params, writes)
         }
         "voxel.ellipsoid" => shape_fill(session, &params, false),
         "voxel.rounded" => shape_fill(session, &params, true),
+        "voxel.tube" => tube_fill(session, &params),
+        "voxel.carve" => carve(session, &params),
+        "voxel.smooth" => smooth(session, &params),
         "voxel.get_box" => {
             let (x0, y0, z0, x1, y1, z1) = box_corners(&params)?;
             let mut cells = Vec::new();
@@ -1109,9 +1111,12 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.get", "x, y, z", "Palette index of one local cell. 0 is empty"),
     ("voxel.set", "x, y, z, palette", "Write one cell. One undo step"),
     ("voxel.set_many", "cells", "Write up to 200000 cells as one undo step"),
-    ("voxel.fill", "x0, y0, z0, x1, y1, z1, palette", "Fill an inclusive box, at most 2000000 cells"),
-    ("voxel.ellipsoid", "x0, y0, z0, x1, y1, z1, palette", "Fill an ellipsoid inside an inclusive box, at most 2000000 cells checked"),
-    ("voxel.rounded", "x0, y0, z0, x1, y1, z1, palette, radius", "Fill a box with rounded edges. radius 0 is the full box"),
+    ("voxel.fill", "x0, y0, z0, x1, y1, z1, palette, mode?", "Fill an inclusive box, at most 2000000 cells"),
+    ("voxel.ellipsoid", "x0, y0, z0, x1, y1, z1, palette, mode?", "Fill an ellipsoid inside an inclusive box, at most 2000000 cells checked"),
+    ("voxel.rounded", "x0, y0, z0, x1, y1, z1, palette, radius, mode?", "Fill a box with rounded edges. radius 0 is the full box"),
+    ("voxel.tube", "points, radius?, curve?, palette | palettes, pattern?, period?, sectors?, seed?, mode?", "Fill a tapered tube through 2..=1024 points, at most 2000000 cells"),
+    ("voxel.carve", "shape, x0..z1 | points, radius?, curve?", "Remove the cells inside a box, ellipsoid, rounded_box, or tube"),
+    ("voxel.smooth", "x0, y0, z0, x1, y1, z1, iterations?, fillAt?, removeAt?", "Majority filter in a box that keeps colours"),
     ("voxel.get_box", "x0, y0, z0, x1, y1, z1", "Non-empty cells inside an inclusive box, at most 100000"),
     ("palette.set", "index, r, g, b, a?, motion?, motion_amount? | entries", "Replace one slot, or many, as one undo step"),
     ("object.set_active", "index", "Edit a different object. Voxel coordinates stay local to it"),
@@ -1502,8 +1507,18 @@ fn render_pose(params: &Value) -> Result<Option<crate::rig::Pose>, String> {
 }
 
 fn shape_fill(session: &mut Session, params: &Value, rounded: bool) -> Result<Value, String> {
-    let (x0, y0, z0, x1, y1, z1) = box_corners(params)?;
     let palette = req_i32(params, "palette")?;
+    let writes = shape_cells(params, rounded)?
+        .into_iter()
+        .map(|(x, y, z)| (x, y, z, palette))
+        .collect();
+    fill_with_mode(session, params, writes)
+}
+
+/// Cells whose centre lies inside the ellipsoid or rounded box of the
+/// inclusive box in `params`.
+fn shape_cells(params: &Value, rounded: bool) -> Result<Vec<Cell>, String> {
+    let (x0, y0, z0, x1, y1, z1) = box_corners(params)?;
     let nx = i64::from(x1 - x0) + 1;
     let ny = i64::from(y1 - y0) + 1;
     let nz = i64::from(z1 - z0) + 1;
@@ -1526,7 +1541,7 @@ fn shape_fill(session: &mut Session, params: &Value, rounded: bool) -> Result<Va
     let rx = nx as f64 / 2.0;
     let ry = ny as f64 / 2.0;
     let rz = nz as f64 / 2.0;
-    let mut writes = Vec::new();
+    let mut cells = Vec::new();
     for z in z0..=z1 {
         for y in y0..=y1 {
             for x in x0..=x1 {
@@ -1539,13 +1554,258 @@ fn shape_fill(session: &mut Session, params: &Value, rounded: bool) -> Result<Va
                     nx * nx + ny * ny + nz * nz <= 1.0 + 1.0e-9
                 };
                 if keep {
-                    writes.push((x, y, z, palette));
+                    cells.push((x, y, z));
                 }
             }
         }
     }
+    Ok(cells)
+}
+
+/// `mode` of a fill: `replace` writes every cell of the shape, `empty` only
+/// the empty ones, `paint` only the solid ones.
+#[derive(Clone, Copy, PartialEq)]
+enum FillMode {
+    Replace,
+    Empty,
+    Paint,
+}
+
+fn fill_mode(params: &Value) -> Result<FillMode, String> {
+    match opt_str(params, "mode")?.as_deref() {
+        None | Some("replace") => Ok(FillMode::Replace),
+        Some("empty") => Ok(FillMode::Empty),
+        Some("paint") => Ok(FillMode::Paint),
+        Some(other) => Err(format!(
+            "mode must be replace, empty, or paint, not `{other}`"
+        )),
+    }
+}
+
+/// Write a fill's cells as one undo step, keeping only the cells `mode`
+/// allows.
+fn fill_with_mode(
+    session: &mut Session,
+    params: &Value,
+    mut writes: Vec<(i32, i32, i32, i32)>,
+) -> Result<Value, String> {
+    let mode = fill_mode(params)?;
+    if let Some((_, _, _, bad)) = writes.iter().find(|w| !(0..=255).contains(&w.3)) {
+        return Err(format!("palette must be 0..255, not {bad}"));
+    }
+    if mode != FillMode::Replace {
+        let cells = &session.active().cells;
+        writes.retain(|&(x, y, z, _)| cells.contains_key(&(x, y, z)) == (mode == FillMode::Paint));
+    }
     let changed = session.write_cells(&writes)?;
     Ok(json!({"changed": changed, "voxels": session.voxel_count()}))
+}
+
+/// The tube in `params`: `points` of `[x, y, z]`, `[x, y, z, radius]`, or
+/// `{x, y, z, radius?}`, the default `radius`, and `curve`.
+fn tube_cells(params: &Value) -> Result<Vec<crate::tools::TubeCell>, String> {
+    let list = params
+        .get("points")
+        .and_then(Value::as_array)
+        .ok_or("points must be a list of [x, y, z] or [x, y, z, radius]")?;
+    let default = opt_f64(params, "radius")?;
+    let mut points = Vec::with_capacity(list.len());
+    for (index, point) in list.iter().enumerate() {
+        let number = |value: Option<&Value>, what: &str| -> Result<Option<f64>, String> {
+            match value {
+                None | Some(Value::Null) => Ok(None),
+                Some(found) => found
+                    .as_f64()
+                    .map(Some)
+                    .ok_or_else(|| format!("point {index} {what} must be a number")),
+            }
+        };
+        let (at, radius) = if let Some(arr) = point.as_array() {
+            if arr.len() != 3 && arr.len() != 4 {
+                return Err(format!(
+                    "point {index} must be [x, y, z] or [x, y, z, radius]"
+                ));
+            }
+            let mut at = [0.0; 3];
+            for (axis, name) in ["x", "y", "z"].iter().enumerate() {
+                at[axis] = number(arr.get(axis), name)?.unwrap_or(0.0);
+            }
+            (at, number(arr.get(3), "radius")?)
+        } else if point.is_object() {
+            let mut at = [0.0; 3];
+            for (axis, name) in ["x", "y", "z"].iter().enumerate() {
+                at[axis] = number(point.get(*name), name)?
+                    .ok_or_else(|| format!("point {index} is missing {name}"))?;
+            }
+            (at, number(point.get("radius"), "radius")?)
+        } else {
+            return Err(format!(
+                "point {index} must be [x, y, z], [x, y, z, radius], or {{x, y, z, radius}}"
+            ));
+        };
+        let radius = radius
+            .or(default)
+            .ok_or_else(|| format!("point {index} has no radius; give it one or pass radius"))?;
+        points.push(crate::tools::TubePoint { at, radius });
+    }
+    let curve = match opt_str(params, "curve")?.as_deref() {
+        None | Some("polyline") => false,
+        Some("smooth") => true,
+        Some(other) => return Err(format!("curve must be polyline or smooth, not `{other}`")),
+    };
+    crate::tools::tube(&points, curve)
+}
+
+fn tube_fill(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let palettes = match (params.get("palette"), params.get("palettes")) {
+        (Some(_), Some(_)) => return Err("pass palette or palettes, not both".into()),
+        (Some(_), None) => vec![req_i32(params, "palette")?],
+        (None, Some(list)) => {
+            let list = list
+                .as_array()
+                .ok_or("palettes must be a list of indices")?;
+            if list.is_empty() || list.len() > 64 {
+                return Err("palettes must hold 1..=64 indices".into());
+            }
+            list.iter()
+                .map(|v| as_i32(v).ok_or_else(|| "palettes must be integers".to_string()))
+                .collect::<Result<_, _>>()?
+        }
+        (None, None) => return Err("palette or palettes is required".into()),
+    };
+    let pattern = opt_str(params, "pattern")?.unwrap_or_else(|| "rings".into());
+    let period = opt_f64(params, "period")?.unwrap_or(2.0);
+    if period <= 0.0 {
+        return Err("period must be more than 0".into());
+    }
+    let sectors = match params.get("sectors") {
+        None => palettes.len() as i64,
+        Some(found) => i64::from(as_i32(found).ok_or("sectors must be an integer")?),
+    };
+    if !(1..=256).contains(&sectors) {
+        return Err("sectors must be 1..=256".into());
+    }
+    let seed = match params.get("seed") {
+        None => 0,
+        Some(found) => found
+            .as_u64()
+            .ok_or("seed must be a whole number of at least 0")?,
+    };
+    if !matches!(pattern.as_str(), "rings" | "stripes" | "random") {
+        return Err(format!(
+            "pattern must be rings, stripes, or random, not `{pattern}`"
+        ));
+    }
+    let count = palettes.len();
+    let writes = tube_cells(params)?
+        .into_iter()
+        .map(|cell| {
+            let (x, y, z) = cell.cell;
+            let pick = match pattern.as_str() {
+                "rings" => (cell.along / period).floor() as usize,
+                "stripes" => (cell.around * sectors as f64).floor() as usize,
+                _ => cell_hash(cell.cell, seed) as usize,
+            };
+            (x, y, z, palettes[pick % count])
+        })
+        .collect();
+    fill_with_mode(session, params, writes)
+}
+
+/// A stable hash of one cell, for the `random` tube pattern.
+fn cell_hash((x, y, z): Cell, seed: u64) -> u64 {
+    let mut h = seed ^ 0x9e37_79b9_7f4a_7c15;
+    for v in [x, y, z] {
+        h ^= u64::from(v as u32);
+        h = h.wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        h ^= h >> 31;
+    }
+    h
+}
+
+fn carve(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let shape = opt_str(params, "shape")?
+        .ok_or("shape is required: box, ellipsoid, rounded_box, or tube")?;
+    let cells: Vec<Cell> = match shape.as_str() {
+        "box" => {
+            let (x0, y0, z0, x1, y1, z1) = box_corners(params)?;
+            let count =
+                (i64::from(x1 - x0) + 1) * (i64::from(y1 - y0) + 1) * (i64::from(z1 - z0) + 1);
+            if count > 2_000_000 {
+                return Err("box is larger than 2000000 cells".into());
+            }
+            (z0..=z1)
+                .flat_map(|z| (y0..=y1).flat_map(move |y| (x0..=x1).map(move |x| (x, y, z))))
+                .collect()
+        }
+        "ellipsoid" => shape_cells(params, false)?,
+        "rounded_box" => shape_cells(params, true)?,
+        "tube" => tube_cells(params)?
+            .into_iter()
+            .map(|cell| cell.cell)
+            .collect(),
+        other => {
+            return Err(format!(
+                "shape must be box, ellipsoid, rounded_box, or tube, not `{other}`"
+            ))
+        }
+    };
+    let solid = &session.active().cells;
+    let writes: Vec<_> = cells
+        .into_iter()
+        .filter(|cell| solid.contains_key(cell))
+        .map(|(x, y, z)| (x, y, z, 0))
+        .collect();
+    let removed = session.write_cells(&writes)?;
+    Ok(json!({"removed": removed, "voxels": session.voxel_count()}))
+}
+
+fn smooth(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let (x0, y0, z0, x1, y1, z1) = box_corners(params)?;
+    let count = (i64::from(x1 - x0) + 1) * (i64::from(y1 - y0) + 1) * (i64::from(z1 - z0) + 1);
+    if count > crate::tools::MAX_SCULPT_CELLS {
+        return Err(format!(
+            "box is larger than {} cells; smooth a smaller region",
+            crate::tools::MAX_SCULPT_CELLS
+        ));
+    }
+    let whole = |key: &str, default: i32, range: std::ops::RangeInclusive<i32>| {
+        let value = match params.get(key) {
+            None => default,
+            Some(found) => as_i32(found).ok_or_else(|| format!("{key} must be an integer"))?,
+        };
+        if !range.contains(&value) {
+            return Err(format!(
+                "{key} must be {}..={}, not {value}",
+                range.start(),
+                range.end()
+            ));
+        }
+        Ok::<i32, String>(value)
+    };
+    let iterations = whole(
+        "iterations",
+        1,
+        1..=crate::tools::MAX_SMOOTH_ITERATIONS as i32,
+    )?;
+    let fill_at = whole("fillAt", 17, 1..=27)?;
+    let remove_at = whole("removeAt", 9, -1..=25)?;
+    let report = crate::tools::smooth(
+        &session.active().cells,
+        (x0, y0, z0),
+        (x1, y1, z1),
+        iterations as u32,
+        fill_at,
+        remove_at,
+    );
+    let changed = session.write_cells(&report.writes)?;
+    Ok(json!({
+        "changed": changed,
+        "filled": report.filled,
+        "removed": report.removed,
+        "iterations": report.iterations,
+        "voxels": session.voxel_count()
+    }))
 }
 
 fn rounded_inside(

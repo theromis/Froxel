@@ -1252,3 +1252,160 @@ fn every_tool_declares_all_four_hints() {
         true
     );
 }
+
+fn error_text(reply: &Value) -> String {
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+    reply["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+#[test]
+fn fill_modes_keep_or_recolour_existing_cells() {
+    let mut head = Headless::new();
+    head.ok("set_voxel", json!({"x": 1, "y": 0, "z": 0, "palette": 9}));
+    let corners = json!({"x0": 0, "y0": 0, "z0": 0, "x1": 2, "y1": 0, "z1": 0});
+    let mut empty = corners.clone();
+    empty["palette"] = json!(3);
+    empty["mode"] = json!("empty");
+    assert_eq!(head.ok("fill_box", empty)["changed"], 2);
+    assert_eq!(head.session.active().cells.get(&(1, 0, 0)), Some(&9));
+    head.session.objects[0].cells.remove(&(2, 0, 0));
+    let mut paint = corners.clone();
+    paint["palette"] = json!(4);
+    paint["mode"] = json!("paint");
+    assert_eq!(head.ok("fill_box", paint)["changed"], 2);
+    assert_eq!(head.session.active().cells.get(&(1, 0, 0)), Some(&4));
+    assert!(!head.session.active().cells.contains_key(&(2, 0, 0)));
+    let mut bad = corners;
+    bad["palette"] = json!(4);
+    bad["mode"] = json!("add");
+    assert!(error_text(&head.call("fill_ellipsoid", bad)).contains("mode must be"));
+}
+
+#[test]
+fn fill_tube_tapers_patterns_and_undoes_in_one_step() {
+    let mut head = Headless::new();
+    let reply = head.ok(
+        "fill_tube",
+        json!({"points": [[0, 0, 0, 3], [12, 0, 0, 1], {"x": 20, "y": 4, "z": 2}], "radius": 0.5, "palette": 6}),
+    );
+    let first = reply["changed"].as_i64().unwrap();
+    assert!(first > 50, "{reply}");
+    let cells = &head.session.active().cells;
+    assert!(cells.contains_key(&(0, 0, 3)) && cells.contains_key(&(20, 4, 2)));
+    assert!(!cells.contains_key(&(12, 0, 2)));
+    head.ok("undo", json!({}));
+    assert!(head.session.active().cells.is_empty());
+
+    head.ok(
+        "fill_tube",
+        json!({"points": [[0, 0, 0], [10, 0, 0]], "radius": 4, "palettes": [2, 3], "pattern": "stripes", "sectors": 8}),
+    );
+    let mut used: Vec<u8> = head.session.active().cells.values().copied().collect();
+    used.sort();
+    used.dedup();
+    assert_eq!(used, vec![2, 3]);
+    head.ok(
+        "fill_tube",
+        json!({"points": [[0, 0, 0], [10, 0, 0]], "radius": 5, "palette": 7, "mode": "empty", "curve": "smooth"}),
+    );
+    assert!(matches!(
+        head.session.active().cells.get(&(5, 0, 0)),
+        Some(2 | 3)
+    ));
+    assert_eq!(head.session.active().cells.get(&(5, 0, 5)), Some(&7));
+
+    let none = error_text(&head.call(
+        "fill_tube",
+        json!({"points": [[0, 0, 0], [4, 0, 0]], "palette": 1}),
+    ));
+    assert!(none.contains("point 0 has no radius"), "{none}");
+    let both = error_text(&head.call(
+        "fill_tube",
+        json!({"points": [[0, 0, 0], [4, 0, 0]], "radius": 1, "palette": 1, "palettes": [1]}),
+    ));
+    assert!(both.contains("not both"), "{both}");
+    let before = head.session.active().cells.clone();
+    let huge = error_text(&head.call(
+        "fill_tube",
+        json!({"points": [[-500, 0, 0], [500, 0, 0]], "radius": 100, "palette": 1}),
+    ));
+    assert!(
+        huge.contains("too large") || huge.contains("2000000"),
+        "{huge}"
+    );
+    assert_eq!(head.session.active().cells, before);
+}
+
+#[test]
+fn carve_removes_each_shape_and_reports_it() {
+    let mut head = Headless::new();
+    head.ok(
+        "fill_box",
+        json!({"x0": 0, "y0": 0, "z0": 0, "x1": 15, "y1": 9, "z1": 9, "palette": 5}),
+    );
+    let full = head.session.voxel_count() as i64;
+    let tunnel = head.ok(
+        "carve",
+        json!({"shape": "tube", "points": [[-1, 4, 4], [16, 4, 4]], "radius": 2}),
+    );
+    let removed = tunnel["removed"].as_i64().unwrap();
+    assert!(removed > 0);
+    assert_eq!(tunnel["voxels"].as_i64().unwrap(), full - removed);
+    assert!(!head.session.active().cells.contains_key(&(0, 4, 4)));
+    assert!(!head.session.active().cells.contains_key(&(15, 4, 4)));
+    let pit = head.ok(
+        "carve",
+        json!({"shape": "ellipsoid", "x0": 2, "y0": 0, "z0": 7, "x1": 4, "y1": 2, "z1": 9}),
+    );
+    assert!(pit["removed"].as_i64().unwrap() > 0);
+    head.ok(
+        "carve",
+        json!({"shape": "rounded_box", "x0": 10, "y0": 0, "z0": 7, "x1": 13, "y1": 3, "z1": 9, "radius": 1}),
+    );
+    let corner = head.ok(
+        "carve",
+        json!({"shape": "box", "x0": 15, "y0": 9, "z0": 9, "x1": 20, "y1": 20, "z1": 20}),
+    );
+    assert_eq!(corner["removed"], 1);
+    head.ok("undo", json!({}));
+    assert_eq!(head.session.active().cells.get(&(15, 9, 9)), Some(&5));
+    let shape = error_text(&head.call("carve", json!({"shape": "cone"})));
+    assert!(
+        shape.contains("box, ellipsoid, rounded_box, or tube"),
+        "{shape}"
+    );
+}
+
+#[test]
+fn smooth_softens_a_region_as_one_undo_step() {
+    let mut head = Headless::new();
+    head.ok(
+        "fill_box",
+        json!({"x0": 0, "y0": 0, "z0": 0, "x1": 8, "y1": 8, "z1": 2, "palette": 3}),
+    );
+    head.ok("set_voxels", json!({"cells": [[4, 4, 2, 0], [2, 2, 3, 8]]}));
+    let reply = head.ok(
+        "smooth",
+        json!({"x0": 1, "y0": 1, "z0": 1, "x1": 7, "y1": 7, "z1": 4}),
+    );
+    assert_eq!(reply["filled"], 1, "{reply}");
+    assert_eq!(reply["removed"], 1, "{reply}");
+    assert_eq!(head.session.active().cells.get(&(4, 4, 2)), Some(&3));
+    assert!(!head.session.active().cells.contains_key(&(2, 2, 3)));
+    head.ok("undo", json!({}));
+    assert!(!head.session.active().cells.contains_key(&(4, 4, 2)));
+    assert_eq!(head.session.active().cells.get(&(2, 2, 3)), Some(&8));
+    let big = error_text(&head.call(
+        "smooth",
+        json!({"x0": 0, "y0": 0, "z0": 0, "x1": 200, "y1": 200, "z1": 200}),
+    ));
+    assert!(big.contains("2000000"), "{big}");
+    let passes = error_text(&head.call(
+        "smooth",
+        json!({"x0": 0, "y0": 0, "z0": 0, "x1": 1, "y1": 1, "z1": 1, "iterations": 9}),
+    ));
+    assert!(passes.contains("iterations must be 1..=8"), "{passes}");
+}

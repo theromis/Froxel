@@ -155,6 +155,9 @@ tracer. A file with no scene graph still loads its first model.
 | `fill_box` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palette` | Fill an inclusive box of **local** cells, at most 2000000, one undo step |
 | `fill_ellipsoid` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palette` | Fill the ellipsoid inscribed in that box. The box volume is checked first, even when the solid is smaller. One undo step |
 | `fill_rounded_box` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palette`, `radius` | Same box, with an edge bevel of `radius` voxels. `radius` 0 is the full box. The radius is clamped to half the shortest side |
+| `fill_tube` | `points`, `palette` or `palettes` | Fill a round tube through 2..=1024 **local** points, each with its own radius. Optional `radius`, `curve` (`polyline`, `smooth`), `pattern` (`rings`, `stripes`, `random`), `period`, `sectors`, `seed`, `mode`. At most 2000000 cells, one undo step |
+| `carve` | `shape` | Remove the solid cells inside a `box`, `ellipsoid`, `rounded_box`, or `tube`, given as for the fill tools. Replies with `removed`. One undo step |
+| `smooth` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Majority filter in an inclusive box of at most 2000000 cells that keeps colours. Optional `iterations` (1..=8), `fillAt`, `removeAt`. Replies with `filled`, `removed`, `iterations`. One undo step |
 | `get_voxels` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Non-empty **local** cells inside an inclusive box, at most 100000 |
 | `set_palette` | `index`, `r`, `g`, `b` or `entries` | Replace one slot, or many via `entries`, as one undo step. `a` defaults to 255. Optional `motion` (`none`, `sway`, `bob`) and `motion_amount` (0..4) |
 | `set_active_object` | `index` | Edit a different object. Later voxel tools use its local cells |
@@ -197,13 +200,49 @@ tracer. A file with no scene graph still loads its first model.
 that already hold the requested index are not an undo step.
 
 `fill_box` corners may arrive in either order. The box is inclusive.
-Every fill writes every cell inside its shape, empty ones included. To
-recolour existing cells only, cover exactly those cells or use `set_voxels`.
+By default every fill writes every cell inside its shape, empty ones
+included. `mode` changes that on `fill_box`, `fill_ellipsoid`,
+`fill_rounded_box`, and `fill_tube`: `replace` (the default) writes every
+cell, `empty` writes only empty cells so existing detail stays, and `paint`
+recolours only cells that are already solid.
 `fill_ellipsoid` and `fill_rounded_box` use that same inclusive box. A cell
 is solid when its centre lies inside the shape. The ellipsoid is centred on
 the box and touches the middle of each face. `fill_rounded_box` measures
 the distance from the cell centre to the box inset by `radius`. Both refuse
 a box larger than 2000000 cells before writing, and both are one undo step.
+
+`fill_tube` takes `points` as `[x, y, z]`, `[x, y, z, radius]`, or
+`{"x","y","z","radius"}` in local cells; numbers may be fractional, and a
+whole number is the centre of that cell. A point without a radius uses
+`radius`; one with neither is an error. Radii are 0.5..=128, and 0.5 is one
+cell thick. A cell is filled when its centre is within the radius of the
+axis, the radius running linearly from point to point, so the tube tapers
+and its joints and ends are round. The cells the axis passes through are
+always filled, so a thin sloped tube stays connected. `curve` `smooth` runs
+a Catmull-Rom curve through every point instead of straight segments.
+`palette` colours the whole tube; `palettes` (1..=64 indices, repeat one to
+weight it) cycles by `pattern`: `rings` (the default) bands along the length
+every `period` cells (default 2), `stripes` divides the circumference into
+`sectors` (default one per index) that run along the tube and do not twist
+at bends, and `random` picks per cell from `seed`. A tube over 2000000 cells
+is refused before any cell is written.
+
+`carve` removes cells and never paints. `shape` `box`, `ellipsoid`, and
+`rounded_box` take the corners (and `radius`) of their fill tools; `tube`
+takes `points`, `radius`, and `curve` of `fill_tube`. `removed` counts the
+cells that were solid.
+
+`smooth` reads each cell's 26 neighbours inside the box (cells outside it
+are read, never changed). An empty cell with at least `fillAt` solid
+neighbours (default 17) is filled with the colour most of them hold; ties go
+to the colour more face neighbours hold, then the lower index. A solid cell
+with at most `removeAt` solid neighbours (default 9) is removed. The
+defaults fill single-cell pits and inside corners and remove single-cell
+spikes and outside corners; flat faces and straight edges stay. `fillAt` 14
+and `removeAt` 12 also round edges. `fillAt` 27 never fills, `removeAt` -1
+never removes. Each pass reads the one before; `iterations` (1..=8) stops
+early when a pass changes nothing. Features one cell thick (a twig, a thin
+wall) have few neighbours and are removed, so keep them out of the box.
 
 `set_palette` takes either one slot (`index`, `r`, `g`, `b`, optional `a`) or
 `entries`: an array of those objects, at most 256. Pass one form or the other,

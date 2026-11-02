@@ -30,9 +30,9 @@ If the tools are missing, the server is not configured. Point the user to
 - Palette `0` erases. Slots `1..255` are colours; set them with `set_palette`
   (`entries` sets many at once) before you fill.
 - An object is at most 256 cells per axis. A cell lies in `[-1024, 1024)`.
-- `fill_box`, `fill_rounded_box`, and `fill_ellipsoid` write **every** cell in
-  the shape, empty ones too. To recolour only existing cells, read them with
-  `get_voxels` and write them with `set_voxels`.
+- `fill_box`, `fill_rounded_box`, `fill_ellipsoid`, and `fill_tube` write
+  **every** cell in the shape, empty ones too. `mode: "empty"` adds without
+  overwriting; `mode: "paint"` recolours only existing cells.
 - `set_voxels` takes `[x, y, z, palette]` rows, up to 200000 per call. Batch
   detail into few calls.
 - Call `inspect_document` when you do not know the objects, bounds, or
@@ -43,15 +43,19 @@ If the tools are missing, the server is not configured. Point the user to
 
 1. `new_document`, then `set_palette` with the colours you need.
 2. **Block out** the large forms with `fill_rounded_box` and
-   `fill_ellipsoid`. Get the silhouette and proportions right first.
+   `fill_ellipsoid`. Grow limbs, roots, branches, and twigs with `fill_tube`
+   (a radius per point, so it tapers; `curve: "smooth"` bends it). Cut
+   hollows, tunnels, and pits with `carve`. Do not compute tubes or carves in
+   an outside script. Get the silhouette and proportions right first.
 3. **Look.** Use `preview` for a quick lit look at shape and framing after
    every edit: it is the viewport's light, rasterised in well under a second,
    and `object` frames one part. Use `model_view` to compare shape and colour with a reference: it
    is flat palette colour, orthographic, with no lighting. Use `view` (`front`,
    `back`, `left`, `right`, `top`, `bottom`) and its `views` list to write a
    whole turnaround in one call. Use `render` to judge lighting and material.
-4. **Refine** with `set_voxels`: cut the snout, place the eyes, add the colour
-   breaks.
+4. **Soften** a blocky region with `smooth` (it keeps colours and removes
+   anything one cell thick, so leave twigs out of its box), then **refine**
+   with `set_voxels`: cut the snout, place the eyes, add the colour breaks.
 5. Repeat steps 3 and 4. A first blockout is never the result. Look after
    every step and read the PNGs; do not report a model you have not viewed.
 6. `save_file` with a `path`.
