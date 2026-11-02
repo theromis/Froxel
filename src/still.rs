@@ -5,6 +5,9 @@ use crate::state::{GlassMode, Session};
 #[cfg(test)]
 use crate::trace::{self, Image};
 
+/// Default fraction of the frame left empty on each side of a fitted box.
+pub const MARGIN: f32 = 0.05;
+
 #[derive(Clone)]
 pub struct Still {
     pub width: u32,
@@ -23,8 +26,15 @@ pub struct Still {
     pub stochastic_gi: Option<bool>,
     pub yaw: f32,
     pub pitch: f32,
+    /// Multiple of the fitted distance. Below 1 is closer.
     pub distance: f32,
     pub orthographic: Option<bool>,
+    /// What to frame. `None` frames every visible posed cell.
+    pub frame: Option<crate::trace::Frame>,
+    /// Fraction of the frame left empty on each side of the fitted box.
+    pub margin: f32,
+    /// Orthographic scale instead of the fitted distance.
+    pub pixels_per_voxel: Option<f32>,
 }
 
 pub(crate) struct Saved {
@@ -65,10 +75,8 @@ fn apply(session: &mut Session, still: &Still) -> Saved {
         stochastic_gi: session.stochastic_gi,
         orthographic: session.orthographic,
     };
-    session.frame_camera();
     session.yaw = still.yaw.to_radians();
     session.pitch = still.pitch.to_radians();
-    session.distance *= still.distance;
     session.max_bounces = still.bounces;
     session.max_samples = still.samples as i32;
     session.aces = still.aces;
@@ -97,7 +105,54 @@ fn apply(session: &mut Session, still: &Still) -> Saved {
     if let Some(value) = still.orthographic {
         session.orthographic = value;
     }
+    fit(session, still, true);
     saved
+}
+
+/// Fit every `(yaw, pitch)` in degrees. One angle centres its silhouette;
+/// several keep the farthest distance and the middle of the bounds, so a
+/// turnaround shares one centre and one scale. Leaves the first angle set.
+pub fn fit_all(session: &mut Session, still: &Still, angles: &[(f32, f32)]) {
+    let recentre = angles.len() == 1;
+    let mut distance: f32 = 0.0;
+    for (yaw, pitch) in angles.iter().rev() {
+        session.yaw = yaw.to_radians();
+        session.pitch = pitch.to_radians();
+        fit(session, still, recentre);
+        distance = distance.max(session.distance);
+    }
+    session.distance = distance;
+}
+
+/// Frame `still.frame`, or every visible posed cell, at the session's yaw
+/// and pitch so it fills the picture less `still.margin` on each side, then
+/// scale the distance by `still.distance`. Call again after the yaw, pitch,
+/// or pose changes.
+pub fn fit(session: &mut Session, still: &Still, recentre: bool) {
+    let cells;
+    let frame = match &still.frame {
+        Some(frame) => frame,
+        None => match crate::trace::Frame::cells(session, None) {
+            Some(found) => {
+                cells = found;
+                &cells
+            }
+            None => {
+                session.target = glam::Vec3::ZERO;
+                session.distance = 24.0;
+                return;
+            }
+        },
+    };
+    let aspect = still.width as f32 / still.height.max(1) as f32;
+    let fill = (1.0 - 2.0 * still.margin).clamp(0.05, 1.0);
+    crate::trace::fit_frame(session, frame, aspect, fill, recentre);
+    match still.pixels_per_voxel {
+        Some(ppv) if session.orthographic => {
+            session.distance = crate::trace::ortho_distance_for(ppv, still.height);
+        }
+        _ => session.distance *= still.distance,
+    }
 }
 
 fn restore(session: &mut Session, saved: Saved) {

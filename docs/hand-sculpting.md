@@ -57,10 +57,11 @@ bones: `render`'s `pose` poses one still without changing the document, and
 `set_pose` previews in the window. A curved model is hard to rig and to
 mirror.
 
-**Crop renders when objects are hidden.** `render` frames every object,
-hidden ones included. A hidden alternate part (a second jaw, an open eye)
-far from the body makes the subject small in the picture. Lower `distance`
-(below 1 moves closer), or crop the PNG to the subject before you compare.
+**Frame the part you are working on.** `render` and `model_view` fit every
+visible cell in the picture; hidden objects are left out. To look at one
+part, pass `target` (an object index, `active`, or a `{min, max}` box of
+world cells), or `zoom` to magnify the fitted frame. For a long model, give
+only `width` (up to 4096) and the height follows its shape.
 
 **Mirror.** Sculpt one side of a paired part and copy it with
 `mirror_object`; `mirrorBones` copies its bones too.

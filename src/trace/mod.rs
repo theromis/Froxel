@@ -12,6 +12,9 @@ use glam::Vec3;
 use crate::state::{GlassMode, Material, MaterialType, Session};
 
 const FOV_Y: f32 = 50.0_f32.to_radians();
+/// Orthographic rays start this far behind the eye plane, so a close frame of
+/// a long model still sees the cells between the plane and the camera.
+const ORTHO_BACK: f32 = 4096.0;
 const MAX_STEPS: i32 = 384;
 
 #[derive(Clone)]
@@ -356,6 +359,213 @@ pub fn ortho_pixels_per_voxel(session: &Session, height: u32) -> f32 {
     height as f32 / (2.0 * session.distance * (FOV_Y * 0.5).tan())
 }
 
+/// The orthographic eye distance at which one voxel edge covers
+/// `pixels_per_voxel` pixels of a frame `height` pixels tall.
+pub fn ortho_distance_for(pixels_per_voxel: f32, height: u32) -> f32 {
+    height as f32 / (2.0 * pixels_per_voxel * (FOV_Y * 0.5).tan())
+}
+
+/// What a still frames: points that must stay inside the picture, each
+/// grown by `pad` in every direction (0 for cell corners).
+#[derive(Clone)]
+pub struct Frame {
+    pub points: Vec<Vec3>,
+    pub pad: f32,
+}
+
+impl Frame {
+    /// The posed solid cells of every visible object, or of object `only`,
+    /// as the lattice corners of those cells.
+    pub fn cells(session: &Session, only: Option<usize>) -> Option<Self> {
+        let voxels = posed_voxels(session, only);
+        if voxels.is_empty() {
+            return None;
+        }
+        let mut corners = std::collections::HashSet::new();
+        for cell in voxels.keys() {
+            for corner in 0..8 {
+                corners.insert((
+                    cell.0 + (corner & 1),
+                    cell.1 + ((corner >> 1) & 1),
+                    cell.2 + ((corner >> 2) & 1),
+                ));
+            }
+        }
+        let points = corners
+            .into_iter()
+            .map(|corner| Vec3::new(corner.0 as f32, corner.1 as f32, corner.2 as f32))
+            .collect();
+        Some(Self { points, pad: 0.0 })
+    }
+
+    /// The eight corners of a world box.
+    pub fn corners(min: Vec3, max: Vec3) -> Self {
+        let points = (0..8)
+            .map(|corner| {
+                Vec3::new(
+                    if corner & 1 == 0 { min.x } else { max.x },
+                    if corner & 2 == 0 { min.y } else { max.y },
+                    if corner & 4 == 0 { min.z } else { max.z },
+                )
+            })
+            .collect();
+        Self { points, pad: 0.0 }
+    }
+
+    /// World box of the points.
+    pub fn bounds(&self) -> (Vec3, Vec3) {
+        let mut min = Vec3::splat(f32::MAX);
+        let mut max = Vec3::splat(f32::MIN);
+        for point in &self.points {
+            min = min.min(*point);
+            max = max.max(*point);
+        }
+        (min, max)
+    }
+
+    /// Half width and half height of the parallel projection onto the image
+    /// plane of an orbit at `yaw` and `pitch` in radians.
+    pub fn half_extent(&self, yaw: f32, pitch: f32) -> (f32, f32) {
+        let (_, right, up) = orbit_basis(yaw, pitch);
+        let (lo_x, hi_x) = span(&self.points, right);
+        let (lo_y, hi_y) = span(&self.points, up);
+        (
+            (hi_x - lo_x) * 0.5 + self.pad,
+            (hi_y - lo_y) * 0.5 + self.pad,
+        )
+    }
+}
+
+fn span(points: &[Vec3], axis: Vec3) -> (f32, f32) {
+    points.iter().fold((f32::MAX, f32::MIN), |(lo, hi), point| {
+        let along = point.dot(axis);
+        (lo.min(along), hi.max(along))
+    })
+}
+
+fn orbit_basis(yaw: f32, pitch: f32) -> (Vec3, Vec3, Vec3) {
+    let dir = Vec3::new(
+        yaw.cos() * pitch.cos(),
+        yaw.sin() * pitch.cos(),
+        pitch.sin(),
+    );
+    camera_basis(dir, Vec3::ZERO)
+}
+
+/// Aim the camera at a frame at the current yaw and pitch and set the
+/// distance at which its points fill `fill` of the picture on the tighter
+/// axis. `recentre` slides the camera sideways to centre the silhouette (a
+/// perspective near end looms larger); without it the camera looks at the
+/// middle of the bounds, the same for every angle.
+///
+/// Per image axis, a point at sideways offset `x` and depth `z` from the
+/// middle stays inside when `|x - e| <= tan * (z + d)` for a camera offset
+/// `e` and set back `d`. So `d >= max(a - e / tan, b + e / tan)` with
+/// `a = max(x / tan - z)` and `b = max(-x / tan - z)`, least at
+/// `e = tan * (a - b) / 2`. Parallel projection drops `z` and `d` is the
+/// half extent over `tan`.
+pub fn fit_frame(session: &mut Session, frame: &Frame, aspect: f32, fill: f32, recentre: bool) {
+    let (min, max) = frame.bounds();
+    let middle = (min + max) * 0.5;
+    let (forward, right, up) = orbit_basis(session.yaw, session.pitch);
+    let tan_y = (FOV_Y * 0.5).tan() * fill;
+    let tan_x = tan_y * aspect.max(1.0e-3);
+    let pad = frame.pad;
+    let orthographic = session.orthographic;
+    let axis = |dir: Vec3, tan: f32| -> (f32, f32) {
+        let (mut a, mut b) = (f32::MIN, f32::MIN);
+        for point in &frame.points {
+            let rel = *point - middle;
+            let x = rel.dot(dir);
+            let z = if orthographic {
+                0.0
+            } else {
+                rel.dot(forward) - pad
+            };
+            a = a.max((x + pad) / tan - z);
+            b = b.max((-x + pad) / tan - z);
+        }
+        if recentre {
+            ((a + b) * 0.5, tan * (a - b) * 0.5)
+        } else {
+            (a.max(b), 0.0)
+        }
+    };
+    let (distance_x, mut offset_x) = axis(right, tan_x);
+    let (distance_y, mut offset_y) = axis(up, tan_y);
+    let distance = distance_x.max(distance_y).max(1.0);
+    if recentre && !orthographic {
+        // The looser axis has room to spare: centre its silhouette on the
+        // screen at the final distance rather than balancing the slack.
+        offset_x = centre_offset(frame, middle, forward, right, distance, tan_x, offset_x);
+        offset_y = centre_offset(frame, middle, forward, up, distance, tan_y, offset_y);
+    }
+    session.target = middle + right * offset_x + up * offset_y;
+    session.distance = distance;
+}
+
+/// The sideways camera offset along `dir` that centres the perspective
+/// silhouette at set back `distance`, searched within the offsets that keep
+/// every point inside, around `start`.
+fn centre_offset(
+    frame: &Frame,
+    middle: Vec3,
+    forward: Vec3,
+    dir: Vec3,
+    distance: f32,
+    tan: f32,
+    start: f32,
+) -> f32 {
+    let pad = frame.pad;
+    let lean = |offset: f32| -> f32 {
+        let (mut lo, mut hi) = (f32::MAX, f32::MIN);
+        for point in &frame.points {
+            let rel = *point - middle;
+            let depth = (rel.dot(forward) - pad + distance).max(1.0e-3);
+            let x = rel.dot(dir) - offset;
+            lo = lo.min((x - pad) / depth);
+            hi = hi.max((x + pad) / depth);
+        }
+        lo + hi
+    };
+    // `lean` falls as the offset grows. Bracket the root, then bisect.
+    let mut step = tan * distance * 0.5 + 1.0;
+    let (mut low, mut high) = (start - step, start + step);
+    for _ in 0..16 {
+        if lean(low) > 0.0 && lean(high) < 0.0 {
+            break;
+        }
+        step *= 2.0;
+        low = start - step;
+        high = start + step;
+    }
+    if !(lean(low) > 0.0 && lean(high) < 0.0) {
+        return start;
+    }
+    for _ in 0..32 {
+        let mid = (low + high) * 0.5;
+        if lean(mid) > 0.0 {
+            low = mid;
+        } else {
+            high = mid;
+        }
+    }
+    let centred = (low + high) * 0.5;
+    // Stay where every point is still inside: |x - e| <= tan * depth.
+    let fits = |offset: f32| {
+        frame.points.iter().all(|point| {
+            let rel = *point - middle;
+            let depth = rel.dot(forward) - pad + distance;
+            (rel.dot(dir) - offset).abs() + pad <= tan * depth + 1.0e-3
+        })
+    };
+    if fits(centred) {
+        centred
+    } else {
+        start
+    }
+}
+
 fn shade_pixel(
     world: &World,
     shade: &Shade,
@@ -370,7 +580,7 @@ fn shade_pixel(
     let (origin, dir) = if shade.orthographic {
         let (origin, dir) = ortho_primary(width, height, x, y, shade.eye, shade.target, &mut rng);
         if shade.aperture <= 0.0 {
-            (origin, dir)
+            (origin - dir * ORTHO_BACK, dir)
         } else {
             lens_ray(shade, origin, origin + dir, dir, &mut rng)
         }
@@ -704,7 +914,7 @@ use shade::{
     aces, camera_basis, center_ray, denoise, first_guides, lens_ray, ortho_primary, primary_dir,
     radiance, to_srgb,
 };
-use world::{build_world, march};
+use world::{build_world, march, posed_voxels};
 pub use world::{gpu_scene, GpuLight, GpuScene};
 
 #[cfg(test)]

@@ -298,7 +298,7 @@ pub(super) fn center_ray(
     if orthographic {
         let half_h = eye.distance(target) * tan;
         let origin = eye + right * (u * half_h * aspect) + up * (v * half_h);
-        (origin, forward)
+        (origin - forward * ORTHO_BACK, forward)
     } else {
         let dir = forward + right * (u * aspect * tan) + up * (v * tan);
         (eye, dir.normalize_or_zero())

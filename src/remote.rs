@@ -11,13 +11,151 @@ use crate::state::{GlassMode, Session};
 
 pub const NO_WINDOW: &str = "No window. Start the editor with `froxel --control PORT`, then `froxel mcp --connect 127.0.0.1:PORT`. Add `--launch` to open the window.";
 
+/// Largest side of a `render` or `model_view` PNG.
+const MAX_SIDE: i32 = 4096;
+/// Largest `render` frame in pixels, so a CPU trace stays bounded.
+const MAX_RENDER_PIXELS: i64 = 4096 * 2048;
+
+/// What a still frames: every visible cell, one object, or a world box.
+enum FrameTarget {
+    All,
+    Object(usize),
+    Box(glam::Vec3, glam::Vec3),
+}
+
+/// Camera fit shared by `render` and `model_view`: the target, the margin,
+/// and the distance multiplier (`distance` / `zoom`).
+struct Framing {
+    target: FrameTarget,
+    margin: f32,
+    scale: f32,
+}
+
+fn framing(session: &Session, params: &Value) -> Result<Framing, String> {
+    let distance = opt_f64(params, "distance")?.unwrap_or(1.0);
+    if !(distance > 0.0) || distance > 100.0 {
+        return Err("distance is out of range".into());
+    }
+    let zoom = opt_f64(params, "zoom")?.unwrap_or(1.0);
+    if !(zoom >= 0.01) || zoom > 100.0 {
+        return Err("zoom must be in 0.01..100".into());
+    }
+    let margin = opt_f64(params, "margin")?.unwrap_or(crate::still::MARGIN as f64);
+    if !(0.0..=0.45).contains(&margin) {
+        return Err("margin must be in 0..0.45".into());
+    }
+    let target = match params.get("target") {
+        None | Some(Value::Null) => FrameTarget::All,
+        Some(Value::String(text)) if text == "all" => FrameTarget::All,
+        Some(Value::String(text)) if text == "active" => FrameTarget::Object(session.selected),
+        Some(Value::Object(map)) => {
+            if let Some(key) = map.keys().find(|key| *key != "min" && *key != "max") {
+                return Err(format!("target has no field `{key}`; pass min and max"));
+            }
+            let min = opt_ivec3(&params["target"], "min")?.ok_or("target needs min")?;
+            let max = opt_ivec3(&params["target"], "max")?.ok_or("target needs max")?;
+            if (0..3).any(|axis| min[axis] > max[axis]) {
+                return Err("target min must not exceed max".into());
+            }
+            let corner =
+                |cell: [i32; 3]| glam::Vec3::new(cell[0] as f32, cell[1] as f32, cell[2] as f32);
+            FrameTarget::Box(corner(min), corner(max) + glam::Vec3::ONE)
+        }
+        Some(found) => {
+            let Some(index) = as_i32(found) else {
+                return Err("target must be all, active, an object index, or {min, max}".into());
+            };
+            if index < 0 || index as usize >= session.objects.len() {
+                return Err(format!("target object {index} does not exist"));
+            }
+            FrameTarget::Object(index as usize)
+        }
+    };
+    Ok(Framing {
+        target,
+        margin: margin as f32,
+        scale: (distance / zoom) as f32,
+    })
+}
+
+/// The points a framing target keeps in the picture, with the session's
+/// current pose.
+fn target_frame(session: &Session, target: &FrameTarget) -> Result<crate::trace::Frame, String> {
+    match target {
+        FrameTarget::All => crate::trace::Frame::cells(session, None)
+            .ok_or_else(|| "document has no voxels".to_string()),
+        FrameTarget::Object(index) => {
+            if session.objects[*index].hidden {
+                return Err(format!("target object {index} is hidden"));
+            }
+            crate::trace::Frame::cells(session, Some(*index))
+                .ok_or_else(|| format!("target object {index} has no voxels"))
+        }
+        FrameTarget::Box(min, max) => {
+            if crate::trace::Frame::cells(session, None).is_none() {
+                return Err("document has no voxels".into());
+            }
+            Ok(crate::trace::Frame::corners(*min, *max))
+        }
+    }
+}
+
+/// Width and height of a still. One given side keeps it and the other
+/// follows the frame's projected shape at every angle of the call, so a
+/// long model gets a wide picture. `pixels_per_voxel` sizes both omitted
+/// sides from the frame. Neither given is `fallback` square.
+fn still_size(
+    params: &Value,
+    fallback: i32,
+    frame: &crate::trace::Frame,
+    margin: f32,
+    angles: &[(f32, f32)],
+    pixels_per_voxel: Option<f32>,
+) -> Result<(u32, u32), String> {
+    let width = opt_i32_range(params, "width", 0, 1, MAX_SIDE)?;
+    let height = opt_i32_range(params, "height", 0, 1, MAX_SIDE)?;
+    if width > 0 && height > 0 {
+        return Ok((width as u32, height as u32));
+    }
+    let (mut half_w, mut half_h) = (0.0f32, 0.0f32);
+    for (yaw, pitch) in angles {
+        let (w, h) = frame.half_extent(yaw.to_radians(), pitch.to_radians());
+        half_w = half_w.max(w);
+        half_h = half_h.max(h);
+    }
+    let (half_w, half_h) = (half_w.max(0.5), half_h.max(0.5));
+    let fill = 1.0 - 2.0 * margin;
+    let side = |pixels: f32, key: &str| -> Result<u32, String> {
+        let pixels = pixels.round().max(1.0);
+        if pixels > MAX_SIDE as f32 {
+            return Err(format!(
+                "{key} would be {pixels} pixels, over {MAX_SIDE}; lower pixelsPerVoxel or pass {key}"
+            ));
+        }
+        Ok(pixels as u32)
+    };
+    match (width, height, pixels_per_voxel) {
+        (0, 0, Some(ppv)) => Ok((
+            side(2.0 * half_w * ppv / fill, "width")?,
+            side(2.0 * half_h * ppv / fill, "height")?,
+        )),
+        (0, 0, None) => Ok((fallback as u32, fallback as u32)),
+        (0, height, _) => Ok((
+            side(height as f32 * half_w / half_h, "width")?,
+            height as u32,
+        )),
+        (width, _, _) => Ok((
+            width as u32,
+            side(width as f32 * half_h / half_w, "height")?,
+        )),
+    }
+}
+
 fn render_scene(session: &mut Session, params: &Value) -> Result<Value, String> {
     let path = req_str(params, "path")?;
     if path.is_empty() {
         return Err("path is empty".into());
     }
-    let width = opt_i32_range(params, "width", 256, 1, 1024)?;
-    let height = opt_i32_range(params, "height", 256, 1, 1024)?;
     let samples = opt_i32_range(params, "samples", 16, 1, 128)?;
     let bounces = opt_i32_range(params, "bounces", 4, 0, 8)?;
     let seed = opt_i32_range(params, "seed", 1, 0, i32::MAX)?;
@@ -36,7 +174,7 @@ fn render_scene(session: &mut Session, params: &Value) -> Result<Value, String> 
         }
     };
     let (yaw, pitch) = view_angles(params)?;
-    let distance = opt_f64(params, "distance")?;
+    let framing = framing(session, params)?;
     let orthographic = opt_bool(params, "orthographic")?.unwrap_or(false);
     let show_bones = opt_bool(params, "showBones")?.unwrap_or(false);
     let views = render_views(params)?;
@@ -44,60 +182,69 @@ fn render_scene(session: &mut Session, params: &Value) -> Result<Value, String> 
         Some(pose) => Some(session.checked_pose(pose)?),
         None => None,
     };
-    if let Some(pitch) = pitch {
-        if !(-90.0..=90.0).contains(&pitch) {
-            return Err("pitch is out of range".into());
-        }
-    }
-    if let Some(distance) = distance {
-        if !(distance > 0.0) || distance > 100.0 {
-            return Err("distance is out of range".into());
-        }
-    }
-    let voxels = session
-        .objects
-        .iter()
-        .filter(|object| !object.hidden)
-        .fold(0usize, |count, object| {
-            count + object.cells.values().filter(|slot| **slot != 0).count()
-        });
-    if voxels == 0 {
-        return Err("document has no voxels".into());
-    }
+    let yaw = yaw.unwrap_or(30.0) as f32;
+    let pitch = pitch.unwrap_or(25.0) as f32;
+    let mut angles = vec![(yaw, pitch)];
+    angles.extend(views.iter().map(|(yaw, pitch, _)| (*yaw, *pitch)));
 
-    let saved = crate::still::prepare(
-        session,
-        &crate::still::Still {
-            width: width as u32,
-            height: height as u32,
-            samples: samples as u32,
-            bounces,
-            seed: seed as u32,
-            aces: true,
-            denoise,
-            atmospheric,
-            sky_intensity: sky_intensity.map(|value| value as f32),
-            sun_intensity: sun_intensity.map(|value| value as f32),
-            aperture: aperture.map(|value| value as f32),
-            focus: focus.map(|value| value as f32),
-            glass,
-            stochastic_gi: None,
-            yaw: yaw.unwrap_or(30.0) as f32,
-            pitch: pitch.unwrap_or(25.0) as f32,
-            distance: distance.unwrap_or(1.0) as f32,
-            orthographic: Some(orthographic),
-        },
-    );
     let saved_pose = session.pose.clone();
     let saved_bones = session.show_bones;
     if let Some(pose) = pose {
         session.pose = pose;
     }
+    let sized = target_frame(session, &framing.target).and_then(|frame| {
+        let (width, height) = still_size(params, 256, &frame, framing.margin, &angles, None)?;
+        if width as i64 * height as i64 > MAX_RENDER_PIXELS {
+            return Err(format!(
+                "{width} x {height} is over {MAX_RENDER_PIXELS} pixels; use model_view for a larger flat view"
+            ));
+        }
+        Ok((frame, width, height))
+    });
+    let (frame, width, height) = match sized {
+        Ok(sized) => sized,
+        Err(err) => {
+            session.pose = saved_pose;
+            return Err(err);
+        }
+    };
+    let still = crate::still::Still {
+        width,
+        height,
+        samples: samples as u32,
+        bounces,
+        seed: seed as u32,
+        aces: true,
+        denoise,
+        atmospheric,
+        sky_intensity: sky_intensity.map(|value| value as f32),
+        sun_intensity: sun_intensity.map(|value| value as f32),
+        aperture: aperture.map(|value| value as f32),
+        focus: focus.map(|value| value as f32),
+        glass,
+        stochastic_gi: None,
+        yaw,
+        pitch,
+        distance: framing.scale,
+        orthographic: Some(orthographic),
+        frame: Some(frame),
+        margin: framing.margin,
+        pixels_per_voxel: None,
+    };
+    let (min, max) = still
+        .frame
+        .as_ref()
+        .map(|frame| frame.bounds())
+        .unwrap_or_default();
+    let framed = json!({"min": min.to_array(), "max": max.to_array()});
+    let saved = crate::still::prepare(session, &still);
+    crate::still::fit_all(session, &still, &angles);
     session.show_bones = show_bones;
+    let distance = session.distance;
     let written = render_views_to(
         session,
-        width as u32,
-        height as u32,
+        width,
+        height,
         samples as u32,
         seed as u32,
         &path,
@@ -110,7 +257,9 @@ fn render_scene(session: &mut Session, params: &Value) -> Result<Value, String> 
         "path": path,
         "width": width,
         "height": height,
-        "samples": samples
+        "samples": samples,
+        "framed": framed,
+        "distance": distance
     });
     let files = written?;
     if !views.is_empty() {
@@ -126,16 +275,22 @@ fn model_view(session: &mut Session, params: &Value) -> Result<Value, String> {
     if path.is_empty() {
         return Err("path is empty".into());
     }
-    let width = opt_i32_range(params, "width", 512, 1, 4096)? as u32;
-    let height = opt_i32_range(params, "height", 512, 1, 4096)? as u32;
     let (yaw, pitch) = view_angles(params)?;
-    let distance = opt_f64(params, "distance")?;
-    if let Some(distance) = distance {
-        if !(distance > 0.0) || distance > 100.0 {
-            return Err("distance is out of range".into());
+    let framing = framing(session, params)?;
+    let orthographic = opt_bool(params, "orthographic")?.unwrap_or(true);
+    let pixels_per_voxel = opt_f64(params, "pixelsPerVoxel")?;
+    if let Some(ppv) = pixels_per_voxel {
+        if !orthographic {
+            return Err("pixelsPerVoxel needs orthographic".into());
+        }
+        if !(ppv >= 0.05) || ppv > 256.0 {
+            return Err("pixelsPerVoxel must be in 0.05..256".into());
+        }
+        if params.get("zoom").is_some() || params.get("distance").is_some() {
+            return Err("pass pixelsPerVoxel or zoom and distance, not both".into());
         }
     }
-    let orthographic = opt_bool(params, "orthographic")?.unwrap_or(true);
+    let pixels_per_voxel = pixels_per_voxel.map(|ppv| ppv as f32);
     let show_bones = opt_bool(params, "showBones")?.unwrap_or(false);
     let background = background(params)?;
     let views = render_views(params)?;
@@ -143,46 +298,65 @@ fn model_view(session: &mut Session, params: &Value) -> Result<Value, String> {
         Some(pose) => Some(session.checked_pose(pose)?),
         None => None,
     };
-    let visible = session
-        .objects
-        .iter()
-        .filter(|object| !object.hidden)
-        .any(|object| object.cells.values().any(|slot| *slot != 0));
-    if !visible {
-        return Err("document has no voxels".into());
-    }
-
     let yaw = yaw.unwrap_or(30.0) as f32;
     let pitch = pitch.unwrap_or(25.0) as f32;
-    let saved = crate::still::prepare(
-        session,
-        &crate::still::Still {
-            width,
-            height,
-            samples: 1,
-            bounces: 0,
-            seed: 0,
-            aces: false,
-            denoise: false,
-            atmospheric: None,
-            sky_intensity: None,
-            sun_intensity: None,
-            aperture: None,
-            focus: None,
-            glass: None,
-            stochastic_gi: None,
-            yaw,
-            pitch,
-            distance: distance.unwrap_or(1.0) as f32,
-            orthographic: Some(orthographic),
-        },
-    );
+    let mut shots = vec![(yaw, pitch, path.clone())];
+    shots.extend(views.iter().cloned());
+    let angles: Vec<(f32, f32)> = shots.iter().map(|(yaw, pitch, _)| (*yaw, *pitch)).collect();
+
     let saved_pose = session.pose.clone();
     if let Some(pose) = pose {
         session.pose = pose;
     }
-    let mut shots = vec![(yaw, pitch, path.clone())];
-    shots.extend(views.iter().cloned());
+    let sized = target_frame(session, &framing.target).and_then(|frame| {
+        let (width, height) = still_size(
+            params,
+            512,
+            &frame,
+            framing.margin,
+            &angles,
+            pixels_per_voxel,
+        )?;
+        Ok((frame, width, height))
+    });
+    let (frame, width, height) = match sized {
+        Ok(sized) => sized,
+        Err(err) => {
+            session.pose = saved_pose;
+            return Err(err);
+        }
+    };
+    let still = crate::still::Still {
+        width,
+        height,
+        samples: 1,
+        bounces: 0,
+        seed: 0,
+        aces: false,
+        denoise: false,
+        atmospheric: None,
+        sky_intensity: None,
+        sun_intensity: None,
+        aperture: None,
+        focus: None,
+        glass: None,
+        stochastic_gi: None,
+        yaw,
+        pitch,
+        distance: framing.scale,
+        orthographic: Some(orthographic),
+        frame: Some(frame),
+        margin: framing.margin,
+        pixels_per_voxel,
+    };
+    let (min, max) = still
+        .frame
+        .as_ref()
+        .map(|frame| frame.bounds())
+        .unwrap_or_default();
+    let framed = json!({"min": min.to_array(), "max": max.to_array()});
+    let saved = crate::still::prepare(session, &still);
+    crate::still::fit_all(session, &still, &angles);
     let mut files = Vec::new();
     let mut written = Ok(());
     for (view_yaw, view_pitch, view_path) in &shots {
@@ -199,6 +373,7 @@ fn model_view(session: &mut Session, params: &Value) -> Result<Value, String> {
         files.push(json!({"path": view_path, "yaw": view_yaw, "pitch": view_pitch}));
     }
     let pixels_per_voxel = crate::trace::ortho_pixels_per_voxel(session, height);
+    let distance = session.distance;
     session.pose = saved_pose;
     crate::still::finish(session, saved);
     written?;
@@ -206,7 +381,9 @@ fn model_view(session: &mut Session, params: &Value) -> Result<Value, String> {
         "path": path,
         "width": width,
         "height": height,
-        "orthographic": orthographic
+        "orthographic": orthographic,
+        "framed": framed,
+        "distance": distance
     });
     if orthographic {
         reply["pixelsPerVoxel"] = json!(pixels_per_voxel);
@@ -946,13 +1123,13 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("edit.redo", "", "Redo the last undone edit"),
     (
         "render",
-        "path, width?, height?, samples?, bounces?, seed?, denoise?, yaw?, pitch?, distance?",
-        "Path-trace the scene to a PNG. width and height default to 256 (1..1024). samples defaults to 16 (1..128). bounces defaults to 4 (0..8). denoise defaults to true. yaw 30 and pitch 25 degrees frame the scene when omitted. yaw 0 sits the camera on +X looking toward -X. orthographic, views, pose, and showBones are optional.",
+        "path, width?, height?, samples?, bounces?, seed?, denoise?, yaw?, pitch?, distance?, zoom?, margin?, target?",
+        "Path-trace the scene to a PNG. The camera fits the framed box (target: all visible cells by default) inside the frame with margin 0.05 on each side; zoom 2 is twice as large. width and height default to 256 (1..4096, at most 4096 x 2048 pixels); give one and the other follows the model. samples defaults to 16 (1..128). bounces defaults to 4 (0..8). denoise defaults to true. yaw 30 and pitch 25 degrees frame the scene when omitted. yaw 0 sits the camera on +X looking toward -X. orthographic, views, pose, and showBones are optional.",
     ),
     (
         "render.flat",
-        "path, width?, height?, view?, yaw?, pitch?, distance?, orthographic?, background?, views?, pose?, showBones?",
-        "Flat model view PNG: each pixel is the palette colour of the first cell hit, with no light and no tonemap. width and height default to 512 (1..4096). orthographic defaults to true. view is front, back, left, right, top, or bottom. background defaults to transparent.",
+        "path, width?, height?, view?, yaw?, pitch?, distance?, zoom?, margin?, target?, pixelsPerVoxel?, orthographic?, background?, views?, pose?, showBones?",
+        "Flat model view PNG: each pixel is the palette colour of the first cell hit, with no light and no tonemap. The camera fits the framed box like render. width and height default to 512 (1..4096); give one and the other follows the model, or pixelsPerVoxel to size both. orthographic defaults to true. view is front, back, left, right, top, or bottom. background defaults to transparent.",
     ),
     (
         "render.preview",
@@ -1189,6 +1366,14 @@ fn render_views(params: &Value) -> Result<Vec<(f32, f32, String)>, String> {
             }
             let mut views = Vec::new();
             for item in items {
+                if let Some(key) = item.as_object().and_then(|map| {
+                    map.keys()
+                        .find(|key| !matches!(key.as_str(), "path" | "view" | "yaw" | "pitch"))
+                }) {
+                    return Err(format!(
+                        "a views item has no field `{key}`; it takes path, view, yaw, pitch"
+                    ));
+                }
                 let path = req_str(item, "path")?;
                 if path.is_empty() {
                     return Err("view path is empty".into());

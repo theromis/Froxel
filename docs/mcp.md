@@ -175,8 +175,8 @@ tracer. A file with no scene graph still loads its first model.
 | `remove_clip` | `name` | Remove a clip. One undo step |
 | `undo` | — | Undo the last edit |
 | `redo` | — | Redo the last undone edit |
-| `render` | `path` | Path-trace the scene to a PNG. `width` and `height` default to 256. `samples` defaults to 16. `bounces` defaults to 4. `denoise` defaults to true. `yaw` defaults to 30°, `pitch` to 25°. Optional `orthographic`, `views`, `pose`, `showBones` |
-| `model_view` | `path` | Flat model view PNG: each pixel is the palette colour of the first cell hit, no light, no tonemap. `width` and `height` default to 512. Orthographic by default. Optional `view`, `yaw`, `pitch`, `distance`, `orthographic`, `background`, `views`, `pose`, `showBones` |
+| `render` | `path` | Path-trace the scene to a PNG. The camera fits the visible cells (or `target`) in the frame. `width` and `height` default to 256 (up to 4096, 4096 × 2048 pixels in all); one alone and the other follows the model. `samples` defaults to 16. `bounces` defaults to 4. `denoise` defaults to true. `yaw` defaults to 30°, `pitch` to 25°. Optional `zoom`, `margin`, `target`, `distance`, `orthographic`, `views`, `pose`, `showBones` |
+| `model_view` | `path` | Flat model view PNG: each pixel is the palette colour of the first cell hit, no light, no tonemap. Fitted like `render`. `width` and `height` default to 512 (up to 4096). Orthographic by default. Optional `view`, `yaw`, `pitch`, `zoom`, `margin`, `target`, `pixelsPerVoxel`, `distance`, `orthographic`, `background`, `views`, `pose`, `showBones` |
 | `preview` | `path` | Fast lit PNG: the viewport's mesh and light rasterised on the CPU in well under a second, fitted to the model or one object with a margin. `width` and `height` default to 1024 (up to 4096). Optional `view`, `yaw`, `pitch`, `orthographic`, `fov`, `margin`, `object`, `isolate`, `background`, `antialias`, `pose`. See [preview.md](preview.md) |
 | `set_view` | — | Move the session camera; connected, the window's. Optional `view`, `yaw`, `pitch`, `frame`, `distance`, `orthographic`, `bones`. Not an edit |
 | `screenshot` | — | PNG of the whole editor window. Connected mode only |
@@ -253,24 +253,37 @@ region is an error. Both tools need the connected window; headless they fail
 like the screenshots.
 
 `render` path-traces every visible object and writes a PNG. It does not need a
-window. `width` and `height` are 1..1024 and default to 256. `samples` is
-1..128 and defaults to 16. `bounces` is 0..8 and defaults to 4. `seed`
-defaults to 1. The camera frames the scene (every object, hidden ones too, so a hidden
-part far from the subject makes it smaller; lower `distance` or crop), then orbits: `yaw` defaults to
-30 degrees, `pitch` to 25 degrees (−90..90), and `distance` multiplies that
-framing distance (greater than 0, at most 100). Yaw 0 puts the camera on
-the +X side of the target, looking toward −X. A model whose face points
-along −Y is face-on at yaw −90. `orthographic` defaults to false; true
-uses parallel rays whose frame matches the perspective view at the same
-distance. `pose` is an optional map of bone name to quaternion
+window. `width` and `height` are 1..4096, at most 4096 × 2048 pixels in
+all, and default to 256 × 256. Pass only one of them and the other follows
+the shape of the framed model at the angles of the call, so `width: 2048`
+on a long log gives a wide, short picture. `samples` is 1..128 and
+defaults to 16. `bounces` is 0..8 and defaults to 4. `seed` defaults to 1.
+
+The camera orbits at `yaw` (default 30 degrees) and `pitch` (default 25,
+−90..90) and is fitted to the subject: it slides and backs off until every
+corner of every posed visible cell is inside the picture, with `margin`
+(default 0.05, 0..0.45) of the width and height left empty on each side,
+and the silhouette centred. Perspective fits the near end, which looms
+larger, as well as the far one. Hidden objects are left out of the fit.
+`target` picks the subject: `all` (the default), `active` (the active
+object), an object index, or `{"min": [x, y, z], "max": [x, y, z]}`, an
+inclusive box of world cells to frame a part. Other visible objects are
+still drawn. `zoom` (0.01..100, default 1) magnifies the fitted frame: 2
+is twice as large and crops the subject. `distance` (greater than 0, at
+most 100, default 1) multiplies the fitted distance; below 1 is closer.
+Yaw 0 puts the camera on the +X side of the target, looking toward −X. A
+model whose face points along −Y is face-on at yaw −90. `orthographic`
+defaults to false; true uses parallel rays, fitted the same way. `pose` is an optional map of bone name to quaternion
 `[x, y, z, w]` or `{rotation, scale}` (see `set_pose`), applied on top of
 the bind pose for this still only. The
 window's preview pose and the bind rotation are unchanged when the call
 returns. `showBones` defaults to false; true draws joint points and parent
 links on the PNG after tonemapping. `views` is a list of
-`{yaw, pitch, path}`. The required `path` is still written with the
-top-level yaw and pitch, and each view is an extra PNG. An empty
-`views` list is an error. The file is ACES tonemapped.
+`{yaw, pitch, path}` or `{view, path}`. The required `path` is still
+written with the top-level yaw and pitch, and each view is an extra PNG.
+With views, every picture of the call shares one centre (the middle of the
+subject's bounds) and the farthest fitted distance, so the subject keeps
+its scale from view to view. An empty `views` list is an error. The file is ACES tonemapped.
 `denoise` defaults to true. The default build runs the edge-aware filter;
 a build with `--features oidn` runs Open Image Denoise on the finished
 frame, using the first-hit albedo and normal. `atmospheric`,
@@ -278,17 +291,29 @@ frame, using the first-hit albedo and normal. `atmospheric`,
 `absorption`), `aperture`, and `focus` use the same names as
 `froxel render` and change the still only when present. An empty scene
 is an error. The call does not move the editor camera. The reply is
-`path`, `width`, `height`, and `samples`, plus `views` when that list
-was sent.
+`path`, `width`, `height`, `samples`, `framed` (the subject's world box,
+`min` and `max` corners), and `distance` (the camera distance used), plus
+`views` when that list was sent.
+
+Every tool refuses an argument its schema does not list, naming the
+arguments it takes, so a misspelt option is an error instead of being
+ignored.
 
 `model_view` writes the flat model view: for each pixel, the palette colour
 of the first visible cell under the pixel centre, byte for byte, with alpha
 255. There is no light, no sky, no tonemap, no denoise, no lens, and no
 anti-aliasing, so every pixel is a palette entry or `background`, and the
 picture compares directly with a turnaround sheet. It does not use the path
-tracer. `width` and `height` are 1..4096 and default to 512. The camera
-frames the scene as `render` does, with the same `yaw` (default 30),
-`pitch` (default 25), and `distance`. `orthographic` defaults to true.
+tracer. `width` and `height` are 1..4096 and default to 512 × 512; one
+alone and the other follows the model, as in `render`. The camera is
+fitted as `render` does, with the same `yaw` (default 30), `pitch`
+(default 25), `target`, `margin`, `zoom`, and `distance`. `orthographic`
+defaults to true. `pixelsPerVoxel` (0.05..256, orthographic only, not
+with `zoom` or `distance`) sets the scale instead of the fit: one voxel
+edge covers that many pixels, and an omitted `width` or `height` is sized
+to the subject plus the margin, so `{"view": "front", "pixelsPerVoxel": 6}`
+on a 209-cell log is a 1360-pixel-wide picture with no empty band. A size
+over 4096 is an error.
 `view` names a side of a model whose face points along −Y with +Z up, in
 place of `yaw` and `pitch`:
 
@@ -305,8 +330,8 @@ Passing `view` with `yaw` or `pitch` is an error. `background` is
 `#rrggbb`, `#rrggbbaa`, or `[r, g, b]` / `[r, g, b, a]` for pixels that hit
 nothing, and defaults to transparent. `pose` and `showBones` work as in
 `render`; hidden objects are left out. `views` is a list of `{view, path}`
-or `{yaw, pitch, path}`, each an extra PNG with the same framing, size, and
-background, so six turnaround views are one call:
+or `{yaw, pitch, path}`, each an extra PNG with the same centre, scale,
+size, and background, so six turnaround views are one call:
 
 ```json
 {"path": "front.png", "view": "front", "background": "#ffffff",
@@ -333,7 +358,8 @@ command line.
 `set_view` moves the session camera. Connected to a window, that is the
 editor's camera, so the next `screenshot_viewport` shows an exact front,
 side, or top view. `frame` defaults to true: the camera first centres on
-every object at the framing distance, as `render` does, and `distance`
+every object at the editor's framing distance (the window's Frame, not
+the tighter fit of `render`), and `distance`
 multiplies that distance (greater than 0, at most 100; an error without
 `frame`). `view`, or `yaw` and `pitch` in degrees, sets the angle; an
 omitted angle keeps the current one. Pitch may reach ±90 here, past the

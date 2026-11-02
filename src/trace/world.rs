@@ -5,42 +5,7 @@ use crate::state::Cell;
 use glam::Mat4;
 
 pub(super) fn build_world(session: &Session) -> World {
-    let mut voxels = HashMap::new();
-    for (index, object) in session.objects.iter().enumerate() {
-        if object.hidden {
-            continue;
-        }
-        let delta = session.skin_delta(index);
-        if let Some(delta) = delta.filter(|delta| !is_rigid(delta)) {
-            scaled_cells(object, delta, &mut voxels);
-            continue;
-        }
-        for (cell, slot) in &object.cells {
-            if *slot == 0 {
-                continue;
-            }
-            let world = if let Some(delta) = delta {
-                let center = Vec3::new(
-                    (cell.0 + object.translation.0) as f32 + 0.5,
-                    (cell.1 + object.translation.1) as f32 + 0.5,
-                    (cell.2 + object.translation.2) as f32 + 0.5,
-                );
-                let point = delta.transform_point3(center);
-                (
-                    point.x.floor() as i32,
-                    point.y.floor() as i32,
-                    point.z.floor() as i32,
-                )
-            } else {
-                (
-                    cell.0 + object.translation.0,
-                    cell.1 + object.translation.1,
-                    cell.2 + object.translation.2,
-                )
-            };
-            voxels.insert(world, *slot);
-        }
-    }
+    let voxels = posed_voxels(session, None);
     let mut min = [i32::MAX; 3];
     let mut max = [i32::MIN; 3];
     for cell in voxels.keys() {
@@ -103,6 +68,47 @@ pub(super) fn build_world(session: &Session) -> World {
         max,
         count,
     }
+}
+
+/// World cells of every visible object, or of `only`, after the preview pose.
+pub(super) fn posed_voxels(session: &Session, only: Option<usize>) -> HashMap<Cell, u8> {
+    let mut voxels = HashMap::new();
+    for (index, object) in session.objects.iter().enumerate() {
+        if object.hidden || only.is_some_and(|only| only != index) {
+            continue;
+        }
+        let delta = session.skin_delta(index);
+        if let Some(delta) = delta.filter(|delta| !is_rigid(delta)) {
+            scaled_cells(object, delta, &mut voxels);
+            continue;
+        }
+        for (cell, slot) in &object.cells {
+            if *slot == 0 {
+                continue;
+            }
+            let world = if let Some(delta) = delta {
+                let center = Vec3::new(
+                    (cell.0 + object.translation.0) as f32 + 0.5,
+                    (cell.1 + object.translation.1) as f32 + 0.5,
+                    (cell.2 + object.translation.2) as f32 + 0.5,
+                );
+                let point = delta.transform_point3(center);
+                (
+                    point.x.floor() as i32,
+                    point.y.floor() as i32,
+                    point.z.floor() as i32,
+                )
+            } else {
+                (
+                    cell.0 + object.translation.0,
+                    cell.1 + object.translation.1,
+                    cell.2 + object.translation.2,
+                )
+            };
+            voxels.insert(world, *slot);
+        }
+    }
+    voxels
 }
 
 pub(super) fn pack_grid(

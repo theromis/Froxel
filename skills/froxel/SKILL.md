@@ -80,8 +80,12 @@ Clips are saved in the `.vox` and exported as glTF animations.
 `render` path-traces a PNG and blocks until it is written. Defaults: 256×256,
 16 samples, denoised, yaw 30°, pitch 25°. Yaw 0 puts the camera on +X; a model
 facing −Y is face-on at yaw −90. Raise `samples` and the size for a final
-image. `views` writes extra angles in one call. Hidden objects still count
-when the shot is framed; lower `distance` if the subject looks small.
+image. `views` writes extra angles in one call. The camera fits the visible
+cells in the frame at any angle; `zoom` magnifies, `target` (an object index,
+`active`, or a `{min, max}` cell box) frames one part, and giving only `width`
+makes the height follow the model (up to 4096 per side). `model_view` takes
+`pixelsPerVoxel` to size the picture to the model. Unknown arguments are
+refused.
 
 ## Export
 

@@ -409,6 +409,9 @@ fn render_args(args: &[String]) -> Result<Option<RenderJob>, String> {
             pitch,
             distance,
             orthographic: None,
+            frame: None,
+            margin: crate::still::MARGIN,
+            pixels_per_voxel: None,
         },
         albedo,
         normal,
@@ -436,7 +439,8 @@ Defaults:
 512×512, 64 samples, 5 bounces, seed 1, ACES on, denoise off,
 probabilistic glass, stochastic GI on. Sky intensity, sun intensity,
 aperture, and focus change only when the flag is present.
-The camera frames the scene, then orbits at yaw 30°, pitch 25°, distance 1.
+The camera orbits at yaw 30°, pitch 25° and fits the visible cells in the
+frame; --distance multiplies that distance.
 
 --no-area-nee is an alias of --no-stochastic-gi.
 

@@ -957,6 +957,209 @@ fn model_view_refuses_a_view_with_yaw_and_a_bad_background() {
     assert!(!path.exists());
 }
 
+/// A bar 60 cells along x, 4 across, 4 tall: a long thin model.
+fn long_bar(head: &mut Headless) {
+    let cells = &mut head.session.objects[0].cells;
+    cells.clear();
+    for x in 0..60 {
+        for y in 0..4 {
+            for z in 0..4 {
+                cells.insert((x, y, z), 1);
+            }
+        }
+    }
+}
+
+/// Bounding box `(x0, y0, x1, y1)` of the pixels that are not transparent.
+fn solid_box(width: u32, rgba: &[u8]) -> (u32, u32, u32, u32) {
+    let mut found = (u32::MAX, u32::MAX, 0, 0);
+    for (index, pixel) in rgba.chunks(4).enumerate() {
+        if pixel[3] == 0 {
+            continue;
+        }
+        let (x, y) = (index as u32 % width, index as u32 / width);
+        found = (
+            found.0.min(x),
+            found.1.min(y),
+            found.2.max(x),
+            found.3.max(y),
+        );
+    }
+    found
+}
+
+#[test]
+fn a_long_model_fills_the_frame_at_any_angle() {
+    let mut head = Headless::new();
+    long_bar(&mut head);
+    let path = std::env::temp_dir().join(format!("froxel-fill-{}.png", std::process::id()));
+    for (yaw, pitch, orthographic) in [
+        (-35.0, 30.0, true),
+        (-35.0, 30.0, false),
+        (0.0, 10.0, false),
+        (-90.0, 0.0, true),
+        (60.0, 80.0, false),
+    ] {
+        head.ok(
+            "model_view",
+            json!({"path": path, "width": 400, "height": 200, "yaw": yaw, "pitch": pitch, "orthographic": orthographic}),
+        );
+        let (w, h, rgba) = read_png(&path);
+        let (x0, y0, x1, y1) = solid_box(w, &rgba);
+        let wide = (x1 - x0 + 1) as f32 / w as f32;
+        let tall = (y1 - y0 + 1) as f32 / h as f32;
+        assert!(
+            wide.max(tall) > 0.84 && wide <= 0.95 && tall <= 0.95,
+            "yaw {yaw} pitch {pitch} ortho {orthographic}: {wide} x {tall}"
+        );
+        assert!(x0 > 0 && y0 > 0 && x1 < w - 1 && y1 < h - 1);
+        let (left, right) = (x0 as i32, (w - 1 - x1) as i32);
+        let (top, bottom) = (y0 as i32, (h - 1 - y1) as i32);
+        assert!(
+            (left - right).abs() <= 3 && (top - bottom).abs() <= 3,
+            "yaw {yaw} pitch {pitch} ortho {orthographic}: off centre {left} {right} {top} {bottom}"
+        );
+    }
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn zoom_margin_and_pixels_per_voxel_scale_the_flat_view() {
+    let mut head = Headless::new();
+    long_bar(&mut head);
+    let path = std::env::temp_dir().join(format!("froxel-zoom-{}.png", std::process::id()));
+    let base = head.ok(
+        "model_view",
+        json!({"path": path, "view": "front", "width": 300, "height": 300}),
+    );
+    let zoomed = head.ok(
+        "model_view",
+        json!({"path": path, "view": "front", "width": 300, "height": 300, "zoom": 2.0}),
+    );
+    let ppv = base["pixelsPerVoxel"].as_f64().unwrap();
+    assert!((ppv - 300.0 * 0.9 / 60.0).abs() < 0.1, "{base}");
+    assert!((zoomed["pixelsPerVoxel"].as_f64().unwrap() - 2.0 * ppv).abs() < 1e-3);
+    let tight = head.ok(
+        "model_view",
+        json!({"path": path, "view": "front", "width": 300, "height": 300, "margin": 0.0}),
+    );
+    assert!(
+        (tight["pixelsPerVoxel"].as_f64().unwrap() - 5.0).abs() < 1e-3,
+        "{tight}"
+    );
+
+    // One side given: the other follows the model's shape.
+    let wide = head.ok(
+        "model_view",
+        json!({"path": path, "view": "front", "width": 600}),
+    );
+    assert_eq!(wide["width"], 600);
+    assert_eq!(wide["height"], 40, "{wide}");
+
+    // pixelsPerVoxel alone sizes the picture around the model.
+    let sized = head.ok(
+        "model_view",
+        json!({"path": path, "view": "front", "pixelsPerVoxel": 3.0}),
+    );
+    assert!((sized["pixelsPerVoxel"].as_f64().unwrap() - 3.0).abs() < 1e-4);
+    assert_eq!(sized["width"], 200);
+    assert_eq!(read_png(&path).0, 200);
+    let refused = head.call(
+        "model_view",
+        json!({"path": path, "pixelsPerVoxel": 3.0, "zoom": 2.0}),
+    );
+    assert_eq!(refused["result"]["isError"], true, "{refused}");
+    let refused = head.call("model_view", json!({"path": path, "pixelsPerVoxel": 200.0}));
+    assert_eq!(refused["result"]["isError"], true, "{refused}");
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn a_target_frames_one_object_or_a_box() {
+    let mut head = Headless::new();
+    long_bar(&mut head);
+    head.ok(
+        "add_object",
+        json!({"name": "pebble", "position": [100, 0, 0]}),
+    );
+    head.ok(
+        "fill_box",
+        json!({"x0": 0, "y0": 0, "z0": 0, "x1": 1, "y1": 1, "z1": 1, "palette": 2}),
+    );
+    let path = std::env::temp_dir().join(format!("froxel-target-{}.png", std::process::id()));
+    let reply = head.ok(
+        "model_view",
+        json!({"path": path, "target": 1, "width": 64, "height": 64}),
+    );
+    assert_eq!(
+        reply["framed"],
+        json!({"min": [100.0, 0.0, 0.0], "max": [102.0, 2.0, 2.0]})
+    );
+    let active = head.ok(
+        "model_view",
+        json!({"path": path, "target": "active", "width": 64, "height": 64}),
+    );
+    assert_eq!(active["framed"], reply["framed"]);
+    let all = head.ok(
+        "model_view",
+        json!({"path": path, "width": 64, "height": 64}),
+    );
+    assert_eq!(
+        all["framed"],
+        json!({"min": [0.0, 0.0, 0.0], "max": [102.0, 4.0, 4.0]})
+    );
+    let boxed = head.ok(
+        "render",
+        json!({"path": path, "target": {"min": [0, 0, 0], "max": [9, 3, 3]}, "width": 8, "height": 8, "samples": 1, "denoise": false}),
+    );
+    assert_eq!(
+        boxed["framed"],
+        json!({"min": [0.0, 0.0, 0.0], "max": [10.0, 4.0, 4.0]})
+    );
+    for target in [
+        json!(7),
+        json!("most"),
+        json!({"min": [0, 0, 0]}),
+        json!({"min": [2, 0, 0], "max": [1, 1, 1]}),
+    ] {
+        let reply = head.call("model_view", json!({"path": path, "target": target}));
+        assert_eq!(reply["result"]["isError"], true, "{reply}");
+    }
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn render_takes_large_and_wide_sizes_and_refuses_unknown_arguments() {
+    let mut head = Headless::new();
+    long_bar(&mut head);
+    let path = std::env::temp_dir().join(format!("froxel-large-{}.png", std::process::id()));
+    let reply = head.ok(
+        "render",
+        json!({"path": path, "width": 3000, "height": 2, "samples": 1, "bounces": 0, "denoise": false}),
+    );
+    assert_eq!(reply["width"], 3000);
+    let reply = head.call(
+        "render",
+        json!({"path": path, "width": 4096, "height": 4096}),
+    );
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+    let reply = head.call("render", json!({"path": path, "width": 5000}));
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+
+    let reply = head.call("render", json!({"path": path, "zom": 2.0}));
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+    let text = reply["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("`zom`") && text.contains("zoom"), "{text}");
+    let reply = head.call(
+        "model_view",
+        json!({"path": path, "views": [{"view": "top", "path": path, "zoom": 2}]}),
+    );
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+    let reply = head.call("get_voxel", json!({"x": 0, "y": 0, "z": 0, "w": 1}));
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+    std::fs::remove_file(path).unwrap();
+}
+
 #[test]
 fn preview_writes_a_lit_framed_png_and_keeps_the_camera() {
     let mut head = Headless::new();

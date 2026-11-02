@@ -379,10 +379,13 @@ fn a_fixed_cpu_still_has_a_stable_png() {
             pitch: 25.0,
             distance: 1.0,
             orthographic: None,
+            frame: None,
+            margin: crate::still::MARGIN,
+            pixels_per_voxel: None,
         },
     );
     let png = encode_png(&image, &session).expect("png");
-    assert_eq!(md5(&png), "514a25acad366a621a41c108d747d528");
+    assert_eq!(md5(&png), "433adf1ae3bdb50362dfcf28e81f038e");
 }
 
 #[test]

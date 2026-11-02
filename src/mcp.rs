@@ -309,6 +309,9 @@ fn call_tool(session: &mut Session, remote: Option<&mut ControlClient>, params: 
     if !args.is_object() {
         return tool_error("arguments must be an object");
     }
+    if let Err(err) = known_arguments(name, &args) {
+        return tool_error(&err);
+    }
     let mapped = match map_tool(name, &args) {
         Ok(mapped) => mapped,
         Err(err) => return tool_error(&err),
@@ -321,6 +324,45 @@ fn call_tool(session: &mut Session, remote: Option<&mut ControlClient>, params: 
         Ok(value) => tool_ok(value),
         Err(err) => tool_error(&err),
     }
+}
+
+/// Refuse an argument the tool's schema does not list, so a misspelt or
+/// unsupported option is an error rather than silently ignored.
+fn known_arguments(name: &str, args: &Value) -> Result<(), String> {
+    let tools = tools();
+    let Some(tool) = tools.iter().find(|tool| tool["name"] == name) else {
+        return Ok(());
+    };
+    let properties = &tool["inputSchema"]["properties"];
+    let Some(args) = args.as_object() else {
+        return Ok(());
+    };
+    let unknown: Vec<&str> = args
+        .keys()
+        .filter(|key| properties.get(key.as_str()).is_none())
+        .map(String::as_str)
+        .collect();
+    if unknown.is_empty() {
+        return Ok(());
+    }
+    let mut known: Vec<&str> = properties
+        .as_object()
+        .map(|map| map.keys().map(String::as_str).collect())
+        .unwrap_or_default();
+    known.sort_unstable();
+    Err(format!(
+        "{name} has no argument {}; it takes {}",
+        unknown
+            .iter()
+            .map(|key| format!("`{key}`"))
+            .collect::<Vec<_>>()
+            .join(", "),
+        if known.is_empty() {
+            "none".to_string()
+        } else {
+            known.join(", ")
+        }
+    ))
 }
 
 fn map_tool(name: &str, args: &Value) -> Result<(String, Value), String> {
@@ -555,7 +597,7 @@ fn tools() -> Vec<Value> {
         }), &["name"]),
         tool("undo", "Undo the last edit.", json!({}), &[]),
         tool("redo", "Redo the last undone edit.", json!({}), &[]),
-        tool("render", "Path-trace the whole scene to a PNG. Blocks until the file is written. The camera frames the scene; yaw, pitch, and distance orbit that frame.", {
+        tool("render", "Path-trace the whole scene to a PNG. Blocks until the file is written. The camera orbits at yaw and pitch and fits the framed box (every visible posed cell, or target) inside the frame with margin on each side, at every angle of the call; zoom and distance scale that fit. Give only width or only height and the other side follows the model, so a long model gets a wide frame. Replies framed (the world box) and distance.", {
             let denoise = if crate::denoise::available() {
                 "Open Image Denoise on the finished frame, using the first-hit albedo and normal. Default true."
             } else {
@@ -563,8 +605,8 @@ fn tools() -> Vec<Value> {
             };
             json!({
             "path": str_prop("PNG file to write"),
-            "width": int_prop("Pixels, 1..1024. Default 256."),
-            "height": int_prop("Pixels, 1..1024. Default 256."),
+            "width": int_prop("Pixels, 1..4096, at most 4096 x 2048 in all. Default 256, or from height and the model's shape."),
+            "height": int_prop("Pixels, 1..4096. Default 256, or from width and the model's shape."),
             "samples": int_prop("Path-trace samples, 1..128. Default 16."),
             "bounces": int_prop("Max bounces, 0..8. Default 4."),
             "seed": int_prop("Sampling seed. Default 1."),
@@ -577,22 +619,29 @@ fn tools() -> Vec<Value> {
             "focus": num_prop("Focus distance. Omit to keep the document setting."),
             "yaw": num_prop("Orbit yaw in degrees. 0 puts the camera on +X, looking toward -X. A model facing -Y is face-on at yaw -90. Omit to keep the framing angle (30)."),
             "pitch": num_prop("Orbit pitch in degrees, -90..90. 90 looks straight down. Omit to keep the framing angle (25)."),
-            "distance": num_prop("Multiple of the framing distance, greater than 0 and at most 100. Default 1."),
-            "orthographic": {"type": "boolean", "description": "Parallel rays. The frame matches the perspective view at the same distance. Default false."},
+            "distance": num_prop("Multiple of the fitted distance, greater than 0 and at most 100. Below 1 is closer. Default 1."),
+            "zoom": num_prop("Magnification of the fitted frame, 0.01..100. 2 is twice as large (crops the box), 0.5 half. Default 1."),
+            "margin": num_prop("Empty border on each side of the fitted box as a fraction of the frame, 0..0.45. Default 0.05."),
+            "target": target_prop(),
+            "orthographic": {"type": "boolean", "description": "Parallel rays, fitted to the box like perspective. Default false."},
             "pose": {"type": "object", "description": "Temporary preview pose for this still. Bone name to a quaternion [x, y, z, w] or {rotation, scale}, on top of the bind pose. A zero scale hides that bone's parts. The document pose is restored afterwards.", "additionalProperties": {"anyOf": [{"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}, {"type": "object", "properties": {"rotation": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}, "scale": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3}}, "additionalProperties": false}]}},
             "showBones": {"type": "boolean", "description": "Draw joint points and parent links on the PNG. Default false."},
             "view": view_prop(),
             "views": {"type": "array", "description": "Extra PNGs. The required path is still written with the top-level yaw and pitch. Each item is {yaw, pitch, path} or {view, path}.", "items": {"type": "object"}}
             })
         }, &["path"]),
-        tool("model_view", "Flat model view to a PNG, like the editor's model view without shading: each pixel is the palette colour of the first visible cell under its centre, with no light, no tonemap, and no denoise, so it compares directly with a turnaround sheet. No path tracer. The camera frames the scene like render. Orthographic replies pixelsPerVoxel.", json!({
+        tool("model_view", "Flat model view to a PNG, like the editor's model view without shading: each pixel is the palette colour of the first visible cell under its centre, with no light, no tonemap, and no denoise, so it compares directly with a turnaround sheet. No path tracer. The camera fits the framed box like render; every view of the call shares one centre and one scale. Orthographic replies pixelsPerVoxel.", json!({
             "path": str_prop("PNG file to write"),
-            "width": int_prop("Pixels, 1..4096. Default 512."),
-            "height": int_prop("Pixels, 1..4096. Default 512."),
+            "width": int_prop("Pixels, 1..4096. Default 512, or from height, pixelsPerVoxel, and the model's shape."),
+            "height": int_prop("Pixels, 1..4096. Default 512, or from width, pixelsPerVoxel, and the model's shape."),
             "view": view_prop(),
             "yaw": num_prop("Orbit yaw in degrees. 0 puts the camera on +X, looking toward -X. A model facing -Y is face-on at yaw -90. Default 30."),
             "pitch": num_prop("Orbit pitch in degrees, -90..90. 90 looks straight down. Default 25."),
-            "distance": num_prop("Multiple of the framing distance, greater than 0 and at most 100. Default 1."),
+            "distance": num_prop("Multiple of the fitted distance, greater than 0 and at most 100. Below 1 is closer. Default 1."),
+            "zoom": num_prop("Magnification of the fitted frame, 0.01..100. 2 is twice as large (crops the box), 0.5 half. Default 1."),
+            "margin": num_prop("Empty border on each side of the fitted box as a fraction of the frame, 0..0.45. Default 0.05."),
+            "target": target_prop(),
+            "pixelsPerVoxel": num_prop("Orthographic scale instead of the fit: pixels per voxel edge, 0.05..256. Omitted width and height then follow the framed box. Not with zoom or distance."),
             "orthographic": {"type": "boolean", "description": "Parallel rays. Default true."},
             "background": {"type": ["string", "array"], "description": "#rrggbb, #rrggbbaa, or [r, g, b, a?] for pixels that hit no cell. Default transparent."},
             "pose": {"type": "object", "description": "Temporary preview pose for this still. Bone name to a quaternion [x, y, z, w] or {rotation, scale}, on top of the bind pose. A zero scale hides that bone's parts. The document pose is restored afterwards.", "additionalProperties": {"anyOf": [{"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}, {"type": "object", "properties": {"rotation": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}, "scale": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3}}, "additionalProperties": false}]}},
@@ -782,6 +831,17 @@ fn view_prop() -> Value {
         "type": "string",
         "enum": ["front", "back", "left", "right", "top", "bottom"],
         "description": "Named view of a model facing -Y with +Z up, instead of yaw and pitch. front is yaw -90, back 90, left 0, right 180 (the model's own sides), top pitch 90, bottom pitch -90."
+    })
+}
+
+fn target_prop() -> Value {
+    json!({
+        "anyOf": [
+            {"type": "string", "enum": ["all", "active"]},
+            {"type": "integer"},
+            {"type": "object", "properties": {"min": {"type": "array", "items": {"type": "integer"}, "minItems": 3, "maxItems": 3}, "max": {"type": "array", "items": {"type": "integer"}, "minItems": 3, "maxItems": 3}}, "required": ["min", "max"], "additionalProperties": false}
+        ],
+        "description": "What the camera fits: all (default, every visible posed cell), active (the active object), an object index, or {min, max}, an inclusive box of world cells. Other objects are still drawn."
     })
 }
 
