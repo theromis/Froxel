@@ -57,6 +57,13 @@ is a flat splinter, and a short wide one is a broken plank end or a shard.
 `tube`: a hollow trunk, a tunnel, a burrow, an eye socket. A carved tube
 with a radius just under the trunk's makes a hollow log in one call.
 
+`break_end` snaps a trunk, branch, plank, or post across a plane: the part
+beyond goes, the new face is ragged with pits torn along the grain, its rim
+keeps the `bark` colour, the inside turns `sapwood`, and tapered splinters
+stick out along the normal with lighter `tips`, longer near the rim with
+`rimBias`. Break the two halves of a fallen tree with opposite normals and
+different seeds so the faces do not match exactly.
+
 `smooth` softens a blocky region. It fills an empty cell that most of its
 26 neighbours surround and removes a solid cell that few of them touch, and
 a filled cell takes the colour most of its neighbours hold. One pass with
@@ -66,9 +73,10 @@ anything one cell thick, so smooth before the twigs, thin carved walls, and
 fine detail, or keep them outside the box.
 
 ```
-set_palette          entries=[{index: 3, r: 92, g: 64, b: 40}, {index: 4, r: 60, g: 40, b: 26}]
+set_palette          entries=[{index: 3, r: 92, g: 64, b: 40}, {index: 4, r: 60, g: 40, b: 26}, {index: 5, r: 196, g: 160, b: 104}, {index: 6, r: 214, g: 184, b: 128}, {index: 7, r: 238, g: 218, b: 170}]
 fill_tube            points=[[0, 0, 4, 4], [14, 2, 5, 3.5], [30, 3, 4, 3]] palettes=[3, 4] pattern="stripes" sectors=10   # fallen trunk with bark grooves
 smooth               x0=-5 y0=-5 z0=-1 x1=34 y1=8 z1=9                    # before thin walls and twigs exist
+break_end            point=[30, 3, 4] normal=[1, 0, 0.15] depth=4 density=0.2 length=[4, 14] bark=4 sapwood=[5, 6] tips=7 seed=3   # snapped end
 carve                shape="tube" points=[[-1, 0, 4], [12, 1, 4]] radius=2.5      # hollow end
 fill_tube            points=[[30, 3, 6, 2], [36, 6, 10, 1.2], [40, 6, 15, 0.5]] curve="smooth" palette=3 mode="empty"   # crown limb
 fill_tube            points=[[2, -3, 3, 2], [-2, -7, 0, 1], [-5, -9, -1, 0.5]] palette=4 mode="empty"   # buttress root

@@ -380,6 +380,7 @@ fn map_tool(name: &str, args: &Value) -> Result<(String, Value), String> {
         "fill_tube" => "voxel.tube",
         "carve" => "voxel.carve",
         "smooth" => "voxel.smooth",
+        "break_end" => "voxel.break",
         "get_voxels" => "voxel.get_box",
         "set_palette" => "palette.set",
         "set_active_object" => "object.set_active",
@@ -597,6 +598,21 @@ fn tools() -> Vec<Value> {
             p["removeAt"] = int_prop("Remove a solid cell with at most this many solid neighbours, -1..=25. Defaults to 9; 12 also rounds outside edges; -1 never removes.");
             p
         }, &["x0", "y0", "z0", "x1", "y1", "z1"]),
+        tool("break_end", "Break the active object across a plane, for a snapped trunk, branch, plank, or post. Every cell beyond a jagged surface around the plane goes: blocks of 2 by 3 cells across the face dip up to depth into the wood, a quarter of them deep pits. The cells left facing the cut take bark on the rim of the section and sapwood inside, and tapered flat splinters grow from the new face out along the normal, longer and more common near the rim with rimBias. Splinters fill only empty cells. Deterministic for a seed. At most 512 splinters and 2000000 cells. One undo step. Replies with removed, recoloured, and splinters.", json!({
+            "point": vec3_prop("A point on the break plane, in local cells."),
+            "normal": vec3_prop("Out of the wood, toward the part that breaks off. Need not be unit length."),
+            "depth": num_prop("How far pits and the uneven face reach into the wood, 0..=32 cells. Defaults to 3."),
+            "splinters": int_prop("Number of splinters, 0..=512. Pass this or density."),
+            "density": num_prop("Splinters per cell of the new face, 0..=1. Defaults to 0.15."),
+            "length": {"type": "array", "items": {"type": "number"}, "description": "Splinter length [min, max] in cells, 1..=64. Defaults to [4, 12]."},
+            "thickness": num_prop("Splinter radius at its base, 0.5..=4. Defaults to 1."),
+            "taper": num_prop("0 keeps the base radius to the tip; 1 (default) thins it to one cell."),
+            "rimBias": num_prop("0..=1. How much more often and longer splinters are near the rim. Defaults to 0.5."),
+            "bark": int_prop("Palette index for the rim of the new face and the base of rim splinters. Omit to keep the cells' colour."),
+            "sapwood": {"type": "array", "items": {"type": "integer"}, "description": "Palette indices mixed over the new face and the splinters. Omit to keep the cells' colour."},
+            "tips": int_prop("Palette index for the outer part of each splinter, often a lighter wood. Omit to use the sapwood."),
+            "seed": int_prop("Seed. Defaults to 0.")
+        }), &["point", "normal"]),
         tool("mirror_object", "Copy an object mirrored across a world axis through the origin. Cells use -coord-1 on that axis. One undo step. mirrorBones also copies the bound bone and its descendants, swapping an _l/_r suffix. The copy is unbound unless mirrorBones is true.", json!({
             "index": int_prop("Object index to copy"),
             "axis": str_prop("x, y, or z"),
@@ -810,6 +826,7 @@ fn hints(name: &str) -> [bool; 3] {
         | "fill_tube"
         | "carve"
         | "smooth"
+        | "break_end"
         | "set_palette"
         | "set_object"
         | "set_bone"

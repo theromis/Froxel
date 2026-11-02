@@ -2106,3 +2106,25 @@ fn smooth_panel_fills_a_pit_in_the_object() {
     session.undo();
     assert!(!session.active().cells.contains_key(&(4, 4, 2)));
 }
+
+#[test]
+fn break_panel_breaks_the_object_and_names_a_bad_slot() {
+    let mut session = tube_floor();
+    session.break_panel.point = [10.0, 0.0, 0.0];
+    session.break_panel.normal = [1.0, 0.0, 0.0];
+    session.break_panel.sapwood = "5, x".into();
+    let before = session.active().cells.clone();
+    session.break_from_panel();
+    assert!(session.status.contains("Sapwood"), "{}", session.status);
+    assert_eq!(session.active().cells, before);
+    session.break_panel.sapwood = "5 6".into();
+    session.break_from_panel();
+    assert!(
+        !session.active().cells.contains_key(&(20, 0, 0)),
+        "{}",
+        session.status
+    );
+    assert!(session.active().cells.contains_key(&(2, 0, 0)));
+    session.undo();
+    assert_eq!(session.active().cells, before);
+}

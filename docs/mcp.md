@@ -157,6 +157,7 @@ tracer. A file with no scene graph still loads its first model.
 | `fill_rounded_box` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palette`, `radius` | Same box, with an edge bevel of `radius` voxels. `radius` 0 is the full box. The radius is clamped to half the shortest side |
 | `fill_tube` | `points`, `palette` or `palettes` | Fill a tube through 2..=1024 **local** points, each with its own radius. Optional `radius`, `curve` (`polyline`, `smooth`), `aspect`, `roll`, `profile` (`round`, `blade`), `pattern` (`rings`, `stripes`, `random`), `period`, `sectors`, `seed`, `mode`. At most 2000000 cells, one undo step |
 | `carve` | `shape` | Remove the solid cells inside a `box`, `ellipsoid`, `rounded_box`, or `tube`, given as for the fill tools. Replies with `removed`. One undo step |
+| `break_end` | `point`, `normal` | Break the active object across a plane: a jagged face, bark on its rim, sapwood inside, and tapered splinters out along the normal. Optional `depth`, `splinters` or `density`, `length`, `thickness`, `taper`, `rimBias`, `bark`, `sapwood`, `tips`, `seed`. One undo step |
 | `smooth` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Majority filter in an inclusive box of at most 2000000 cells that keeps colours. Optional `iterations` (1..=8), `fillAt`, `removeAt`. Replies with `filled`, `removed`, `iterations`. One undo step |
 | `get_voxels` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Non-empty **local** cells inside an inclusive box, at most 100000 |
 | `set_palette` | `index`, `r`, `g`, `b` or `entries` | Replace one slot, or many via `entries`, as one undo step. `a` defaults to 255. Optional `motion` (`none`, `sway`, `bob`) and `motion_amount` (0..4) |
@@ -238,6 +239,23 @@ is refused before any cell is written.
 `rounded_box` take the corners (and `radius`) of their fill tools; `tube`
 takes `points`, `radius`, and `curve` of `fill_tube`. `removed` counts the
 cells that were solid.
+
+`break_end` snaps the active object across the plane through `point` with
+`normal` pointing out of the wood, toward the part that breaks off. Every
+cell beyond a jagged surface goes. The surface sits on the plane and dips up
+to `depth` cells (default 3) into the wood: blocks of 2 by 3 cells across the
+face, a quarter of them deep pits, plus a per-cell jitter, as wood tears
+along its grain. The cells left facing the cut take `bark` on the rim of the
+section and the `sapwood` indices inside; either omitted keeps the cells'
+colour. `splinters` (0..=512) or `density` (splinters per cell of the new
+face, default 0.15) grow from the face: flat tubes `length` [min, max]
+cells long (default [4, 12], at most 64), `thickness` at the base (default
+1), thinning to one cell with `taper` 1, leaning a little off the normal.
+`rimBias` (0..=1, default 0.5) makes them more common and longer near the
+rim. A splinter is sapwood near its base, `bark` for its first two cells on
+the rim, and `tips` beyond the middle. Splinters fill only empty cells. The
+same `seed` gives the same break. The reply counts `removed`, `recoloured`,
+and `splinters`.
 
 `smooth` reads each cell's 26 neighbours inside the box (cells outside it
 are read, never changed). An empty cell with at least `fillAt` solid
@@ -638,6 +656,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `fill_ellipsoid`, `fill_rounded_box` | Generator: Ellipsoid, Rounded box |
 | `fill_tube` | Tube tool: drag from the start radius to the end radius; Chain adds a point per drag and Smooth curves through them until Finish; Flatten, Roll, and Blade shape it; Solid, Rings, Stripes, or Random with a second slot |
 | `carve` | Remove mode with Box, Generator, or Tube |
+| `break_end` | Break section: Point (or Point at selection), Normal with ±X/Y/Z, Depth, Splinters, Length, Thickness, Taper, Rim bias, Bark, Sapwood, and Tip slots, Seed |
 | `smooth` | Smooth section: Passes, Fill at, Remove at, over the selection or the whole object |
 | `set_palette` | Palette dock (colour and alpha) and the Material section (motion) |
 | `set_active_object`, `add_object`, `set_object`, `remove_object` | Objects tree and the Object inspector |

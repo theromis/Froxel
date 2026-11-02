@@ -483,6 +483,113 @@ pub(super) fn smooth(ui: &mut Ui, session: &mut Session) {
     });
 }
 
+/// MCP `break_end`: a jagged break across a plane, with splinters.
+pub(super) fn break_end(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.voxel_count() > 0 && session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Break");
+        let panel = &mut session.break_panel;
+        egui::Grid::new("break-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                let label = |ui: &mut Ui, text: &str| {
+                    ui.label(RichText::new(text).small().color(DIM));
+                };
+                label(ui, "Point");
+                ui.horizontal(|ui| {
+                    for value in &mut panel.point {
+                        ui.add(egui::DragValue::new(value).speed(0.25).max_decimals(1));
+                    }
+                });
+                ui.end_row();
+                label(ui, "Normal");
+                ui.horizontal(|ui| {
+                    for value in &mut panel.normal {
+                        ui.add(
+                            egui::DragValue::new(value)
+                                .speed(0.02)
+                                .range(-1.0..=1.0)
+                                .max_decimals(2),
+                        );
+                    }
+                });
+                ui.end_row();
+                ui.label("");
+                ui.horizontal(|ui| {
+                    for (name, normal) in [
+                        ("+X", [1.0, 0.0, 0.0]),
+                        ("−X", [-1.0, 0.0, 0.0]),
+                        ("+Y", [0.0, 1.0, 0.0]),
+                        ("−Y", [0.0, -1.0, 0.0]),
+                        ("+Z", [0.0, 0.0, 1.0]),
+                        ("−Z", [0.0, 0.0, -1.0]),
+                    ] {
+                        if ui.small_button(name).clicked() {
+                            panel.normal = normal;
+                        }
+                    }
+                });
+                ui.end_row();
+                label(ui, "Depth");
+                ui.add(egui::Slider::new(&mut panel.depth, 0.0..=32.0).max_decimals(1));
+                ui.end_row();
+                label(ui, "Splinters");
+                ui.add(egui::Slider::new(&mut panel.splinters, 0..=512));
+                ui.end_row();
+                label(ui, "Length");
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::DragValue::new(&mut panel.length[0])
+                            .range(1.0..=64.0)
+                            .speed(0.2),
+                    );
+                    ui.add(
+                        egui::DragValue::new(&mut panel.length[1])
+                            .range(1.0..=64.0)
+                            .speed(0.2),
+                    );
+                });
+                ui.end_row();
+                label(ui, "Thickness");
+                ui.add(egui::Slider::new(&mut panel.thickness, 0.5..=4.0).max_decimals(1));
+                ui.end_row();
+                label(ui, "Taper");
+                ui.add(egui::Slider::new(&mut panel.taper, 0.0..=1.0).max_decimals(2));
+                ui.end_row();
+                label(ui, "Rim bias");
+                ui.add(egui::Slider::new(&mut panel.rim_bias, 0.0..=1.0).max_decimals(2));
+                ui.end_row();
+                label(ui, "Bark slot");
+                ui.add(egui::DragValue::new(&mut panel.bark).range(0..=255))
+                    .on_hover_text("0 keeps the cells' colour");
+                ui.end_row();
+                label(ui, "Sapwood");
+                ui.add(
+                    egui::TextEdit::singleline(&mut panel.sapwood)
+                        .hint_text("e.g. 11, 12")
+                        .desired_width(120.0),
+                );
+                ui.end_row();
+                label(ui, "Tip slot");
+                ui.add(egui::DragValue::new(&mut panel.tips).range(0..=255))
+                    .on_hover_text("0 uses the sapwood");
+                ui.end_row();
+                label(ui, "Seed");
+                ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
+                ui.end_row();
+            });
+        ui.horizontal(|ui| {
+            if ui.button("Point at selection").clicked() {
+                session.break_point_at_selection();
+            }
+            if ui.button("Break").clicked() {
+                session.break_from_panel();
+            }
+        });
+    });
+}
+
 pub(super) fn axis_buttons(ui: &mut Ui, _which: &str, mut act: impl FnMut(Axis)) {
     ui.horizontal(|ui| {
         if ui.button("X").clicked() {

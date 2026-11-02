@@ -1425,3 +1425,29 @@ fn fill_tube_takes_a_flat_blade_profile() {
     ));
     assert!(bad.contains("profile must be round or blade"), "{bad}");
 }
+
+#[test]
+fn break_end_breaks_the_active_object_as_one_undo_step() {
+    let mut head = Headless::new();
+    head.ok(
+        "fill_tube",
+        json!({"points": [[0, 0, 0], [24, 0, 0]], "radius": 4, "palette": 6}),
+    );
+    let before = head.session.active().cells.clone();
+    let reply = head.ok(
+        "break_end",
+        json!({"point": [16, 0, 0], "normal": [1, 0, 0], "density": 0.2, "length": [3, 8], "bark": 6, "sapwood": [7, 8], "tips": 9, "seed": 2}),
+    );
+    assert!(reply["removed"].as_i64().unwrap() > 0, "{reply}");
+    assert!(reply["splinters"].as_i64().unwrap() > 0, "{reply}");
+    assert!(!head.session.active().cells.contains_key(&(24, 0, 0)));
+    head.ok("undo", json!({}));
+    assert_eq!(head.session.active().cells, before);
+    let both = error_text(&head.call(
+        "break_end",
+        json!({"point": [16, 0, 0], "normal": [1, 0, 0], "density": 0.2, "splinters": 3}),
+    ));
+    assert!(both.contains("not both"), "{both}");
+    let none = error_text(&head.call("break_end", json!({"point": [16, 0, 0]})));
+    assert!(none.contains("normal"), "{none}");
+}

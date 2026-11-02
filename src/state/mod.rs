@@ -58,6 +58,58 @@ pub enum TubeColors {
     Random,
 }
 
+/// The Break panel: the fields of MCP `break_end`.
+#[derive(Clone, PartialEq)]
+pub struct BreakPanel {
+    pub point: [f32; 3],
+    pub normal: [f32; 3],
+    pub depth: f32,
+    pub splinters: i32,
+    pub length: [f32; 2],
+    pub thickness: f32,
+    pub taper: f32,
+    pub rim_bias: f32,
+    /// 0 keeps the cells' colour.
+    pub bark: i32,
+    /// Palette indices separated by commas or spaces; empty keeps colours.
+    pub sapwood: String,
+    /// 0 uses the sapwood.
+    pub tips: i32,
+    pub seed: i32,
+}
+
+impl Default for BreakPanel {
+    fn default() -> Self {
+        Self {
+            point: [0.0; 3],
+            normal: [1.0, 0.0, 0.0],
+            depth: 3.0,
+            splinters: 24,
+            length: [4.0, 12.0],
+            thickness: 1.0,
+            taper: 1.0,
+            rim_bias: 0.5,
+            bark: 0,
+            sapwood: String::new(),
+            tips: 0,
+            seed: 0,
+        }
+    }
+}
+
+/// Palette indices in `text`, separated by commas or spaces.
+pub fn parse_slots(text: &str) -> Result<Vec<u8>, String> {
+    text.split(|c: char| c == ',' || c.is_whitespace())
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            part.parse::<u8>()
+                .ok()
+                .filter(|slot| *slot > 0)
+                .ok_or_else(|| format!("`{part}` is not a palette index 1..255"))
+        })
+        .collect()
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ToolMode {
     Add,
@@ -655,6 +707,7 @@ pub struct Session {
     pub(crate) tube_base: Option<HashMap<Cell, u8>>,
     pub(crate) tube_after: Option<HashMap<Cell, u8>>,
     pub(crate) tube_preview: Option<(Vec<crate::tools::TubePoint>, HashMap<Cell, u8>)>,
+    pub break_panel: BreakPanel,
     /// Smooth: passes and the neighbour thresholds of MCP `smooth`.
     pub smooth_iterations: i32,
     pub smooth_fill_at: i32,

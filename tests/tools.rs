@@ -307,3 +307,84 @@ fn flat_tube_lies_flat_rolls_and_tapers_to_a_blade() {
     )
     .is_err());
 }
+
+fn log(radius: i32, length: i32, slot: u8) -> HashMap<Cell, u8> {
+    let mut cells = HashMap::new();
+    for x in 0..length {
+        for y in -radius..=radius {
+            for z in -radius..=radius {
+                if y * y + z * z <= radius * radius {
+                    cells.insert((x, y, z), slot);
+                }
+            }
+        }
+    }
+    cells
+}
+
+fn break_spec() -> BreakSpec {
+    BreakSpec {
+        point: [20.0, 0.0, 0.0],
+        normal: [1.0, 0.0, 0.0],
+        depth: 3.0,
+        splinters: Splinters::Count(20),
+        length: (4.0, 10.0),
+        thickness: 1.0,
+        taper: 1.0,
+        rim_bias: 0.6,
+        bark: Some(2),
+        sapwood: vec![3, 4],
+        tips: Some(5),
+        seed: 7,
+    }
+}
+
+#[test]
+fn break_end_cuts_a_ragged_face_and_grows_splinters() {
+    let cells = log(5, 30, 1);
+    let spec = break_spec();
+    let broken = break_end(&cells, &spec).unwrap();
+    assert_eq!(broken, break_end(&cells, &spec).unwrap(), "deterministic");
+    let mut after = cells.clone();
+    for &(x, y, z, slot) in &broken.writes {
+        if slot == 0 {
+            after.remove(&(x, y, z));
+        } else {
+            after.insert((x, y, z), slot as u8);
+        }
+    }
+    // Wood behind the ragged band is untouched; the stump keeps its length.
+    for (cell, slot) in &cells {
+        if cell.0 < 16 {
+            assert_eq!(after.get(cell), Some(slot), "{cell:?}");
+        }
+    }
+    assert!(broken.removed > 0 && broken.splinters == 20);
+    // The face is uneven: its depth varies across the section.
+    let face: std::collections::HashSet<i32> = (-4..=4)
+        .flat_map(|y| (-4..=4).map(move |z| (y, z)))
+        .map(|(y, z)| (16..40).find(|x| !after.contains_key(&(*x, y, z))).unwrap())
+        .collect();
+    assert!(face.len() > 1, "{face:?}");
+    // Splinters reach past the plane in sapwood and tip colours.
+    assert!(after.iter().any(|(c, s)| c.0 > 23 && *s == 5));
+    assert!(after.values().any(|s| *s == 3 || *s == 4));
+    // The rim of the face is bark.
+    assert!(after
+        .iter()
+        .any(|(c, s)| c.0 >= 16 && *s == 2 && c.1 * c.1 + c.2 * c.2 >= 16));
+}
+
+#[test]
+fn break_end_refuses_bad_input() {
+    let cells = log(3, 10, 1);
+    let mut spec = break_spec();
+    spec.normal = [0.0; 3];
+    assert!(break_end(&cells, &spec).unwrap_err().contains("normal"));
+    let mut spec = break_spec();
+    spec.length = (8.0, 4.0);
+    assert!(break_end(&cells, &spec).unwrap_err().contains("length"));
+    let mut spec = break_spec();
+    spec.splinters = Splinters::Count(600);
+    assert!(break_end(&cells, &spec).unwrap_err().contains("splinters"));
+}

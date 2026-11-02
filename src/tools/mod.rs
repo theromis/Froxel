@@ -5,14 +5,18 @@
 
 use crate::state::Cell;
 
+mod debris;
 mod generate;
 mod sculpt;
 mod shapes;
 
+pub use debris::{break_end, BreakSpec, Broken, Splinters};
 pub use generate::{foliage, generate, Gen, MAX_GENERATOR_CELLS};
+#[cfg(test)]
+pub use sculpt::tube;
 pub use sculpt::{
-    smooth, tube, tube_shaped, Smoothed, TubeCell, TubePattern, TubePoint, TubeShape,
-    MAX_SCULPT_CELLS, MAX_SMOOTH_ITERATIONS,
+    smooth, tube_shaped, Smoothed, TubeCell, TubePattern, TubePoint, TubeShape, MAX_SCULPT_CELLS,
+    MAX_SMOOTH_ITERATIONS,
 };
 pub use shapes::{
     bresenham, circle, cube, extrude, flood_empty, flood_face, rounded_inside, rounded_radius,

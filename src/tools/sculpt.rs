@@ -56,6 +56,7 @@ pub struct TubeShape {
 }
 
 impl TubeShape {
+    #[cfg(test)]
     pub const ROUND: TubeShape = TubeShape {
         aspect: 1.0,
         roll: 0.0,
@@ -113,6 +114,7 @@ struct Segment {
 /// whose radius runs linearly between its ends, so joints and ends are round.
 /// `curve` true passes a Catmull-Rom curve through the points; false joins
 /// them with straight segments.
+#[cfg(test)]
 pub fn tube(points: &[TubePoint], curve: bool) -> Result<Vec<TubeCell>, String> {
     tube_shaped(points, curve, TubeShape::ROUND)
 }

@@ -122,6 +122,8 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
                     render::selection(ui, session);
                     ui.separator();
                     render::smooth(ui, session);
+                    ui.separator();
+                    render::break_end(ui, session);
                 });
         },
     );

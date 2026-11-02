@@ -624,6 +624,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "voxel.tube" => tube_fill(session, &params),
         "voxel.carve" => carve(session, &params),
         "voxel.smooth" => smooth(session, &params),
+        "voxel.break" => break_end(session, &params),
         "voxel.get_box" => {
             let (x0, y0, z0, x1, y1, z1) = box_corners(&params)?;
             let mut cells = Vec::new();
@@ -1131,6 +1132,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.rounded", "x0, y0, z0, x1, y1, z1, palette, radius, mode?", "Fill a box with rounded edges. radius 0 is the full box"),
     ("voxel.tube", "points, radius?, curve?, palette | palettes, pattern?, period?, sectors?, seed?, mode?", "Fill a tapered tube through 2..=1024 points, at most 2000000 cells"),
     ("voxel.carve", "shape, x0..z1 | points, radius?, curve?", "Remove the cells inside a box, ellipsoid, rounded_box, or tube"),
+    ("voxel.break", "point, normal, depth?, splinters? | density?, length?, thickness?, taper?, rimBias?, bark?, sapwood?, tips?, seed?", "Jagged fracture across a plane with splinters"),
     ("voxel.smooth", "x0, y0, z0, x1, y1, z1, iterations?, fillAt?, removeAt?", "Majority filter in a box that keeps colours"),
     ("voxel.get_box", "x0, y0, z0, x1, y1, z1", "Non-empty cells inside an inclusive box, at most 100000"),
     ("palette.set", "index, r, g, b, a?, motion?, motion_amount? | entries", "Replace one slot, or many, as one undo step"),
@@ -1781,6 +1783,103 @@ fn carve(session: &mut Session, params: &Value) -> Result<Value, String> {
         .collect();
     let removed = session.write_cells(&writes)?;
     Ok(json!({"removed": removed, "voxels": session.voxel_count()}))
+}
+
+/// One palette index, or a list of them, under `key`.
+fn slot_list(params: &Value, key: &str) -> Result<Vec<u8>, String> {
+    let bad = || format!("{key} must be a palette index 1..=255 or a list of them");
+    let values: Vec<Value> = match params.get(key) {
+        None | Some(Value::Null) => return Ok(Vec::new()),
+        Some(Value::Array(list)) => list.clone(),
+        Some(one) => vec![one.clone()],
+    };
+    if values.len() > 64 {
+        return Err(format!("{key} takes at most 64 indices"));
+    }
+    values
+        .iter()
+        .map(|v| {
+            as_i32(v)
+                .filter(|slot| (1..=255).contains(slot))
+                .map(|slot| slot as u8)
+                .ok_or_else(bad)
+        })
+        .collect()
+}
+
+/// A `[min, max]` pair, or one number for both.
+fn range_pair(params: &Value, key: &str, default: (f64, f64)) -> Result<(f64, f64), String> {
+    match params.get(key) {
+        None | Some(Value::Null) => Ok(default),
+        Some(Value::Array(pair)) if pair.len() == 2 => {
+            let lo = pair[0]
+                .as_f64()
+                .ok_or_else(|| format!("{key} must be numbers"))?;
+            let hi = pair[1]
+                .as_f64()
+                .ok_or_else(|| format!("{key} must be numbers"))?;
+            Ok((lo, hi))
+        }
+        Some(one) => one
+            .as_f64()
+            .map(|v| (v, v))
+            .ok_or_else(|| format!("{key} must be [min, max] or a number")),
+    }
+}
+
+fn break_end(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let vec = |key: &str| -> Result<[f64; 3], String> {
+        let v = opt_vec3(params, key)?.ok_or_else(|| format!("{key} [x, y, z] is required"))?;
+        Ok([f64::from(v[0]), f64::from(v[1]), f64::from(v[2])])
+    };
+    let splinters = match (params.get("splinters"), params.get("density")) {
+        (Some(_), Some(_)) => return Err("pass splinters or density, not both".into()),
+        (Some(count), None) => crate::tools::Splinters::Count(
+            count
+                .as_u64()
+                .and_then(|n| u32::try_from(n).ok())
+                .ok_or("splinters must be a whole number")?,
+        ),
+        (None, Some(density)) => {
+            crate::tools::Splinters::Density(density.as_f64().ok_or("density must be a number")?)
+        }
+        (None, None) => crate::tools::Splinters::Density(0.15),
+    };
+    let single = |key: &str| -> Result<Option<u8>, String> {
+        let list = slot_list(params, key)?;
+        match list.len() {
+            0 => Ok(None),
+            1 => Ok(Some(list[0])),
+            _ => Err(format!("{key} is one palette index")),
+        }
+    };
+    let spec = crate::tools::BreakSpec {
+        point: vec("point")?,
+        normal: vec("normal")?,
+        depth: opt_f64(params, "depth")?.unwrap_or(3.0),
+        splinters,
+        length: range_pair(params, "length", (4.0, 12.0))?,
+        thickness: opt_f64(params, "thickness")?.unwrap_or(1.0),
+        taper: opt_f64(params, "taper")?.unwrap_or(1.0),
+        rim_bias: opt_f64(params, "rimBias")?.unwrap_or(0.5),
+        bark: single("bark")?,
+        sapwood: slot_list(params, "sapwood")?,
+        tips: single("tips")?,
+        seed: match params.get("seed") {
+            None => 0,
+            Some(found) => found
+                .as_u64()
+                .ok_or("seed must be a whole number of at least 0")?,
+        },
+    };
+    let broken = session.break_active(&spec)?;
+    Ok(json!({
+        "changed": broken.writes.len(),
+        "removed": broken.removed,
+        "recoloured": broken.recoloured,
+        "splinters": broken.splinters,
+        "voxels": session.voxel_count()
+    }))
 }
 
 fn smooth(session: &mut Session, params: &Value) -> Result<Value, String> {

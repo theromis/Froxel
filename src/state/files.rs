@@ -336,6 +336,72 @@ impl Session {
         Ok(report)
     }
 
+    /// MCP `break_end` and the Break panel: [`crate::tools::break_end`] on
+    /// the active object as one undo step.
+    /// The Break panel's Break button.
+    pub fn break_from_panel(&mut self) {
+        let panel = self.break_panel.clone();
+        let slot = |value: i32| (value > 0).then(|| value.clamp(1, 255) as u8);
+        let sapwood = match parse_slots(&panel.sapwood) {
+            Ok(slots) => slots,
+            Err(err) => {
+                self.status = format!("Sapwood: {err}");
+                return;
+            }
+        };
+        let spec = crate::tools::BreakSpec {
+            point: panel.point.map(f64::from),
+            normal: panel.normal.map(f64::from),
+            depth: f64::from(panel.depth),
+            splinters: crate::tools::Splinters::Count(panel.splinters.clamp(0, 512) as u32),
+            length: (
+                f64::from(panel.length[0]),
+                f64::from(panel.length[1].max(panel.length[0])),
+            ),
+            thickness: f64::from(panel.thickness),
+            taper: f64::from(panel.taper),
+            rim_bias: f64::from(panel.rim_bias),
+            bark: slot(panel.bark),
+            sapwood,
+            tips: slot(panel.tips),
+            seed: panel.seed.max(0) as u64,
+        };
+        self.status = match self.break_active(&spec) {
+            Ok(broken) => format!(
+                "Broke off {} cells; {} splinters.",
+                broken.removed, broken.splinters
+            ),
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// Put the Break plane's point at the middle of the selection, or of the
+    /// active object.
+    pub fn break_point_at_selection(&mut self) {
+        let bounds = if self.picked.is_empty() {
+            cell_bounds(self.active().cells.keys().copied())
+        } else {
+            cell_bounds(self.picked.iter().copied())
+        };
+        if let Some((min, max)) = bounds {
+            self.break_panel.point = [
+                (min.0 + max.0) as f32 / 2.0,
+                (min.1 + max.1) as f32 / 2.0,
+                (min.2 + max.2) as f32 / 2.0,
+            ];
+        }
+    }
+
+    pub(crate) fn break_active(
+        &mut self,
+        spec: &crate::tools::BreakSpec,
+    ) -> Result<crate::tools::Broken, String> {
+        let broken = crate::tools::break_end(&self.active().cells, spec)?;
+        self.write_cells(&broken.writes)?;
+        Ok(broken)
+    }
+
     pub(crate) fn write_cells(&mut self, writes: &[(i32, i32, i32, i32)]) -> Result<i64, String> {
         let mut deduped: HashMap<Cell, u8> = HashMap::new();
         for (x, y, z, palette) in writes {

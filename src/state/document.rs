@@ -69,6 +69,7 @@ impl Session {
             tube_base: None,
             tube_after: None,
             tube_preview: None,
+            break_panel: BreakPanel::default(),
             smooth_iterations: 1,
             smooth_fill_at: 17,
             smooth_remove_at: 9,
