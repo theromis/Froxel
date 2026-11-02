@@ -222,7 +222,8 @@ above is 48 such renders, one every 7.5° of `--yaw`.
 `froxel export --input model.vox --output model.glb` writes the glTF with
 the `export_mesh` options as flags: `--merge`, `--vertex-colors`,
 `--color-atlas`, `--export-hidden`, `--split-objects`, and `--ao STRENGTH`
-with `--ao-radius CELLS` for baked ambient occlusion in `COLOR_0`.
+with `--ao-radius CELLS` and `--ao-target vertex|texture|both` for baked
+ambient occlusion in `COLOR_0` or the colour atlas.
 
 ```sh
 froxel export --input ruins.vox --output ruins.glb --merge --ao 0.8 --ao-radius 3

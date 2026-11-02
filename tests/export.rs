@@ -49,6 +49,7 @@ fn vertex_colors_keep_a_linear_color_attribute() {
             color_atlas: false,
             ao_strength: 0.0,
             ao_radius: 0,
+            ao_target: AoTarget::Auto,
         },
     )
     .unwrap();
@@ -76,6 +77,7 @@ fn unmerged_row_keeps_one_quad_per_face() {
             color_atlas: false,
             ao_strength: 0.0,
             ao_radius: 0,
+            ao_target: AoTarget::Auto,
         },
     );
     assert_eq!(built.indices.len() / 6, 10);
@@ -219,6 +221,7 @@ fn still_export_omits_texcoord_1_and_stays_stable() {
         color_atlas: false,
         ao_strength: 0.0,
         ao_radius: 0,
+        ao_target: AoTarget::Auto,
     };
     let first = super::encode(&session, &options).unwrap();
     let second = super::encode(&session, &options).unwrap();
@@ -236,6 +239,7 @@ fn still_export_omits_texcoord_1_and_stays_stable() {
             color_atlas: false,
             ao_strength: 0.0,
             ao_radius: 0,
+            ao_target: AoTarget::Auto,
         },
     )
     .unwrap();
@@ -263,6 +267,7 @@ fn motion_writes_texcoord_1_for_each_slot() {
         color_atlas: false,
         ao_strength: 0.0,
         ao_radius: 0,
+        ao_target: AoTarget::Auto,
     };
     let bytes = super::encode(&session, &options).unwrap();
     let uvs = texcoord_1(&bytes);
@@ -280,6 +285,7 @@ fn motion_writes_texcoord_1_for_each_slot() {
             color_atlas: false,
             ao_strength: 0.0,
             ao_radius: 0,
+            ao_target: AoTarget::Auto,
         },
     )
     .unwrap();
@@ -315,6 +321,7 @@ fn different_motion_stays_on_separate_quads() {
             color_atlas: false,
             ao_strength: 0.0,
             ao_radius: 0,
+            ao_target: AoTarget::Auto,
         },
     );
     assert_eq!(built.indices.len() / 6, 10);
@@ -357,6 +364,7 @@ fn a_clip_is_a_gltf_animation_and_hidden_parts_can_be_their_own_nodes() {
         color_atlas: false,
         ao_strength: 0.0,
         ao_radius: 0,
+        ao_target: AoTarget::Auto,
     };
     let bytes = super::encode(&session, &options).unwrap();
     let json = glb_json(&bytes);
@@ -373,6 +381,7 @@ fn a_clip_is_a_gltf_animation_and_hidden_parts_can_be_their_own_nodes() {
         color_atlas: false,
         ao_strength: 0.0,
         ao_radius: 0,
+        ao_target: AoTarget::Auto,
     };
     let bytes = super::encode(&session, &split).unwrap();
     let text = serde_json::to_string(&glb_json(&bytes)).unwrap();
@@ -395,6 +404,7 @@ fn neighbouring_quads_share_corners_of_one_slot_and_face() {
         color_atlas: false,
         ao_strength: 0.0,
         ao_radius: 0,
+        ao_target: AoTarget::Auto,
     };
     let built = build_with(&session, &options);
     // Ten faces; the four long sides each share two corners between the two
@@ -437,6 +447,7 @@ fn split_export() -> MeshExport {
         color_atlas: false,
         ao_strength: 0.0,
         ao_radius: 0,
+        ao_target: AoTarget::Auto,
     }
 }
 
@@ -603,6 +614,7 @@ fn atlas_export() -> MeshExport {
         color_atlas: true,
         ao_strength: 0.0,
         ao_radius: 0,
+        ao_target: AoTarget::Auto,
     }
 }
 
@@ -786,6 +798,7 @@ fn ao_export(strength: f32, radius: u32) -> MeshExport {
         color_atlas: false,
         ao_strength: strength,
         ao_radius: radius,
+        ao_target: AoTarget::Auto,
     }
 }
 
@@ -986,4 +999,64 @@ fn srgb_inverts_linear() {
     for byte in 0..=255u8 {
         assert_eq!(srgb(linear(byte)), byte);
     }
+}
+
+#[test]
+fn ao_target_picks_vertex_colours_the_atlas_or_both() {
+    let mut session = Session::new();
+    session.objects[0].cells.clear();
+    for x in 0..4 {
+        for y in 0..4 {
+            session.objects[0]
+                .cells
+                .insert((x, y, 0), 1 + ((x + y) % 2) as u8);
+        }
+    }
+    session.objects[0].cells.insert((1, 1, 1), 3);
+    let with = |target: AoTarget| {
+        let mut options = atlas_export();
+        options.ao_strength = 1.0;
+        options.ao_target = target;
+        options
+    };
+    let plain = build_with(&session, &atlas_export());
+    let auto = build_with(&session, &with(AoTarget::Auto));
+    let texture = build_with(&session, &with(AoTarget::Texture));
+    let vertex = build_with(&session, &with(AoTarget::Vertex));
+    let both = build_with(&session, &with(AoTarget::Both));
+    // Auto with the atlas is the texture.
+    assert_eq!(auto.atlas, texture.atlas);
+    assert_eq!(auto.indices, plain.indices);
+    // Vertex keeps the atlas texels and adds a shade per vertex, at the cost
+    // of the faces it no longer merges.
+    assert_eq!(
+        vertex.atlas.2.len(),
+        vertex.atlas.0 as usize * vertex.atlas.1 as usize * 4
+    );
+    assert_eq!(vertex.shade.len(), vertex.positions.len() / 3);
+    assert!(vertex.indices.len() > plain.indices.len());
+    assert!(texture.shade.is_empty());
+    // Both is the vertex geometry with darkened texels too.
+    assert_eq!(both.indices, vertex.indices);
+    assert_eq!(both.shade, vertex.shade);
+    assert_ne!(both.atlas.2, vertex.atlas.2);
+    let color = |target| {
+        glb_json(&super::encode(&session, &with(target)).unwrap())["meshes"][0]["primitives"][0]
+            ["attributes"]
+            .get("COLOR_0")
+            .is_some()
+    };
+    assert!(!color(AoTarget::Texture));
+    assert!(color(AoTarget::Vertex));
+    assert!(color(AoTarget::Both));
+    // Texture needs the atlas; vertex without it is the palette export.
+    let mut palette = with(AoTarget::Texture);
+    palette.color_atlas = false;
+    assert!(super::encode(&session, &palette).is_err());
+    palette.ao_target = AoTarget::Vertex;
+    assert!(super::encode(&session, &palette).is_ok());
+    for name in ["auto", "vertex", "texture", "both"] {
+        assert_eq!(AoTarget::parse(name).unwrap().name(), name);
+    }
+    assert!(AoTarget::parse("texel").is_none());
 }

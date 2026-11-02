@@ -48,9 +48,10 @@ ear-clipping it (`emit_atlas`), not by `split_junctions`.
 bakes per-corner ambient occlusion (`export/occlusion.rs`) into `COLOR_0`:
 multiplied into vertex colours, or a grey `COLOR_0` beside the texture. A
 shade is a function of the lattice point and the face only, and greedy merge
-keeps apart faces whose corner shades differ. With `colorAtlas` it darkens
-each cell's atlas texel instead (mean of the corners), so the atlas merge and
-triangle count stay as without it. `froxel export` is the same
+keeps apart faces whose corner shades differ. `aoTarget` `texture` (the
+default with `colorAtlas`) darkens each cell's atlas texel instead (mean of
+the corners), so the atlas merge and triangle count stay as without it;
+`vertex` and `both` are the other choices. `froxel export` is the same
 export from the command line. Clips are glTF
 animations on the joint nodes. The preview pose is not the bind pose:
 it is a local quaternion per bone, and an empty pose leaves the mesh and

@@ -376,10 +376,15 @@ applies through `StandardMaterial3D` vertex colour as albedo. There, merging
 keeps faces apart whose corners shade differently, and grows a rectangle only
 along an axis the shades do not change on, so a merged face interpolates to
 the same shades as its cells. Each face is cut along its lighter diagonal.
-With `colorAtlas` the shade goes into the atlas instead: each cell's texel is
-darkened by the mean of its four corner shades (in linear light), there is no
-`COLOR_0`, and the faces merge exactly as they do without occlusion, so the
-triangle count does not change.
+`aoTarget` says where the shade goes. `vertex` is the `COLOR_0` above; on
+noisy surfaces the shades differ almost everywhere, so it can double the
+triangles. `texture` darkens each cell's colour atlas texel by the mean of
+its four corner shades (in linear light), writes no `COLOR_0`, and merges the
+faces exactly as without occlusion, so the triangle count does not change;
+it needs `colorAtlas` and is an error without it. `both` writes the two, for
+a shader that uses one of them: a material that multiplies the texture by
+`COLOR_0`, as Godot's import does, darkens twice. `auto`, the default, is
+`texture` with `colorAtlas` and `vertex` without it.
 `froxel export --ao 0.8 --ao-radius 3` is the same from the command line.
 The file is Y-up, positions `(x, z, −y)`. File → Export Mesh… uses the Export panel
 options. An empty scene is an error.

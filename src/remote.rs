@@ -650,6 +650,7 @@ fn export_mesh(session: &Session, params: &Value) -> Result<Value, String> {
         "colorAtlas": options.color_atlas,
         "aoStrength": options.ao_strength,
         "aoRadius": options.ao_radius,
+        "aoTarget": options.ao_target.name(),
         "structure": written["structure"],
     }))
 }
@@ -829,6 +830,13 @@ fn mesh_options(params: &Value) -> Result<crate::export::MeshExport, String> {
                 .ok_or("aoRadius must be a whole number from 0 to 8")?
                 as u32,
         },
+        ao_target: match params.get("aoTarget") {
+            None | Some(Value::Null) => crate::export::AoTarget::Auto,
+            Some(value) => value
+                .as_str()
+                .and_then(crate::export::AoTarget::parse)
+                .ok_or_else(|| format!("aoTarget must be {}", crate::export::AoTarget::NAMES))?,
+        },
     })
 }
 
@@ -878,12 +886,12 @@ const METHODS: &[(&str, &str, &str)] = &[
     (
         "mesh.export",
         "path, merge?, vertexColors?, aoStrength?, aoRadius?",
-        "Write a glTF 2.0 .glb of every object. merge defaults to false. vertexColors defaults to false (palette texture). exportHidden and splitObjects default to false. aoStrength (0..1, default 0) bakes ambient occlusion into COLOR_0; aoRadius (0..8 cells, default 3) is its hemisphere reach. A skeleton writes a rigid skin. Clips become glTF animations.",
+        "Write a glTF 2.0 .glb of every object. merge defaults to false. vertexColors defaults to false (palette texture). exportHidden and splitObjects default to false. aoStrength (0..1, default 0) bakes ambient occlusion into COLOR_0; aoRadius (0..8 cells, default 3) is its hemisphere reach; aoTarget is vertex, texture (colour atlas texels, needs colorAtlas) or both. A skeleton writes a rigid skin. Clips become glTF animations.",
     ),
     (
         "mesh.export_batch",
         "models",
-        "Write 1 to 16 .glb files. Each model is {path, source?, merge?, vertexColors?, exportHidden?, splitObjects?, colorAtlas?, aoStrength?, aoRadius?}. source opens that .vox in a separate session, so the open document stays. The reply includes each file's node, mesh, skin and animation structure.",
+        "Write 1 to 16 .glb files. Each model is {path, source?, merge?, vertexColors?, exportHidden?, splitObjects?, colorAtlas?, aoStrength?, aoRadius?, aoTarget?}. source opens that .vox in a separate session, so the open document stays. The reply includes each file's node, mesh, skin and animation structure.",
     ),
     (
         "script.set",

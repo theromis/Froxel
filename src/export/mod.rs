@@ -40,6 +40,61 @@ pub struct MeshExport {
     /// Cells beyond the four that touch a corner that also occlude it, as a
     /// cosine-weighted hemisphere. 0 or 1 is the corner term alone.
     pub ao_radius: u32,
+    /// Where the occlusion goes: vertex colours, the colour atlas texels, or
+    /// both. `Auto` is the atlas with `color_atlas`, else vertex colours.
+    pub ao_target: AoTarget,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AoTarget {
+    Auto,
+    /// A per-corner `COLOR_0`. Faces whose corners shade differently stay
+    /// unmerged, so it costs triangles.
+    Vertex,
+    /// Each cell's colour atlas texel, darkened by the mean of its corners.
+    /// The faces merge as without occlusion. Needs `color_atlas`.
+    Texture,
+    /// Both at once, for a shader that picks one. A material that multiplies
+    /// the texture by `COLOR_0` darkens twice.
+    Both,
+}
+
+impl AoTarget {
+    pub const NAMES: &'static str = "auto, vertex, texture, or both";
+
+    pub fn parse(text: &str) -> Option<AoTarget> {
+        match text {
+            "auto" => Some(AoTarget::Auto),
+            "vertex" => Some(AoTarget::Vertex),
+            "texture" => Some(AoTarget::Texture),
+            "both" => Some(AoTarget::Both),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            AoTarget::Auto => "auto",
+            AoTarget::Vertex => "vertex",
+            AoTarget::Texture => "texture",
+            AoTarget::Both => "both",
+        }
+    }
+}
+
+impl MeshExport {
+    /// Occlusion in `COLOR_0`, and in the atlas texels.
+    fn ao_targets(&self) -> (bool, bool) {
+        if self.ao_strength <= 0.0 {
+            return (false, false);
+        }
+        match self.ao_target {
+            AoTarget::Auto => (!self.color_atlas, self.color_atlas),
+            AoTarget::Vertex => (true, false),
+            AoTarget::Texture => (false, true),
+            AoTarget::Both => (true, true),
+        }
+    }
 }
 
 struct Built {
@@ -47,9 +102,8 @@ struct Built {
     normals: Vec<f32>,
     /// Vertex colors (`VEC4`) or texture coordinates (`VEC2`).
     extra: Vec<f32>,
-    /// Ambient occlusion per vertex, 0..1, for the palette texture. Empty
-    /// without occlusion, with vertex colours, which carry it already, or with
-    /// the colour atlas, whose texels do.
+    /// Ambient occlusion per vertex, 0..1, for a texture material. Empty
+    /// without vertex occlusion, or with vertex colours, which carry it.
     shade: Vec<f32>,
     indices: Vec<u32>,
     /// Four joint indices per vertex. Empty when the document has no bones,
@@ -74,6 +128,9 @@ fn encode(session: &Session, options: &MeshExport) -> Result<Vec<u8>, String> {
             "The colour atlas needs one rigid mesh: no skeleton, splitObjects or vertexColors."
                 .into(),
         );
+    }
+    if options.ao_targets().1 && !options.color_atlas {
+        return Err("aoTarget texture and both paint the colour atlas: set colorAtlas.".into());
     }
     if options.split_objects {
         return encode_split(session, options);

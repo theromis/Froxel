@@ -84,6 +84,7 @@ impl Session {
                 color_atlas: false,
                 ao_strength: 0.0,
                 ao_radius: crate::bridge::DEFAULT_AO_RADIUS,
+                ao_target: crate::export::AoTarget::Auto,
             },
             editor_mode: EditorMode::Model,
             render_mode: RenderMode::Edit,

@@ -76,6 +76,7 @@ pub(super) fn build(session: &Session) -> Built {
             color_atlas: false,
             ao_strength: 0.0,
             ao_radius: 0,
+            ao_target: AoTarget::Auto,
         },
     )
 }
@@ -105,6 +106,7 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
     let with_motion = session.has_motion();
     let atlas = options.color_atlas;
     let occlusion = Occlusion::new(session, options);
+    let (vertex_ao, texel_ao) = options.ao_targets();
     // With the colour atlas a quad's `slot` is its merge class (motion and
     // opacity) plus one, and `colors` keeps each cell's real slot for painting.
     let classes = if atlas {
@@ -151,10 +153,10 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
         } else {
             &object.cells
         };
-        // The colour atlas carries occlusion in its texels, so its faces merge
-        // as they would without it.
+        // Occlusion only in the atlas texels leaves the faces to merge as
+        // they would without it.
         let offset = object.translation;
-        let corners = occlusion.as_ref().filter(|_| !atlas).map(|occlusion| {
+        let corners = occlusion.as_ref().filter(|_| vertex_ao).map(|occlusion| {
             move |face: usize, cell: Cell| {
                 occlusion.corners(
                     face,
@@ -198,7 +200,7 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
                     if rgba[3] != 255 {
                         built.blend = true;
                     }
-                    if let Some(occlusion) = &occlusion {
+                    if let Some(occlusion) = occlusion.as_ref().filter(|_| texel_ao) {
                         // One texel per cell face: the mean of its corners.
                         let corners = occlusion.corners(quad.face, cell);
                         let shade = corners.iter().map(|c| *c as f32).sum::<f32>() / (4.0 * 255.0);
@@ -212,7 +214,15 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
             }
         }
         built.atlas = (width, height, pixels);
-        emit_atlas(&mut built, session, &quads, &blocks, &classes, with_motion);
+        emit_atlas(
+            &mut built,
+            session,
+            &quads,
+            &blocks,
+            &classes,
+            with_motion,
+            occlusion.as_ref().filter(|_| vertex_ao),
+        );
         if built.positions.is_empty() {
             built.min = [0.0; 3];
             built.max = [0.0; 3];
@@ -238,9 +248,12 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
         let mut index = [0u32; 4];
         let corners = quad_corners(quad.face, quad.cell, quad.w, quad.h);
         let shades = corners.map(|corner| {
-            occlusion.as_ref().map_or(1.0, |occlusion| {
-                occlusion.shade(corner, quad.face) as f32 / 255.0
-            })
+            occlusion
+                .as_ref()
+                .filter(|_| vertex_ao)
+                .map_or(1.0, |occlusion| {
+                    occlusion.shade(corner, quad.face) as f32 / 255.0
+                })
         });
         for (n, corner) in corners.into_iter().enumerate() {
             let next = (built.positions.len() / 3) as u32;
@@ -266,7 +279,7 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
                 ]);
             } else {
                 built.extra.extend_from_slice(&uv);
-                if occlusion.is_some() {
+                if vertex_ao {
                     built.shade.push(shades[n]);
                 }
             }
@@ -309,6 +322,7 @@ fn emit_atlas(
     blocks: &[(u32, u32)],
     classes: &[(u8, u8)],
     with_motion: bool,
+    occlusion: Option<&Occlusion>,
 ) {
     // Every corner on every axis plane through it, so a perpendicular face
     // that ends on a quad's edge is found as well as a coplanar one.
@@ -354,6 +368,18 @@ fn emit_atlas(
             inside.sort_unstable_by_key(|hit| (hit[axis] - a[axis]).abs());
             outline.extend(inside);
         }
+        let shade = |corner: &[i32; 3]| {
+            occlusion.map_or(1.0, |occlusion| {
+                occlusion.shade(*corner, quad.face) as f32 / 255.0
+            })
+        };
+        // The first ear cuts the diagonal from the last vertex to the second.
+        // Start one later when the other diagonal is lighter.
+        if outline.len() == 4
+            && shade(&outline[0]) + shade(&outline[2]) > shade(&outline[1]) + shade(&outline[3])
+        {
+            outline.rotate_left(1);
+        }
         let first = (built.positions.len() / 3) as u32;
         let normal_vec = y_up(NORMALS[quad.face]);
         let motion = session.motion_uv(classes[quad.slot as usize - 1].1);
@@ -368,6 +394,9 @@ fn emit_atlas(
             let u = (*x0 as i32 + corner[u_axis] - origin[u_axis]) as f32 / width;
             let v = (*y0 as i32 + corner[v_axis] - origin[v_axis]) as f32 / height;
             built.extra.extend_from_slice(&[u, v]);
+            if occlusion.is_some() {
+                built.shade.push(shade(corner));
+            }
             if with_motion {
                 built.motion.extend_from_slice(&motion);
             }

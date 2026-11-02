@@ -212,6 +212,7 @@ struct ServeArgs {
     color_atlas: bool,
     ao_strength: f32,
     ao_radius: u32,
+    ao_target: crate::export::AoTarget,
 }
 
 fn run_args(args: &[String]) -> Result<Option<ServeArgs>, String> {
@@ -220,6 +221,7 @@ fn run_args(args: &[String]) -> Result<Option<ServeArgs>, String> {
     let mut color_atlas = false;
     let mut ao_strength = 0.0;
     let mut ao_radius = DEFAULT_AO_RADIUS;
+    let mut ao_target = crate::export::AoTarget::Auto;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -254,6 +256,10 @@ fn run_args(args: &[String]) -> Result<Option<ServeArgs>, String> {
                 index += 1;
                 ao_radius = parse_ao_radius(args.get(index).map(String::as_str))?;
             }
+            "--ao-target" => {
+                index += 1;
+                ao_target = parse_ao_target(args.get(index).map(String::as_str))?;
+            }
             other => return Err(format!("unknown argument `{other}`")),
         }
         index += 1;
@@ -268,6 +274,7 @@ fn run_args(args: &[String]) -> Result<Option<ServeArgs>, String> {
         color_atlas,
         ao_strength,
         ao_radius,
+        ao_target,
     }))
 }
 
@@ -281,6 +288,14 @@ pub fn parse_ao_strength(text: Option<&str>) -> Result<f32, String> {
         .ok()
         .filter(|value| (0.0..=1.0).contains(value))
         .ok_or_else(|| format!("--ao `{text}` is not a strength from 0 to 1"))
+}
+
+/// `--ao-target vertex|texture|both|auto`.
+pub fn parse_ao_target(text: Option<&str>) -> Result<crate::export::AoTarget, String> {
+    let names = crate::export::AoTarget::NAMES;
+    let text = text.ok_or_else(|| format!("--ao-target needs {names}"))?;
+    crate::export::AoTarget::parse(text)
+        .ok_or_else(|| format!("--ao-target `{text}` is not {names}"))
 }
 
 /// `--ao-radius CELLS`, 0..=8.
@@ -298,14 +313,16 @@ fn print_help() {
         "\
 usage: froxel bridge --input <file.vox> [--port PORT] [--color-atlas]
                      [--ao STRENGTH] [--ao-radius CELLS]
+                     [--ao-target vertex|texture|both]
 
 Listens on 127.0.0.1. PORT defaults to {DEFAULT_PORT}; 0 picks a free port.
 Prints FROXEL_SESSION=<path> and serves that .vox until the process stops.
 --color-atlas merges faces across palette slots and paints the cells into a
 per-mesh colour atlas, as the export_mesh option colorAtlas.
 --ao bakes ambient occlusion (0..1, default 0 = off) into COLOR_0, and
---ao-radius sets its hemisphere reach in cells (0..8, default 3), as the
-export_mesh options aoStrength and aoRadius.
+--ao-radius sets its hemisphere reach in cells (0..8, default 3), and
+--ao-target where it goes (texture with --color-atlas, else vertex), as the
+export_mesh options aoStrength, aoRadius and aoTarget.
 Godot and Blender connect with the session file. See docs/bridges.md."
     );
 }
@@ -316,6 +333,7 @@ fn serve(args: &ServeArgs) -> Result<(), String> {
     session.export.color_atlas = args.color_atlas;
     session.export.ao_strength = args.ao_strength;
     session.export.ao_radius = args.ao_radius;
+    session.export.ao_target = args.ao_target;
     let server = BridgeServer::start(args.port).map_err(|err| err.to_string())?;
     loop {
         match server.wait(Duration::from_secs(1)) {
@@ -452,6 +470,7 @@ fn evaluate_within(
             color_atlas: session.export.color_atlas,
             ao_strength: session.export.ao_strength,
             ao_radius: session.export.ao_radius,
+            ao_target: session.export.ao_target,
         };
         crate::export::export_with(session, &path, &options)
     })?;

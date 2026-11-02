@@ -93,11 +93,15 @@ usage: froxel export --input <file.vox> --output <file.glb>
                      [--merge] [--vertex-colors] [--color-atlas]
                      [--export-hidden] [--split-objects]
                      [--ao STRENGTH] [--ao-radius CELLS]
+                     [--ao-target vertex|texture|both]
 
 The same options as the MCP tool export_mesh, all off by default.
---ao bakes ambient occlusion into COLOR_0: 0..1, the light a fully occluded
-corner loses. --ao-radius is its hemisphere reach in cells (0..8, default 3;
-0 or 1 is the corner term alone).";
+--ao bakes ambient occlusion: 0..1, the light a fully occluded corner loses.
+--ao-radius is its hemisphere reach in cells (0..8, default 3; 0 or 1 is the
+corner term alone). --ao-target vertex writes it into COLOR_0 per corner
+(faces that shade differently stay unmerged); texture darkens each cell's
+colour atlas texel and merges as without occlusion (needs --color-atlas);
+both writes the two. The default is texture with --color-atlas, else vertex.";
 
 fn export_args(
     args: &[String],
@@ -112,6 +116,7 @@ fn export_args(
         color_atlas: false,
         ao_strength: 0.0,
         ao_radius: crate::bridge::DEFAULT_AO_RADIUS,
+        ao_target: crate::export::AoTarget::Auto,
     };
     let mut index = 0;
     while index < args.len() {
@@ -146,6 +151,11 @@ fn export_args(
                 index += 1;
                 options.ao_radius =
                     crate::bridge::parse_ao_radius(args.get(index).map(String::as_str))?;
+            }
+            "--ao-target" => {
+                index += 1;
+                options.ao_target =
+                    crate::bridge::parse_ao_target(args.get(index).map(String::as_str))?;
             }
             other => return Err(format!("unknown argument `{other}`\n{EXPORT_USAGE}")),
         }
