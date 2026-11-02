@@ -151,8 +151,10 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
         } else {
             &object.cells
         };
+        // The colour atlas carries occlusion in its texels, so its faces merge
+        // as they would without it.
         let offset = object.translation;
-        let corners = occlusion.as_ref().map(|occlusion| {
+        let corners = occlusion.as_ref().filter(|_| !atlas).map(|occlusion| {
             move |face: usize, cell: Cell| {
                 occlusion.corners(
                     face,
@@ -192,9 +194,17 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
                         origin[v_axis] + j,
                     );
                     let slot = colors.get(&cell).copied().unwrap_or(0);
-                    let rgba = session.palette[slot as usize];
+                    let mut rgba = session.palette[slot as usize];
                     if rgba[3] != 255 {
                         built.blend = true;
+                    }
+                    if let Some(occlusion) = &occlusion {
+                        // One texel per cell face: the mean of its corners.
+                        let corners = occlusion.corners(quad.face, cell);
+                        let shade = corners.iter().map(|c| *c as f32).sum::<f32>() / (4.0 * 255.0);
+                        for channel in &mut rgba[..3] {
+                            *channel = srgb(linear(*channel) * shade);
+                        }
                     }
                     let at = (((y0 + j as u32) * width + x0 + i as u32) * 4) as usize;
                     pixels[at..at + 4].copy_from_slice(&rgba);
@@ -202,15 +212,7 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
             }
         }
         built.atlas = (width, height, pixels);
-        emit_atlas(
-            &mut built,
-            session,
-            &quads,
-            &blocks,
-            &classes,
-            with_motion,
-            occlusion.as_ref(),
-        );
+        emit_atlas(&mut built, session, &quads, &blocks, &classes, with_motion);
         if built.positions.is_empty() {
             built.min = [0.0; 3];
             built.max = [0.0; 3];
@@ -307,7 +309,6 @@ fn emit_atlas(
     blocks: &[(u32, u32)],
     classes: &[(u8, u8)],
     with_motion: bool,
-    occlusion: Option<&Occlusion>,
 ) {
     // Every corner on every axis plane through it, so a perpendicular face
     // that ends on a quad's edge is found as well as a coplanar one.
@@ -353,18 +354,6 @@ fn emit_atlas(
             inside.sort_unstable_by_key(|hit| (hit[axis] - a[axis]).abs());
             outline.extend(inside);
         }
-        let shade = |corner: &[i32; 3]| {
-            occlusion.map_or(1.0, |occlusion| {
-                occlusion.shade(*corner, quad.face) as f32 / 255.0
-            })
-        };
-        // The first ear cuts the diagonal from the last vertex to the second.
-        // Start one later when the other diagonal is lighter, as above.
-        if outline.len() == 4
-            && shade(&outline[0]) + shade(&outline[2]) > shade(&outline[1]) + shade(&outline[3])
-        {
-            outline.rotate_left(1);
-        }
         let first = (built.positions.len() / 3) as u32;
         let normal_vec = y_up(NORMALS[quad.face]);
         let motion = session.motion_uv(classes[quad.slot as usize - 1].1);
@@ -379,9 +368,6 @@ fn emit_atlas(
             let u = (*x0 as i32 + corner[u_axis] - origin[u_axis]) as f32 / width;
             let v = (*y0 as i32 + corner[v_axis] - origin[v_axis]) as f32 / height;
             built.extra.extend_from_slice(&[u, v]);
-            if occlusion.is_some() {
-                built.shade.push(shade(corner));
-            }
             if with_motion {
                 built.motion.extend_from_slice(&motion);
             }
@@ -762,6 +748,17 @@ pub(super) fn split_per_bone(quads: Vec<GreedyQuad>) -> Vec<GreedyQuad> {
 
 pub(super) fn y_up(p: [f32; 3]) -> [f32; 3] {
     [p[0], p[2], -p[1]]
+}
+
+/// The sRGB byte of a linear channel, the inverse of [`linear`].
+pub(super) fn srgb(value: f32) -> u8 {
+    let value = value.clamp(0.0, 1.0);
+    let s = if value <= 0.0031308 {
+        value * 12.92
+    } else {
+        1.055 * value.powf(1.0 / 2.4) - 0.055
+    };
+    (s * 255.0).round() as u8
 }
 
 pub(super) fn linear(channel: u8) -> f32 {

@@ -370,12 +370,16 @@ count, and when `aoRadius` (0 to 8 cells, default 3) reaches past those four,
 a cosine-weighted hemisphere of cells out to that radius takes away its share
 of the rest. Translucent slots do not occlude. A corner that loses all its
 light keeps `1 − aoStrength` of its colour. With `vertexColors` the shade is
-multiplied into `COLOR_0`; with the palette texture or `colorAtlas` it is a
-grey `COLOR_0`, which glTF multiplies with the base colour texture and Godot's
-importer applies through `StandardMaterial3D` vertex colour as albedo. Merging
+multiplied into `COLOR_0`; with the palette texture it is a grey `COLOR_0`,
+which glTF multiplies with the base colour texture and Godot's importer
+applies through `StandardMaterial3D` vertex colour as albedo. There, merging
 keeps faces apart whose corners shade differently, and grows a rectangle only
 along an axis the shades do not change on, so a merged face interpolates to
 the same shades as its cells. Each face is cut along its lighter diagonal.
+With `colorAtlas` the shade goes into the atlas instead: each cell's texel is
+darkened by the mean of its four corner shades (in linear light), there is no
+`COLOR_0`, and the faces merge exactly as they do without occlusion, so the
+triangle count does not change.
 `froxel export --ao 0.8 --ao-radius 3` is the same from the command line.
 The file is Y-up, positions `(x, z, −y)`. File → Export Mesh… uses the Export panel
 options. An empty scene is an error.

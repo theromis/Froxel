@@ -88,7 +88,9 @@ when the shot is framed; lower `distance` if the subject looks small.
   `splitObjects` default to false. `aoStrength` (0..1, off by default) bakes
   ambient occlusion into `COLOR_0` so crevices and overhang undersides come
   out darker with no run-time cost; `aoRadius` (default 3 cells) sets how far
-  it reaches. 0.6 to 0.8 suits a sky-lit look. The reply lists the nodes, meshes, skin, and
+  it reaches. 0.6 to 0.8 suits a sky-lit look. With `colorAtlas` it is
+  painted into the atlas and adds no triangles; without, faces that shade
+  differently stay unmerged. The reply lists the nodes, meshes, skin, and
   animations: check it before you report success.
 - `export_models` writes up to 16 `.glb` files, each from its own `.vox`
   `source`, without touching the open document.

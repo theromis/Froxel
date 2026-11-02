@@ -34,7 +34,8 @@ pub struct MeshExport {
     /// Baked ambient occlusion, 0..1. 0 leaves the export unchanged. Each face
     /// corner is darkened by the cells around it, into `COLOR_0`: multiplied
     /// into the vertex colour, or a grey `COLOR_0` that glTF multiplies with
-    /// the texture. Greedy merge keeps faces apart whose corners differ.
+    /// the palette texture. Greedy merge keeps faces apart whose corners
+    /// differ. The colour atlas darkens each cell's texel instead.
     pub ao_strength: f32,
     /// Cells beyond the four that touch a corner that also occlude it, as a
     /// cosine-weighted hemisphere. 0 or 1 is the corner term alone.
@@ -46,8 +47,9 @@ struct Built {
     normals: Vec<f32>,
     /// Vertex colors (`VEC4`) or texture coordinates (`VEC2`).
     extra: Vec<f32>,
-    /// Ambient occlusion per vertex, 0..1, for the texture materials. Empty
-    /// without occlusion or with vertex colours, which carry it already.
+    /// Ambient occlusion per vertex, 0..1, for the palette texture. Empty
+    /// without occlusion, with vertex colours, which carry it already, or with
+    /// the colour atlas, whose texels do.
     shade: Vec<f32>,
     indices: Vec<u32>,
     /// Four joint indices per vertex. Empty when the document has no bones,

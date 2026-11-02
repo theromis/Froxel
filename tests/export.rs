@@ -940,25 +940,50 @@ fn occlusion_adds_a_grey_color_to_the_texture_and_darkens_vertex_colors() {
 }
 
 #[test]
-fn colour_atlas_with_occlusion_carries_a_shade_per_vertex() {
+fn colour_atlas_occlusion_darkens_texels_and_merges_as_without_it() {
     let mut session = Session::new();
     session.objects[0].cells.clear();
-    for x in 0..3 {
-        for y in 0..3 {
+    for x in 0..4 {
+        for y in 0..4 {
             session.objects[0]
                 .cells
                 .insert((x, y, 0), 1 + ((x + y) % 2) as u8);
         }
     }
     session.objects[0].cells.insert((1, 1, 1), 3);
+    let plain = build_with(&session, &atlas_export());
     let mut options = atlas_export();
     options.ao_strength = 1.0;
     options.ao_radius = 0;
     let built = build_with(&session, &options);
-    assert_eq!(built.shade.len(), built.positions.len() / 3);
-    assert!(built.shade.iter().any(|shade| *shade < 1.0));
+    assert!(built.shade.is_empty());
+    assert_eq!(built.indices, plain.indices);
+    assert_eq!(built.positions, plain.positions);
+    assert_eq!(built.extra, plain.extra);
+    // Same layout, so the texels compare one by one: none brighter, and the
+    // floor cells around the post darker.
+    let (_, _, lit) = &plain.atlas;
+    let (_, _, dark) = &built.atlas;
+    assert_eq!(lit.len(), dark.len());
+    let darker = lit
+        .chunks(4)
+        .zip(dark.chunks(4))
+        .filter(|(a, b)| {
+            assert!(b[0] <= a[0] && b[1] <= a[1] && b[2] <= a[2]);
+            assert_eq!(a[3], b[3]);
+            b[..3] != a[..3]
+        })
+        .count();
+    assert!(darker >= 8);
     let bytes = super::encode(&session, &options).unwrap();
     assert!(glb_json(&bytes)["meshes"][0]["primitives"][0]["attributes"]
         .get("COLOR_0")
-        .is_some());
+        .is_none());
+}
+
+#[test]
+fn srgb_inverts_linear() {
+    for byte in 0..=255u8 {
+        assert_eq!(srgb(linear(byte)), byte);
+    }
 }
