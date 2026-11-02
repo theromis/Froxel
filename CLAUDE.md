@@ -44,7 +44,12 @@ linear. MCP `export_mesh` leaves merge off unless the caller sets it.
 slots of one motion and opacity, paints cells into a per-mesh atlas, and
 closes T-junctions by inserting the corner into the face outline and
 ear-clipping it (`emit_atlas`), not by `split_junctions`.
-`exportHidden` and `splitObjects` default to false. Clips are glTF
+`exportHidden` and `splitObjects` default to false. `aoStrength` (off at 0)
+bakes per-corner ambient occlusion (`export/occlusion.rs`) into `COLOR_0`:
+multiplied into vertex colours, or a grey `COLOR_0` beside the texture. A
+shade is a function of the lattice point and the face only, and greedy merge
+keeps apart faces whose corner shades differ. `froxel export` is the same
+export from the command line. Clips are glTF
 animations on the joint nodes. The preview pose is not the bind pose:
 it is a local quaternion per bone, and an empty pose leaves the mesh and
 the tracer unchanged.

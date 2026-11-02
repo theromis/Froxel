@@ -192,7 +192,7 @@ impl Drop for DirGuard {
 pub fn run(args: &[String]) -> i32 {
     match run_args(args) {
         Ok(None) => 0,
-        Ok(Some((port, input, color_atlas))) => match serve(&input, port, color_atlas) {
+        Ok(Some(serve_args)) => match serve(&serve_args) {
             Ok(()) => 0,
             Err(err) => {
                 eprintln!("{err}");
@@ -206,10 +206,20 @@ pub fn run(args: &[String]) -> i32 {
     }
 }
 
-fn run_args(args: &[String]) -> Result<Option<(u16, PathBuf, bool)>, String> {
+struct ServeArgs {
+    port: u16,
+    input: PathBuf,
+    color_atlas: bool,
+    ao_strength: f32,
+    ao_radius: u32,
+}
+
+fn run_args(args: &[String]) -> Result<Option<ServeArgs>, String> {
     let mut port = DEFAULT_PORT;
     let mut input = None;
     let mut color_atlas = false;
+    let mut ao_strength = 0.0;
+    let mut ao_radius = DEFAULT_AO_RADIUS;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -236,6 +246,14 @@ fn run_args(args: &[String]) -> Result<Option<(u16, PathBuf, bool)>, String> {
                 input = Some(PathBuf::from(text));
             }
             "--color-atlas" => color_atlas = true,
+            "--ao" => {
+                index += 1;
+                ao_strength = parse_ao_strength(args.get(index).map(String::as_str))?;
+            }
+            "--ao-radius" => {
+                index += 1;
+                ao_radius = parse_ao_radius(args.get(index).map(String::as_str))?;
+            }
             other => return Err(format!("unknown argument `{other}`")),
         }
         index += 1;
@@ -244,27 +262,61 @@ fn run_args(args: &[String]) -> Result<Option<(u16, PathBuf, bool)>, String> {
         print_help();
         return Err("missing --input".into());
     };
-    Ok(Some((port, input, color_atlas)))
+    Ok(Some(ServeArgs {
+        port,
+        input,
+        color_atlas,
+        ao_strength,
+        ao_radius,
+    }))
+}
+
+/// `ao_radius` when a caller turns occlusion on without one.
+pub const DEFAULT_AO_RADIUS: u32 = 3;
+
+/// `--ao STRENGTH`, 0..1.
+pub fn parse_ao_strength(text: Option<&str>) -> Result<f32, String> {
+    let text = text.ok_or("--ao needs a strength from 0 to 1")?;
+    text.parse::<f32>()
+        .ok()
+        .filter(|value| (0.0..=1.0).contains(value))
+        .ok_or_else(|| format!("--ao `{text}` is not a strength from 0 to 1"))
+}
+
+/// `--ao-radius CELLS`, 0..=8.
+pub fn parse_ao_radius(text: Option<&str>) -> Result<u32, String> {
+    let max = crate::export::occlusion::MAX_RADIUS;
+    let text = text.ok_or("--ao-radius needs a number of cells")?;
+    text.parse::<u32>()
+        .ok()
+        .filter(|value| *value <= max)
+        .ok_or_else(|| format!("--ao-radius `{text}` is not a whole number from 0 to {max}"))
 }
 
 fn print_help() {
     eprintln!(
         "\
 usage: froxel bridge --input <file.vox> [--port PORT] [--color-atlas]
+                     [--ao STRENGTH] [--ao-radius CELLS]
 
 Listens on 127.0.0.1. PORT defaults to {DEFAULT_PORT}; 0 picks a free port.
 Prints FROXEL_SESSION=<path> and serves that .vox until the process stops.
 --color-atlas merges faces across palette slots and paints the cells into a
 per-mesh colour atlas, as the export_mesh option colorAtlas.
+--ao bakes ambient occlusion (0..1, default 0 = off) into COLOR_0, and
+--ao-radius sets its hemisphere reach in cells (0..8, default 3), as the
+export_mesh options aoStrength and aoRadius.
 Godot and Blender connect with the session file. See docs/bridges.md."
     );
 }
 
-fn serve(input: &Path, port: u16, color_atlas: bool) -> Result<(), String> {
+fn serve(args: &ServeArgs) -> Result<(), String> {
     let mut session = Session::new();
-    session.open_vox(input)?;
-    session.export.color_atlas = color_atlas;
-    let server = BridgeServer::start(port).map_err(|err| err.to_string())?;
+    session.open_vox(&args.input)?;
+    session.export.color_atlas = args.color_atlas;
+    session.export.ao_strength = args.ao_strength;
+    session.export.ao_radius = args.ao_radius;
+    let server = BridgeServer::start(args.port).map_err(|err| err.to_string())?;
     loop {
         match server.wait(Duration::from_secs(1)) {
             Ok(Some(job)) => {
@@ -398,6 +450,8 @@ fn evaluate_within(
             export_hidden: session.export.export_hidden,
             split_objects: session.export.split_objects,
             color_atlas: session.export.color_atlas,
+            ao_strength: session.export.ao_strength,
+            ao_radius: session.export.ao_radius,
         };
         crate::export::export_with(session, &path, &options)
     })?;

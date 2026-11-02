@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use super::occlusion::Occlusion;
 use super::*;
 
 pub(super) const NORMALS: [[f32; 3]; 6] = [
@@ -73,6 +74,8 @@ pub(super) fn build(session: &Session) -> Built {
             export_hidden: false,
             split_objects: false,
             color_atlas: false,
+            ao_strength: 0.0,
+            ao_radius: 0,
         },
     )
 }
@@ -90,6 +93,7 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
         positions: Vec::new(),
         normals: Vec::new(),
         extra: Vec::new(),
+        shade: Vec::new(),
         indices: Vec::new(),
         joints: Vec::new(),
         motion: Vec::new(),
@@ -100,6 +104,7 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
     };
     let with_motion = session.has_motion();
     let atlas = options.color_atlas;
+    let occlusion = Occlusion::new(session, options);
     // With the colour atlas a quad's `slot` is its merge class (motion and
     // opacity) plus one, and `colors` keeps each cell's real slot for painting.
     let classes = if atlas {
@@ -146,7 +151,19 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
         } else {
             &object.cells
         };
-        for mut quad in merged_quads(cells, options.merge || atlas) {
+        let offset = object.translation;
+        let corners = occlusion.as_ref().map(|occlusion| {
+            move |face: usize, cell: Cell| {
+                occlusion.corners(
+                    face,
+                    (cell.0 + offset.0, cell.1 + offset.1, cell.2 + offset.2),
+                )
+            }
+        });
+        let shaded = corners
+            .as_ref()
+            .map(|corners| corners as &dyn Fn(usize, Cell) -> [u8; 4]);
+        for mut quad in merged_quads_shaded(cells, options.merge || atlas, shaded) {
             quad.cell = (
                 quad.cell.0 + object.translation.0,
                 quad.cell.1 + object.translation.1,
@@ -185,7 +202,15 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
             }
         }
         built.atlas = (width, height, pixels);
-        emit_atlas(&mut built, session, &quads, &blocks, &classes, with_motion);
+        emit_atlas(
+            &mut built,
+            session,
+            &quads,
+            &blocks,
+            &classes,
+            with_motion,
+            occlusion.as_ref(),
+        );
         if built.positions.is_empty() {
             built.min = [0.0; 3];
             built.max = [0.0; 3];
@@ -209,10 +234,13 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
         let uv = [(quad.slot as f32 + 0.5) / 256.0, 0.5];
         let normal = y_up(NORMALS[quad.face]);
         let mut index = [0u32; 4];
-        for (n, corner) in quad_corners(quad.face, quad.cell, quad.w, quad.h)
-            .into_iter()
-            .enumerate()
-        {
+        let corners = quad_corners(quad.face, quad.cell, quad.w, quad.h);
+        let shades = corners.map(|corner| {
+            occlusion.as_ref().map_or(1.0, |occlusion| {
+                occlusion.shade(corner, quad.face) as f32 / 255.0
+            })
+        });
+        for (n, corner) in corners.into_iter().enumerate() {
             let next = (built.positions.len() / 3) as u32;
             let key = (corner, quad.face, quad.slot, quad.bone);
             index[n] = *shared.entry(key).or_insert(next);
@@ -227,9 +255,18 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
                 built.normals.push(normal[axis]);
             }
             if options.vertex_colors {
-                built.extra.extend_from_slice(&color);
+                let s = shades[n];
+                built.extra.extend_from_slice(&[
+                    color[0] * s,
+                    color[1] * s,
+                    color[2] * s,
+                    color[3],
+                ]);
             } else {
                 built.extra.extend_from_slice(&uv);
+                if occlusion.is_some() {
+                    built.shade.push(shades[n]);
+                }
             }
             if with_motion {
                 built
@@ -240,6 +277,13 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
                 built.joints.extend_from_slice(&[quad.bone, 0, 0, 0]);
             }
         }
+        // Cut along the lighter diagonal, so one dark corner stays a corner
+        // instead of a band across the face.
+        let index = if shades[1] + shades[3] > shades[0] + shades[2] {
+            [index[1], index[2], index[3], index[0]]
+        } else {
+            index
+        };
         built
             .indices
             .extend_from_slice(&[index[0], index[1], index[2], index[0], index[2], index[3]]);
@@ -263,6 +307,7 @@ fn emit_atlas(
     blocks: &[(u32, u32)],
     classes: &[(u8, u8)],
     with_motion: bool,
+    occlusion: Option<&Occlusion>,
 ) {
     // Every corner on every axis plane through it, so a perpendicular face
     // that ends on a quad's edge is found as well as a coplanar one.
@@ -308,6 +353,18 @@ fn emit_atlas(
             inside.sort_unstable_by_key(|hit| (hit[axis] - a[axis]).abs());
             outline.extend(inside);
         }
+        let shade = |corner: &[i32; 3]| {
+            occlusion.map_or(1.0, |occlusion| {
+                occlusion.shade(*corner, quad.face) as f32 / 255.0
+            })
+        };
+        // The first ear cuts the diagonal from the last vertex to the second.
+        // Start one later when the other diagonal is lighter, as above.
+        if outline.len() == 4
+            && shade(&outline[0]) + shade(&outline[2]) > shade(&outline[1]) + shade(&outline[3])
+        {
+            outline.rotate_left(1);
+        }
         let first = (built.positions.len() / 3) as u32;
         let normal_vec = y_up(NORMALS[quad.face]);
         let motion = session.motion_uv(classes[quad.slot as usize - 1].1);
@@ -322,6 +379,9 @@ fn emit_atlas(
             let u = (*x0 as i32 + corner[u_axis] - origin[u_axis]) as f32 / width;
             let v = (*y0 as i32 + corner[v_axis] - origin[v_axis]) as f32 / height;
             built.extra.extend_from_slice(&[u, v]);
+            if occlusion.is_some() {
+                built.shade.push(shade(corner));
+            }
             if with_motion {
                 built.motion.extend_from_slice(&motion);
             }
@@ -479,11 +539,25 @@ pub(super) fn cell_on(face: usize, plane: i32, u: i32, v: i32) -> Cell {
 /// slots never share a quad even when their motion differs. Scan
 /// order is `(v, u)`, so an L splits the same way every time. `w` and `h`
 /// are in voxels.
+#[cfg(test)]
 pub(super) fn merged_quads(
     cells: &std::collections::HashMap<Cell, u8>,
     merge: bool,
 ) -> Vec<GreedyQuad> {
-    let mut slices: BTreeMap<(u8, i32), BTreeMap<(i32, i32), u8>> = BTreeMap::new();
+    merged_quads_shaded(cells, merge, None)
+}
+
+/// [`merged_quads`] with baked occlusion. `shade` gives a face's corner
+/// shades in `(u, v)` order (`00`, `10`, `01`, `11`). Two faces merge only
+/// when their shades match too, and a run grows along `u` only while the
+/// shades do not change along `u` (likewise `v`), so interpolating across the
+/// merged rectangle gives every cell the shades it had alone.
+pub(super) fn merged_quads_shaded(
+    cells: &std::collections::HashMap<Cell, u8>,
+    merge: bool,
+    shade: Option<&dyn Fn(usize, Cell) -> [u8; 4]>,
+) -> Vec<GreedyQuad> {
+    let mut slices: BTreeMap<(u8, i32), BTreeMap<(i32, i32), (u8, [u8; 4])>> = BTreeMap::new();
     for (cell, slot) in cells {
         if *slot == 0 {
             continue;
@@ -495,27 +569,35 @@ pub(super) fn merged_quads(
                 continue;
             }
             let (plane_axis, u_axis, v_axis) = face_axes(face);
+            let corners = shade.map_or([255; 4], |shade| shade(face, *cell));
             slices
                 .entry((face as u8, axis_of(*cell, plane_axis)))
                 .or_default()
-                .insert((axis_of(*cell, v_axis), axis_of(*cell, u_axis)), *slot);
+                .insert(
+                    (axis_of(*cell, v_axis), axis_of(*cell, u_axis)),
+                    (*slot, corners),
+                );
         }
     }
     let mut merged = Vec::new();
     for ((face, plane), mask) in &mut slices {
         let keys: Vec<(i32, i32)> = mask.keys().copied().collect();
         for (v, u) in keys {
-            let Some(slot) = mask.get(&(v, u)).copied() else {
+            let Some(key) = mask.get(&(v, u)).copied() else {
                 continue;
             };
+            let (slot, corners) = key;
+            let flat_u = corners[0] == corners[1] && corners[2] == corners[3];
+            let flat_v = corners[0] == corners[2] && corners[1] == corners[3];
             let mut w = 1;
             let mut h = 1;
             if merge {
-                while mask.get(&(v, u + w)).copied() == Some(slot) {
+                while flat_u && mask.get(&(v, u + w)).copied() == Some(key) {
                     w += 1;
                 }
                 loop {
-                    let row = (0..w).all(|i| mask.get(&(v + h, u + i)).copied() == Some(slot));
+                    let row =
+                        flat_v && (0..w).all(|i| mask.get(&(v + h, u + i)).copied() == Some(key));
                     if !row {
                         break;
                     }

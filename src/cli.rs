@@ -1,4 +1,4 @@
-//! `froxel render` and `froxel voxrt`.
+//! `froxel render`, `froxel export`, and `froxel voxrt`.
 
 use std::path::{Path, PathBuf};
 
@@ -52,6 +52,112 @@ struct RenderJob {
 struct VoxJob {
     input: PathBuf,
     dump: bool,
+}
+
+/// `froxel export`: a `.vox` to a `.glb` with the `export_mesh` options.
+pub fn export(args: &[String]) -> i32 {
+    match export_args(args) {
+        Ok(None) => 0,
+        Ok(Some((input, output, options))) => {
+            let mut session = Session::new();
+            let written = session.open_vox(&input).and_then(|()| {
+                if let Some(parent) = output
+                    .parent()
+                    .filter(|parent| !parent.as_os_str().is_empty())
+                {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|err| format!("Could not create {}: {err}", parent.display()))?;
+                }
+                crate::export::export_with(&session, &output, &options)
+            });
+            match written {
+                Ok(quads) => {
+                    eprintln!("wrote {} ({quads} quads)", output.display());
+                    0
+                }
+                Err(err) => {
+                    eprintln!("{err}");
+                    1
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            2
+        }
+    }
+}
+
+const EXPORT_USAGE: &str = "\
+usage: froxel export --input <file.vox> --output <file.glb>
+                     [--merge] [--vertex-colors] [--color-atlas]
+                     [--export-hidden] [--split-objects]
+                     [--ao STRENGTH] [--ao-radius CELLS]
+
+The same options as the MCP tool export_mesh, all off by default.
+--ao bakes ambient occlusion into COLOR_0: 0..1, the light a fully occluded
+corner loses. --ao-radius is its hemisphere reach in cells (0..8, default 3;
+0 or 1 is the corner term alone).";
+
+fn export_args(
+    args: &[String],
+) -> Result<Option<(PathBuf, PathBuf, crate::export::MeshExport)>, String> {
+    let mut input = None;
+    let mut output = None;
+    let mut options = crate::export::MeshExport {
+        vertex_colors: false,
+        merge: false,
+        export_hidden: false,
+        split_objects: false,
+        color_atlas: false,
+        ao_strength: 0.0,
+        ao_radius: crate::bridge::DEFAULT_AO_RADIUS,
+    };
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "-h" | "--help" => {
+                eprintln!("{EXPORT_USAGE}");
+                return Ok(None);
+            }
+            "--input" => {
+                index += 1;
+                input = Some(PathBuf::from(
+                    args.get(index).ok_or("--input needs a .vox path")?,
+                ));
+            }
+            "--output" => {
+                index += 1;
+                output = Some(PathBuf::from(
+                    args.get(index).ok_or("--output needs a .glb path")?,
+                ));
+            }
+            "--merge" => options.merge = true,
+            "--vertex-colors" => options.vertex_colors = true,
+            "--color-atlas" => options.color_atlas = true,
+            "--export-hidden" => options.export_hidden = true,
+            "--split-objects" => options.split_objects = true,
+            "--ao" => {
+                index += 1;
+                options.ao_strength =
+                    crate::bridge::parse_ao_strength(args.get(index).map(String::as_str))?;
+            }
+            "--ao-radius" => {
+                index += 1;
+                options.ao_radius =
+                    crate::bridge::parse_ao_radius(args.get(index).map(String::as_str))?;
+            }
+            other => return Err(format!("unknown argument `{other}`\n{EXPORT_USAGE}")),
+        }
+        index += 1;
+    }
+    match (input, output) {
+        (Some(input), Some(output)) if output.extension().is_some_and(|ext| ext == "glb") => {
+            Ok(Some((input, output, options)))
+        }
+        (Some(_), Some(_)) => Err("--output must end in .glb".into()),
+        _ => Err(EXPORT_USAGE.into()),
+    }
 }
 
 fn render_args(args: &[String]) -> Result<Option<RenderJob>, String> {

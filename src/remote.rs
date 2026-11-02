@@ -648,6 +648,8 @@ fn export_mesh(session: &Session, params: &Value) -> Result<Value, String> {
         "merge": options.merge,
         "vertexColors": options.vertex_colors,
         "colorAtlas": options.color_atlas,
+        "aoStrength": options.ao_strength,
+        "aoRadius": options.ao_radius,
         "structure": written["structure"],
     }))
 }
@@ -811,6 +813,22 @@ fn mesh_options(params: &Value) -> Result<crate::export::MeshExport, String> {
         export_hidden: opt_bool(params, "exportHidden")?.unwrap_or(false),
         split_objects: opt_bool(params, "splitObjects")?.unwrap_or(false),
         color_atlas: opt_bool(params, "colorAtlas")?.unwrap_or(false),
+        ao_strength: match params.get("aoStrength") {
+            None | Some(Value::Null) => 0.0,
+            Some(value) => value
+                .as_f64()
+                .filter(|value| (0.0..=1.0).contains(value))
+                .ok_or("aoStrength must be a number from 0 to 1")?
+                as f32,
+        },
+        ao_radius: match params.get("aoRadius") {
+            None | Some(Value::Null) => crate::bridge::DEFAULT_AO_RADIUS,
+            Some(value) => value
+                .as_u64()
+                .filter(|value| *value <= crate::export::occlusion::MAX_RADIUS as u64)
+                .ok_or("aoRadius must be a whole number from 0 to 8")?
+                as u32,
+        },
     })
 }
 
@@ -859,13 +877,13 @@ const METHODS: &[(&str, &str, &str)] = &[
     ),
     (
         "mesh.export",
-        "path, merge?, vertexColors?",
-        "Write a glTF 2.0 .glb of every object. merge defaults to false. vertexColors defaults to false (palette texture). exportHidden and splitObjects default to false. A skeleton writes a rigid skin. Clips become glTF animations.",
+        "path, merge?, vertexColors?, aoStrength?, aoRadius?",
+        "Write a glTF 2.0 .glb of every object. merge defaults to false. vertexColors defaults to false (palette texture). exportHidden and splitObjects default to false. aoStrength (0..1, default 0) bakes ambient occlusion into COLOR_0; aoRadius (0..8 cells, default 3) is its hemisphere reach. A skeleton writes a rigid skin. Clips become glTF animations.",
     ),
     (
         "mesh.export_batch",
         "models",
-        "Write 1 to 16 .glb files. Each model is {path, source?, merge?, vertexColors?, exportHidden?, splitObjects?}. source opens that .vox in a separate session, so the open document stays. The reply includes each file's node, mesh, skin and animation structure.",
+        "Write 1 to 16 .glb files. Each model is {path, source?, merge?, vertexColors?, exportHidden?, splitObjects?, colorAtlas?, aoStrength?, aoRadius?}. source opens that .vox in a separate session, so the open document stays. The reply includes each file's node, mesh, skin and animation structure.",
     ),
     (
         "script.set",

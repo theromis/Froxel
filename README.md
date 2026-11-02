@@ -219,6 +219,15 @@ above is 48 such renders, one every 7.5° of `--yaw`.
 
 ![Lily pad, lotus bank, reeds and a letter, rendered with froxel render](docs/images/gallery.jpg)
 
+`froxel export --input model.vox --output model.glb` writes the glTF with
+the `export_mesh` options as flags: `--merge`, `--vertex-colors`,
+`--color-atlas`, `--export-hidden`, `--split-objects`, and `--ao STRENGTH`
+with `--ao-radius CELLS` for baked ambient occlusion in `COLOR_0`.
+
+```sh
+froxel export --input ruins.vox --output ruins.glb --merge --ao 0.8 --ao-radius 3
+```
+
 `froxel voxrt --input model.vox` loads a file, saves it, loads the save, and
 checks that nothing changed: objects, palette, materials, scene graph, bones,
 scripts, and motion. `--dump` prints the chunk tree instead.

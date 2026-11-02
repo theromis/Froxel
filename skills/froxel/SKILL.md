@@ -85,7 +85,10 @@ when the shot is framed; lower `distance` if the subject looks small.
 
 - `export_mesh` writes a `.glb` (glTF 2.0, Y-up). `merge` is off unless you set
   it; turn it on for game assets to merge coplanar faces. `exportHidden` and
-  `splitObjects` default to false. The reply lists the nodes, meshes, skin, and
+  `splitObjects` default to false. `aoStrength` (0..1, off by default) bakes
+  ambient occlusion into `COLOR_0` so crevices and overhang undersides come
+  out darker with no run-time cost; `aoRadius` (default 3 cells) sets how far
+  it reaches. 0.6 to 0.8 suits a sky-lit look. The reply lists the nodes, meshes, skin, and
   animations: check it before you report success.
 - `export_models` writes up to 16 `.glb` files, each from its own `.vox`
   `source`, without touching the open document.

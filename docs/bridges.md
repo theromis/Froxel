@@ -12,7 +12,9 @@ bones, and clips when the document has them. From the editor, the bridge uses
 the options on the Export panel. The headless command uses the defaults
 (merged faces, palette texture, hidden objects left out, one mesh);
 `--color-atlas` switches it to the colour atlas (see `export_mesh` in
-`docs/mcp.md`), which needs a model without bones.
+`docs/mcp.md`), which needs a model without bones. `--ao STRENGTH` (0 to 1)
+and `--ao-radius CELLS` bake ambient occlusion into `COLOR_0`, as the
+`export_mesh` options `aoStrength` and `aoRadius`.
 
 An `evaluate` reruns every object script, then writes the glTF. Hand edits on
 a scripted object are replaced by that run. An object with no script is

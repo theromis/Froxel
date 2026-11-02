@@ -226,6 +226,9 @@ fn main(
     if args.first().is_some_and(|arg| arg == "render") {
         std::process::exit(cli::render(&args[1..]));
     }
+    if args.first().is_some_and(|arg| arg == "export") {
+        std::process::exit(cli::export(&args[1..]));
+    }
     if args.first().is_some_and(|arg| arg == "voxrt") {
         std::process::exit(cli::voxrt(&args[1..]));
     }

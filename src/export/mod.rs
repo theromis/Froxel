@@ -13,6 +13,7 @@ use serde_json::{json, Value};
 
 use crate::state::{Cell, Session};
 
+pub mod occlusion;
 mod quads;
 
 use quads::build_with;
@@ -30,6 +31,14 @@ pub struct MeshExport {
     /// cell into a per-mesh colour atlas instead of the 256-wide palette. Faces
     /// with different motion or opacity still stay apart. One rigid mesh only.
     pub color_atlas: bool,
+    /// Baked ambient occlusion, 0..1. 0 leaves the export unchanged. Each face
+    /// corner is darkened by the cells around it, into `COLOR_0`: multiplied
+    /// into the vertex colour, or a grey `COLOR_0` that glTF multiplies with
+    /// the texture. Greedy merge keeps faces apart whose corners differ.
+    pub ao_strength: f32,
+    /// Cells beyond the four that touch a corner that also occlude it, as a
+    /// cosine-weighted hemisphere. 0 or 1 is the corner term alone.
+    pub ao_radius: u32,
 }
 
 struct Built {
@@ -37,6 +46,9 @@ struct Built {
     normals: Vec<f32>,
     /// Vertex colors (`VEC4`) or texture coordinates (`VEC2`).
     extra: Vec<f32>,
+    /// Ambient occlusion per vertex, 0..1, for the texture materials. Empty
+    /// without occlusion or with vertex colours, which carry it already.
+    shade: Vec<f32>,
     indices: Vec<u32>,
     /// Four joint indices per vertex. Empty when the document has no bones,
     /// so the rigid exporter does not read it.
@@ -222,6 +234,7 @@ fn encode(session: &Session, options: &MeshExport) -> Result<Vec<u8>, String> {
                 "byteLength": png.len()
             }));
     }
+    append_shade(&mut root, &mut bin, 0, &built.shade);
     let json = root;
     let mut json_bytes = serde_json::to_vec(&json).map_err(|err| err.to_string())?;
     pad(&mut json_bytes, b' ');
@@ -465,6 +478,7 @@ fn encode_skinned(session: &Session, options: &MeshExport) -> Result<Vec<u8>, St
             }));
     }
     append_animations(&mut root, &mut bin, session, 1)?;
+    append_shade(&mut root, &mut bin, 0, &built.shade);
     let mut json_bytes = serde_json::to_vec(&root).map_err(|err| err.to_string())?;
     pad(&mut json_bytes, b' ');
     let total = 12 + 8 + json_bytes.len() + 8 + bin.len();
@@ -711,6 +725,9 @@ fn encode_split(session: &Session, options: &MeshExport) -> Result<Vec<u8>, Stri
     if skinned {
         append_animations(&mut root, &mut bin, session, parts.len())?;
     }
+    for (mesh, (_, built)) in parts.iter().enumerate() {
+        append_shade(&mut root, &mut bin, mesh, &built.shade);
+    }
     let mut json_bytes = serde_json::to_vec(&root).map_err(|err| err.to_string())?;
     pad(&mut json_bytes, b' ');
     let total = 12 + 8 + json_bytes.len() + 8 + bin.len();
@@ -854,6 +871,31 @@ fn push_anim(
         .expect("accessors")
         .push(accessor);
     accessors
+}
+
+/// A grey `COLOR_0` with the baked occlusion on primitive 0 of `mesh`. glTF
+/// multiplies it with the base colour texture; Godot's importer turns on
+/// vertex colour as albedo for a primitive that has one.
+fn append_shade(root: &mut serde_json::Value, bin: &mut Vec<u8>, mesh: usize, shade: &[f32]) {
+    if shade.is_empty() {
+        return;
+    }
+    pad(bin, 0);
+    let offset = bin.len();
+    for value in shade {
+        push_f32s(bin, &[*value, *value, *value, 1.0]);
+    }
+    let views = root["bufferViews"].as_array().expect("buffer views").len();
+    let accessors = root["accessors"].as_array().expect("accessors").len();
+    root["bufferViews"]
+        .as_array_mut()
+        .expect("buffer views")
+        .push(json!({"buffer": 0, "byteOffset": offset, "byteLength": shade.len() * 16, "target": 34962}));
+    root["accessors"].as_array_mut().expect("accessors").push(
+        json!({"bufferView": views, "componentType": 5126, "count": shade.len(), "type": "VEC4"}),
+    );
+    root["meshes"][mesh]["primitives"][0]["attributes"]["COLOR_0"] = json!(accessors);
+    root["buffers"][0]["byteLength"] = json!(bin.len());
 }
 
 fn push_f32s(out: &mut Vec<u8>, values: &[f32]) {

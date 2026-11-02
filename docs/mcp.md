@@ -359,15 +359,33 @@ points into; faces of different motion or opacity stay apart. Instead of
 cutting a face where another face's corner lands on its edge, that corner
 becomes a vertex of the face's outline, which is ear-clipped into triangles,
 so there are no T-junctions and far fewer triangles. It needs one rigid
-mesh: not with a skeleton, `splitObjects`, or `vertexColors`. The file is
-Y-up, positions `(x, z, −y)`. File → Export Mesh… uses the Export panel
+mesh: not with a skeleton, `splitObjects`, or `vertexColors`.
+`aoStrength` defaults to 0, off, and leaves the file byte for byte as
+before. From 0 to 1 it bakes ambient occlusion, so crevices, joints and the
+undersides of overhangs export darker at no run-time cost. Every face corner
+gets a shade from the opaque cells of the exported objects around it: the
+corner term counts the four cells in front of the corner (two sides and the
+diagonal; two sides alone count as three) and keeps a quarter less light per
+count, and when `aoRadius` (0 to 8 cells, default 3) reaches past those four,
+a cosine-weighted hemisphere of cells out to that radius takes away its share
+of the rest. Translucent slots do not occlude. A corner that loses all its
+light keeps `1 − aoStrength` of its colour. With `vertexColors` the shade is
+multiplied into `COLOR_0`; with the palette texture or `colorAtlas` it is a
+grey `COLOR_0`, which glTF multiplies with the base colour texture and Godot's
+importer applies through `StandardMaterial3D` vertex colour as albedo. Merging
+keeps faces apart whose corners shade differently, and grows a rectangle only
+along an axis the shades do not change on, so a merged face interpolates to
+the same shades as its cells. Each face is cut along its lighter diagonal.
+`froxel export --ao 0.8 --ao-radius 3` is the same from the command line.
+The file is Y-up, positions `(x, z, −y)`. File → Export Mesh… uses the Export panel
 options. An empty scene is an error.
 The reply's `structure` is the JSON chunk: node names, mesh primitive vertex
 and index counts, position bounds, skin joint counts, and animation channel
 counts. A warning names an empty mesh, a skin with no joints, a missing or
 repeated node name, or an animation with no channels.
 
-`export_models` is the same write, for 1 to 16 files. A `source` path loads
+`export_models` is the same write, for 1 to 16 files, and each model takes
+the same options, `aoStrength` and `aoRadius` included. A `source` path loads
 that `.vox` into a separate session. The open document is not replaced and is
 what a model without `source` exports. One file's error is that model's
 `error`; the other files are still written. `ok` is false when any model

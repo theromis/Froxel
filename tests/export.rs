@@ -47,6 +47,8 @@ fn vertex_colors_keep_a_linear_color_attribute() {
             export_hidden: false,
             split_objects: false,
             color_atlas: false,
+            ao_strength: 0.0,
+            ao_radius: 0,
         },
     )
     .unwrap();
@@ -72,6 +74,8 @@ fn unmerged_row_keeps_one_quad_per_face() {
             export_hidden: false,
             split_objects: false,
             color_atlas: false,
+            ao_strength: 0.0,
+            ao_radius: 0,
         },
     );
     assert_eq!(built.indices.len() / 6, 10);
@@ -213,6 +217,8 @@ fn still_export_omits_texcoord_1_and_stays_stable() {
         export_hidden: false,
         split_objects: false,
         color_atlas: false,
+        ao_strength: 0.0,
+        ao_radius: 0,
     };
     let first = super::encode(&session, &options).unwrap();
     let second = super::encode(&session, &options).unwrap();
@@ -228,6 +234,8 @@ fn still_export_omits_texcoord_1_and_stays_stable() {
             export_hidden: false,
             split_objects: false,
             color_atlas: false,
+            ao_strength: 0.0,
+            ao_radius: 0,
         },
     )
     .unwrap();
@@ -253,6 +261,8 @@ fn motion_writes_texcoord_1_for_each_slot() {
         export_hidden: false,
         split_objects: false,
         color_atlas: false,
+        ao_strength: 0.0,
+        ao_radius: 0,
     };
     let bytes = super::encode(&session, &options).unwrap();
     let uvs = texcoord_1(&bytes);
@@ -268,6 +278,8 @@ fn motion_writes_texcoord_1_for_each_slot() {
             export_hidden: false,
             split_objects: false,
             color_atlas: false,
+            ao_strength: 0.0,
+            ao_radius: 0,
         },
     )
     .unwrap();
@@ -301,6 +313,8 @@ fn different_motion_stays_on_separate_quads() {
             export_hidden: false,
             split_objects: false,
             color_atlas: false,
+            ao_strength: 0.0,
+            ao_radius: 0,
         },
     );
     assert_eq!(built.indices.len() / 6, 10);
@@ -341,6 +355,8 @@ fn a_clip_is_a_gltf_animation_and_hidden_parts_can_be_their_own_nodes() {
         export_hidden: false,
         split_objects: false,
         color_atlas: false,
+        ao_strength: 0.0,
+        ao_radius: 0,
     };
     let bytes = super::encode(&session, &options).unwrap();
     let json = glb_json(&bytes);
@@ -355,6 +371,8 @@ fn a_clip_is_a_gltf_animation_and_hidden_parts_can_be_their_own_nodes() {
         export_hidden: true,
         split_objects: true,
         color_atlas: false,
+        ao_strength: 0.0,
+        ao_radius: 0,
     };
     let bytes = super::encode(&session, &split).unwrap();
     let text = serde_json::to_string(&glb_json(&bytes)).unwrap();
@@ -375,6 +393,8 @@ fn neighbouring_quads_share_corners_of_one_slot_and_face() {
         export_hidden: false,
         split_objects: false,
         color_atlas: false,
+        ao_strength: 0.0,
+        ao_radius: 0,
     };
     let built = build_with(&session, &options);
     // Ten faces; the four long sides each share two corners between the two
@@ -415,6 +435,8 @@ fn split_export() -> MeshExport {
         export_hidden: false,
         split_objects: true,
         color_atlas: false,
+        ao_strength: 0.0,
+        ao_radius: 0,
     }
 }
 
@@ -579,6 +601,8 @@ fn atlas_export() -> MeshExport {
         export_hidden: false,
         split_objects: false,
         color_atlas: true,
+        ao_strength: 0.0,
+        ao_radius: 0,
     }
 }
 
@@ -751,4 +775,190 @@ fn colour_atlas_leaves_no_t_junction() {
     }
     // Fewer triangles than the per-slot merge with its splits.
     assert!(built.indices.len() < build(&session).indices.len());
+}
+
+fn ao_export(strength: f32, radius: u32) -> MeshExport {
+    MeshExport {
+        vertex_colors: false,
+        merge: true,
+        export_hidden: false,
+        split_objects: false,
+        color_atlas: false,
+        ao_strength: strength,
+        ao_radius: radius,
+    }
+}
+
+fn occlusion_of(session: &Session, radius: u32) -> super::occlusion::Occlusion {
+    super::occlusion::Occlusion::new(session, &ao_export(1.0, radius)).unwrap()
+}
+
+#[test]
+fn corner_occlusion_counts_the_sides_and_the_diagonal() {
+    let mut session = Session::new();
+    session.objects[0].cells.clear();
+    for x in 0..4 {
+        for y in 0..4 {
+            session.objects[0].cells.insert((x, y, 0), 1);
+        }
+    }
+    // One cell on the floor, and two more that touch only at a corner.
+    session.objects[0].cells.insert((1, 1, 1), 1);
+    session.objects[0].cells.insert((3, 3, 1), 1);
+    session.objects[0].cells.insert((2, 2, 1), 1);
+    session.objects[0].cells.insert((0, 3, 1), 1);
+    session.objects[0].cells.insert((1, 3, 1), 1);
+    let occlusion = occlusion_of(&session, 0);
+    let up = 4;
+    // Open floor keeps all its light.
+    assert_eq!(occlusion.shade([0, 0, 1], up), 255);
+    // A corner of the lone cell: one side, a quarter of the light gone.
+    assert_eq!(occlusion.shade([1, 1, 1], up), 191);
+    // Between (1,1) and (2,2): two diagonal cells count as both sides, three.
+    assert_eq!(occlusion.shade([2, 2, 1], up), 64);
+    // Two cells side by side in front of the corner.
+    assert_eq!(occlusion.shade([1, 3, 1], up), 128);
+    // The four corners of one floor face, in (u, v) order.
+    assert_eq!(occlusion.corners(up, (0, 0, 0)), [255, 255, 255, 191]);
+    // Strength scales the loss.
+    let half = super::occlusion::Occlusion::new(&session, &ao_export(0.5, 0)).unwrap();
+    assert_eq!(half.shade([1, 1, 1], up), 223);
+    // The hemisphere term darkens a floor corner next to a wall more than
+    // the corner term alone.
+    let wide = occlusion_of(&session, 3);
+    assert!(wide.shade([1, 1, 1], up) < 191);
+}
+
+#[test]
+fn greedy_merge_keeps_apart_faces_whose_corner_occlusion_differs() {
+    let mut session = Session::new();
+    session.objects[0].cells.clear();
+    // A floor strip with a ledge along one long side: every top face of the
+    // strip shades the same way, darker on the ledge side, so the strip still
+    // merges along x but not across.
+    for x in 0..6 {
+        session.objects[0].cells.insert((x, 0, 0), 1);
+        session.objects[0].cells.insert((x, 1, 0), 1);
+        session.objects[0].cells.insert((x, 2, 1), 1);
+    }
+    // One post makes the shades change along x near it.
+    session.objects[0].cells.insert((5, 1, 1), 1);
+    let occlusion = occlusion_of(&session, 0);
+    let shade = |face: usize, cell: Cell| occlusion.corners(face, cell);
+    let plain = merged_quads(&session.objects[0].cells, true);
+    let shaded = merged_quads_shaded(&session.objects[0].cells, true, Some(&shade));
+    let top = |quads: &[GreedyQuad]| {
+        quads
+            .iter()
+            .filter(|quad| quad.face == 4 && quad.cell.2 == 0)
+            .count()
+    };
+    // Without occlusion the post's cell splits the floor into two rectangles.
+    assert_eq!(top(&plain), 2);
+    assert!(top(&shaded) > top(&plain));
+    assert!(shaded
+        .iter()
+        .any(|quad| quad.face == 4 && quad.cell.2 == 0 && quad.w > 1));
+    // Interpolating a merged quad's corners gives each cell its own shades.
+    for quad in &shaded {
+        let (_, u_axis, v_axis) = face_axes(quad.face);
+        let origin = split_origin(quad);
+        let corner = |du: i32, dv: i32| {
+            let mut point = origin;
+            point[u_axis] += du;
+            point[v_axis] += dv;
+            occlusion.shade(point, quad.face) as f32
+        };
+        let (c00, c10, c01, c11) = (
+            corner(0, 0),
+            corner(quad.w, 0),
+            corner(0, quad.h),
+            corner(quad.w, quad.h),
+        );
+        for j in 0..=quad.h {
+            for i in 0..=quad.w {
+                let (s, t) = (i as f32 / quad.w as f32, j as f32 / quad.h as f32);
+                let want = c00 * (1.0 - s) * (1.0 - t)
+                    + c10 * s * (1.0 - t)
+                    + c01 * (1.0 - s) * t
+                    + c11 * s * t;
+                assert!(
+                    (corner(i, j) - want).abs() < 1e-3,
+                    "quad {:?} face {} cell {:?} at ({i}, {j})",
+                    (quad.w, quad.h),
+                    quad.face,
+                    quad.cell
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn occlusion_adds_a_grey_color_to_the_texture_and_darkens_vertex_colors() {
+    let mut session = Session::new();
+    session.objects[0].cells.clear();
+    for x in 0..3 {
+        session.objects[0].cells.insert((x, 0, 0), 1);
+    }
+    session.objects[0].cells.insert((1, 0, 1), 1);
+    let off = super::encode(&session, &ao_export(0.0, 3)).unwrap();
+    let mut plain = ao_export(0.0, 3);
+    plain.ao_radius = 0;
+    assert_eq!(off, super::encode(&session, &plain).unwrap());
+    assert!(glb_json(&off)["meshes"][0]["primitives"][0]["attributes"]
+        .get("COLOR_0")
+        .is_none());
+    let on = super::encode(&session, &ao_export(1.0, 3)).unwrap();
+    let json = glb_json(&on);
+    let attributes = &json["meshes"][0]["primitives"][0]["attributes"];
+    assert!(attributes.get("TEXCOORD_0").is_some());
+    let color = &json["accessors"][attributes["COLOR_0"].as_u64().unwrap() as usize];
+    assert_eq!(color["type"], "VEC4");
+    assert_eq!(
+        color["count"],
+        json["accessors"][attributes["POSITION"].as_u64().unwrap() as usize]["count"]
+    );
+    super::gltf_structure(&on).unwrap();
+
+    let built = build_with(&session, &ao_export(1.0, 0));
+    assert!(built.shade.iter().any(|shade| *shade < 1.0));
+    assert!(built.shade.iter().any(|shade| *shade == 1.0));
+    let mut colors = ao_export(1.0, 0);
+    colors.vertex_colors = true;
+    let lit = build_with(
+        &session,
+        &MeshExport {
+            ao_strength: 0.0,
+            ..colors
+        },
+    );
+    let dark = build_with(&session, &colors);
+    assert!(dark.shade.is_empty());
+    let sum = |built: &Built| built.extra.chunks(4).map(|c| c[0]).sum::<f32>();
+    assert!(sum(&dark) < sum(&lit));
+}
+
+#[test]
+fn colour_atlas_with_occlusion_carries_a_shade_per_vertex() {
+    let mut session = Session::new();
+    session.objects[0].cells.clear();
+    for x in 0..3 {
+        for y in 0..3 {
+            session.objects[0]
+                .cells
+                .insert((x, y, 0), 1 + ((x + y) % 2) as u8);
+        }
+    }
+    session.objects[0].cells.insert((1, 1, 1), 3);
+    let mut options = atlas_export();
+    options.ao_strength = 1.0;
+    options.ao_radius = 0;
+    let built = build_with(&session, &options);
+    assert_eq!(built.shade.len(), built.positions.len() / 3);
+    assert!(built.shade.iter().any(|shade| *shade < 1.0));
+    let bytes = super::encode(&session, &options).unwrap();
+    assert!(glb_json(&bytes)["meshes"][0]["primitives"][0]["attributes"]
+        .get("COLOR_0")
+        .is_some());
 }
