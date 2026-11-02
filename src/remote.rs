@@ -952,11 +952,27 @@ fn inspect(session: &Session) -> Value {
         "objects": objects,
         "bones": bone_rows(session),
         "palette": (0..256).map(|i| hex_color(session.palette[i])).collect::<Vec<_>>(),
-        "motion": (0..256).map(|i| {
-            let material = session.materials[i];
-            json!({"kind": material.motion.as_str(), "amount": material.motion_amount})
-        }).collect::<Vec<_>>(),
+        "motion": motion_rows(session),
     })
+}
+
+/// Slots whose motion is not the default (`none` at amount 1), keyed by index.
+fn motion_rows(session: &Session) -> Value {
+    let rows: serde_json::Map<String, Value> = session
+        .materials
+        .iter()
+        .enumerate()
+        .filter(|(_, material)| {
+            material.motion != crate::state::Motion::None || material.motion_amount != 1.0
+        })
+        .map(|(index, material)| {
+            (
+                index.to_string(),
+                json!({"kind": material.motion.as_str(), "amount": material.motion_amount}),
+            )
+        })
+        .collect();
+    Value::Object(rows)
 }
 
 fn bounds_json(cells: impl IntoIterator<Item = crate::state::Cell>) -> Value {

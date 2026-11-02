@@ -432,9 +432,9 @@ fn num(value: &Value, key: &str) -> Result<f32, String> {
 fn tools() -> Vec<Value> {
     vec![
         tool("new_document", "Replace the session with an empty one-object document and the default palette.", json!({}), &[]),
-        tool("open_file", "Open a .vox file, replacing the session document.", json!({"path": str_prop("Path of a .vox file")}), &["path"]),
+        tool("open_file", "Open a .vox file, replacing the session document. Replies with the inspect_document summary.", json!({"path": str_prop("Path of a .vox file")}), &["path"]),
         tool("save_file", "Write every non-empty object as a .vox scene. Replies with voxels (solid cells in the file) and objects (models written).", json!({"path": str_prop("Where to write. Omit to overwrite the open file.")}), &[]),
-        tool("inspect_document", "Path, voxel count, world bounds, objects (name, world position, local bounds), and the 256-color palette.", json!({}), &[]),
+        tool("inspect_document", "Path, voxel count, world bounds, objects (name, world position, local bounds), the 256-color palette, and motion keyed by palette index for slots that are not still at amount 1.", json!({}), &[]),
         tool("get_voxel", "Read one local cell of the active object. 0 is empty. Coordinates are local to that object.", xyz_props(), &["x", "y", "z"]),
         tool("set_voxel", "Write one local cell of the active object. Coordinates are local. One undo step.", {
             let mut p = xyz_props();

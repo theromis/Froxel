@@ -146,9 +146,9 @@ tracer. A file with no scene graph still loads its first model.
 | Tool | Required arguments | What it does |
 |---|---|---|
 | `new_document` | — | Empty document, default palette, cleared path and undo stack |
-| `open_file` | `path` | Open a `.vox`, replacing the session |
+| `open_file` | `path` | Open a `.vox`, replacing the session. The reply is the `inspect_document` summary |
 | `save_file` | — | Write every non-empty object. `path` overwrites the open file when omitted. Replies with `voxels` and `objects` |
-| `inspect_document` | — | Path, counts, world bounds, objects (name and world position), palette, and each slot's motion |
+| `inspect_document` | — | Path, counts, world bounds, objects (name and world position), palette, and the slots with motion |
 | `get_voxel` | `x`, `y`, `z` | Palette index of one **local** cell of the active object. `0` is empty |
 | `set_voxel` | `x`, `y`, `z`, `palette` | Write one **local** cell. One undo step |
 | `set_voxels` | `cells` | Write up to 200000 **local** cells as one undo step |
@@ -222,8 +222,10 @@ slot's material and is one undo step together with the color.
   (the same three integers as `position`). `bone` is the bound bone name, or
   null. `bounds` is local cells; add `position` for the world box.
 - `palette`: 256 strings, `#rrggbbaa`, index 0 first
-- `motion`: 256 objects `{kind, amount}`, index 0 first. `kind` is `none`,
-  `sway`, or `bob`. `amount` is 0..4 and defaults to 1. `none` is still
+- `motion`: an object keyed by palette index (`"36": {kind, amount}`) with
+  only the slots whose motion is not the default `none` at amount 1, so a
+  still document has `{}`. `kind` is `none`, `sway`, or `bob`. `amount` is
+  0..4 and defaults to 1. `none` is still
 
 A screenshot tool returns a text block with `width`, `height`, and `path`, plus
 an MCP `image` block (`image/png`). `path` also writes that file. Omit it to

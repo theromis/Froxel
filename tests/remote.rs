@@ -69,3 +69,23 @@ fn export_mesh_writes_a_palette_texture() {
     assert_eq!(merged["quads"], 6);
     let _ = std::fs::remove_file(path);
 }
+
+#[test]
+fn inspect_lists_only_slots_with_motion() {
+    let mut session = Session::new();
+    session.replace_empty();
+    let got = apply(&mut session, "document.inspect", &json!({})).unwrap();
+    assert_eq!(got["motion"], json!({}));
+
+    session.materials[36].motion = crate::state::Motion::Sway;
+    session.materials[36].motion_amount = 1.5;
+    session.materials[10].motion_amount = 2.0;
+    let got = apply(&mut session, "document.inspect", &json!({})).unwrap();
+    assert_eq!(
+        got["motion"],
+        json!({
+            "10": {"kind": "none", "amount": 2.0},
+            "36": {"kind": "sway", "amount": 1.5},
+        })
+    );
+}

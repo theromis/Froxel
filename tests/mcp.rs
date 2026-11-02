@@ -138,8 +138,8 @@ fn set_palette_motion_exports_texcoord_1() {
     .unwrap();
     let body: serde_json::Value =
         serde_json::from_str(inspected["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
-    assert_eq!(body["motion"][4]["kind"], "sway");
-    assert_eq!(body["motion"][4]["amount"], 1.5);
+    assert_eq!(body["motion"]["4"]["kind"], "sway");
+    assert_eq!(body["motion"]["4"]["amount"], 1.5);
     let path = std::env::temp_dir().join("froxel-mcp-sway.glb");
     let _ = std::fs::remove_file(&path);
     let exported = dispatch(
