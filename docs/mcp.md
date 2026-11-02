@@ -155,7 +155,7 @@ tracer. A file with no scene graph still loads its first model.
 | `fill_box` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palette` | Fill an inclusive box of **local** cells, at most 2000000, one undo step |
 | `fill_ellipsoid` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palette` | Fill the ellipsoid inscribed in that box. The box volume is checked first, even when the solid is smaller. One undo step |
 | `fill_rounded_box` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palette`, `radius` | Same box, with an edge bevel of `radius` voxels. `radius` 0 is the full box. The radius is clamped to half the shortest side |
-| `fill_tube` | `points`, `palette` or `palettes` | Fill a round tube through 2..=1024 **local** points, each with its own radius. Optional `radius`, `curve` (`polyline`, `smooth`), `pattern` (`rings`, `stripes`, `random`), `period`, `sectors`, `seed`, `mode`. At most 2000000 cells, one undo step |
+| `fill_tube` | `points`, `palette` or `palettes` | Fill a tube through 2..=1024 **local** points, each with its own radius. Optional `radius`, `curve` (`polyline`, `smooth`), `aspect`, `roll`, `profile` (`round`, `blade`), `pattern` (`rings`, `stripes`, `random`), `period`, `sectors`, `seed`, `mode`. At most 2000000 cells, one undo step |
 | `carve` | `shape` | Remove the solid cells inside a `box`, `ellipsoid`, `rounded_box`, or `tube`, given as for the fill tools. Replies with `removed`. One undo step |
 | `smooth` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Majority filter in an inclusive box of at most 2000000 cells that keeps colours. Optional `iterations` (1..=8), `fillAt`, `removeAt`. Replies with `filled`, `removed`, `iterations`. One undo step |
 | `get_voxels` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Non-empty **local** cells inside an inclusive box, at most 100000 |
@@ -224,7 +224,14 @@ a Catmull-Rom curve through every point instead of straight segments.
 weight it) cycles by `pattern`: `rings` (the default) bands along the length
 every `period` cells (default 2), `stripes` divides the circumference into
 `sectors` (default one per index) that run along the tube and do not twist
-at bends, and `random` picks per cell from `seed`. A tube over 2000000 cells
+at bends, and `random` picks per cell from `seed`. `aspect` (0.05..=1, default 1)
+flattens the cross-section: the width stays the radius and the thickness is
+`aspect` of it, at least one cell. The thickness runs along the frame's
+normal, which is up for a level tube, so a flat tube lies flat; `roll`
+(degrees) turns it about the axis. `profile` `blade` tapers the thickness
+across the width from full at one edge to one cell at the other, a wedge.
+With a taper in the radii this makes splinters, shards, and broken plank
+ends. A carved `tube` takes the same three. A tube over 2000000 cells
 is refused before any cell is written.
 
 `carve` removes cells and never paints. `shape` `box`, `ellipsoid`, and
@@ -629,7 +636,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `set_voxel`, `set_voxels` | Brush, Line, Circle, Square, Face, Mutator |
 | `fill_box` | Box tool with Fill |
 | `fill_ellipsoid`, `fill_rounded_box` | Generator: Ellipsoid, Rounded box |
-| `fill_tube` | Tube tool: drag from the start radius to the end radius; Chain adds a point per drag and Smooth curves through them until Finish; Solid, Rings, Stripes, or Random with a second slot |
+| `fill_tube` | Tube tool: drag from the start radius to the end radius; Chain adds a point per drag and Smooth curves through them until Finish; Flatten, Roll, and Blade shape it; Solid, Rings, Stripes, or Random with a second slot |
 | `carve` | Remove mode with Box, Generator, or Tube |
 | `smooth` | Smooth section: Passes, Fill at, Remove at, over the selection or the whole object |
 | `set_palette` | Palette dock (colour and alpha) and the Material section (motion) |

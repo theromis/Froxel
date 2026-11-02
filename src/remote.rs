@@ -1668,7 +1668,25 @@ fn tube_cells(params: &Value) -> Result<Vec<crate::tools::TubeCell>, String> {
         Some("smooth") => true,
         Some(other) => return Err(format!("curve must be polyline or smooth, not `{other}`")),
     };
-    crate::tools::tube(&points, curve)
+    crate::tools::tube_shaped(&points, curve, tube_shape(params)?)
+}
+
+/// `aspect`, `roll` (degrees), and `profile` of `fill_tube` and a carved tube.
+fn tube_shape(params: &Value) -> Result<crate::tools::TubeShape, String> {
+    let aspect = opt_f64(params, "aspect")?.unwrap_or(1.0);
+    if !(0.05..=1.0).contains(&aspect) {
+        return Err(format!("aspect must be 0.05..=1, not {aspect}"));
+    }
+    let blade = match opt_str(params, "profile")?.as_deref() {
+        None | Some("round") => false,
+        Some("blade") => true,
+        Some(other) => return Err(format!("profile must be round or blade, not `{other}`")),
+    };
+    Ok(crate::tools::TubeShape {
+        aspect,
+        roll: opt_f64(params, "roll")?.unwrap_or(0.0).to_radians(),
+        blade,
+    })
 }
 
 fn tube_fill(session: &mut Session, params: &Value) -> Result<Value, String> {

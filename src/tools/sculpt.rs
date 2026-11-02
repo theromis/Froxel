@@ -40,6 +40,33 @@ pub struct TubeCell {
     pub around: f64,
 }
 
+/// A tube's cross-section. Round is a circle of the point's radius. A flat
+/// tube keeps that radius across its width and `aspect` of it through its
+/// thickness, at least half a cell. The thickness runs along the frame's
+/// normal, which is up for a level tube, so a flat tube lies flat; `roll`
+/// turns it about the axis. A blade tapers the thickness from the full value
+/// at one edge to half a cell at the other, a wedge.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TubeShape {
+    /// Thickness over width, 0.05..=1.
+    pub aspect: f64,
+    /// Radians about the axis.
+    pub roll: f64,
+    pub blade: bool,
+}
+
+impl TubeShape {
+    pub const ROUND: TubeShape = TubeShape {
+        aspect: 1.0,
+        roll: 0.0,
+        blade: false,
+    };
+
+    fn is_round(self) -> bool {
+        self.aspect >= 1.0 && !self.blade
+    }
+}
+
 /// How a tube with several palette indices lays them out.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TubePattern {
@@ -87,6 +114,18 @@ struct Segment {
 /// `curve` true passes a Catmull-Rom curve through the points; false joins
 /// them with straight segments.
 pub fn tube(points: &[TubePoint], curve: bool) -> Result<Vec<TubeCell>, String> {
+    tube_shaped(points, curve, TubeShape::ROUND)
+}
+
+/// [`tube`] with a flat or blade cross-section.
+pub fn tube_shaped(
+    points: &[TubePoint],
+    curve: bool,
+    shape: TubeShape,
+) -> Result<Vec<TubeCell>, String> {
+    if !(0.05..=1.0).contains(&shape.aspect) || !shape.roll.is_finite() {
+        return Err("aspect must be 0.05..=1 and roll a finite angle".into());
+    }
     if points.len() < 2 {
         return Err("a tube needs at least 2 points".into());
     }
@@ -119,7 +158,15 @@ pub fn tube(points: &[TubePoint], curve: bool) -> Result<Vec<TubeCell>, String> 
             "the curve needs more than {MAX_TUBE_SEGMENTS} segments; split it into several calls"
         ));
     }
-    let segments = segments(&path);
+    let mut segments = segments(&path);
+    if shape.roll != 0.0 {
+        let (sin, cos) = shape.roll.sin_cos();
+        for segment in &mut segments {
+            let (n, b) = (segment.normal, segment.binormal);
+            segment.normal = add(scale(n, cos), scale(b, sin));
+            segment.binormal = sub(scale(b, cos), scale(n, sin));
+        }
+    }
     let mut work = 0i64;
     for segment in &segments {
         let (min, max) = segment_box(segment);
@@ -138,7 +185,7 @@ pub fn tube(points: &[TubePoint], curve: bool) -> Result<Vec<TubeCell>, String> 
         for z in min[2]..=max[2] {
             for y in min[1]..=max[1] {
                 for x in min[0]..=max[0] {
-                    consider(&mut best, segment, (x, y, z), false);
+                    consider(&mut best, segment, shape, (x, y, z), false);
                 }
             }
         }
@@ -153,7 +200,7 @@ pub fn tube(points: &[TubePoint], curve: bool) -> Result<Vec<TubeCell>, String> 
                 p[1].round() as i32,
                 p[2].round() as i32,
             );
-            consider(&mut best, segment, cell, true);
+            consider(&mut best, segment, shape, cell, true);
         }
         if best.len() as i64 > MAX_SCULPT_CELLS {
             return Err(format!(
@@ -249,7 +296,13 @@ fn segments(path: &[TubePoint]) -> Vec<Segment> {
 
 /// Keep `cell` when its centre is inside `segment` (or `force`), with the
 /// deepest segment's position on the tube.
-fn consider(best: &mut HashMap<Cell, (f64, f64, f64)>, segment: &Segment, cell: Cell, force: bool) {
+fn consider(
+    best: &mut HashMap<Cell, (f64, f64, f64)>,
+    segment: &Segment,
+    shape: TubeShape,
+    cell: Cell,
+    force: bool,
+) {
     let c = [f64::from(cell.0), f64::from(cell.1), f64::from(cell.2)];
     let d = sub(segment.b, segment.a);
     let len2 = dot(d, d);
@@ -260,7 +313,27 @@ fn consider(best: &mut HashMap<Cell, (f64, f64, f64)>, segment: &Segment, cell: 
     };
     let offset = sub(c, add(segment.a, scale(d, t)));
     let dist = dot(offset, offset).sqrt();
-    let depth = dist - (segment.ra + (segment.rb - segment.ra) * t);
+    let radius = segment.ra + (segment.rb - segment.ra) * t;
+    let depth = if shape.is_round() {
+        dist - radius
+    } else {
+        // Width along the binormal, thickness along the normal, and past an
+        // end along the axis.
+        let width = dot(offset, segment.binormal) / radius;
+        let tangent = cross(segment.normal, segment.binormal);
+        let axial = dot(offset, tangent) / radius;
+        let mut thick = (radius * shape.aspect).max(0.5);
+        if shape.blade {
+            thick = (thick * (1.0 - width) * 0.5).max(0.5);
+        }
+        let through = dot(offset, segment.normal) / thick;
+        let measure = if shape.blade {
+            (width * width + axial * axial).sqrt().max(through.abs())
+        } else {
+            (width * width + axial * axial + through * through).sqrt()
+        };
+        (measure - 1.0) * radius
+    };
     if (depth > 1.0e-9 && !force) || best.get(&cell).is_some_and(|found| found.0 <= depth) {
         return;
     }

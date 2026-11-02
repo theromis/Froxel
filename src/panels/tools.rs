@@ -240,6 +240,24 @@ pub(super) fn options(ui: &mut Ui, session: &mut Session) {
 fn tube(ui: &mut Ui, session: &mut Session) {
     slider_f32(ui, session, "Start", SliderTarget::TubeStart, 0.5..=32.0, 1);
     slider_f32(ui, session, "End", SliderTarget::TubeEnd, 0.5..=32.0, 1);
+    slider_f32(
+        ui,
+        session,
+        "Flatten",
+        SliderTarget::TubeAspect,
+        0.05..=1.0,
+        2,
+    );
+    slider_f32(
+        ui,
+        session,
+        "Roll",
+        SliderTarget::TubeRoll,
+        -180.0..=180.0,
+        0,
+    );
+    ui.toggle_value(&mut session.tube_blade, "Blade")
+        .on_hover_text("A wedge: full thickness at one edge, one cell at the other");
     row(ui, |ui| {
         ui.toggle_value(&mut session.tube_smooth, "Smooth")
             .on_hover_text("A curve through the chain's points instead of straight segments");

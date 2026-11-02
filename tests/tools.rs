@@ -244,3 +244,66 @@ fn smooth_fills_a_pit_and_removes_a_spike_keeping_colours() {
     let off = smooth(&cells, (-2, -2, 0), (2, 2, 1), 1, 27, -1);
     assert!(off.writes.is_empty());
 }
+
+#[test]
+fn flat_tube_lies_flat_rolls_and_tapers_to_a_blade() {
+    let ends = [
+        tube_point(0.0, 0.0, 0.0, 4.0),
+        tube_point(12.0, 0.0, 0.0, 4.0),
+    ];
+    let flat = TubeShape {
+        aspect: 0.25,
+        roll: 0.0,
+        blade: false,
+    };
+    let cells = tube_shaped(&ends, false, flat).unwrap();
+    let span = |cells: &[TubeCell], axis: usize| {
+        let at = |c: &TubeCell| [c.cell.0, c.cell.1, c.cell.2][axis];
+        let mid: Vec<_> = cells.iter().filter(|c| c.cell.0 == 6).collect();
+        (
+            mid.iter().map(|c| at(c)).min().unwrap(),
+            mid.iter().map(|c| at(c)).max().unwrap(),
+        )
+    };
+    assert_eq!(span(&cells, 1), (-4, 4));
+    assert_eq!(span(&cells, 2), (-1, 1));
+    let rolled = tube_shaped(
+        &ends,
+        false,
+        TubeShape {
+            roll: 90f64.to_radians(),
+            ..flat
+        },
+    )
+    .unwrap();
+    assert_eq!(span(&rolled, 1), (-1, 1));
+    assert_eq!(span(&rolled, 2), (-4, 4));
+    let blade = tube_shaped(
+        &ends,
+        false,
+        TubeShape {
+            aspect: 0.75,
+            roll: 0.0,
+            blade: true,
+        },
+    )
+    .unwrap();
+    let thick = |y: i32| {
+        blade
+            .iter()
+            .filter(|c| c.cell.0 == 6 && c.cell.1 == y)
+            .count()
+    };
+    // The binormal of a tube along +X is -Y, so the thick edge is at +Y.
+    assert!(thick(3) > thick(-3), "{} {}", thick(3), thick(-3));
+    assert_eq!(thick(-3), 1);
+    assert!(tube_shaped(
+        &ends,
+        false,
+        TubeShape {
+            aspect: 0.0,
+            ..flat
+        }
+    )
+    .is_err());
+}

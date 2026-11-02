@@ -932,6 +932,8 @@ impl Session {
             SliderTarget::TubeSecond => self.tube_second = whole.clamp(1, 255),
             SliderTarget::TubePeriod => self.tube_period = value.clamp(1.0, 16.0),
             SliderTarget::TubeSectors => self.tube_sectors = whole.clamp(1, 32),
+            SliderTarget::TubeAspect => self.tube_aspect = value.clamp(0.05, 1.0),
+            SliderTarget::TubeRoll => self.tube_roll = value.clamp(-180.0, 180.0),
             SliderTarget::SmoothIterations => self.smooth_iterations = whole.clamp(1, 8),
             SliderTarget::SmoothFillAt => self.smooth_fill_at = whole.clamp(1, 27),
             SliderTarget::SmoothRemoveAt => self.smooth_remove_at = whole.clamp(-1, 25),

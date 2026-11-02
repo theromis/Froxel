@@ -447,7 +447,12 @@ impl Session {
         &self,
         points: &[crate::tools::TubePoint],
     ) -> Result<Vec<(Cell, u8)>, String> {
-        let cells = crate::tools::tube(points, self.tube_smooth)?;
+        let shape = crate::tools::TubeShape {
+            aspect: f64::from(self.tube_aspect.clamp(0.05, 1.0)),
+            roll: f64::from(self.tube_roll).to_radians(),
+            blade: self.tube_blade,
+        };
+        let cells = crate::tools::tube_shaped(points, self.tube_smooth, shape)?;
         let slots = [
             self.paint_slot(),
             match self.tool_mode {
@@ -675,7 +680,13 @@ impl Session {
             .wrapping_mul(16777619)
             .wrapping_add(self.circle_fill as u64);
         h = h.wrapping_mul(16777619).wrapping_add(self.box_fill as u64);
-        for value in [self.tube_start, self.tube_end, self.tube_period] {
+        for value in [
+            self.tube_start,
+            self.tube_end,
+            self.tube_period,
+            self.tube_aspect,
+            self.tube_roll,
+        ] {
             h = h
                 .wrapping_mul(16777619)
                 .wrapping_add(u64::from(value.to_bits()));
@@ -684,6 +695,7 @@ impl Session {
             (self.tube_sectors as u64) << 16
                 | (self.tube_second as u64) << 8
                 | (self.tube_colors as u64) << 2
+                | (self.tube_blade as u64) << 7
                 | (self.tube_smooth as u64) << 1
                 | self.tube_chain as u64,
         );

@@ -557,7 +557,7 @@ fn tools() -> Vec<Value> {
             "radius": num_prop("Edge bevel in voxels. 0 fills the box."),
             "mode": mode_prop()
         }), &["x0", "y0", "z0", "x1", "y1", "z1", "palette", "radius"]),
-        tool("fill_tube", "Fill a round tube through 2..=1024 local points, for limbs, roots, branches, and twigs. Each point has its own radius, so the tube tapers; joints and ends are round. A whole-number point is the centre of that cell, and a cell is filled when its centre is within the radius of the axis. curve smooth passes a Catmull-Rom curve through the points; polyline (default) joins them straight. Colour with palette, or with palettes and a pattern: rings bands along the length every period cells, stripes divides the circumference into sectors (grooves along the tube), random picks per cell from seed. At most 2000000 cells; refused before any cell is written. One undo step.", json!({
+        tool("fill_tube", "Fill a round tube through 2..=1024 local points, for limbs, roots, branches, and twigs. Each point has its own radius, so the tube tapers; joints and ends are round. A whole-number point is the centre of that cell, and a cell is filled when its centre is within the radius of the axis. curve smooth passes a Catmull-Rom curve through the points; polyline (default) joins them straight. aspect, roll, and profile blade make it flat or a wedge, for shards, splinters, and plank ends. Colour with palette, or with palettes and a pattern: rings bands along the length every period cells, stripes divides the circumference into sectors (grooves along the tube), random picks per cell from seed. At most 2000000 cells; refused before any cell is written. One undo step.", json!({
             "points": {"type": "array", "description": "Each item is [x, y, z], [x, y, z, radius], or {x, y, z, radius?} in the active object's local cells. Numbers may be fractional."},
             "radius": num_prop("Radius for points that give none, 0.5..=128. 0.5 is one cell thick."),
             "curve": {"type": "string", "enum": ["polyline", "smooth"], "description": "polyline (default) or smooth."},
@@ -567,6 +567,9 @@ fn tools() -> Vec<Value> {
             "period": num_prop("rings: band length along the tube in cells. Defaults to 2."),
             "sectors": int_prop("stripes: sectors around the tube, 1..=256. Defaults to the number of palettes."),
             "seed": int_prop("random: seed. Defaults to 0."),
+            "aspect": num_prop("Flatten: thickness over width, 0.05..=1. 1 (default) is round. The thickness is at least one cell and runs up for a level tube, so a flat tube lies flat."),
+            "roll": num_prop("Degrees to turn a flat or blade cross-section about the axis. 90 stands a level shard on its edge."),
+            "profile": {"type": "string", "enum": ["round", "blade"], "description": "blade tapers the thickness across the width to one cell at one edge: a wedge, for splinters and broken plank ends. Defaults to round."},
             "mode": mode_prop()
         }), &["points"]),
         tool("carve", "Remove the solid cells inside a box, ellipsoid, rounded_box, or tube of the active object, for hollows, tunnels, and pits. box, ellipsoid, and rounded_box take x0..z1 (and radius for rounded_box) exactly as their fill tools; tube takes points, radius, and curve as fill_tube. Same 2000000-cell limits, checked before any cell changes. One undo step. Replies with removed.", json!({
@@ -579,7 +582,10 @@ fn tools() -> Vec<Value> {
             "z1": int_prop("Inclusive corner"),
             "radius": num_prop("rounded_box: edge bevel. tube: radius for points that give none."),
             "points": {"type": "array", "description": "tube: points as in fill_tube."},
-            "curve": {"type": "string", "enum": ["polyline", "smooth"], "description": "tube: polyline (default) or smooth."}
+            "curve": {"type": "string", "enum": ["polyline", "smooth"], "description": "tube: polyline (default) or smooth."},
+            "aspect": num_prop("tube: flatten, as fill_tube."),
+            "roll": num_prop("tube: roll in degrees, as fill_tube."),
+            "profile": {"type": "string", "enum": ["round", "blade"], "description": "tube: as fill_tube."}
         }), &["shape"]),
         tool("smooth", "Soften a blocky region of the active object with a majority filter over each cell's 26 neighbours, inside an inclusive local box of at most 2000000 cells. An empty cell with at least fillAt solid neighbours is filled with the colour most of them hold; a solid cell with at most removeAt solid neighbours is removed. The defaults fill single-cell pits and inside corners and remove single-cell spikes and outside corners, and keep flat faces and edges. It also removes features one cell thick (twigs, thin walls), so leave those out of the box. Cells outside the box are read, never changed. One undo step. Replies with filled, removed, and the passes run.", {
             let mut p = json!({});

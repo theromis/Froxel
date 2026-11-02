@@ -1409,3 +1409,19 @@ fn smooth_softens_a_region_as_one_undo_step() {
     ));
     assert!(passes.contains("iterations must be 1..=8"), "{passes}");
 }
+
+#[test]
+fn fill_tube_takes_a_flat_blade_profile() {
+    let mut head = Headless::new();
+    head.ok(
+        "fill_tube",
+        json!({"points": [[0, 0, 0], [10, 0, 0]], "radius": 3, "aspect": 0.3, "roll": 90, "profile": "blade", "palette": 5}),
+    );
+    let cells = &head.session.active().cells;
+    assert!(cells.contains_key(&(5, 0, 3)) && !cells.contains_key(&(5, 2, 0)));
+    let bad = error_text(&head.call(
+        "fill_tube",
+        json!({"points": [[0, 0, 0], [4, 0, 0]], "radius": 1, "palette": 1, "profile": "knife"}),
+    ));
+    assert!(bad.contains("profile must be round or blade"), "{bad}");
+}

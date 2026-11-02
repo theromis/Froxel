@@ -440,6 +440,8 @@ pub(super) fn slider_value(session: &Session, target: SliderTarget) -> f32 {
         SliderTarget::TubeSecond => session.tube_second as f32,
         SliderTarget::TubePeriod => session.tube_period,
         SliderTarget::TubeSectors => session.tube_sectors as f32,
+        SliderTarget::TubeAspect => session.tube_aspect,
+        SliderTarget::TubeRoll => session.tube_roll,
         SliderTarget::SmoothIterations => session.smooth_iterations as f32,
         SliderTarget::SmoothFillAt => session.smooth_fill_at as f32,
         SliderTarget::SmoothRemoveAt => session.smooth_remove_at as f32,

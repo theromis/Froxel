@@ -432,6 +432,8 @@ pub enum SliderTarget {
     TubeSecond,
     TubePeriod,
     TubeSectors,
+    TubeAspect,
+    TubeRoll,
     SmoothIterations,
     SmoothFillAt,
     SmoothRemoveAt,
@@ -493,6 +495,8 @@ impl SliderTarget {
             SliderTarget::TubeSecond => "slider.tube-second",
             SliderTarget::TubePeriod => "slider.tube-period",
             SliderTarget::TubeSectors => "slider.tube-sectors",
+            SliderTarget::TubeAspect => "slider.tube-aspect",
+            SliderTarget::TubeRoll => "slider.tube-roll",
             SliderTarget::SmoothIterations => "slider.smooth-iterations",
             SliderTarget::SmoothFillAt => "slider.smooth-fill-at",
             SliderTarget::SmoothRemoveAt => "slider.smooth-remove-at",
@@ -636,6 +640,11 @@ pub struct Session {
     /// Tube tool: each drag adds a point to one tube until Finish.
     pub tube_chain: bool,
     pub tube_colors: TubeColors,
+    /// Tube tool: flatten (thickness over width), roll in degrees, and the
+    /// wedge profile, as `fill_tube`'s `aspect`, `roll`, and `profile`.
+    pub tube_aspect: f32,
+    pub tube_roll: f32,
+    pub tube_blade: bool,
     pub tube_second: i32,
     pub tube_period: f32,
     pub tube_sectors: i32,

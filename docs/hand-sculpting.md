@@ -48,6 +48,10 @@ ends are round. `curve` `smooth` bends it through the points instead of
 joining them straight. `palettes` with a `pattern` colours it: `stripes`
 runs grooves along it (bark), `rings` bands it along its length (a tail),
 and `random` speckles it.
+`aspect` flattens it and `profile` `blade` makes it a wedge, so a tube
+that tapers from radius 1.5 to 0.5 with `aspect` 0.4 and `profile` `blade`
+is a flat splinter, and a short wide one is a broken plank end or a shard.
+`roll` turns the flat side about the axis.
 
 `carve` removes the cells inside a `box`, `ellipsoid`, `rounded_box`, or
 `tube`: a hollow trunk, a tunnel, a burrow, an eye socket. A carved tube
