@@ -78,14 +78,48 @@ fn inspect_lists_only_slots_with_motion() {
     assert_eq!(got["motion"], json!({}));
 
     session.materials[36].motion = crate::state::Motion::Sway;
-    session.materials[36].motion_amount = 1.5;
+    session.materials[36].motion_amount = 0.3;
     session.materials[10].motion_amount = 2.0;
     let got = apply(&mut session, "document.inspect", &json!({})).unwrap();
     assert_eq!(
         got["motion"],
         json!({
             "10": {"kind": "none", "amount": 2.0},
-            "36": {"kind": "sway", "amount": 1.5},
+            "36": {"kind": "sway", "amount": 0.3},
         })
     );
+}
+
+#[test]
+fn inspect_lists_only_used_palette_slots_unless_asked() {
+    let mut session = Session::new();
+    session.replace_empty();
+    let got = apply(&mut session, "document.inspect", &json!({})).unwrap();
+    assert_eq!(got["palette"], json!({}));
+
+    apply(
+        &mut session,
+        "voxel.set",
+        &json!({"x": 0, "y": 0, "z": 0, "palette": 7}),
+    )
+    .unwrap();
+    session.objects[0].hidden = true;
+    let got = apply(&mut session, "document.inspect", &json!({})).unwrap();
+    let palette = got["palette"].as_object().unwrap();
+    assert_eq!(palette.keys().collect::<Vec<_>>(), ["7"]);
+    let rgba = session.palette[7];
+    let hex = format!(
+        "#{:02x}{:02x}{:02x}{:02x}",
+        rgba[0], rgba[1], rgba[2], rgba[3]
+    );
+    assert_eq!(palette["7"], hex);
+
+    let got = apply(
+        &mut session,
+        "document.inspect",
+        &json!({"fullPalette": true}),
+    )
+    .unwrap();
+    assert_eq!(got["palette"].as_object().unwrap().len(), 256);
+    assert!(apply(&mut session, "document.inspect", &json!({"fullPalette": 1})).is_err());
 }

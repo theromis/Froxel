@@ -296,7 +296,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "document.open" => {
             let path = req_str(&params, "path")?;
             session.open_vox(Path::new(&path))?;
-            Ok(inspect(session))
+            inspect(session, &params)
         }
         "document.save" => {
             let path = match opt_str(&params, "path")? {
@@ -320,7 +320,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
                 .count();
             Ok(json!({"path": path, "voxels": voxels, "objects": objects}))
         }
-        "document.inspect" => Ok(inspect(session)),
+        "document.inspect" => inspect(session, &params),
         "voxel.get" => {
             let (x, y, z) = xyz(&params)?;
             let palette = session.active().cells.get(&(x, y, z)).copied().unwrap_or(0);
@@ -816,9 +816,17 @@ fn mesh_options(params: &Value) -> Result<crate::export::MeshExport, String> {
 
 const METHODS: &[(&str, &str, &str)] = &[
     ("document.new", "", "Empty document, default palette"),
-    ("document.open", "path", "Open a .vox, replacing the session"),
+    (
+        "document.open",
+        "path, fullPalette?",
+        "Open a .vox, replacing the session; replies like document.inspect",
+    ),
     ("document.save", "path?", "Write every non-empty object. path overwrites the open file when omitted"),
-    ("document.inspect", "", "Path, counts, bounds, objects, palette"),
+    (
+        "document.inspect",
+        "fullPalette?",
+        "Path, counts, bounds, objects, used palette slots, motion",
+    ),
     ("voxel.get", "x, y, z", "Palette index of one local cell. 0 is empty"),
     ("voxel.set", "x, y, z, palette", "Write one cell. One undo step"),
     ("voxel.set_many", "cells", "Write up to 200000 cells as one undo step"),
@@ -914,7 +922,8 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("ping", "", "Replies \"pong\""),
 ];
 
-fn inspect(session: &Session) -> Value {
+fn inspect(session: &Session, params: &Value) -> Result<Value, String> {
+    let full_palette = opt_bool(params, "fullPalette")?.unwrap_or(false);
     let objects: Vec<Value> = session
         .objects
         .iter()
@@ -939,7 +948,7 @@ fn inspect(session: &Session) -> Value {
         .iter()
         .map(|object| object.cells.len())
         .sum();
-    json!({
+    Ok(json!({
         "path": session.path.as_ref().map(|p| p.display().to_string()),
         "activeObject": session.selected,
         "objectCount": session.objects.len(),
@@ -951,9 +960,25 @@ fn inspect(session: &Session) -> Value {
         "canRedo": session.can_redo(),
         "objects": objects,
         "bones": bone_rows(session),
-        "palette": (0..256).map(|i| hex_color(session.palette[i])).collect::<Vec<_>>(),
+        "palette": palette_rows(session, full_palette),
         "motion": motion_rows(session),
-    })
+    }))
+}
+
+/// Palette colours keyed by index: the slots some cell uses, or every slot.
+fn palette_rows(session: &Session, full: bool) -> Value {
+    let mut used = [full; 256];
+    for object in &session.objects {
+        for slot in object.cells.values() {
+            used[*slot as usize] = true;
+        }
+    }
+    used[0] = full;
+    let rows: serde_json::Map<String, Value> = (0..256)
+        .filter(|&index| used[index])
+        .map(|index| (index.to_string(), json!(hex_color(session.palette[index]))))
+        .collect();
+    Value::Object(rows)
 }
 
 /// Slots whose motion is not the default (`none` at amount 1), keyed by index.
@@ -968,7 +993,7 @@ fn motion_rows(session: &Session) -> Value {
         .map(|(index, material)| {
             (
                 index.to_string(),
-                json!({"kind": material.motion.as_str(), "amount": material.motion_amount}),
+                json!({"kind": material.motion.as_str(), "amount": short_f32(material.motion_amount)}),
             )
         })
         .collect();
@@ -991,6 +1016,11 @@ fn bounds_json(cells: impl IntoIterator<Item = crate::state::Cell>) -> Value {
         max.2 = max.2.max(cell.2);
     }
     json!({"min": [min.0, min.1, min.2], "max": [max.0, max.1, max.2]})
+}
+
+/// The f64 that prints like the f32, so 0.3 is not 0.30000001192092896.
+fn short_f32(value: f32) -> f64 {
+    value.to_string().parse().unwrap_or(value as f64)
 }
 
 fn hex_color(rgba: [u8; 4]) -> String {

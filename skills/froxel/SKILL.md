@@ -36,7 +36,8 @@ If the tools are missing, the server is not configured. Point the user to
 - `set_voxels` takes `[x, y, z, palette]` rows, up to 200000 per call. Batch
   detail into few calls.
 - Call `inspect_document` when you do not know the objects, bounds, or
-  palette. Do not guess indices.
+  palette. Do not guess indices. Its `palette` lists only the slots in use;
+  pass `fullPalette: true` to see all 256.
 
 ## Hand sculpting loop
 
