@@ -432,9 +432,10 @@ fn num(value: &Value, key: &str) -> Result<f32, String> {
 fn tools() -> Vec<Value> {
     vec![
         tool("new_document", "Replace the session with an empty one-object document and the default palette.", json!({}), &[]),
-        tool("open_file", "Open a .vox file, replacing the session document. Replies with the inspect_document summary.", json!({
+        tool("open_file", "Open a .vox file, replacing the session document. By default replies with path, objectCount, voxels, world bounds, activeObject, canUndo, canRedo, bones (count), paletteSlots (used slots), motionSlots, the first 20 objectNames, and moreObjects (how many names were left out). detail full replies with the inspect_document result instead.", json!({
             "path": str_prop("Path of a .vox file"),
-            "fullPalette": {"type": "boolean", "description": "List all 256 palette slots, not only the used ones. Defaults to false."}
+            "detail": {"type": "string", "enum": ["summary", "full"], "description": "summary (default) is the short reply; full is the inspect_document result."},
+            "fullPalette": {"type": "boolean", "description": "With detail full, list all 256 palette slots, not only the used ones. Defaults to false."}
         }), &["path"]),
         tool("save_file", "Write every non-empty object as a .vox scene. Replies with voxels (solid cells in the file) and objects (models written).", json!({"path": str_prop("Where to write. Omit to overwrite the open file.")}), &[]),
         tool("inspect_document", "Path, voxel count, world bounds, objects (name, world position, local bounds), palette colours keyed by index for the slots some voxel uses (fullPalette for all 256), and motion keyed by palette index for slots that are not still at amount 1.", json!({

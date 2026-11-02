@@ -146,7 +146,7 @@ tracer. A file with no scene graph still loads its first model.
 | Tool | Required arguments | What it does |
 |---|---|---|
 | `new_document` | — | Empty document, default palette, cleared path and undo stack |
-| `open_file` | `path` | Open a `.vox`, replacing the session. The reply is the `inspect_document` summary; optional `fullPalette` |
+| `open_file` | `path` | Open a `.vox`, replacing the session. The reply is short: `path`, `objectCount`, `voxels`, `bounds`, `activeObject`, `canUndo`, `canRedo`, `bones` (a count), `paletteSlots` (used slots), `motionSlots`, the first 20 `objectNames`, and `moreObjects`. `detail` `full` replies with the `inspect_document` result instead (optional `fullPalette`) |
 | `save_file` | — | Write every non-empty object. `path` overwrites the open file when omitted. Replies with `voxels` and `objects` |
 | `inspect_document` | — | Path, counts, world bounds, objects (name and world position), the used palette slots, and the slots with motion. `fullPalette` lists all 256 slots |
 | `get_voxel` | `x`, `y`, `z` | Palette index of one **local** cell of the active object. `0` is empty |

@@ -296,7 +296,11 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "document.open" => {
             let path = req_str(&params, "path")?;
             session.open_vox(Path::new(&path))?;
-            inspect(session, &params)
+            match opt_str(&params, "detail")?.as_deref() {
+                None | Some("summary") => Ok(open_summary(session)),
+                Some("full") => inspect(session, &params),
+                Some(_) => Err("detail must be summary or full".to_string()),
+            }
         }
         "document.save" => {
             let path = match opt_str(&params, "path")? {
@@ -844,8 +848,8 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("document.new", "", "Empty document, default palette"),
     (
         "document.open",
-        "path, fullPalette?",
-        "Open a .vox, replacing the session; replies like document.inspect",
+        "path, detail?, fullPalette?",
+        "Open a .vox, replacing the session. detail full replies like document.inspect",
     ),
     ("document.save", "path?", "Write every non-empty object. path overwrites the open file when omitted"),
     (
@@ -947,6 +951,41 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("control.methods", "", "Methods this server answers"),
     ("ping", "", "Replies \"pong\""),
 ];
+
+/// Object names listed by the `document.open` summary before it gives a count.
+const SUMMARY_OBJECT_NAMES: usize = 20;
+
+/// The short `document.open` reply: counts and bounds, and the first object
+/// names, without per-object rows or palette entries.
+fn open_summary(session: &Session) -> Value {
+    let voxels: usize = session
+        .objects
+        .iter()
+        .map(|object| object.cells.len())
+        .sum();
+    let names: Vec<&str> = session
+        .objects
+        .iter()
+        .take(SUMMARY_OBJECT_NAMES)
+        .map(|object| object.name.as_str())
+        .collect();
+    let palette = palette_rows(session, false);
+    let motion = motion_rows(session);
+    json!({
+        "path": session.path.as_ref().map(|p| p.display().to_string()),
+        "activeObject": session.selected,
+        "objectCount": session.objects.len(),
+        "voxels": voxels,
+        "bounds": bounds_json(session.world_bounds().into_iter().flat_map(|(min, max)| [min, max])),
+        "canUndo": session.can_undo(),
+        "canRedo": session.can_redo(),
+        "bones": session.skeleton.bones.len(),
+        "paletteSlots": palette.as_object().map_or(0, |rows| rows.len()),
+        "motionSlots": motion.as_object().map_or(0, |rows| rows.len()),
+        "objectNames": names,
+        "moreObjects": session.objects.len().saturating_sub(SUMMARY_OBJECT_NAMES),
+    })
+}
 
 fn inspect(session: &Session, params: &Value) -> Result<Value, String> {
     let full_palette = opt_bool(params, "fullPalette")?.unwrap_or(false);

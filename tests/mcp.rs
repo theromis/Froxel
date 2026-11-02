@@ -494,6 +494,44 @@ fn worked_example_exports_a_glb_with_two_joints() {
 }
 
 #[test]
+fn open_file_replies_with_a_summary_unless_detail_is_full() {
+    let mut head = Headless::new();
+    head.ok("set_voxel", json!({"x": 0, "y": 0, "z": 0, "palette": 1}));
+    for index in 0..24 {
+        head.ok(
+            "add_object",
+            json!({"name": format!("block{index}"), "position": [index * 2, 0, 0]}),
+        );
+        head.ok("set_voxel", json!({"x": 0, "y": 0, "z": 0, "palette": 2}));
+    }
+    let path = std::env::temp_dir().join("froxel-mcp-summary.vox");
+    let _ = std::fs::remove_file(&path);
+    head.ok("save_file", json!({"path": path.to_string_lossy()}));
+    let short = head.ok("open_file", json!({"path": path.to_string_lossy()}));
+    assert_eq!(short["objectCount"], 25);
+    assert_eq!(short["voxels"], 25);
+    assert_eq!(short["paletteSlots"], 2);
+    assert_eq!(short["objectNames"].as_array().unwrap().len(), 20);
+    assert_eq!(short["objectNames"][1], "block0");
+    assert_eq!(short["moreObjects"], 5);
+    assert_eq!(short["bounds"]["max"][0], 46);
+    assert!(short.get("objects").is_none());
+    assert!(short.get("palette").is_none());
+    let full = head.ok(
+        "open_file",
+        json!({"path": path.to_string_lossy(), "detail": "full"}),
+    );
+    assert_eq!(full, head.ok("inspect_document", json!({})));
+    assert_eq!(full["objects"].as_array().unwrap().len(), 25);
+    let refused = head.call(
+        "open_file",
+        json!({"path": path.to_string_lossy(), "detail": "all"}),
+    );
+    assert_eq!(refused["result"]["isError"], true);
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
 fn save_file_counts_the_scene_and_reopen_keeps_the_corner() {
     let mut head = Headless::new();
     head.ok("set_voxel", json!({"x": 0, "y": 0, "z": 0, "palette": 1}));
