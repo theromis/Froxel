@@ -82,10 +82,11 @@ fine detail, or keep them outside the box.
 set_palette          entries=[{index: 3, r: 92, g: 64, b: 40}, {index: 4, r: 60, g: 40, b: 26}, {index: 5, r: 196, g: 160, b: 104}, {index: 6, r: 214, g: 184, b: 128}, {index: 7, r: 238, g: 218, b: 170}]
 fill_tube            points=[[0, 0, 4, 4], [14, 2, 5, 3.5], [30, 3, 4, 3]] palettes=[3, 4] pattern="stripes" sectors=10   # fallen trunk with bark grooves
 smooth               x0=-5 y0=-5 z0=-1 x1=34 y1=8 z1=9                    # before thin walls and twigs exist
-break_end            point=[30, 3, 4] normal=[1, 0, 0.15] depth=4 density=0.2 length=[4, 14] bark=4 sapwood=[5, 6] tips=7 seed=3   # snapped end
-scatter              x0=28 y0=-6 z0=0 x1=40 y1=10 z1=16 palettes=[5, 6, 7, 3] count=60 size=[1, 3] floor=0 seed=5   # debris under the break
+break_end            point=[25, 3, 4] normal=[1, 0, 0.15] depth=4 density=0.2 length=[4, 14] bark=4 sapwood=[5, 6] tips=7 seed=3   # snapped end
+fill_box             x0=-8 y0=-12 z0=-1 x1=40 y1=14 z1=-1 palette=4       # ground, after the break so it stays whole
+scatter              x0=24 y0=-6 z0=0 x1=38 y1=12 z1=16 palettes=[5, 6, 7, 3] count=60 size=[1, 3] seed=5   # debris under the break
 carve                shape="tube" points=[[-1, 0, 4], [12, 1, 4]] radius=2.5      # hollow end
-fill_tube            points=[[30, 3, 6, 2], [36, 6, 10, 1.2], [40, 6, 15, 0.5]] curve="smooth" palette=3 mode="empty"   # crown limb
+fill_tube            points=[[14, 4, 7, 2], [17, 8, 11, 1.2], [18, 9, 16, 0.5]] curve="smooth" palette=3 mode="empty"   # side branch
 fill_tube            points=[[2, -3, 3, 2], [-2, -7, 0, 1], [-5, -9, -1, 0.5]] palette=4 mode="empty"   # buttress root
 preview              path="log.png"
 ```
