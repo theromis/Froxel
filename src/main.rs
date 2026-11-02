@@ -36,6 +36,7 @@ mod mobile;
 #[cfg(target_os = "macos")]
 mod native_menu;
 mod panels;
+mod preview;
 mod remote;
 mod rig;
 mod script;
@@ -225,6 +226,9 @@ fn main(
     }
     if args.first().is_some_and(|arg| arg == "render") {
         std::process::exit(cli::render(&args[1..]));
+    }
+    if args.first().is_some_and(|arg| arg == "preview") {
+        std::process::exit(cli::preview(&args[1..]));
     }
     if args.first().is_some_and(|arg| arg == "export") {
         std::process::exit(cli::export(&args[1..]));

@@ -279,7 +279,7 @@ fn dispatch(
                 "protocolVersion": version,
                 "capabilities": {"tools": {"listChanged": false}},
                 "serverInfo": {"name": "Froxel", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, refine with set_voxels, and render after every step."
+                "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. preview writes a fast lit PNG (the viewport mesh and light, rasterised, well under a second) framed on the model or one object; use it to look after every step. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, refine with set_voxels, and render after every step."
             }),
         ));
     }
@@ -357,6 +357,7 @@ fn map_tool(name: &str, args: &Value) -> Result<(String, Value), String> {
         "redo" => "edit.redo",
         "render" => "render",
         "model_view" => "render.flat",
+        "preview" => "render.preview",
         "set_view" => "view.set",
         "screenshot" => "ui.screenshot",
         "screenshot_viewport" => "ui.screenshot",
@@ -598,6 +599,22 @@ fn tools() -> Vec<Value> {
             "showBones": {"type": "boolean", "description": "Draw joint points and parent links on the PNG. Default false."},
             "views": {"type": "array", "description": "Extra PNGs with the same camera settings. Each item is {view, path} or {yaw, pitch, path}.", "items": {"type": "object"}}
         }), &["path"]),
+        tool("preview", "Fast lit preview to a PNG in well under a second: the editor viewport's mesh and light (sun plus ambient), rasterised on the CPU with no path tracer and no window. The camera orbits at yaw and pitch and fits the model, or one object, inside the image with a margin. Use it to check shape and framing often; use render for lighting and materials and model_view for palette-exact colours.", json!({
+            "path": str_prop("PNG file to write. Its folder is created."),
+            "width": int_prop("Pixels, 1..4096. Default 1024."),
+            "height": int_prop("Pixels, 1..4096. Default 1024."),
+            "view": view_prop(),
+            "yaw": num_prop("Orbit yaw in degrees. 0 puts the camera on +X, looking toward -X. A model facing -Y is face-on at yaw -90. Default 30."),
+            "pitch": num_prop("Orbit pitch in degrees, -90..90. 90 looks straight down. Default 25."),
+            "orthographic": {"type": "boolean", "description": "Parallel projection fitted tightly to the silhouette; replies pixelsPerVoxel. Default false (the viewport's 50 degree perspective)."},
+            "fov": num_prop("Vertical field of view in degrees for perspective, 10..120. Default 50, like the viewport; lower flattens a long model."),
+            "margin": num_prop("Empty border on each side as a fraction of the image, 0..0.45. Default 0.06."),
+            "object": {"type": ["integer", "string"], "description": "Frame this object (index or name) instead of the whole model. Other visible objects are still drawn unless isolate is true. A hidden object named here is drawn."},
+            "isolate": {"type": "boolean", "description": "Draw only object. Default false."},
+            "background": {"type": ["string", "array"], "description": "#rrggbb, #rrggbbaa, or [r, g, b, a?]. Default the viewport grey #16181c; #00000000 is transparent."},
+            "antialias": {"type": "boolean", "description": "2x2 supersampling up to 2048x2048 output pixels. Default true."},
+            "pose": {"type": "object", "description": "Temporary preview pose for this still. Bone name to a quaternion [x, y, z, w] or {rotation, scale}, on top of the bind pose. The document pose is restored afterwards.", "additionalProperties": {"anyOf": [{"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}, {"type": "object", "properties": {"rotation": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}, "scale": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3}}, "additionalProperties": false}]}}
+        }), &["path"]),
         tool("set_view", "Move the session camera. Connected to a window, that is the editor's camera, so the next screenshot_viewport shows an exact view. Not an edit and not undoable. The edit viewport stays lit; use model_view for palette-exact colours.", json!({
             "view": view_prop(),
             "yaw": num_prop("Orbit yaw in degrees. 0 puts the camera on +X, looking toward -X. Omit to keep the current yaw."),
@@ -706,6 +723,7 @@ fn hints(name: &str) -> [bool; 3] {
         | "remove_clip"
         | "render"
         | "model_view"
+        | "preview"
         | "screenshot"
         | "screenshot_viewport"
         | "screenshot_region"

@@ -1,6 +1,6 @@
 ---
 name: froxel
-description: Model, rig, animate, render, and export voxel art through the Froxel MCP server. Use when the user wants a voxel model, a MagicaVoxel .vox file, a voxel creature or prop, a turnaround of a voxel model, a path-traced voxel render, or a rigged .glb for Godot, Blender, or a game engine, and the froxel MCP tools (open_file, fill_box, set_voxels, render, model_view, export_mesh) are available.
+description: Model, rig, animate, render, and export voxel art through the Froxel MCP server. Use when the user wants a voxel model, a MagicaVoxel .vox file, a voxel creature or prop, a turnaround of a voxel model, a path-traced voxel render, or a rigged .glb for Godot, Blender, or a game engine, and the froxel MCP tools (open_file, fill_box, set_voxels, preview, render, model_view, export_mesh) are available.
 ---
 
 # Froxel
@@ -44,7 +44,9 @@ If the tools are missing, the server is not configured. Point the user to
 1. `new_document`, then `set_palette` with the colours you need.
 2. **Block out** the large forms with `fill_rounded_box` and
    `fill_ellipsoid`. Get the silhouette and proportions right first.
-3. **Look.** Use `model_view` to compare shape and colour with a reference: it
+3. **Look.** Use `preview` for a quick lit look at shape and framing after
+   every edit: it is the viewport's light, rasterised in well under a second,
+   and `object` frames one part. Use `model_view` to compare shape and colour with a reference: it
    is flat palette colour, orthographic, with no lighting. Use `view` (`front`,
    `back`, `left`, `right`, `top`, `bottom`) and its `views` list to write a
    whole turnaround in one call. Use `render` to judge lighting and material.
@@ -101,7 +103,7 @@ when the shot is framed; lower `distance` if the subject looks small.
 When the server runs with `--connect`, edits appear in the open editor.
 `set_view` moves its camera, `screenshot_viewport` captures it, and
 `ui_inspect` with `ui_click` drive the controls. In a headless session these
-tools fail; use `render` and `model_view` instead.
+tools fail; use `preview`, `render`, and `model_view` instead.
 
 ## Mistakes to avoid
 

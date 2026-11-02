@@ -177,6 +177,7 @@ tracer. A file with no scene graph still loads its first model.
 | `redo` | — | Redo the last undone edit |
 | `render` | `path` | Path-trace the scene to a PNG. `width` and `height` default to 256. `samples` defaults to 16. `bounces` defaults to 4. `denoise` defaults to true. `yaw` defaults to 30°, `pitch` to 25°. Optional `orthographic`, `views`, `pose`, `showBones` |
 | `model_view` | `path` | Flat model view PNG: each pixel is the palette colour of the first cell hit, no light, no tonemap. `width` and `height` default to 512. Orthographic by default. Optional `view`, `yaw`, `pitch`, `distance`, `orthographic`, `background`, `views`, `pose`, `showBones` |
+| `preview` | `path` | Fast lit PNG: the viewport's mesh and light rasterised on the CPU in well under a second, fitted to the model or one object with a margin. `width` and `height` default to 1024 (up to 4096). Optional `view`, `yaw`, `pitch`, `orthographic`, `fov`, `margin`, `object`, `isolate`, `background`, `antialias`, `pose`. See [preview.md](preview.md) |
 | `set_view` | — | Move the session camera; connected, the window's. Optional `view`, `yaw`, `pitch`, `frame`, `distance`, `orthographic`, `bones`. Not an edit |
 | `screenshot` | — | PNG of the whole editor window. Connected mode only |
 | `screenshot_viewport` | — | PNG of the 3D viewport, including its mode chips. Connected mode only |
@@ -321,6 +322,13 @@ and, when orthographic, `pixelsPerVoxel`: how many pixels one voxel edge
 covers, the same for every view of the call. The editor camera does not
 move. Connected, the window draws the PNG; headless, this process does.
 `render` and its `views` items accept `view` too.
+
+`preview` draws the model as the edit viewport lights it, rasterised on
+the CPU with no path tracer and no window, and fits the posed model, or the
+object named by `object`, inside the image less `margin`. It is the quick
+look after an edit; [preview.md](preview.md) describes the light, the
+framing, the arguments, and `froxel preview`, the same image from the
+command line.
 
 `set_view` moves the session camera. Connected to a window, that is the
 editor's camera, so the next `screenshot_viewport` shows an exact front,

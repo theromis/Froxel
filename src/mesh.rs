@@ -91,10 +91,29 @@ pub fn mesh_chunk(
     color: impl Fn(u8) -> [u8; 3],
     motion: impl Fn(u8) -> [f32; 2],
 ) -> Mesh {
+    mesh_where(cells, |cell| chunk_key(cell) == chunk, color, motion)
+}
+
+/// Every exposed face of `cells`, in one mesh. The headless preview draws
+/// this; the viewport uploads [`mesh_chunk`] pieces of the same faces.
+pub fn mesh_cells(
+    cells: &HashMap<Cell, u8>,
+    color: impl Fn(u8) -> [u8; 3],
+    motion: impl Fn(u8) -> [f32; 2],
+) -> Mesh {
+    mesh_where(cells, |_| true, color, motion)
+}
+
+fn mesh_where(
+    cells: &HashMap<Cell, u8>,
+    keep: impl Fn(Cell) -> bool,
+    color: impl Fn(u8) -> [u8; 3],
+    motion: impl Fn(u8) -> [f32; 2],
+) -> Mesh {
     let base = cells.keys().map(|cell| cell.1).min().unwrap_or(0) as f32;
     let mut listed = Vec::new();
     for (&cell, &slot) in cells {
-        if chunk_key(cell) == chunk {
+        if keep(cell) {
             listed.push((cell, slot, color(slot), motion(slot)));
         }
     }

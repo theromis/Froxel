@@ -1,4 +1,4 @@
-//! `froxel render`, `froxel export`, and `froxel voxrt`.
+//! `froxel render`, `froxel preview`, `froxel export`, and `froxel voxrt`.
 
 use std::path::{Path, PathBuf};
 
@@ -86,6 +86,135 @@ pub fn export(args: &[String]) -> i32 {
             2
         }
     }
+}
+
+/// `froxel preview`: the fast lit raster of MCP `preview`.
+pub fn preview(args: &[String]) -> i32 {
+    match preview_args(args) {
+        Ok(None) => 0,
+        Ok(Some((input, output, object, preview))) => {
+            let started = std::time::Instant::now();
+            let mut session = Session::new();
+            let written = session.open_vox(&input).and_then(|()| {
+                let mut preview = preview;
+                if let Some(key) = &object {
+                    preview.object = Some(crate::preview::find_object(&session, key)?);
+                }
+                crate::preview::write(&session, &preview, &output)
+            });
+            match written {
+                Ok(frame) => {
+                    eprintln!(
+                        "wrote {} ({} triangles, {} ms)",
+                        output.display(),
+                        frame.triangles,
+                        started.elapsed().as_millis()
+                    );
+                    0
+                }
+                Err(err) => {
+                    eprintln!("{err}");
+                    1
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            2
+        }
+    }
+}
+
+const PREVIEW_USAGE: &str = "\
+usage: froxel preview --input <file.vox> --out <file.png>
+                      [--width N] [--height N] [--yaw DEG] [--pitch DEG]
+                      [--view front|back|left|right|top|bottom]
+                      [--ortho] [--fov DEG] [--margin F]
+                      [--object NAME|INDEX] [--isolate]
+                      [--background #rrggbb[aa]] [--no-antialias]
+
+The editor viewport's mesh and light (sun plus ambient), rasterised on the
+CPU: no path tracer, no window, no GPU. The camera orbits at yaw and pitch
+and fits the model, or --object, inside the image with --margin (fraction
+of the image per side, default 0.06). --isolate draws only --object.
+Defaults: 1024x1024 (1..4096), yaw 30, pitch 25, perspective with the
+viewport's 50 degree vertical --fov (10..120), the viewport grey
+background, and 2x2 antialiasing up to 2048x2048. --output is an alias of
+--out.";
+
+#[allow(clippy::type_complexity)]
+fn preview_args(
+    args: &[String],
+) -> Result<Option<(PathBuf, PathBuf, Option<String>, crate::preview::Preview)>, String> {
+    let mut input = None;
+    let mut output = None;
+    let mut object = None;
+    let mut preview = crate::preview::Preview::default();
+    let mut angles = false;
+    let mut view = false;
+    let mut index = 0;
+    while index < args.len() {
+        let arg = args[index].as_str();
+        let value = |index: &mut usize| -> Result<String, String> {
+            *index += 1;
+            args.get(*index)
+                .cloned()
+                .ok_or_else(|| format!("missing value for {arg}"))
+        };
+        let max = crate::preview::MAX_SIZE;
+        match arg {
+            "-h" | "--help" => {
+                eprintln!("{PREVIEW_USAGE}");
+                return Ok(None);
+            }
+            "--input" => input = Some(PathBuf::from(value(&mut index)?)),
+            "--out" | "--output" => output = Some(PathBuf::from(value(&mut index)?)),
+            "--width" => preview.width = parse_u32(&value(&mut index)?, arg, 1, max)?,
+            "--height" => preview.height = parse_u32(&value(&mut index)?, arg, 1, max)?,
+            "--yaw" => {
+                preview.yaw = parse_f32(&value(&mut index)?, arg)?;
+                angles = true;
+            }
+            "--pitch" => {
+                preview.pitch = parse_f32(&value(&mut index)?, arg)?;
+                angles = true;
+            }
+            "--view" => {
+                (preview.yaw, preview.pitch) = crate::remote::named_view(&value(&mut index)?)?;
+                view = true;
+            }
+            "--ortho" | "--orthographic" => preview.orthographic = true,
+            "--fov" => preview.fov = parse_f32(&value(&mut index)?, arg)?,
+            "--margin" => preview.margin = parse_f32(&value(&mut index)?, arg)?,
+            "--object" => object = Some(value(&mut index)?),
+            "--isolate" => preview.isolate = true,
+            "--background" => {
+                preview.background = crate::remote::background(
+                    &serde_json::json!({"background": value(&mut index)?}),
+                )?;
+            }
+            "--no-antialias" => preview.antialias = false,
+            other => return Err(format!("unknown argument `{other}`\n{PREVIEW_USAGE}")),
+        }
+        index += 1;
+    }
+    if angles && view {
+        return Err("pass --view or --yaw and --pitch, not both".into());
+    }
+    if preview.isolate && object.is_none() {
+        return Err("--isolate needs --object".into());
+    }
+    let (Some(input), Some(output)) = (input, output) else {
+        return Err(PREVIEW_USAGE.into());
+    };
+    if !output.extension().is_some_and(|ext| ext == "png") {
+        return Err("--out must end in .png".into());
+    }
+    crate::preview::check(&crate::preview::Preview {
+        object: object.as_ref().map(|_| 0),
+        ..preview.clone()
+    })?;
+    Ok(Some((input, output, object, preview)))
 }
 
 const EXPORT_USAGE: &str = "\

@@ -217,6 +217,77 @@ fn model_view(session: &mut Session, params: &Value) -> Result<Value, String> {
     Ok(reply)
 }
 
+/// The fast lit preview: the viewport's mesh and light, rasterised on the
+/// CPU and framed on the model or one object.
+fn preview(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let path = req_str(params, "path")?;
+    if path.is_empty() {
+        return Err("path is empty".into());
+    }
+    let max = crate::preview::MAX_SIZE as i32;
+    let mut preview = crate::preview::Preview {
+        width: opt_i32_range(params, "width", 1024, 1, max)? as u32,
+        height: opt_i32_range(params, "height", 1024, 1, max)? as u32,
+        ..Default::default()
+    };
+    let (yaw, pitch) = view_angles(params)?;
+    preview.yaw = yaw.map_or(preview.yaw, |value| value as f32);
+    preview.pitch = pitch.map_or(preview.pitch, |value| value as f32);
+    preview.orthographic = opt_bool(params, "orthographic")?.unwrap_or(false);
+    if let Some(margin) = opt_f64(params, "margin")? {
+        preview.margin = margin as f32;
+    }
+    if let Some(fov) = opt_f64(params, "fov")? {
+        preview.fov = fov as f32;
+    }
+    preview.object = match params.get("object") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(name)) => Some(crate::preview::find_object(session, name)?),
+        Some(Value::Number(number)) => {
+            let index = number.as_u64().ok_or("object must be an index or a name")?;
+            Some(crate::preview::find_object(session, &index.to_string())?)
+        }
+        Some(_) => return Err("object must be an index or a name".into()),
+    };
+    preview.isolate = opt_bool(params, "isolate")?.unwrap_or(false);
+    preview.antialias = opt_bool(params, "antialias")?.unwrap_or(true);
+    if params
+        .get("background")
+        .is_some_and(|value| !value.is_null())
+    {
+        preview.background = background(params)?;
+    }
+    let pose = match render_pose(params)? {
+        Some(pose) => Some(session.checked_pose(pose)?),
+        None => None,
+    };
+    let saved_pose = session.pose.clone();
+    if let Some(pose) = pose {
+        session.pose = pose;
+    }
+    let started = std::time::Instant::now();
+    let written = crate::preview::write(session, &preview, Path::new(&path));
+    session.pose = saved_pose;
+    let frame = written?;
+    let mut reply = json!({
+        "path": path,
+        "width": preview.width,
+        "height": preview.height,
+        "yaw": preview.yaw,
+        "pitch": preview.pitch,
+        "orthographic": preview.orthographic,
+        "triangles": frame.triangles,
+        "milliseconds": started.elapsed().as_millis() as u64
+    });
+    if let Some(index) = preview.object {
+        reply["object"] = json!({"index": index, "name": session.objects[index].name});
+    }
+    if let Some(ppv) = frame.pixels_per_voxel {
+        reply["pixelsPerVoxel"] = json!(ppv);
+    }
+    Ok(reply)
+}
+
 /// Move the window camera. frame re-centres on every object first, so a
 /// named view always shows the whole model.
 fn set_view(session: &mut Session, params: &Value) -> Result<Value, String> {
@@ -553,6 +624,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         }
         "render" => render_scene(session, &params),
         "render.flat" => model_view(session, &params),
+        "render.preview" => preview(session, &params),
         "view.set" => set_view(session, &params),
         "script.set" => {
             let index = script_index(session, &params)?;
@@ -883,6 +955,11 @@ const METHODS: &[(&str, &str, &str)] = &[
         "Flat model view PNG: each pixel is the palette colour of the first cell hit, with no light and no tonemap. width and height default to 512 (1..4096). orthographic defaults to true. view is front, back, left, right, top, or bottom. background defaults to transparent.",
     ),
     (
+        "render.preview",
+        "path, width?, height?, view?, yaw?, pitch?, orthographic?, fov?, margin?, object?, isolate?, background?, antialias?, pose?",
+        "Fast lit preview PNG: the viewport's mesh and light rasterised on the CPU, framed on the model or one object with margin (default 0.06 per side). width and height default to 1024 (1..4096). Perspective (fov 50 degrees, like the viewport) unless orthographic. object is an index or a name; isolate draws only it. background defaults to the viewport grey.",
+    ),
+    (
         "view.set",
         "view?, yaw?, pitch?, frame?, distance?, orthographic?, bones?",
         "Move the window camera. frame (default true) centres every object; distance multiplies the framing distance. bones false hides the viewport joints.",
@@ -1176,7 +1253,7 @@ fn view_angles(params: &Value) -> Result<(Option<f64>, Option<f64>), String> {
 
 /// `#rrggbb`, `#rrggbbaa`, `[r, g, b]`, or `[r, g, b, a]`. Defaults to
 /// transparent.
-fn background(params: &Value) -> Result<[u8; 4], String> {
+pub(crate) fn background(params: &Value) -> Result<[u8; 4], String> {
     let bad = || "background must be #rrggbb, #rrggbbaa, or [r, g, b, a?] in 0..255".to_string();
     match params.get("background") {
         None | Some(Value::Null) => Ok([0, 0, 0, 0]),

@@ -93,3 +93,18 @@ fn sway_amount_and_height_are_stored_on_the_vertex() {
     assert!(mesh.verts.iter().any(|vert| vert.motion[2] == 0.0));
     assert!(mesh.verts.iter().any(|vert| vert.motion[2] == 4.0));
 }
+
+#[test]
+fn mesh_cells_is_every_chunk_mesh_together() {
+    let mut cells = HashMap::new();
+    for x in -3..20 {
+        cells.insert((x, x % 5, 0), 1);
+        cells.insert((x, 0, 1), 1);
+    }
+    let keys: HashSet<_> = cells.keys().map(|cell| chunk_key(*cell)).collect();
+    let chunks: usize = keys
+        .iter()
+        .map(|key| mesh_chunk(&cells, *key, white, still).face_count())
+        .sum();
+    assert_eq!(mesh_cells(&cells, white, still).face_count(), chunks);
+}

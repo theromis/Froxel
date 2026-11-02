@@ -219,6 +219,15 @@ above is 48 such renders, one every 7.5° of `--yaw`.
 
 ![Lily pad, lotus bank, reeds and a letter, rendered with froxel render](docs/images/gallery.jpg)
 
+`froxel preview` draws the same `.vox` as the edit viewport lights it,
+rasterised on the CPU in a fraction of a second, fitted to the model (or
+`--object`) with a margin. [docs/preview.md](docs/preview.md) has the
+flags; MCP `preview` is the same image.
+
+```sh
+froxel preview --input model.vox --out preview.png --yaw -35 --pitch 30 --width 1600 --height 800
+```
+
 `froxel export --input model.vox --output model.glb` writes the glTF with
 the `export_mesh` options as flags: `--merge`, `--vertex-colors`,
 `--color-atlas`, `--export-hidden`, `--split-objects`, and `--ao STRENGTH`

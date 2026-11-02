@@ -958,6 +958,48 @@ fn model_view_refuses_a_view_with_yaw_and_a_bad_background() {
 }
 
 #[test]
+fn preview_writes_a_lit_framed_png_and_keeps_the_camera() {
+    let mut head = Headless::new();
+    marked_block(&mut head);
+    let yaw = head.session.yaw;
+    let dir = std::env::temp_dir().join(format!("froxel-preview-{}", std::process::id()));
+    let path = dir.join("nested").join("block.png");
+    let reply = head.ok(
+        "preview",
+        json!({
+            "path": path,
+            "width": 96,
+            "height": 64,
+            "view": "front",
+            "orthographic": true,
+            "object": 0,
+            "background": "#102030"
+        }),
+    );
+    assert_eq!(reply["orthographic"], true);
+    assert_eq!(reply["object"]["index"], 0);
+    assert!(reply["triangles"].as_u64().unwrap() > 0);
+    assert!(reply["pixelsPerVoxel"].as_f64().unwrap() > 10.0);
+    assert!((head.session.yaw - yaw).abs() < 1e-6);
+    let (w, h, rgba) = read_png(&path);
+    assert_eq!((w, h), (96, 64));
+    assert_eq!(&rgba[..4], &[0x10, 0x20, 0x30, 255]);
+    let centre = ((32 * w + 48) * 4) as usize;
+    let flat = head.session.palette[2];
+    assert_ne!(&rgba[centre..centre + 4], &[0x10, 0x20, 0x30, 255]);
+    assert_ne!(
+        &rgba[centre..centre + 3],
+        &flat[..3],
+        "the face is lit, not flat"
+    );
+    let reply = head.call("preview", json!({"path": path, "object": "nope"}));
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+    let reply = head.call("preview", json!({"path": path, "isolate": true}));
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn set_view_frames_the_model_and_hides_the_bones() {
     let mut head = Headless::new();
     marked_block(&mut head);
