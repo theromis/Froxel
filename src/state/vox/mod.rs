@@ -35,6 +35,8 @@ pub(super) struct Loaded {
     pub(super) graph: Option<VoxGraph>,
     pub(super) skeleton: Skeleton,
     pub(super) clips: Vec<crate::rig::Clip>,
+    /// The `MVMK` body, placed once the objects are installed.
+    pub(super) markers: Option<Vec<u8>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

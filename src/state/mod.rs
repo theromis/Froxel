@@ -618,6 +618,7 @@ mod document;
 mod drag;
 mod files;
 mod geom;
+mod markers;
 mod objects;
 mod pick;
 mod pointer;
@@ -636,6 +637,7 @@ pub(super) struct Snapshot {
     skeleton: Skeleton,
     pose: crate::rig::Pose,
     clips: Vec<Clip>,
+    markers: Vec<Marker>,
 }
 
 #[derive(Clone)]
@@ -770,6 +772,9 @@ pub struct Session {
     pub pose: crate::rig::Pose,
     /// Named clips. Saved in the `MVAN` chunk and exported as glTF animations.
     pub clips: Vec<Clip>,
+    /// Named points, collision boxes, and connectors for a game. Saved in the
+    /// `MVMK` chunk and exported as glTF nodes.
+    pub markers: Vec<Marker>,
     /// Bone highlighted in the viewport. Not part of undo.
     pub selected_bone: Option<usize>,
     /// Parallel rays. A still sets it for one frame; MCP `set_view` sets it
@@ -880,7 +885,11 @@ pub use geom::palette_slot_at;
 #[allow(unused_imports)] // keeps `crate::state::raycast` after the move into geom
 pub use geom::raycast;
 pub(crate) use geom::{occupied_bounds, resolved_box};
-pub use stone::{Plant, StonePanels, FACINGS};
+pub(crate) use markers::append_gltf_markers;
+pub use markers::{
+    cell_box, check_direction, check_marker_name, check_point, Marker, MarkerKind, MAX_MARKERS,
+};
+pub use stone::{Plant, StonePanels, DIRECTIONS, FACINGS};
 pub(crate) use vox::rotation_codec_errors;
 
 #[cfg(test)]

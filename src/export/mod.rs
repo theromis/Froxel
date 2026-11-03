@@ -5,6 +5,8 @@
 //! `(x, z, -y)`. The default material is a 256-wide palette texture;
 //! `vertex_colors` stores a linear `COLOR_0` instead, and `color_atlas`
 //! merges across slots and paints each cell into a per-mesh texture.
+//! Markers become nodes with `extras.froxel`, listed again in the scene's
+//! `extras.froxelMarkers`.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -294,6 +296,7 @@ fn encode(session: &Session, options: &MeshExport) -> Result<Vec<u8>, String> {
             }));
     }
     append_shade(&mut root, &mut bin, 0, &built.shade);
+    crate::state::append_gltf_markers(session, &mut root);
     let json = root;
     let mut json_bytes = serde_json::to_vec(&json).map_err(|err| err.to_string())?;
     pad(&mut json_bytes, b' ');
@@ -538,6 +541,7 @@ fn encode_skinned(session: &Session, options: &MeshExport) -> Result<Vec<u8>, St
     }
     append_animations(&mut root, &mut bin, session, 1)?;
     append_shade(&mut root, &mut bin, 0, &built.shade);
+    crate::state::append_gltf_markers(session, &mut root);
     let mut json_bytes = serde_json::to_vec(&root).map_err(|err| err.to_string())?;
     pad(&mut json_bytes, b' ');
     let total = 12 + 8 + json_bytes.len() + 8 + bin.len();
@@ -787,6 +791,7 @@ fn encode_split(session: &Session, options: &MeshExport) -> Result<Vec<u8>, Stri
     for (mesh, (_, built)) in parts.iter().enumerate() {
         append_shade(&mut root, &mut bin, mesh, &built.shade);
     }
+    crate::state::append_gltf_markers(session, &mut root);
     let mut json_bytes = serde_json::to_vec(&root).map_err(|err| err.to_string())?;
     pad(&mut json_bytes, b' ');
     let total = 12 + 8 + json_bytes.len() + 8 + bin.len();

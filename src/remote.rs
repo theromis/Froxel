@@ -7,7 +7,9 @@ use std::path::{Component, Path, PathBuf};
 
 use serde_json::{json, Map, Value};
 
+mod markers;
 mod stone;
+pub(crate) use markers::marker_kind;
 pub(crate) use stone::{stone_writes, Stone};
 
 use crate::state::{Cell, GlassMode, Session};
@@ -606,6 +608,9 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "voxel.algae" => stone::apply_stone(session, &params, Stone::Algae),
         "voxel.vines" => stone::apply_stone(session, &params, Stone::Vines),
         "voxel.sweep" => stone::apply_stone(session, &params, Stone::Sweep),
+        "marker.set" => markers::set_marker(session, &params),
+        "marker.remove" => markers::remove_marker(session, &params),
+        "marker.list" => Ok(markers::list_markers(session)),
         "voxel.get_box" => {
             let cells: Vec<Value> = box_cells(&session.active().cells, &params)?
                 .into_iter()
@@ -876,6 +881,7 @@ fn export_mesh(session: &Session, params: &Value) -> Result<Value, String> {
         "aoRadius": options.ao_radius,
         "aoTarget": options.ao_target.name(),
         "structure": written["structure"],
+        "markers": session.markers_json(),
     }))
 }
 
@@ -1005,6 +1011,7 @@ fn finish_export(
         "quads": written["quads"],
         "bytes": written["bytes"],
         "structure": written["structure"],
+        "markers": session.markers_json(),
     });
     if let Some(source) = source {
         body["source"] = json!(source);
@@ -1108,6 +1115,9 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.algae", "x0, y0, z0, x1, y1, z1, palettes, band?, amount?, noise?, faces?, facing?, only?, layer?, seed?", "Algae band at the waterline, dense low and thinning upward in clumps"),
     ("voxel.vines", "x0, y0, z0, x1, y1, z1, palettes, amount?, length?, blooms?, bloomChance?, noise?, faces?, facing?, band?, only?, seed?", "Vine strands hanging from top edges, with blooms"),
     ("voxel.sweep", "points, profile | width + height + radius?, curve?, palette | palettes, pattern?, period?, seed?, mode?", "Fill a 2D profile along a polyline or smooth curve, with twist and scale per point"),
+    ("marker.set", "name, kind?, point | x0..z1 | min + max, direction?, object?", "Name a point, collision box, or connector on an object; replaces one of the same name"),
+    ("marker.remove", "name | all", "Remove one marker, or all"),
+    ("marker.list", "", "Markers with local, world, and glTF coordinates"),
     ("voxel.smooth", "x0, y0, z0, x1, y1, z1, iterations?, fillAt?, removeAt?", "Majority filter in a box that keeps colours"),
     ("voxel.get_box", "x0, y0, z0, x1, y1, z1", "Non-empty cells inside an inclusive box, at most 100000"),
     ("palette.set", "index, r, g, b, a?, motion?, motion_amount? | entries", "Replace one slot, or many, as one undo step"),
@@ -1278,6 +1288,7 @@ fn inspect(session: &Session, params: &Value) -> Result<Value, String> {
         "bones": bone_rows(session),
         "palette": palette_rows(session, full_palette),
         "motion": motion_rows(session),
+        "markers": session.markers_json(),
     }))
 }
 

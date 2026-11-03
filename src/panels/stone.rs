@@ -1,10 +1,11 @@
-//! Inspector sections of the stone tools: Joints, Weather, Growth, and Sweep. Each button runs the MCP
+//! Inspector sections of the stone tools: Joints, Weather, Growth, Sweep,
+//! and Markers. Each button runs the MCP
 //! tool over the selection's box, or the whole active object.
 
 use egui::{RichText, Ui};
 
 use super::{section, DIM};
-use crate::state::{EditorMode, Plant, Session, FACINGS};
+use crate::state::{EditorMode, MarkerKind, Plant, Session, DIRECTIONS, FACINGS};
 use crate::tools::JointPattern;
 
 fn label(ui: &mut Ui, text: &str, tip: &str) {
@@ -369,4 +370,87 @@ pub(super) fn sweep(ui: &mut Ui, session: &mut Session) {
             }
         });
     });
+}
+
+/// MCP `set_marker`, `remove_marker`, and `list_markers`: named points,
+/// collision boxes, and connectors for a game.
+pub(super) fn markers(ui: &mut Ui, session: &mut Session) {
+    section(ui, "Markers");
+    let mut remove = None;
+    if session.markers.is_empty() {
+        ui.label(RichText::new("No markers.").small().color(DIM));
+    }
+    egui::Grid::new("markers-list")
+        .num_columns(3)
+        .spacing([8.0, 2.0])
+        .show(ui, |ui| {
+            for marker in &session.markers {
+                let detail = match &marker.kind {
+                    MarkerKind::Point { at } => {
+                        format!("point {:.1} {:.1} {:.1}", at[0], at[1], at[2])
+                    }
+                    MarkerKind::Box { min, max } => format!(
+                        "box {:.0}..{:.0} {:.0}..{:.0} {:.0}..{:.0}",
+                        min[0], max[0], min[1], max[1], min[2], max[2]
+                    ),
+                    MarkerKind::Connector { at, direction } => format!(
+                        "connector {:.1} {:.1} {:.1} → {:.1} {:.1} {:.1}",
+                        at[0], at[1], at[2], direction[0], direction[1], direction[2]
+                    ),
+                };
+                let scripted = if marker.scripted {
+                    ", from the script"
+                } else {
+                    ""
+                };
+                ui.label(&marker.name).on_hover_text(format!(
+                    "{detail}, on {}{scripted}. Local mesh units: cell (x, y, z) spans x..x+1.",
+                    marker.object
+                ));
+                ui.label(RichText::new(marker.kind.name()).small().color(DIM));
+                if ui
+                    .small_button("✕")
+                    .on_hover_text("Remove this marker (MCP remove_marker).")
+                    .clicked()
+                {
+                    remove = Some(marker.name.clone());
+                }
+                ui.end_row();
+            }
+        });
+    if let Some(name) = remove {
+        session.remove_marker_from_panel(&name);
+    }
+    let panel = &mut session.stone.markers;
+    egui::Grid::new("markers-panel")
+        .num_columns(2)
+        .spacing([8.0, 4.0])
+        .show(ui, |ui| {
+            label(ui, "Name", "The marker's name, such as ledge_top_4m; a marker of the same name is replaced. The glTF node takes it.");
+            ui.add(egui::TextEdit::singleline(&mut panel.name).desired_width(120.0));
+            ui.end_row();
+            label(ui, "Kind", "Point: the top centre of the selection. Box: a collision box over the selection. Connector: a joining end at the selection's centre.");
+            ui.horizontal(|ui| {
+                for (index, name) in ["Point", "Box", "Connector"].into_iter().enumerate() {
+                    ui.selectable_value(&mut panel.kind, index, name);
+                }
+            });
+            ui.end_row();
+            if panel.kind == 2 {
+                label(ui, "Facing", "The way the joining end faces.");
+                ui.horizontal(|ui| {
+                    for (index, (name, _)) in DIRECTIONS.iter().enumerate() {
+                        ui.selectable_value(&mut panel.direction, index, *name);
+                    }
+                });
+                ui.end_row();
+            }
+        });
+    if ui
+        .button("Add at selection")
+        .on_hover_text("MCP set_marker on the active object at the selection. Saved in the .vox and exported as a glTF node.")
+        .clicked()
+    {
+        session.marker_from_panel();
+    }
 }

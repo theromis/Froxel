@@ -195,7 +195,10 @@ tracer. A file with no scene graph still loads its first model.
 | `screenshot_region` | `x`, `y`, `width`, `height` | PNG of a rectangle in window points. Connected mode only |
 | `ui_inspect` | — | Previous frame's controls, tool, mode, active object, voxel count, and status. Connected mode only |
 | `ui_click` | `x`, `y` | Click the topmost registered control. A viewport hit stamps the active tool. A slider sets its value from the point. A palette cell selects that slot. Connected mode only |
-| `export_mesh` | `path` | Write a glTF 2.0 `.glb` of every object. `merge` defaults to false. `vertexColors` defaults to false. `exportHidden` and `splitObjects` default to false. A slot with motion adds `TEXCOORD_1`. Clips become glTF animations. The reply includes `structure` |
+| `set_marker` | `name` | Name a point, a collision box, or a connector on an object: `kind` (`point`, `box`, `connector`), `point`, the box's inclusive cells `x0`..`z1`, `direction`, `object`. Saved in the `.vox` and exported as a glTF node. A marker of the same name is replaced. One undo step |
+| `remove_marker` | `name` or `all` | Remove one marker, or every marker. One undo step |
+| `list_markers` | — | Markers with `local`, `world`, and `gltf` coordinates |
+| `export_mesh` | `path` | Write a glTF 2.0 `.glb` of every object. `merge` defaults to false. `vertexColors` defaults to false. `exportHidden` and `splitObjects` default to false. A slot with motion adds `TEXCOORD_1`. Clips become glTF animations. Markers become nodes. The reply includes `structure` and `markers` |
 | `export_models` | `models` | Write 1 to 16 `.glb` files. Each item is `{path, source?, merge?, vertexColors?, exportHidden?, splitObjects?}`. `source` is a `.vox` opened in its own session, so the open document stays. Each file's `structure` lists nodes, meshes, skins, animations, and warnings |
 | `set_script` | `source`, optional `object` | Store a Rhai script and read its parameters. One undo step. Does not rebuild voxels |
 | `get_script` | optional `object` | Source, auto flag, and parameters |
@@ -746,6 +749,28 @@ language and the `MVSC` chunk are described in `docs/scripting.md`.
 A creature or other one-off shape is modelled without a script: see
 [hand-sculpting.md](hand-sculpting.md).
 
+### Markers
+
+`set_marker` names a place a game reads: a point (`ledge_top_4m`, a spawn),
+a collision `box`, or a `connector`, a piece's joining end with the way it
+faces. A marker belongs to an object (`object`, an index or a name; the
+active object by default) and sits in its local **mesh units**: cell
+`(x, y, z)` spans `x..x+1`, so the top centre of cell `(4, 4, 10)` is
+`[4.5, 4.5, 11]`. A box takes inclusive cells like `fill_box` and spans
+`x0..x1+1`. The marker moves with its object and follows a rename; removing
+the object removes it.
+
+The `.vox` keeps markers in an `MVMK` chunk. `export_mesh`, `export_models`,
+and `froxel export` write one glTF node per marker, named after it, at its
+place in glTF axes (Y up, `(x, z, -y)`), with `extras.froxel`: `kind`,
+`object`, `size`, `min`, and `max` for a box, and `direction` for a
+connector, whose node `rotation` turns -Z toward the direction (Godot's
+forward). The scene's `extras.froxelMarkers` lists them again with their
+node index. The export replies and `list_markers` give each marker in
+`local`, `world`, and `gltf` coordinates. A script's `marker`,
+`collision_box`, and `connector` make the same markers on the objects it
+builds; a rerun replaces them and leaves markers placed by hand.
+
 ### In the editor
 
 Every tool that edits or writes the document has a place in the editor
@@ -779,6 +804,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `preview`, `model_view` | Render section: Save preview, Save model view, from the window's camera |
 | `set_view` | Orbit, pan, and zoom in the viewport; Camera section: Orthographic |
 | `set_script`, `get_script`, `set_params`, `list_params`, `regenerate` | Script section |
+| `set_marker`, `remove_marker`, `list_markers` | Markers section: the list with ✕ to remove, Name, Point, Box, or Connector with Facing, Add at selection |
 | `export_mesh` | Export section and File > Export Mesh, with Occlusion, AO radius, AO target |
 | `export_models` | File > Export Models and the Export section's Export models: pick `.vox` files and a folder |
 

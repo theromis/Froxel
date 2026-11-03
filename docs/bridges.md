@@ -55,6 +55,14 @@ is printed on stderr and shown in the status bar. Each `evaluate` from a
 client is one undo step in the window. Voxel edits made in the window are
 included in the next import.
 
+## Markers
+
+A baked glb carries the document's markers (`set_marker`, or a script's
+`marker`, `collision_box`, and `connector`) as nodes named after them, with
+`extras.froxel` (`kind`, and `size`, `min`, `max` for a box or `direction`
+for a connector) and the scene's `extras.froxelMarkers` list. Read collision
+and ledges from there instead of computing them again.
+
 ## Godot
 
 ![The FroxelBridge node in Godot 4.5: the lily pad in the 3D view and its radius, notch, direction, and seed sliders in the inspector](images/godot-bridge.jpg)

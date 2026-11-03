@@ -96,6 +96,10 @@ through their slots to the tip, with occasional blooms. Give the vine slots
 moss and algae still. Pass `only` with the stone slots so plants do not
 grow on plants.
 
+`set_marker` names a ledge top, a collision box, or a connector on the
+piece, so the game reads them from the exported glb (nodes with
+`extras.froxel`) instead of measuring the model again.
+
 `smooth` softens a blocky region. It fills an empty cell that most of its
 26 neighbours surround and removes a solid cell that few of them touch, and
 a filled cell takes the colour most of its neighbours hold. One pass with

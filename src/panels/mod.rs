@@ -134,6 +134,8 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
                     stone::growth(ui, session);
                     ui.separator();
                     stone::sweep(ui, session);
+                    ui.separator();
+                    stone::markers(ui, session);
                 });
         },
     );

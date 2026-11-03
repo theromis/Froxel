@@ -101,6 +101,7 @@ impl Session {
             next_position[1] - object.translation.1,
             next_position[2] - object.translation.2,
         );
+        let renamed = (object.name != next_name).then(|| (object.name.clone(), next_name.clone()));
         object.name = next_name;
         object.translation = (next_position[0], next_position[1], next_position[2]);
         if object.model_dims != (0, 0, 0) {
@@ -109,6 +110,9 @@ impl Session {
             object.pivot.2 += delta.2;
         }
         object.hidden = next_hidden;
+        if let Some((from, to)) = renamed {
+            self.rename_markers(&from, &to);
+        }
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
         self.commit();
         Ok(())
@@ -128,7 +132,8 @@ impl Session {
         }
         self.commit();
         self.checkpoint();
-        self.objects.remove(index);
+        let gone = self.objects.remove(index);
+        self.markers.retain(|marker| marker.object != gone.name);
         self.object_selection = self
             .object_selection
             .iter()
@@ -235,7 +240,8 @@ impl Session {
         }
         self.commit();
         self.checkpoint();
-        self.objects.remove(self.selected);
+        let gone = self.objects.remove(self.selected);
+        self.markers.retain(|marker| marker.object != gone.name);
         self.selected = self.selected.min(self.objects.len() - 1);
         self.focus_object();
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
@@ -248,7 +254,8 @@ impl Session {
             return;
         }
         self.checkpoint();
-        self.active_mut().name = name;
+        let from = std::mem::replace(&mut self.active_mut().name, name.clone());
+        self.rename_markers(&from, &name);
         self.commit();
     }
 
@@ -938,6 +945,7 @@ impl Session {
             skeleton: self.skeleton.clone(),
             pose: self.pose.clone(),
             clips: self.clips.clone(),
+            markers: self.markers.clone(),
         }
     }
 
@@ -950,6 +958,7 @@ impl Session {
             skeleton: std::mem::replace(&mut self.skeleton, snap.skeleton),
             pose: std::mem::replace(&mut self.pose, snap.pose),
             clips: std::mem::replace(&mut self.clips, snap.clips),
+            markers: std::mem::replace(&mut self.markers, snap.markers),
         }
     }
 
@@ -971,6 +980,7 @@ impl Session {
                 || prev.skeleton != self.skeleton
                 || prev.pose != self.pose
                 || prev.clips != self.clips
+                || prev.markers != self.markers
             {
                 self.undo.push(prev);
                 self.redo.clear();

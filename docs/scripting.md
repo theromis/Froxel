@@ -394,6 +394,24 @@ fallen hollow log with every shape call: a striped tube trunk, `smooth`,
 buttress roots built with `push`, `break_end` at the far end, a carved
 hollow, a ground slab, and `scatter` debris under the break.
 
+## Markers
+
+```rhai
+marker("ledge_top_4m", 12.5, 4.5, 20);
+collision_box(0, 0, 0, 39, 7, 29);                // named collision_1, collision_2, …
+collision_box("upper_ledge", 0, 0, 30, 15, 7, 33);
+connector("east_end", [40, 4, 0], [1, 0, 0]);
+```
+
+MCP `set_marker` from a script: a point, a collision box over inclusive
+cells, or a connector with the way it faces, on the object being written,
+in its local mesh units (cell `(x, y, z)` spans `x..x+1`). The document
+keeps them, the `.vox` saves them, and mesh export writes each as a glTF
+node with `extras.froxel`, so the game reads the same ledge and collision
+the script computed. A rerun replaces the markers of the objects the script
+builds; markers placed by hand stay. A later call with the same name
+replaces an earlier one.
+
 ## Objects
 
 The script starts on its host object, already cleared. `object` switches the

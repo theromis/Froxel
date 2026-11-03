@@ -38,6 +38,7 @@ impl Session {
         self.skeleton = Skeleton::default();
         self.pose.clear();
         self.clips.clear();
+        self.markers.clear();
         self.selected_bone = None;
         self.palette = default_palette();
         self.materials = [Material::default(); 256];
@@ -162,6 +163,12 @@ impl Session {
         self.graph = loaded.graph;
         self.skeleton = loaded.skeleton;
         self.clips = loaded.clips;
+        self.markers.clear();
+        if let Some(body) = loaded.markers {
+            if let Err(err) = self.decode_markers(&body) {
+                self.status = format!("Markers were not loaded: {err}");
+            }
+        }
         self.pose.clear();
         self.selected_bone = None;
         self.clear_picked();
@@ -176,6 +183,7 @@ impl Session {
             self.graph.as_ref(),
             &self.skeleton,
             &self.clips,
+            self.encode_markers(),
         )
     }
 
@@ -246,6 +254,20 @@ impl Session {
         if self.clips != other.clips {
             out.push("clips differ".into());
         }
+        // A load may move an object's local origin, so compare where the
+        // markers are in the world.
+        let placed = |session: &Self| -> Vec<serde_json::Value> {
+            session
+                .markers_json()
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|m| serde_json::json!([m["name"], m["object"], m["world"], m["scripted"]]))
+                .collect()
+        };
+        if placed(self) != placed(other) {
+            out.push("markers differ".into());
+        }
         out.extend(graph_differences(self.graph.as_ref(), other.graph.as_ref()));
         out
     }
@@ -277,6 +299,7 @@ impl Session {
         self.skeleton = Skeleton::default();
         self.pose.clear();
         self.clips.clear();
+        self.markers.clear();
         self.selected_bone = None;
         self.palette = default_palette();
         self.materials = [Material::default(); 256];
@@ -554,6 +577,7 @@ impl Session {
             || clean.graph != self.graph
             || clean.skeleton != self.skeleton
             || clean.clips != self.clips
+            || clean.markers != self.markers
     }
 
     /// True when the window may close. Unsaved edits ask Save, Don't Save,
@@ -610,6 +634,7 @@ impl Session {
             self.graph.as_ref(),
             &self.skeleton,
             &self.clips,
+            self.encode_markers(),
         ) {
             Ok(bytes) => bytes,
             Err(e) => {

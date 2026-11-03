@@ -279,7 +279,7 @@ fn dispatch(
                 "protocolVersion": version,
                 "capabilities": {"tools": {"listChanged": false}},
                 "serverInfo": {"name": "Froxel", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. preview writes a fast lit PNG (the viewport mesh and light, rasterised, well under a second) framed on the model or one object; use it to look after every step. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, grow limbs and roots with fill_tube, cut hollows with carve, soften with smooth, refine with set_voxels, and render after every step. Stone surfaces: joints cuts real joint gaps (columns, courses, cracks), weather chips edges, dents pits, and adds colour noise, and moss, algae, and vines grow plants on exposed faces (the caller gives the slots and their motion). sweep fills a cross-section along a curve for curved walls, banks, and ledges. A Rhai script (set_script) can call the same sculpt, voxel, object, rig, clip, and palette tools, with the MCP options in a trailing map, for a family of organic pieces (docs/scripting.md, examples/hollow_log.rhai)."
+                "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. preview writes a fast lit PNG (the viewport mesh and light, rasterised, well under a second) framed on the model or one object; use it to look after every step. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, grow limbs and roots with fill_tube, cut hollows with carve, soften with smooth, refine with set_voxels, and render after every step. Stone surfaces: joints cuts real joint gaps (columns, courses, cracks), weather chips edges, dents pits, and adds colour noise, and moss, algae, and vines grow plants on exposed faces (the caller gives the slots and their motion). sweep fills a cross-section along a curve for curved walls, banks, and ledges. set_marker names points, collision boxes, and connectors that the .vox keeps and the glb carries as nodes. A Rhai script (set_script) can call the same sculpt, voxel, object, rig, clip, and palette tools, with the MCP options in a trailing map, for a family of organic pieces (docs/scripting.md, examples/hollow_log.rhai)."
             }),
         ));
     }
@@ -388,6 +388,9 @@ fn map_tool(name: &str, args: &Value) -> Result<(String, Value), String> {
         "algae" => "voxel.algae",
         "vines" => "voxel.vines",
         "sweep" => "voxel.sweep",
+        "set_marker" => "marker.set",
+        "remove_marker" => "marker.remove",
+        "list_markers" => "marker.list",
         "get_voxels" => "voxel.get_box",
         "set_palette" => "palette.set",
         "set_active_object" => "object.set_active",
@@ -692,6 +695,24 @@ fn tools() -> Vec<Value> {
             "seed": int_prop("Seed of the random pattern. Defaults to 0."),
             "mode": mode_prop()
         }), &["points"]),
+        tool("set_marker", "Name a point, a collision box, or a connector (a piece's joining end) on an object, for a game to read: a ledge top, a spawn, a collision volume, where two pieces join. It is saved in the .vox, listed in the export_mesh and export_models replies, and exported as a glTF node named after the marker with extras.froxel (kind, plus size, min, and max for a box and direction for a connector, whose node rotation turns -Z toward it) and in the scene's extras.froxelMarkers. Coordinates are the object's local mesh units: cell (x, y, z) spans x..x+1, so the top centre of cell (4, 4, 10) is [4.5, 4.5, 11]. The marker moves with its object. A marker of the same name is replaced. One undo step. Replies with the marker in local, world, and glTF coordinates.", json!({
+            "name": str_prop("Marker name, 1 to 64 characters, such as ledge_top_4m. The glTF node takes it."),
+            "kind": {"type": "string", "enum": ["point", "box", "connector"], "description": "point (default), box (collision), or connector"},
+            "point": vec3_prop("point and connector: [x, y, z] in local mesh units"),
+            "direction": vec3_prop("connector: the way the joining end faces, [x, y, z], normalised"),
+            "x0": int_prop("box: inclusive cell corner; the box spans x0..x1+1"),
+            "y0": int_prop("box: inclusive cell corner"),
+            "z0": int_prop("box: inclusive cell corner"),
+            "x1": int_prop("box: inclusive cell corner"),
+            "y1": int_prop("box: inclusive cell corner"),
+            "z1": int_prop("box: inclusive cell corner"),
+            "object": {"type": ["integer", "string"], "description": "Object index or name it belongs to. Defaults to the active object."}
+        }), &["name"]),
+        tool("remove_marker", "Remove the marker called name, or every marker with all: true. One undo step. Replies with removed.", json!({
+            "name": str_prop("Marker name"),
+            "all": {"type": "boolean", "description": "Remove every marker"}
+        }), &[]),
+        tool("list_markers", "Markers with their kind, object, and local, world, and glTF (Y-up) coordinates: a point, a box's min, max, centre, and size, a connector's point, direction, and node rotation.", json!({}), &[]),
         tool("mirror_object", "Copy an object mirrored across a world axis through the origin. Cells use -coord-1 on that axis. One undo step. mirrorBones also copies the bound bone and its descendants, swapping an _l/_r suffix. The copy is unbound unless mirrorBones is true.", json!({
             "index": int_prop("Object index to copy"),
             "axis": str_prop("x, y, or z"),
@@ -828,7 +849,7 @@ fn tools() -> Vec<Value> {
             "x": num_prop("X in window points, origin at the top-left of the client area"),
             "y": num_prop("Y in window points, origin at the top-left of the client area")
         }), &["x", "y"]),
-        tool("set_script", "Store a Rhai script on an object and read its parameters. One undo step. Voxels change only when regenerate runs. A failure keeps the source and reports the script line. Scripts have the sculpt tools as functions (fill_box with a mode, fill_ellipsoid, fill_rounded_box, fill_tube, carve_box, carve_ellipsoid, carve_rounded_box, carve_tube, smooth, break_end, scatter, joints, weather, moss, algae, vines, sweep) with the MCP options in a trailing map such as #{mode: \"empty\"}, get_voxels, set_voxels, and the document tools (set_palette, set_object, remove_object, mirror_object, add_bone, set_bone, remove_bone, bind_object, list_bones, set_pose, clear_pose, add_clip, set_clip_keys, list_clips, remove_clip), which apply after the script in the same undo step, plus sqrt, pow, PI, min, max, clamp, and push on arrays; docs/scripting.md lists them.", json!({
+        tool("set_script", "Store a Rhai script on an object and read its parameters. One undo step. Voxels change only when regenerate runs. A failure keeps the source and reports the script line. Scripts have the sculpt tools as functions (fill_box with a mode, fill_ellipsoid, fill_rounded_box, fill_tube, carve_box, carve_ellipsoid, carve_rounded_box, carve_tube, smooth, break_end, scatter, joints, weather, moss, algae, vines, sweep, and marker, collision_box, connector for markers) with the MCP options in a trailing map such as #{mode: \"empty\"}, get_voxels, set_voxels, and the document tools (set_palette, set_object, remove_object, mirror_object, add_bone, set_bone, remove_bone, bind_object, list_bones, set_pose, clear_pose, add_clip, set_clip_keys, list_clips, remove_clip), which apply after the script in the same undo step, plus sqrt, pow, PI, min, max, clamp, and push on arrays; docs/scripting.md lists them.", json!({
             "object": int_prop("Object index. Omit for the active object."),
             "source": str_prop("Rhai source. Empty clears the script.")
         }), &["source"]),
@@ -890,7 +911,7 @@ fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> 
 fn hints(name: &str) -> [bool; 3] {
     match name {
         "inspect_document" | "get_voxel" | "get_voxels" | "list_bones" | "list_clips"
-        | "get_script" | "list_params" | "ui_inspect" => [true, false, true],
+        | "list_markers" | "get_script" | "list_params" | "ui_inspect" => [true, false, true],
         "set_active_object" | "set_view" => [false, false, true],
         "add_object" | "mirror_object" | "add_bone" | "add_clip" => [false, false, false],
         "remove_object" | "undo" | "redo" | "ui_click" | "regenerate" => [false, true, false],
@@ -913,6 +934,8 @@ fn hints(name: &str) -> [bool; 3] {
         | "algae"
         | "vines"
         | "sweep"
+        | "set_marker"
+        | "remove_marker"
         | "set_palette"
         | "set_object"
         | "set_bone"

@@ -1156,6 +1156,7 @@ fn scene_graph_keeps_hidden_layers_frames_and_groups() {
         loaded.graph.as_ref(),
         &Skeleton::default(),
         &[],
+        None,
     )
     .unwrap();
     assert!(bytes.windows(4).any(|window| window == b"LAYR"));
@@ -1189,6 +1190,7 @@ fn scene_graph_keeps_hidden_layers_frames_and_groups() {
         loaded.graph.as_ref(),
         &Skeleton::default(),
         &[],
+        None,
     )
     .unwrap();
     let shifted = load_vox(&bytes).expect("moved");

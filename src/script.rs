@@ -20,6 +20,7 @@ use rhai::{Array, Dynamic, Engine, EvalAltResult, OptimizationLevel, Position, I
 use crate::state::{Cell, Motion, Session, Volume};
 
 mod document;
+mod markers;
 mod math;
 mod shapes;
 mod stone;
@@ -206,6 +207,8 @@ struct Scratch {
     ops: Vec<DocOp>,
     /// The document when the run started, for `list_bones` and `list_clips`.
     view: DocView,
+    /// Markers the run named, on the objects it built.
+    markers: Vec<crate::state::Marker>,
     stop: Stop,
 }
 
@@ -215,6 +218,7 @@ pub(crate) struct Outcome {
     pub(crate) palette: Vec<(u8, [u8; 3])>,
     pub(crate) motion: Vec<(u8, Motion, f32)>,
     pub(crate) ops: Vec<DocOp>,
+    pub(crate) markers: Vec<crate::state::Marker>,
 }
 
 impl Scratch {
@@ -265,6 +269,7 @@ pub(crate) fn execute(
         motion: Vec::new(),
         ops: Vec::new(),
         view: view.clone(),
+        markers: Vec::new(),
         stop: stop.clone(),
     }));
     let mut engine = Engine::new_raw();
@@ -292,6 +297,7 @@ pub(crate) fn execute(
     shapes::register(&mut engine, &scratch);
     document::register(&mut engine, &scratch);
     stone::register(&mut engine, &scratch);
+    markers::register(&mut engine, &scratch);
     let mut scope = rhai::Scope::new();
     scope.push_constant("PI", std::f64::consts::PI);
     engine
@@ -308,6 +314,7 @@ pub(crate) fn execute(
         palette: scratch.palette.clone(),
         motion: scratch.motion.clone(),
         ops: scratch.ops.clone(),
+        markers: scratch.markers.clone(),
     })
 }
 
@@ -1272,6 +1279,18 @@ impl Session {
 
     fn write_outcome(&mut self, index: usize, outcome: Outcome) -> Vec<DocOp> {
         self.objects[index].script.params = outcome.params;
+        let mut built_names = Vec::new();
+        for (key, _) in &outcome.built {
+            match key {
+                BuiltKey::Index(target) => {
+                    if let Some(object) = self.objects.get(*target) {
+                        built_names.push(object.name.clone());
+                    }
+                }
+                BuiltKey::Name(name) => built_names.push(name.clone()),
+            }
+        }
+        self.replace_script_markers(&built_names, outcome.markers);
         for (key, cells) in outcome.built {
             match key {
                 BuiltKey::Index(target) => {

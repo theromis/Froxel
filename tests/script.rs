@@ -924,3 +924,64 @@ fn stone_tools_match_the_mcp_tools() {
     .unwrap_err();
     assert!(err.contains("no option `dept`"), "{err}");
 }
+
+#[test]
+fn script_markers_match_set_marker_and_rerun_replaces_them() {
+    use serde_json::json;
+    let mut session = Session::new();
+    session.replace_empty();
+    session
+        .set_script(
+            0,
+            r#"
+            let n = param_int("ledges", 2, 1, 4);
+            fill_box(0, 0, 0, 7, 3, 3, 1);
+            marker("ledge_top", 3.5, 1.5, 4);
+            collision_box(0, 0, 0, 7, 3, 3);
+            if n > 1 { collision_box("upper", 0, 0, 4, 3, 3, 5); }
+            connector("east", [8, 2, 2], [1, 0, 0]);
+            "#,
+        )
+        .unwrap();
+    session
+        .set_marker(
+            0,
+            "hand_placed",
+            crate::state::MarkerKind::Point {
+                at: [0.0, 0.0, 9.0],
+            },
+        )
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    let names: Vec<&str> = session.markers.iter().map(|m| m.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["hand_placed", "ledge_top", "collision_1", "upper", "east"]
+    );
+    // The same markers through MCP, on a fresh document.
+    let mut mcp = Session::new();
+    mcp.replace_empty();
+    for args in [
+        json!({"name": "ledge_top", "point": [3.5, 1.5, 4]}),
+        json!({"name": "collision_1", "kind": "box", "x0": 0, "y0": 0, "z0": 0, "x1": 7, "y1": 3, "z1": 3}),
+        json!({"name": "upper", "kind": "box", "x0": 0, "y0": 0, "z0": 4, "x1": 3, "y1": 3, "z1": 5}),
+        json!({"name": "east", "kind": "connector", "point": [8, 2, 2], "direction": [1, 0, 0]}),
+    ] {
+        crate::remote::apply(&mut mcp, "marker.set", &args).unwrap();
+    }
+    let kinds = |s: &Session| -> Vec<(String, crate::state::MarkerKind)> {
+        s.markers
+            .iter()
+            .filter(|m| m.name != "hand_placed")
+            .map(|m| (m.name.clone(), m.kind.clone()))
+            .collect()
+    };
+    assert_eq!(kinds(&session), kinds(&mcp));
+    // A rerun with one ledge drops `upper` and keeps the hand-placed marker.
+    session.write_script_int(0, "ledges", 1);
+    session.regenerate_script(0).unwrap();
+    let names: Vec<&str> = session.markers.iter().map(|m| m.name.as_str()).collect();
+    assert_eq!(names, ["hand_placed", "ledge_top", "collision_1", "east"]);
+    let err = run_cells(r#"connector("c", [0, 0, 0], [0, 0, 0]);"#).unwrap_err();
+    assert!(err.contains("direction"), "{err}");
+}

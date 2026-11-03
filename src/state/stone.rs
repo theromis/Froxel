@@ -364,12 +364,43 @@ impl SweepPanel {
     }
 }
 
+/// The Markers panel: a new marker's name, kind, and connector direction.
+#[derive(Clone, PartialEq)]
+pub struct MarkersPanel {
+    pub name: String,
+    /// 0 point, 1 box, 2 connector.
+    pub kind: usize,
+    /// Index into [`DIRECTIONS`].
+    pub direction: usize,
+}
+
+impl Default for MarkersPanel {
+    fn default() -> Self {
+        Self {
+            name: "marker".into(),
+            kind: 0,
+            direction: 3,
+        }
+    }
+}
+
+/// The Markers panel's connector directions.
+pub const DIRECTIONS: [(&str, [i32; 3]); 6] = [
+    ("+X", [1, 0, 0]),
+    ("−X", [-1, 0, 0]),
+    ("+Y", [0, 1, 0]),
+    ("−Y", [0, -1, 0]),
+    ("+Z", [0, 0, 1]),
+    ("−Z", [0, 0, -1]),
+];
+
 #[derive(Clone, Default, PartialEq)]
 pub struct StonePanels {
     pub joints: JointsPanel,
     pub weather: WeatherPanel,
     pub growth: GrowthPanel,
     pub sweep: SweepPanel,
+    pub markers: MarkersPanel,
 }
 
 fn slots(what: &str, text: &str) -> Result<Value, String> {
@@ -458,6 +489,54 @@ impl Session {
             points.push('\n');
         }
         points.push_str(&line);
+    }
+
+    /// The Markers panel's button: MCP `set_marker` on the active object at
+    /// the selection: a point on the top centre of its box, the box itself,
+    /// or a connector at its centre.
+    pub fn marker_from_panel(&mut self) {
+        let Some((min, max)) = cell_bounds(self.picked.iter().copied()) else {
+            self.status = "Select cells to place the marker.".into();
+            return;
+        };
+        let panel = &self.stone.markers;
+        let centre = |a: i32, b: i32| f64::from(a + b + 1) / 2.0;
+        let mut args = json!({"name": panel.name, "object": self.selected});
+        match panel.kind {
+            1 => {
+                args["kind"] = json!("box");
+                for (key, value) in ["x0", "y0", "z0", "x1", "y1", "z1"]
+                    .into_iter()
+                    .zip([min.0, min.1, min.2, max.0, max.1, max.2])
+                {
+                    args[key] = json!(value);
+                }
+            }
+            2 => {
+                args["kind"] = json!("connector");
+                args["point"] = json!([
+                    centre(min.0, max.0),
+                    centre(min.1, max.1),
+                    centre(min.2, max.2)
+                ]);
+                args["direction"] = json!(DIRECTIONS[panel.direction.min(5)].1);
+            }
+            _ => {
+                args["kind"] = json!("point");
+                args["point"] = json!([centre(min.0, max.0), centre(min.1, max.1), max.2 + 1]);
+            }
+        }
+        self.status = match crate::remote::apply(self, "marker.set", &args) {
+            Ok(reply) => format!("Marker {} set.", reply["marker"]["name"]),
+            Err(err) => err,
+        };
+    }
+
+    /// The Markers panel's remove button for one marker.
+    pub fn remove_marker_from_panel(&mut self, name: &str) {
+        if let Err(err) = crate::remote::apply(self, "marker.remove", &json!({"name": name})) {
+            self.status = err;
+        }
     }
 
     /// Run a stone tool's MCP handler over the selection's box, or over the

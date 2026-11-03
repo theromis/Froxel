@@ -4,6 +4,12 @@
 
 ### Added
 
+- Markers: MCP `set_marker`, `remove_marker`, and `list_markers`, Rhai
+  `marker`, `collision_box`, and `connector`, and the Markers section name
+  points, collision boxes, and connectors on an object. The `.vox` keeps
+  them (`MVMK`), the export replies list them, and mesh export writes each as
+  a glTF node with `extras.froxel` and the scene's `extras.froxelMarkers`.
+
 - Sweep: MCP `sweep`, Rhai `sweep(points, profile, slots, opts)`, and the
   Sweep section fill a polygon or rounded-rectangle cross-section along a
   polyline or smooth curve, perpendicular to it, with twist and scale per

@@ -68,11 +68,16 @@ pub(crate) fn save_document(
     graph: Option<&VoxGraph>,
     skeleton: &Skeleton,
     clips: &[crate::rig::Clip],
+    markers: Option<Vec<u8>>,
 ) -> Result<Vec<u8>, String> {
-    match graph {
+    let mut bytes = match graph {
         Some(graph) => save_graph(objects, palette, materials, graph, skeleton, clips),
         None => save_scene(objects, palette, materials, skeleton, clips),
+    }?;
+    if let Some(body) = markers {
+        append_chunk(&mut bytes, b"MVMK", &body);
     }
+    Ok(bytes)
 }
 
 /// Write the loaded graph back. Frame 0 picks up the edited translation,
@@ -746,6 +751,13 @@ pub(crate) fn wrap_vox(children: Vec<u8>) -> Vec<u8> {
     file.extend_from_slice(&(children.len() as u32).to_le_bytes());
     file.extend(children);
     file
+}
+
+/// Add a child chunk to the end of a wrapped file's `MAIN`.
+fn append_chunk(file: &mut Vec<u8>, id: &[u8; 4], content: &[u8]) {
+    push_chunk(file, id, content);
+    let children = (file.len() - 20) as u32;
+    file[16..20].copy_from_slice(&children.to_le_bytes());
 }
 
 pub(crate) fn push_i32(out: &mut Vec<u8>, value: i32) {

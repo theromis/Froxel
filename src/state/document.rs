@@ -89,6 +89,7 @@ impl Session {
             skeleton: Skeleton::default(),
             pose: HashMap::new(),
             clips: Vec::new(),
+            markers: Vec::new(),
             selected_bone: None,
             orthographic: false,
             show_bones: false,

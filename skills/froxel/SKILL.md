@@ -23,7 +23,8 @@ If the tools are missing, the server is not configured. Point the user to
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`, `joints`, `weather`, `moss`, `algae`, `vines`, `sweep`),
+  (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`, `joints`, `weather`, `moss`, `algae`, `vines`, `sweep`, and `marker`,
+  `collision_box`, `connector`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `add_bone`, `bind_object`, `set_clip_keys`,
   `set_palette`, …). The document tools apply after the script in order;
@@ -31,6 +32,12 @@ If the tools are missing, the server is not configured. Point the user to
   `has_clip`, and `has_object` so a rerun does not fail. Only file-writing
   tools have no script form. See `docs/scripting.md` and
   `examples/hollow_log.rhai`.
+
+- **Markers** for game data: `set_marker` names a ledge point, a collision
+  `box`, or a `connector` (a joining end) on an object; scripts call
+  `marker`, `collision_box`, and `connector`. They are saved in the `.vox`,
+  listed in export replies, and exported as glTF nodes with
+  `extras.froxel`, so collision never drifts from the model.
 
 ## Coordinates and rules
 

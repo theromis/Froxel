@@ -1583,3 +1583,104 @@ fn sweep_fills_a_curved_wall_as_one_undo_step() {
     ));
     assert!(both.contains("not both"), "{both}");
 }
+
+#[test]
+fn markers_save_export_and_follow_their_object() {
+    let mut head = Headless::new();
+    head.ok("set_voxel", json!({"x": 0, "y": 0, "z": 0, "palette": 1}));
+    head.ok(
+        "add_object",
+        json!({"name": "ledge", "position": [10, 0, 0]}),
+    );
+    head.ok(
+        "fill_box",
+        json!({"x0": 2, "y0": 0, "z0": 0, "x1": 5, "y1": 3, "z1": 3, "palette": 2}),
+    );
+    let set = head.ok(
+        "set_marker",
+        json!({"name": "ledge_top", "point": [3.5, 1.5, 4]}),
+    );
+    assert_eq!(set["marker"]["world"]["point"], json!([13.5, 1.5, 4.0]));
+    assert_eq!(
+        set["marker"]["gltf"]["translation"],
+        json!([13.5, 4.0, -1.5])
+    );
+    head.ok(
+        "set_marker",
+        json!({"name": "hit", "kind": "box", "x0": 2, "y0": 0, "z0": 0, "x1": 5, "y1": 3, "z1": 3}),
+    );
+    head.ok(
+        "set_marker",
+        json!({"name": "east", "kind": "connector", "point": [6, 2, 2], "direction": [2, 0, 0], "object": "ledge"}),
+    );
+    let listed = head.ok("list_markers", json!({}));
+    let all = listed["markers"].as_array().unwrap();
+    assert_eq!(all.len(), 3);
+    assert_eq!(all[1]["world"]["min"], json!([12.0, 0.0, 0.0]));
+    assert_eq!(all[1]["world"]["max"], json!([16.0, 4.0, 4.0]));
+    assert_eq!(all[2]["local"]["direction"], json!([1.0, 0.0, 0.0]));
+    // Moving the object moves its markers.
+    head.ok(
+        "set_object",
+        json!({"index": 1, "position": [20, 0, 0], "name": "shelf"}),
+    );
+    let moved = head.ok("list_markers", json!({}));
+    assert_eq!(
+        moved["markers"][0]["world"]["point"],
+        json!([23.5, 1.5, 4.0])
+    );
+    assert_eq!(moved["markers"][0]["object"], "shelf");
+    // Saved and reopened.
+    let path = std::env::temp_dir().join("froxel-mcp-markers.vox");
+    head.ok("save_file", json!({"path": path.to_string_lossy()}));
+    head.ok("open_file", json!({"path": path.to_string_lossy()}));
+    // A load may move an object's local origin; the world stays.
+    let reopened = head.ok("list_markers", json!({}));
+    let placed = |list: &Value| -> Vec<(Value, Value)> {
+        list["markers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| (m["world"].clone(), m["gltf"].clone()))
+            .collect()
+    };
+    assert_eq!(placed(&reopened), placed(&moved));
+    let _ = std::fs::remove_file(&path);
+    // Exported as nodes with extras, and listed in the reply.
+    let glb = std::env::temp_dir().join("froxel-mcp-markers.glb");
+    let reply = head.ok("export_mesh", json!({"path": glb.to_string_lossy()}));
+    assert_eq!(reply["markers"].as_array().unwrap().len(), 3);
+    let bytes = std::fs::read(&glb).unwrap();
+    let len = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
+    let root: Value = serde_json::from_slice(&bytes[20..20 + len]).unwrap();
+    let nodes = root["nodes"].as_array().unwrap();
+    let hit = nodes.iter().find(|n| n["name"] == "hit").unwrap();
+    assert_eq!(hit["extras"]["froxel"]["kind"], "box");
+    assert_eq!(hit["extras"]["froxel"]["size"], json!([4.0, 4.0, 4.0]));
+    let east = nodes.iter().find(|n| n["name"] == "east").unwrap();
+    assert_eq!(
+        east["extras"]["froxel"]["direction"],
+        json!([1.0, 0.0, -0.0])
+    );
+    assert!(east["rotation"].is_array());
+    assert_eq!(
+        root["scenes"][0]["extras"]["froxelMarkers"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
+    let _ = std::fs::remove_file(&glb);
+    // Removing is one undo step.
+    head.ok("remove_marker", json!({"name": "hit"}));
+    assert_eq!(head.session.markers.len(), 2);
+    head.ok("undo", json!({}));
+    assert_eq!(head.session.markers.len(), 3);
+    let bad = error_text(&head.call(
+        "set_marker",
+        json!({"name": "x", "kind": "spawn", "point": [0, 0, 0]}),
+    ));
+    assert!(bad.contains("point, box, or connector"), "{bad}");
+    let none = error_text(&head.call("remove_marker", json!({"name": "nope"})));
+    assert!(none.contains("no marker"), "{none}");
+}
