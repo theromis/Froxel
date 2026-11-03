@@ -82,12 +82,37 @@ edges are blended into alpha.
 | `pose` | — | temporary pose, as in `render` |
 | `preset`, `presets` | — | named camera, see above |
 | `inputs`, `variants`, `reference`, `columns`, `labels` | — | contact sheet, below |
+| `overlay`, `overlayLabels` | off, true | markers over the model, below |
 
 The reply is `path`, `width`, `height`, `yaw`, `pitch`, `orthographic`,
 `triangles` (drawn), `milliseconds`, `object` (`index` and `name`) when one
 was framed, and `pixelsPerVoxel` when orthographic. It is not an edit and
 does not move the editor camera. Connected to a window, the window process
 draws it.
+
+## Overlays
+
+`overlay` draws the document's markers (`set_marker`, Rhai `marker`,
+`collision_box`, `connector`) over the model, so a collision box can be
+checked against the stone before export: `true` or `"all"` (`"markers"`
+is the same) for every kind, or `"boxes"`, `"points"`, `"connectors"`, or
+a list of them. Collision boxes are orange outlines, points cyan dots, and
+connectors magenta arrows four cells long toward their direction. Each is
+named beside it on a dark plate unless `overlayLabels` is false. A line or
+dot the model hides is drawn faded, and hidden lines dashed, from the
+preview's own depth buffer. Only the markers of drawn objects are drawn
+(with `isolate`, the object's own). The reply adds `overlay`: each drawn
+marker's `name`, `kind`, `object`, the `pixel` of its anchor (a box's top
+centre), and whether it is `hidden`. Contact sheet tiles take the overlay
+too.
+
+```json
+{"name": "preview", "arguments": {"path": "out/wall_collision.png",
+  "preset": "game", "overlay": ["boxes", "connectors"]}}
+```
+
+The Render section's Markers on preview check box adds the overlay to Save
+preview and the contact sheets.
 
 ## Contact sheets
 
@@ -141,6 +166,7 @@ prints the triangle count and the time taken on stderr. `froxel preview
 Several `--input` files make a contact sheet, as do `--variants
 sets.json` (baked from the one `--input`) and `--reference concept.png`
 (with `--reference-label`); `--columns N` and `--no-labels` lay it out.
+`--overlay KIND` (repeatable) and `--no-overlay-labels` draw the markers.
 
 ```sh
 froxel preview --input examples/gorge_wall.vox --variants examples/gorge_wall_variants.json \

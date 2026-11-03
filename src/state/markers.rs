@@ -133,6 +133,11 @@ impl Session {
             .unwrap_or([0.0; 3])
     }
 
+    /// The marker in world mesh units: moved by its object's position.
+    pub(crate) fn marker_world(&self, marker: &Marker) -> MarkerKind {
+        marker.kind.shifted(self.marker_origin(marker))
+    }
+
     /// Add a marker to object `index`, or replace the one of that name. One
     /// undo step.
     pub fn set_marker(&mut self, index: usize, name: &str, kind: MarkerKind) -> Result<(), String> {

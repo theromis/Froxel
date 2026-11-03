@@ -4,6 +4,12 @@
 
 ### Added
 
+- Preview overlays: MCP `preview` `overlay` (and `froxel preview
+  --overlay`) draws collision boxes, points, and connectors over the model
+  with their names, faded and dashed where the model hides them, and
+  replies with each marker's pixel. The Render section's Markers on preview
+  adds it to Save preview and contact sheets.
+
 - Contact sheets and camera presets: MCP `preview` and `froxel preview`
   take `inputs` (several `.vox` files, or the open document with
   parameters), `variants` (parameter sets of the scripted document), and a

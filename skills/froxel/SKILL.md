@@ -92,7 +92,9 @@ If the tools are missing, the server is not configured. Point the user to
    whole turnaround in one call. Use `render` to judge lighting and material.
    `preview` `preset: "game"` is the gameplay camera. To compare a family,
    give `preview` `variants` (or `inputs`) and a `reference` concept: one
-   labelled contact sheet instead of pasting images together.
+   labelled contact sheet instead of pasting images together. `overlay:
+   true` draws collision boxes, points, and connectors over the model, so
+   check collision against the stone before exporting.
 4. **Soften** a blocky region with `smooth` (it keeps colours and removes
    anything one cell thick, so leave twigs out of its box), then **refine**
    with `set_voxels`: cut the snout, place the eyes, add the colour breaks.

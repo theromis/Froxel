@@ -1,6 +1,8 @@
 //! Fast lit preview: the viewport's exposed-face mesh and its sun-plus-ambient
 //! shading, rasterised on the CPU with a depth buffer. No path tracer, no
 //! window, no GPU. MCP `preview` and `froxel preview` both call [`render`].
+//! An overlay draws the document's markers over the model: collision boxes
+//! as outlines, points as dots, connectors as arrows, with their names.
 
 use std::collections::HashMap;
 
@@ -38,6 +40,34 @@ pub struct Preview {
     pub background: [u8; 4],
     /// 2×2 supersampling, up to 2048×2048 output pixels.
     pub antialias: bool,
+    pub overlay: Overlay,
+}
+
+/// Which markers the preview draws over the model.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Overlay {
+    pub boxes: bool,
+    pub points: bool,
+    pub connectors: bool,
+    /// Each marker's name beside it.
+    pub labels: bool,
+}
+
+impl Overlay {
+    pub fn any(&self) -> bool {
+        self.boxes || self.points || self.connectors
+    }
+}
+
+/// A marker the overlay drew, at its anchor's pixel.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Drawn {
+    pub name: String,
+    pub kind: &'static str,
+    pub object: String,
+    pub pixel: [i32; 2],
+    /// Its anchor is behind the model.
+    pub hidden: bool,
 }
 
 impl Default for Preview {
@@ -54,6 +84,7 @@ impl Default for Preview {
             isolate: false,
             background: VIEWPORT_BACKGROUND,
             antialias: true,
+            overlay: Overlay::default(),
         }
     }
 }
@@ -63,6 +94,8 @@ pub struct Frame {
     pub triangles: usize,
     /// Output pixels per voxel edge, orthographic only.
     pub pixels_per_voxel: Option<f32>,
+    /// The markers the overlay drew.
+    pub overlay: Vec<Drawn>,
 }
 
 /// An object by index or by name.
@@ -397,7 +430,12 @@ pub fn render(session: &Session, preview: &Preview) -> Result<Frame, String> {
             }
         }
     }
-    let rgba = resolve(&depth, &color, preview, ss);
+    let mut rgba = resolve(&depth, &color, preview, ss);
+    let overlay = if preview.overlay.any() {
+        draw_overlay(session, preview, &camera, &depth, ss, &mut rgba)
+    } else {
+        Vec::new()
+    };
     let pixels_per_voxel = match camera {
         Camera::Ortho { scale, .. } => Some(scale / ss as f32),
         Camera::Persp { .. } => None,
@@ -406,7 +444,197 @@ pub fn render(session: &Session, preview: &Preview) -> Result<Frame, String> {
         rgba,
         triangles,
         pixels_per_voxel,
+        overlay,
     })
+}
+
+const BOX_COLOR: [u8; 4] = [255, 150, 30, 255];
+const POINT_COLOR: [u8; 4] = [60, 220, 255, 255];
+const CONNECTOR_COLOR: [u8; 4] = [255, 80, 210, 255];
+
+/// Draw the markers of the drawn objects over `rgba`. A line or dot behind
+/// the model is drawn at half strength, so a box can be checked against
+/// the stone it should hold.
+fn draw_overlay(
+    session: &Session,
+    preview: &Preview,
+    camera: &Camera,
+    depth: &[f32],
+    ss: u32,
+    rgba: &mut [u8],
+) -> Vec<Drawn> {
+    use crate::state::MarkerKind;
+    let (w, h) = (preview.width, preview.height);
+    let (sw, sh) = (w * ss, h * ss);
+    let drawn_object = |name: &str| {
+        session
+            .objects
+            .iter()
+            .enumerate()
+            .find(|(_, object)| object.name == name)
+            .is_some_and(|(index, object)| {
+                let chosen = preview.object == Some(index);
+                if preview.isolate {
+                    chosen
+                } else {
+                    chosen || !object.hidden
+                }
+            })
+    };
+    // A projected point in output pixels with its nearness, and whether
+    // the model is in front of it.
+    let place = |p: Vec3| -> Option<([f32; 2], bool)> {
+        let [x, y, z] = camera.project(p)?;
+        let (sx, sy) = (x.floor() as i64, y.floor() as i64);
+        let hidden = (0..sw as i64).contains(&sx)
+            && (0..sh as i64).contains(&sy)
+            && depth[(sy as u32 * sw + sx as u32) as usize] > z + z.abs() * 1.0e-4 + 1.0e-4;
+        Some(([x / ss as f32, y / ss as f32], hidden))
+    };
+    let thick = (1 + w.min(h) / 600) as i32;
+    let mut out = Vec::new();
+    let mut labels: Vec<([i32; 2], String, [u8; 4])> = Vec::new();
+    for marker in &session.markers {
+        if !drawn_object(&marker.object) {
+            continue;
+        }
+        let world = session.marker_world(marker);
+        let (anchor, color) = match &world {
+            MarkerKind::Box { min, max } if preview.overlay.boxes => {
+                let corner = |i: usize| {
+                    Vec3::new(
+                        if i & 1 == 0 { min[0] } else { max[0] },
+                        if i & 2 == 0 { min[1] } else { max[1] },
+                        if i & 4 == 0 { min[2] } else { max[2] },
+                    )
+                };
+                for (a, b) in [
+                    (0, 1),
+                    (2, 3),
+                    (4, 5),
+                    (6, 7),
+                    (0, 2),
+                    (1, 3),
+                    (4, 6),
+                    (5, 7),
+                    (0, 4),
+                    (1, 5),
+                    (2, 6),
+                    (3, 7),
+                ] {
+                    segment(rgba, w, h, &place, corner(a), corner(b), thick, BOX_COLOR);
+                }
+                let top = Vec3::new((min[0] + max[0]) / 2.0, (min[1] + max[1]) / 2.0, max[2]);
+                (top, BOX_COLOR)
+            }
+            MarkerKind::Point { at } if preview.overlay.points => {
+                let p = Vec3::from_array(*at);
+                if let Some((q, hidden)) = place(p) {
+                    dot(rgba, w, h, q, 3 + thick, fade(POINT_COLOR, hidden));
+                }
+                (p, POINT_COLOR)
+            }
+            MarkerKind::Connector { at, direction } if preview.overlay.connectors => {
+                let p = Vec3::from_array(*at);
+                let d = Vec3::from_array(*direction).normalize_or_zero();
+                let tip = p + d * 4.0;
+                segment(rgba, w, h, &place, p, tip, thick, CONNECTOR_COLOR);
+                // The arrowhead: two short strokes back from the tip, across
+                // the direction.
+                let side = if d.cross(Vec3::Z).length() > 0.1 {
+                    d.cross(Vec3::Z).normalize()
+                } else {
+                    Vec3::X
+                };
+                for s in [1.0, -1.0] {
+                    let back = tip - d * 1.4 + side * s;
+                    segment(rgba, w, h, &place, tip, back, thick, CONNECTOR_COLOR);
+                }
+                if let Some((q, hidden)) = place(p) {
+                    dot(rgba, w, h, q, 2 + thick, fade(CONNECTOR_COLOR, hidden));
+                }
+                (p, CONNECTOR_COLOR)
+            }
+            _ => continue,
+        };
+        let Some((q, hidden)) = place(anchor) else {
+            continue;
+        };
+        let pixel = [q[0].round() as i32, q[1].round() as i32];
+        if preview.overlay.labels {
+            labels.push((pixel, marker.name.clone(), color));
+        }
+        out.push(Drawn {
+            name: marker.name.clone(),
+            kind: world.name(),
+            object: marker.object.clone(),
+            pixel,
+            hidden,
+        });
+    }
+    // Labels last, over every line, each on a dark plate.
+    let scale = if w.min(h) >= 600 { 2 } else { 1 };
+    for (pixel, name, color) in labels {
+        let tw = crate::sheet::text_width(&name, scale) as i32;
+        let th = 7 * scale as i32;
+        let x = (pixel[0] + 6).clamp(1, (w as i32 - tw - 2).max(1));
+        let y = (pixel[1] - th - 6).clamp(1, (h as i32 - th - 2).max(1));
+        crate::sheet::fill_rect(
+            rgba,
+            w,
+            h,
+            [x - 2, y - 2, x + tw + 2, y + th + 2],
+            [12, 12, 14, 200],
+        );
+        crate::sheet::draw_text(rgba, w, h, x, y, &name, scale, color);
+    }
+    out
+}
+
+fn fade(color: [u8; 4], hidden: bool) -> [u8; 4] {
+    if hidden {
+        [color[0], color[1], color[2], 110]
+    } else {
+        color
+    }
+}
+
+/// A line between two world points, in steps of about a pixel, each step
+/// faded where the model hides it.
+#[allow(clippy::too_many_arguments)]
+fn segment(
+    rgba: &mut [u8],
+    w: u32,
+    h: u32,
+    place: &impl Fn(Vec3) -> Option<([f32; 2], bool)>,
+    a: Vec3,
+    b: Vec3,
+    thick: i32,
+    color: [u8; 4],
+) {
+    let (Some((pa, _)), Some((pb, _))) = (place(a), place(b)) else {
+        return;
+    };
+    let length = ((pb[0] - pa[0]).hypot(pb[1] - pa[1])).ceil() as usize;
+    let steps = length.clamp(1, 8192);
+    for i in 0..=steps {
+        let t = i as f32 / steps as f32;
+        let Some((q, hidden)) = place(a.lerp(b, t)) else {
+            continue;
+        };
+        // Hidden stretches are dashed.
+        if hidden && (i / 4) % 2 == 1 {
+            continue;
+        }
+        dot(rgba, w, h, q, thick, fade(color, hidden));
+    }
+}
+
+/// A filled square of side `size` centred on `q`.
+fn dot(rgba: &mut [u8], w: u32, h: u32, q: [f32; 2], size: i32, color: [u8; 4]) {
+    let x0 = (q[0] - size as f32 / 2.0).round() as i32;
+    let y0 = (q[1] - size as f32 / 2.0).round() as i32;
+    crate::sheet::fill_rect(rgba, w, h, [x0, y0, x0 + size, y0 + size], color);
 }
 
 /// Fill one triangle at sample centres with a depth test. Returns whether

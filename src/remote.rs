@@ -436,6 +436,7 @@ fn preview(session: &mut Session, params: &Value) -> Result<Value, String> {
     if let Some(fov) = opt_f64(params, "fov")? {
         preview.fov = fov as f32;
     }
+    preview.overlay = overlay_arg(params)?;
     if sheet {
         let object = match params.get("object") {
             None | Some(Value::Null) => None,
@@ -514,7 +515,59 @@ fn preview(session: &mut Session, params: &Value) -> Result<Value, String> {
     if let Some(ppv) = frame.pixels_per_voxel {
         reply["pixelsPerVoxel"] = json!(ppv);
     }
+    if preview.overlay.any() {
+        reply["overlay"] = overlay_json(&frame.overlay);
+    }
     Ok(reply)
+}
+
+/// MCP `preview` `overlay`: true or `"all"` for every marker kind, or one of
+/// `boxes`, `points`, `connectors`, `markers` (every kind), or a list of
+/// them; `overlayLabels` (default true) names each marker.
+pub(crate) fn overlay_arg(params: &Value) -> Result<crate::preview::Overlay, String> {
+    use crate::preview::Overlay;
+    let bad = "overlay must be true, all, markers, boxes, points, connectors, or a list of them";
+    let names: Vec<Value> = match params.get("overlay") {
+        None | Some(Value::Null) | Some(Value::Bool(false)) => return Ok(Overlay::default()),
+        Some(Value::Bool(true)) => vec![json!("all")],
+        Some(Value::Array(list)) => list.clone(),
+        Some(one @ Value::String(_)) => vec![one.clone()],
+        Some(_) => return Err(bad.into()),
+    };
+    let mut overlay = Overlay::default();
+    for name in names {
+        match name.as_str().ok_or(bad)? {
+            "all" | "markers" => {
+                overlay.boxes = true;
+                overlay.points = true;
+                overlay.connectors = true;
+            }
+            "boxes" | "collision" => overlay.boxes = true,
+            "points" => overlay.points = true,
+            "connectors" => overlay.connectors = true,
+            _ => return Err(bad.into()),
+        }
+    }
+    overlay.labels = opt_bool(params, "overlayLabels")?.unwrap_or(true);
+    Ok(overlay)
+}
+
+/// The overlay's markers for a reply.
+pub(crate) fn overlay_json(drawn: &[crate::preview::Drawn]) -> Value {
+    Value::Array(
+        drawn
+            .iter()
+            .map(|mark| {
+                json!({
+                    "name": mark.name,
+                    "kind": mark.kind,
+                    "object": mark.object,
+                    "pixel": mark.pixel,
+                    "hidden": mark.hidden
+                })
+            })
+            .collect(),
+    )
 }
 
 /// Move the window camera. frame re-centres on every object first, so a

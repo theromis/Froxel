@@ -72,6 +72,7 @@ impl Session {
             break_panel: BreakPanel::default(),
             scatter_panel: ScatterPanel::default(),
             sheet_reference: None,
+            preview_overlay: false,
             stone: StonePanels::default(),
             smooth_iterations: 1,
             smooth_fill_at: 17,

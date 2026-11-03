@@ -214,6 +214,8 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
             session.save_still("render.flat");
         }
     });
+    ui.checkbox(&mut session.preview_overlay, "Markers on preview")
+        .on_hover_text("Draw collision boxes, points, and connectors with their names over Save preview and the contact sheets; what the model hides is faded and dashed (MCP preview overlay)");
     ui.horizontal(|ui| {
         if ui
             .button("Sheet of files…")

@@ -311,7 +311,10 @@ pub fn contact_sheet(
             tile.object = Some(crate::preview::find_object(session, key)?);
         }
         let frame = crate::preview::render(session, &tile)?;
-        let info = json!({"triangles": frame.triangles, "voxels": session.voxel_count()});
+        let mut info = json!({"triangles": frame.triangles, "voxels": session.voxel_count()});
+        if tile.overlay.any() {
+            info["overlay"] = crate::remote::overlay_json(&frame.overlay);
+        }
         Ok((
             Image {
                 width: tw,
@@ -673,6 +676,22 @@ pub fn draw_text(
                     }
                 }
             }
+        }
+    }
+}
+
+/// Fill a rectangle, clipped to the image.
+pub fn fill_rect(rgba: &mut [u8], width: u32, height: u32, rect: [i32; 4], color: [u8; 4]) {
+    let [x0, y0, x1, y1] = rect;
+    for y in y0.max(0)..y1.min(height as i32) {
+        for x in x0.max(0)..x1.min(width as i32) {
+            let i = ((y as u32 * width + x as u32) * 4) as usize;
+            let a = u32::from(color[3]);
+            for c in 0..3 {
+                rgba[i + c] = ((u32::from(color[c]) * a + u32::from(rgba[i + c]) * (255 - a) + 127)
+                    / 255) as u8;
+            }
+            rgba[i + 3] = rgba[i + 3].max(color[3]);
         }
     }
 }

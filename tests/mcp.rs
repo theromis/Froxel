@@ -1833,3 +1833,75 @@ fn preview_lays_variants_files_and_a_reference_out_in_a_contact_sheet() {
     assert!(bad.contains("at most"), "{bad}");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn preview_overlay_draws_markers_and_fades_what_the_model_hides() {
+    let mut head = Headless::new();
+    head.ok(
+        "fill_box",
+        json!({"x0": 0, "y0": 0, "z0": 0, "x1": 11, "y1": 11, "z1": 3, "palette": 2}),
+    );
+    head.ok(
+        "set_marker",
+        json!({"name": "slab", "kind": "box", "x0": 0, "y0": 0, "z0": 0, "x1": 11, "y1": 11, "z1": 3}),
+    );
+    head.ok(
+        "set_marker",
+        json!({"name": "top", "point": [6.0, 6.0, 4.0]}),
+    );
+    head.ok(
+        "set_marker",
+        json!({"name": "under", "point": [6.0, 6.0, 1.0]}),
+    );
+    head.ok(
+        "set_marker",
+        json!({"name": "east", "kind": "connector", "point": [12.0, 6.0, 2.0], "direction": [1, 0, 0]}),
+    );
+    let dir = std::env::temp_dir().join(format!("froxel-overlay-{}", std::process::id()));
+    let plain = dir.join("plain.png");
+    let marked = dir.join("marked.png");
+    let base = json!({"width": 160, "height": 120, "preset": "game", "background": "#000000"});
+    let mut args = base.clone();
+    args["path"] = json!(plain);
+    head.ok("preview", args);
+    let mut args = base.clone();
+    args["path"] = json!(marked);
+    args["overlay"] = json!(true);
+    let reply = head.ok("preview", args.clone());
+    let drawn = reply["overlay"].as_array().unwrap();
+    let names: Vec<&str> = drawn.iter().map(|m| m["name"].as_str().unwrap()).collect();
+    assert_eq!(names, ["slab", "top", "under", "east"]);
+    let hidden = |name: &str| drawn.iter().find(|m| m["name"] == name).unwrap()["hidden"].as_bool();
+    assert_eq!(hidden("top"), Some(false));
+    assert_eq!(
+        hidden("under"),
+        Some(true),
+        "a point inside the slab is behind it"
+    );
+    let (_, _, a) = read_png(&plain);
+    let (_, _, b) = read_png(&marked);
+    let changed = a.chunks(4).zip(b.chunks(4)).filter(|(p, q)| p != q).count();
+    assert!(changed > 300, "{changed} pixels changed");
+    // The box outline is orange where it is drawn.
+    let orange = b
+        .chunks(4)
+        .filter(|p| p[0] > 200 && (120..180).contains(&p[1]) && p[2] < 80)
+        .count();
+    assert!(orange > 50, "{orange} orange pixels");
+    // Same request, same bytes.
+    let first = std::fs::read(&marked).unwrap();
+    head.ok("preview", args.clone());
+    assert_eq!(std::fs::read(&marked).unwrap(), first);
+    // Only boxes, no labels: fewer changed pixels than everything.
+    args["overlay"] = json!(["boxes"]);
+    args["overlayLabels"] = json!(false);
+    let reply = head.ok("preview", args.clone());
+    assert_eq!(reply["overlay"].as_array().unwrap().len(), 1);
+    let (_, _, c) = read_png(&marked);
+    let boxes = a.chunks(4).zip(c.chunks(4)).filter(|(p, q)| p != q).count();
+    assert!(boxes > 0 && boxes < changed, "{boxes} vs {changed}");
+    args["overlay"] = json!("lines");
+    let bad = error_text(&head.call("preview", args));
+    assert!(bad.contains("overlay must be"), "{bad}");
+    std::fs::remove_dir_all(dir).unwrap();
+}

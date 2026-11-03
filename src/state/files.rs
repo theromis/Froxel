@@ -839,12 +839,15 @@ impl Session {
         let Some(path) = self.pick_render_path() else {
             return;
         };
-        let params = serde_json::json!({
+        let mut params = serde_json::json!({
             "path": path.to_string_lossy(),
             "yaw": self.yaw.to_degrees(),
             "pitch": self.pitch.to_degrees(),
             "orthographic": self.orthographic,
         });
+        if method == "render.preview" && self.preview_overlay {
+            params["overlay"] = serde_json::json!(true);
+        }
         self.status = match crate::remote::apply(self, method, &params) {
             Ok(_) => format!("Saved {}.", path.display()),
             Err(err) => err,
@@ -881,6 +884,9 @@ impl Session {
                 .iter()
                 .map(|path| serde_json::json!(path.to_string_lossy()))
                 .collect();
+        }
+        if self.preview_overlay {
+            params["overlay"] = serde_json::json!(true);
         }
         if let Some(reference) = &self.sheet_reference {
             params["reference"] = serde_json::json!(reference.to_string_lossy());

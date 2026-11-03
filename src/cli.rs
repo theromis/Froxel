@@ -143,6 +143,8 @@ usage: froxel preview --input <file.vox> [--input <file.vox> ...] --out <file.pn
                       [--background #rrggbb[aa]] [--no-antialias]
                       [--variants <sets.json>] [--reference <concept.png>]
                       [--reference-label TEXT] [--columns N] [--no-labels]
+                      [--overlay all|markers|boxes|points|connectors]...
+                      [--no-overlay-labels]
 
 The editor viewport's mesh and light (sun plus ambient), rasterised on the
 CPU: no path tracer, no window, no GPU. The camera orbits at yaw and pitch
@@ -164,13 +166,19 @@ as the first tile, labelled with --reference-label or its file name) draw
 one tile per model in a grid of --columns (default about square) with each
 tile's name and parameters under it unless --no-labels. --width and
 --height are then each tile's size (default 512x512); the sheet is at most
-8192 pixels a side and holds at most 64 models.";
+8192 pixels a side and holds at most 64 models.
+
+--overlay draws the markers over the model: boxes (collision boxes as
+outlines), points, connectors (an arrow toward their direction), or all
+(markers is the same), each named unless --no-overlay-labels. What the
+model hides is drawn faded and dashed. Repeat it to combine kinds.";
 
 #[allow(clippy::type_complexity)]
 fn preview_args(args: &[String]) -> Result<Option<(Option<PathBuf>, serde_json::Value)>, String> {
     use serde_json::{json, Value};
     let mut inputs: Vec<PathBuf> = Vec::new();
     let mut params = json!({});
+    let mut overlay: Vec<Value> = Vec::new();
     let mut angles = false;
     let mut view = false;
     let mut index = 0;
@@ -252,6 +260,8 @@ fn preview_args(args: &[String]) -> Result<Option<(Option<PathBuf>, serde_json::
                 )?)
             }
             "--no-labels" => params["labels"] = json!(false),
+            "--overlay" => overlay.push(json!(value(&mut index)?)),
+            "--no-overlay-labels" => params["overlayLabels"] = json!(false),
             other => return Err(format!("unknown argument `{other}`\n{PREVIEW_USAGE}")),
         }
         index += 1;
@@ -261,6 +271,9 @@ fn preview_args(args: &[String]) -> Result<Option<(Option<PathBuf>, serde_json::
     }
     if params.get("isolate").is_some() && params.get("object").is_none() {
         return Err("--isolate needs --object".into());
+    }
+    if !overlay.is_empty() {
+        params["overlay"] = json!(overlay);
     }
     if let Some(label) = params
         .as_object_mut()

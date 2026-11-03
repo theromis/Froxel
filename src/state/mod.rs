@@ -740,6 +740,8 @@ pub struct Session {
     pub scatter_panel: ScatterPanel,
     /// The contact sheet's reference PNG, the first tile when set.
     pub sheet_reference: Option<PathBuf>,
+    /// Draw the markers over Save preview and the contact sheets.
+    pub preview_overlay: bool,
     /// The panels of the stone tools.
     pub stone: StonePanels,
     /// Smooth: passes and the neighbour thresholds of MCP `smooth`.

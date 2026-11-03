@@ -464,7 +464,9 @@ keeps them, the `.vox` saves them, and mesh export writes each as a glTF
 node with `extras.froxel`, so the game reads the same ledge and collision
 the script computed. A rerun replaces the markers of the objects the script
 builds; markers placed by hand stay. A later call with the same name
-replaces an earlier one.
+replaces an earlier one. MCP `preview` with `overlay: true` (or `froxel
+preview --overlay all`) draws them over the model with their names, so a
+collision box can be checked against the stone before export.
 
 ## Objects
 

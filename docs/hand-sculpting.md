@@ -113,7 +113,9 @@ section holds the boxes; Add selection appends the selected box.
 
 `set_marker` names a ledge top, a collision box, or a connector on the
 piece, so the game reads them from the exported glb (nodes with
-`extras.froxel`) instead of measuring the model again.
+`extras.froxel`) instead of measuring the model again. `preview` with
+`overlay: true` draws them over the model, so check a collision box
+against the stone before export.
 
 When a scripted piece needs several sizes, `export_variants` writes a
 `.vox` and `.glb` per parameter set with a manifest of the parameters,
