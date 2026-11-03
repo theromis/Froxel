@@ -22,6 +22,7 @@ use crate::state::{Cell, Motion, Session, Volume};
 mod document;
 mod math;
 mod shapes;
+mod stone;
 
 pub(crate) use document::{DocOp, DocView};
 
@@ -290,6 +291,7 @@ pub(crate) fn execute(
     math::register(&mut engine);
     shapes::register(&mut engine, &scratch);
     document::register(&mut engine, &scratch);
+    stone::register(&mut engine, &scratch);
     let mut scope = rhai::Scope::new();
     scope.push_constant("PI", std::f64::consts::PI);
     engine

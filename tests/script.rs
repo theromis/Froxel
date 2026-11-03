@@ -854,3 +854,33 @@ fn list_bones_and_clips_read_the_document_at_the_start() {
     session.regenerate_script(0).unwrap();
     assert_eq!(session.skeleton.bones.len(), 2);
 }
+
+#[test]
+fn stone_tools_match_the_mcp_tools() {
+    use serde_json::json;
+    let script = run_cells(
+        r#"
+        fill_box(0, 0, 0, 23, 5, 15, 1);
+        let cut = joints(0, 0, 0, 23, 5, 15, "columns", #{dirt: 2, depth: 2, seed: 5});
+        if cut.removed == 0 { throw "no joints"; }
+        "#,
+    )
+    .unwrap();
+    let mcp = mcp_cells(&[
+        (
+            "voxel.fill",
+            json!({"x0": 0, "y0": 0, "z0": 0, "x1": 23, "y1": 5, "z1": 15, "palette": 1}),
+        ),
+        (
+            "voxel.joints",
+            json!({"x0": 0, "y0": 0, "z0": 0, "x1": 23, "y1": 5, "z1": 15, "pattern": "columns",
+                "dirt": 2, "depth": 2, "seed": 5}),
+        ),
+    ]);
+    assert_eq!(script, mcp);
+    let err = run_cells(
+        r#"fill_box(0, 0, 0, 4, 4, 4, 1); joints(0, 0, 0, 4, 4, 4, "columns", #{dept: 2});"#,
+    )
+    .unwrap_err();
+    assert!(err.contains("no option `dept`"), "{err}");
+}

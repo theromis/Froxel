@@ -70,6 +70,12 @@ earlier piece, so they pile into a heap at a break or a stump. Sculpt the
 ground in the same object, or pass `floor`, since other objects do not stop
 a falling piece. `clump` 1 piles them in the middle of the box.
 
+`joints` cuts real gaps between stones, one cell wide and `depth` deep,
+with a `dirt` slot at the bottom of each gap: `columns` for fractured
+limestone, `courses` for masonry in a running bond, `cracks` for a crack
+network. Cut joints before moss and plants, or pass `only` with the stone
+slots.
+
 `smooth` softens a blocky region. It fills an empty cell that most of its
 26 neighbours surround and removes a solid cell that few of them touch, and
 a filled cell takes the colour most of its neighbours hold. One pass with

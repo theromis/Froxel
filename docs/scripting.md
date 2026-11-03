@@ -281,6 +281,32 @@ list. Options:
 It returns `#{changed, pieces, skipped}`; `skipped` counts pieces that met a
 solid cell at the top of the box. Other objects do not stop a falling piece.
 
+### Joints
+
+```rhai
+let report = joints(x0, y0, z0, x1, y1, z1, "columns");
+let report = joints(x0, y0, z0, x1, y1, z1, "courses", #{dirt: 2, depth: 2, course: [3, 5], spacing: [6, 11], only: [1, 3], seed: 4});
+```
+
+MCP `joints`: real gaps between stones in the solid cells of the box,
+decided where each cell meets the surface and cut straight in. The pattern
+is `"columns"` (vertical columns of random widths with a bed joint now and
+then, for fractured limestone), `"courses"` (a running bond that follows a
+curved wall), or `"cracks"` (an irregular crack network). Options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `spacing` | by pattern | Stone width range `[min, max]` in cells, 2..=128: column width, block length, crack piece size. |
+| `course` | by pattern | Course height range (courses), or the bed joint spacing across a column (columns), 1..=128. |
+| `width` | `1` | Gap width, 1..=3. |
+| `depth` | `2` | Gap depth under the surface, 1..=16. |
+| `dirt` | keep | Slot of the solid cell at the bottom of each gap. |
+| `only` | every slot | Cut only these slots. |
+| `density` | `0.8` | Cracks: the share of piece boundaries that crack. |
+| `seed` | `0` | A whole number of at least 0. |
+
+It returns `#{changed, removed, dirtied}`.
+
 ### Example
 
 `examples/hollow_log.rhai` (baked in `examples/hollow_log.vox`) builds a

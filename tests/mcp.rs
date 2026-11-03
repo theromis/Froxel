@@ -1479,3 +1479,26 @@ fn scatter_piles_pieces_as_one_undo_step() {
     ));
     assert!(none.contains("palettes"), "{none}");
 }
+
+#[test]
+fn joints_cut_as_one_undo_step() {
+    let mut head = Headless::new();
+    head.ok(
+        "fill_box",
+        json!({"x0": 0, "y0": 0, "z0": 0, "x1": 23, "y1": 4, "z1": 15, "palette": 2}),
+    );
+    let before = head.session.active().cells.clone();
+    let reply = head.ok(
+        "joints",
+        json!({"x0": 0, "y0": 0, "z0": 0, "x1": 23, "y1": 4, "z1": 15, "pattern": "courses", "dirt": 3, "seed": 2}),
+    );
+    assert!(reply["removed"].as_i64().unwrap() > 0, "{reply}");
+    assert!(reply["dirtied"].as_i64().unwrap() > 0, "{reply}");
+    head.ok("undo", json!({}));
+    assert_eq!(head.session.active().cells, before);
+    let bad = error_text(&head.call(
+        "joints",
+        json!({"x0": 0, "y0": 0, "z0": 0, "x1": 4, "y1": 4, "z1": 4, "pattern": "tiles"}),
+    ));
+    assert!(bad.contains("columns, courses, or cracks"), "{bad}");
+}

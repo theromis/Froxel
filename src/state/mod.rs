@@ -622,6 +622,7 @@ mod objects;
 mod pick;
 mod pointer;
 mod selection;
+mod stone;
 mod vox;
 
 use vox::VoxGraph;
@@ -735,6 +736,8 @@ pub struct Session {
     pub(crate) tube_preview: Option<(Vec<crate::tools::TubePoint>, HashMap<Cell, u8>)>,
     pub break_panel: BreakPanel,
     pub scatter_panel: ScatterPanel,
+    /// The panels of the stone tools.
+    pub stone: StonePanels,
     /// Smooth: passes and the neighbour thresholds of MCP `smooth`.
     pub smooth_iterations: i32,
     pub smooth_fill_at: i32,
@@ -877,6 +880,7 @@ pub use geom::palette_slot_at;
 #[allow(unused_imports)] // keeps `crate::state::raycast` after the move into geom
 pub use geom::raycast;
 pub(crate) use geom::{occupied_bounds, resolved_box};
+pub use stone::StonePanels;
 pub(crate) use vox::rotation_codec_errors;
 
 #[cfg(test)]

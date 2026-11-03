@@ -23,7 +23,7 @@ If the tools are missing, the server is not configured. Point the user to
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`),
+  (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`, `joints`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `add_bone`, `bind_object`, `set_clip_keys`,
   `set_palette`, …). The document tools apply after the script in order;
@@ -57,7 +57,9 @@ If the tools are missing, the server is not configured. Point the user to
    (a radius per point, so it tapers; `curve: "smooth"` bends it). Cut
    hollows, tunnels, and pits with `carve`. Snap wood with `break_end` (a
    ragged face with splinters) instead of cutting it clean, and pile debris
-   with `scatter`. Do not compute tubes or carves in
+   with `scatter`. Cut real joints into stone with `joints` (columns,
+   running bond courses, or cracks, with dirt at the bottom) instead of
+   painting dark lines. Do not compute tubes or carves in
    an outside script. Get the silhouette and proportions right first.
 3. **Look.** Use `preview` for a quick lit look at shape and framing after
    every edit: it is the viewport's light, rasterised in well under a second,

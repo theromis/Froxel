@@ -7,12 +7,15 @@ use crate::state::Cell;
 
 mod debris;
 mod generate;
+mod joints;
 mod scatter;
 mod sculpt;
 mod shapes;
+mod surface;
 
 pub use debris::{break_end, BreakSpec, Broken, Splinters};
 pub use generate::{foliage, generate, Gen, MAX_GENERATOR_CELLS};
+pub use joints::{joints, JointPattern, JointSpec};
 pub use scatter::{scatter, PieceKind, ScatterSpec, Scattered, MAX_PIECES};
 #[cfg(test)]
 pub use sculpt::{smooth, tube};
@@ -24,6 +27,7 @@ pub use shapes::{
     bresenham, circle, cube, extrude, flood_empty, flood_face, rounded_inside, rounded_radius,
     square,
 };
+pub use surface::Region;
 
 pub(crate) fn plane_axes(axis: i32) -> (usize, usize) {
     if axis == 0 {
@@ -58,3 +62,7 @@ pub fn add(a: Cell, b: Cell) -> Cell {
 #[cfg(test)]
 #[path = "../../tests/tools.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../tests/stone.rs"]
+mod stone_tests;

@@ -159,6 +159,7 @@ tracer. A file with no scene graph still loads its first model.
 | `carve` | `shape` | Remove the solid cells inside a `box`, `ellipsoid`, `rounded_box`, or `tube`, given as for the fill tools. Replies with `removed`. One undo step |
 | `break_end` | `point`, `normal` | Break the active object across a plane: a jagged face, bark on its rim, sapwood inside, and tapered splinters out along the normal. Optional `depth`, `splinters` or `density`, `length`, `thickness`, `taper`, `rimBias`, `bark`, `sapwood`, `tips`, `seed`. One undo step |
 | `scatter` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Drop small pieces (shard, chip, pebble, chunk) that settle on what is below into a heap. Optional `count`, `kinds`, `size`, `seed`, `floor`, `clump`. One undo step |
+| `joints` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `pattern` | Cut real joint gaps into the solid cells of the box: `columns`, `courses` (running bond), or `cracks`. Optional `spacing`, `course`, `width`, `depth`, `dirt`, `only`, `density`, `seed`. Replies with `removed` and `dirtied`. One undo step |
 | `smooth` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Majority filter in an inclusive box of at most 2000000 cells that keeps colours. Optional `iterations` (1..=8), `fillAt`, `removeAt`. Replies with `filled`, `removed`, `iterations`. One undo step |
 | `get_voxels` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Non-empty **local** cells inside an inclusive box, at most 100000 |
 | `set_palette` | `index`, `r`, `g`, `b` or `entries` | Replace one slot, or many via `entries`, as one undo step. `a` defaults to 255. Optional `motion` (`none`, `sway`, `bob`) and `motion_amount` (0..4) |
@@ -270,6 +271,24 @@ takes one of `palettes`. `clump` 0 spreads the points evenly over the box
 and 1 piles them in its middle (default 0.5). A piece that meets a solid
 cell at the top of the box is skipped and counted in `skipped`. Only empty
 cells are written, at most 200000; the same `seed` gives the same pile.
+
+`joints` splits the solid cells of the box into stones and removes the cells
+on the boundary between two stones, `width` cells wide (1..=3, default 1),
+down to `depth` cells under the surface (1..=16, default 2), so the gaps are
+real. Whether a cell is on a joint is decided where it meets the surface and
+the cut runs straight in from there; a boundary that runs along the surface
+is skipped, so a face never peels off in a layer. The solid cell at the
+bottom of each gap takes `dirt` when given. `pattern` `columns` splits the
+box into vertical columns of random widths (seen from above, the cells of a
+jittered grid `spacing` wide) with a bed joint every `course` cells or so,
+for fractured limestone. `courses` lays horizontal courses `course` cells
+high, each split into blocks `spacing` long whose joints shift from one
+course to the next, a running bond; it follows a curved wall. `cracks` is an
+irregular network between jagged pieces `spacing` across, `density` (default
+0.8) of their boundaries cracked. `spacing` defaults to [4, 9], [6, 11], and
+[6, 11]; `course` to [10, 24] for columns and [3, 5] for courses. `only`
+limits the cut to some slots, so moss or plants added before stay. The same
+`seed` gives the same joints.
 
 `smooth` reads each cell's 26 neighbours inside the box (cells outside it
 are read, never changed). An empty cell with at least `fillAt` solid
@@ -679,6 +698,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `carve` | Remove mode with Box, Generator, or Tube |
 | `break_end` | Break section: Point (or Point at selection), Normal with ±X/Y/Z, Depth, Splinters, Length, Thickness, Taper, Rim bias, Bark, Sapwood, and Tip slots, Seed |
 | `scatter` | Scatter section: Pieces, Kinds, Size, Palettes, Clump, Seed, over the selection's box or above the whole object |
+| `joints` | Joints section: Columns, Courses, or Cracks, Spacing, Course (or Density), Width, Depth, Dirt, Only, Seed, over the selection's box or the whole object |
 | `smooth` | Smooth section: Passes, Fill at, Remove at, over the selection or the whole object |
 | `set_palette` | Palette dock (colour and alpha) and the Material section (motion) |
 | `set_active_object`, `add_object`, `set_object`, `remove_object` | Objects tree and the Object inspector |

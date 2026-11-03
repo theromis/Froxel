@@ -38,7 +38,7 @@ const BREAK: &[&str] = &[
 ];
 const SCATTER: &[&str] = &["count", "kinds", "size", "seed", "floor", "clump"];
 
-type Fallible<T> = Result<T, Box<EvalAltResult>>;
+pub(super) type Fallible<T> = Result<T, Box<EvalAltResult>>;
 pub(super) type Args = serde_json::Map<String, Value>;
 
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {

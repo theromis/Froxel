@@ -4,6 +4,11 @@
 
 ### Added
 
+- Joints: MCP `joints`, Rhai `joints(x0, y0, z0, x1, y1, z1, pattern, opts)`,
+  and the Joints section cut real joint gaps into stone: vertical columns of
+  random widths, running bond courses, or a crack network, `width` wide and
+  `depth` deep under the surface, with a `dirt` slot at the bottom.
+
 - Script document tools: `get_voxels`, `set_voxels`, `set_palette` (alpha
   and motion), `set_object`, `remove_object`, `mirror_object`, `add_bone`,
   `set_bone`, `remove_bone`, `bind_object`, `list_bones`, `set_pose`,

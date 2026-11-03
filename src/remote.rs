@@ -7,6 +7,9 @@ use std::path::{Component, Path, PathBuf};
 
 use serde_json::{json, Map, Value};
 
+mod stone;
+pub(crate) use stone::{stone_writes, Stone};
+
 use crate::state::{Cell, GlassMode, Session};
 
 pub const NO_WINDOW: &str = "No window. Start the editor with `froxel --control PORT`, then `froxel mcp --connect 127.0.0.1:PORT`. Add `--launch` to open the window.";
@@ -597,6 +600,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "voxel.smooth" => smooth(session, &params),
         "voxel.break" => break_end(session, &params),
         "voxel.scatter" => scatter(session, &params),
+        "voxel.joints" => stone::apply_stone(session, &params, Stone::Joints),
         "voxel.get_box" => {
             let cells: Vec<Value> = box_cells(&session.active().cells, &params)?
                 .into_iter()
@@ -1093,6 +1097,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.carve", "shape, x0..z1 | points, radius?, curve?", "Remove the cells inside a box, ellipsoid, rounded_box, or tube"),
     ("voxel.break", "point, normal, depth?, splinters? | density?, length?, thickness?, taper?, rimBias?, bark?, sapwood?, tips?, seed?", "Jagged fracture across a plane with splinters"),
     ("voxel.scatter", "x0, y0, z0, x1, y1, z1, palettes, count?, kinds?, size?, seed?, floor?, clump?", "Drop small pieces that settle into a heap"),
+    ("voxel.joints", "x0, y0, z0, x1, y1, z1, pattern, spacing?, course?, width?, depth?, dirt?, only?, density?, seed?", "Cut joint gaps: columns, running bond courses, or cracks"),
     ("voxel.smooth", "x0, y0, z0, x1, y1, z1, iterations?, fillAt?, removeAt?", "Majority filter in a box that keeps colours"),
     ("voxel.get_box", "x0, y0, z0, x1, y1, z1", "Non-empty cells inside an inclusive box, at most 100000"),
     ("palette.set", "index, r, g, b, a?, motion?, motion_amount? | entries", "Replace one slot, or many, as one undo step"),

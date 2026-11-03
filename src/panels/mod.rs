@@ -126,6 +126,8 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
                     render::break_end(ui, session);
                     ui.separator();
                     render::scatter(ui, session);
+                    ui.separator();
+                    stone::joints(ui, session);
                 });
         },
     );
@@ -551,4 +553,5 @@ mod outliner;
 mod palette;
 mod render;
 mod script;
+mod stone;
 mod tools;
