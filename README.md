@@ -247,7 +247,9 @@ bakes a scripted document once per parameter set in `sets.json` (a list of
 `{"name": "low", "params": {"height": 12}}`) and writes `low.vox`,
 `low.glb`, and a `variants.json` manifest of each set's parameters,
 markers, and bounds; it takes the `froxel export` mesh flags and
-`--no-vox`. MCP `export_variants` and the Export panel's **Export
+`--no-vox`. Exporting again into the same folder updates the manifest by
+variant name, so a subset can be redone without dropping the others;
+`--replace` writes it fresh. MCP `export_variants` and the Export panel's **Export
 variants…** do the same.
 
 `froxel voxrt --input model.vox` loads a file, saves it, loads the save, and

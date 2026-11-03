@@ -200,7 +200,7 @@ tracer. A file with no scene graph still loads its first model.
 | `remove_marker` | `name` or `all` | Remove one marker, or every marker. One undo step |
 | `list_markers` | — | Markers with `local`, `world`, and `gltf` coordinates |
 | `export_mesh` | `path` | Write a glTF 2.0 `.glb` of every object. `merge` defaults to false. `vertexColors` defaults to false. `exportHidden` and `splitObjects` default to false. A slot with motion adds `TEXCOORD_1`. Clips become glTF animations. Markers become nodes. The reply includes `structure` and `markers` |
-| `export_variants` | `variants`, `dir` | Bake the scripted document once per parameter set `{name?, params}` and write `<name>.vox` and `<name>.glb` into `dir` with the `export_mesh` options, then a manifest (default `dir/variants.json`) of each set's parameters, markers, and bounds. Optional `manifest`, `vox`, `timeoutSeconds`. The document and its undo history stay as they were |
+| `export_variants` | `variants`, `dir` | Bake the scripted document once per parameter set `{name?, params}` and write `<name>.vox` and `<name>.glb` into `dir` with the `export_mesh` options, then merge them by name into a manifest (default `dir/variants.json`) of each set's parameters, markers, and bounds; the reply names the entries `added`, `replaced`, and `kept`. Optional `manifest`, `replace` (a fresh manifest), `vox`, `timeoutSeconds`. The document and its undo history stay as they were |
 | `export_models` | `models` | Write 1 to 16 `.glb` files. Each item is `{path, source?, merge?, vertexColors?, exportHidden?, splitObjects?}`. `source` is a `.vox` opened in its own session, so the open document stays. Each file's `structure` lists nodes, meshes, skins, animations, and warnings |
 | `set_script` | `source`, optional `object` | Store a Rhai script and read its parameters. One undo step. Does not rebuild voxels |
 | `get_script` | optional `object` | Source, auto flag, and parameters |
@@ -816,10 +816,24 @@ with the `export_mesh` options (`merge`, `colorAtlas`, `aoStrength`,
 `<name>.vox` unless `vox` is false. The manifest JSON lists, per set,
 `requested` (the values given), `params` (every parameter after clamping,
 keyed `object/name`), `markers` (as `list_markers`), `bounds` (`voxel` mesh
-units and `gltf`), `quads`, `voxels`, and the file paths, plus the mesh
-`options`. Every set is checked before a file is written; a set that fails
-stops the call with its name. `froxel variants` is the same from the
-command line.
+units and `gltf`), `quads`, `voxels`, the file paths, and the mesh
+`options` it was written with. Every set is checked before a file is
+written; a set that fails stops the call with its name and leaves the
+manifest as it was.
+
+An existing manifest is updated, not overwritten: an entry whose name
+(ignoring case) is exported again is replaced in place, every other entry
+is kept in its order, and new names are appended, so one piece of a family
+can be redone without dropping the rest. The reply is the whole manifest
+plus `added`, `replaced`, and `kept`, the names in each group. The
+top-level `options` is present while every entry was written with the same
+options and omitted once they differ; each entry's own `options` is the
+record (an entry kept from an older manifest without one takes that
+manifest's top-level options). Other top-level fields of the old manifest
+are kept. `replace: true` writes a fresh manifest with only the sets of
+this call. A manifest path holding something that is not a manifest is an
+error unless `replace` is set. `froxel variants` is the same from the
+command line, with `--replace`.
 
 ### In the editor
 
@@ -857,7 +871,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `set_view` | Orbit, pan, and zoom in the viewport; Camera section: Orthographic |
 | `set_script`, `get_script`, `set_params`, `list_params`, `regenerate` | Script section |
 | `set_marker`, `remove_marker`, `list_markers` | Markers section: the list with ✕ to remove, Name, Point, Box, or Connector with Facing, Add at selection |
-| `export_variants` | Export section: Export variants… picks a variants JSON file and a folder and uses the section's options |
+| `export_variants` | Export section: Export variants… picks a variants JSON file and a folder and uses the section's options; Replace manifest is `replace` |
 | `export_mesh` | Export section and File > Export Mesh, with Occlusion, AO radius, AO target |
 | `export_models` | File > Export Models and the Export section's Export models: pick `.vox` files and a folder |
 

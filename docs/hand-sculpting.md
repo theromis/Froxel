@@ -119,7 +119,8 @@ against the stone before export.
 
 When a scripted piece needs several sizes, `export_variants` writes a
 `.vox` and `.glb` per parameter set with a manifest of the parameters,
-markers, and bounds.
+markers, and bounds. Exporting again into the same folder updates that
+manifest by name, so redoing one variant keeps the others.
 
 `smooth` softens a blocky region. It fills an empty cell that most of its
 26 neighbours surround and removes a solid cell that few of them touch, and

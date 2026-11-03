@@ -448,7 +448,8 @@ cliff wall built with the stone tools: a profile swept along a curve,
 `exclude`, `joints` columns, `weather`, `moss`, `algae` at the waterline,
 `vines` with blooms, and markers for the ledge, the top, collision boxes,
 and both ends. `examples/gorge_wall_variants.json` is a parameter set list
-for `export_variants` and `froxel variants`.
+for `export_variants` and `froxel variants`; exporting a subset of it
+again updates the manifest by name and keeps the other entries.
 
 ## Markers
 

@@ -1745,6 +1745,94 @@ fn export_variants_writes_each_set_and_leaves_the_document() {
 }
 
 #[test]
+fn export_variants_merges_into_the_manifest_by_name() {
+    let mut head = Headless::new();
+    head.ok(
+        "set_script",
+        json!({"source": "let h = param_int(\"height\", 4, 1, 20); fill_box(0, 0, 0, 2, 2, h - 1, 2);"}),
+    );
+    head.ok("regenerate", json!({}));
+    let dir = std::env::temp_dir().join(format!("froxel-variants-merge-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let dir_text = dir.to_string_lossy().into_owned();
+    let names = |manifest: &Value| -> Vec<String> {
+        manifest["variants"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| entry["name"].as_str().unwrap().to_string())
+            .collect()
+    };
+    let first = head.ok(
+        "export_variants",
+        json!({"dir": dir_text, "vox": false, "variants": [
+            {"name": "a", "params": {"height": 2}},
+            {"name": "b", "params": {"height": 3}},
+            {"name": "c", "params": {"height": 4}}]}),
+    );
+    assert_eq!(first["added"], json!(["a", "b", "c"]));
+    assert_eq!(first["kept"], json!([]));
+    // Redo one, add one: b is replaced in place, a and c are kept.
+    let second = head.ok(
+        "export_variants",
+        json!({"dir": dir_text, "vox": false, "variants": [
+            {"name": "d", "params": {"height": 5}},
+            {"name": "B", "params": {"height": 9}}]}),
+    );
+    assert_eq!(second["added"], json!(["d"]));
+    assert_eq!(second["replaced"], json!(["B"]));
+    assert_eq!(second["kept"], json!(["a", "c"]));
+    let text = std::fs::read_to_string(dir.join("variants.json")).unwrap();
+    let on_disk: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(names(&on_disk), ["a", "B", "c", "d"]);
+    assert_eq!(on_disk["variants"][1]["params"]["Object/height"], 9);
+    assert_eq!(on_disk["variants"][0]["params"]["Object/height"], 2);
+    assert_eq!(on_disk["generator"], "Froxel");
+    assert_eq!(on_disk["options"]["merge"], false);
+    assert!(on_disk.get("added").is_none());
+    // Other options: recorded per entry, and the top level drops them.
+    let third = head.ok(
+        "export_variants",
+        json!({"dir": dir_text, "vox": false, "merge": true, "variants": [{"name": "c"}]}),
+    );
+    assert!(third.get("options").is_none(), "{third}");
+    assert_eq!(third["variants"][2]["options"]["merge"], true);
+    assert_eq!(third["variants"][0]["options"]["merge"], false);
+    // replace starts over with this call's sets.
+    let fresh = head.ok(
+        "export_variants",
+        json!({"dir": dir_text, "vox": false, "replace": true, "variants": [{"name": "e"}]}),
+    );
+    assert_eq!(names(&fresh), ["e"]);
+    assert_eq!(fresh["added"], json!(["e"]));
+    assert_eq!(fresh["options"]["merge"], false);
+    // A file that is not a manifest is not overwritten without replace.
+    std::fs::write(dir.join("variants.json"), "[1, 2]").unwrap();
+    let bad = error_text(&head.call(
+        "export_variants",
+        json!({"dir": dir_text, "vox": false, "variants": [{"name": "e"}]}),
+    ));
+    assert!(bad.contains("replace: true"), "{bad}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn merge_manifest_fills_kept_options_from_an_old_manifest() {
+    let old = json!({"generator": "Froxel", "options": {"merge": true}, "note": "kept",
+        "variants": [{"name": "x"}, {"name": "y"}]});
+    let (manifest, changes) = crate::variants::merge_manifest(
+        Some(old),
+        vec![json!({"name": "y"})],
+        &json!({"merge": true}),
+    );
+    assert_eq!(changes.kept, ["x"]);
+    assert_eq!(changes.replaced, ["y"]);
+    assert_eq!(manifest["variants"][0]["options"], json!({"merge": true}));
+    assert_eq!(manifest["options"], json!({"merge": true}));
+    assert_eq!(manifest["note"], "kept");
+}
+
+#[test]
 fn preview_lays_variants_files_and_a_reference_out_in_a_contact_sheet() {
     let mut head = Headless::new();
     head.ok(

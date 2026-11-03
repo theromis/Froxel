@@ -926,7 +926,8 @@ impl Session {
     /// to a .glb of the same name in one folder, with the Export panel's
     /// options. The open document is left as it is.
     /// Export > Export variants: MCP `export_variants` with a variants JSON
-    /// file and the Export panel's mesh settings, into a folder.
+    /// file and the Export panel's mesh settings, into a folder. The folder's
+    /// manifest is updated by variant name unless Replace manifest is on.
     pub fn export_variants_dialog(&mut self) {
         let Some(sets) = dialog::pick_open("Variants JSON", &["json"]) else {
             return;
@@ -944,11 +945,12 @@ impl Session {
         let mut params = crate::remote::mesh_params(&self.export);
         params["variants"] = variants;
         params["dir"] = folder.to_string_lossy().into_owned().into();
+        params["replace"] = self.variants_replace.into();
         self.status = match crate::remote::apply(self, "mesh.export_variants", &params) {
             Ok(reply) => format!(
-                "Exported {} variants and {}.",
-                reply["variants"].as_array().map_or(0, Vec::len),
-                reply["manifest"].as_str().unwrap_or("the manifest")
+                "Exported variants to {}: {}.",
+                reply["manifest"].as_str().unwrap_or("the manifest"),
+                crate::variants::summary(&reply)
             ),
             Err(err) => err,
         };

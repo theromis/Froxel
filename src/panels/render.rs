@@ -125,12 +125,14 @@ pub(super) fn export(ui: &mut Ui, session: &mut Session) {
         }
         if ui
             .button("Export variants…")
-            .on_hover_text("Bake the script once per parameter set in a variants JSON file and write a .vox, a .glb with these options, and a manifest per set (MCP export_variants)")
+            .on_hover_text("Bake the script once per parameter set in a variants JSON file and write a .vox and a .glb with these options per set, then update the folder's manifest: these sets replace their entries by name and the others are kept (MCP export_variants)")
             .clicked()
         {
             session.export_variants_dialog();
         }
     });
+    ui.checkbox(&mut session.variants_replace, "Replace manifest")
+        .on_hover_text("Export variants… writes a fresh manifest with only the exported sets instead of merging into the one in the folder (MCP export_variants replace)");
 }
 
 pub(super) fn render(ui: &mut Ui, session: &mut Session) {

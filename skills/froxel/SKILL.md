@@ -42,7 +42,9 @@ If the tools are missing, the server is not configured. Point the user to
 - **Variants**: `export_variants` bakes a scripted document once per
   parameter set and writes `<name>.vox`, `<name>.glb` (with the
   `export_mesh` options), and a manifest of parameters, markers, and bounds.
-  `froxel variants` is the command-line form. `examples/gorge_wall.rhai`
+  A later call into the same manifest merges by name: re-export only the
+  variant to redo and the others stay listed (`replace: true` starts the
+  manifest fresh). `froxel variants` is the command-line form. `examples/gorge_wall.rhai`
   shows the stone tools and markers together.
 
 ## Coordinates and rules

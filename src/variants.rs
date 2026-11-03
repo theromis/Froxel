@@ -18,8 +18,9 @@ pub const MAX_VARIANTS: usize = 64;
 /// The manifest's file name when the caller gives none.
 pub const MANIFEST: &str = "variants.json";
 
-/// Export every variant in `params` and write the manifest. The reply is
-/// the manifest with its path.
+/// Export every variant in `params` and merge them into the manifest by
+/// name, or write a fresh one with `replace`. The reply is the manifest with
+/// its path and the names it `added`, `replaced`, and `kept`.
 pub fn export_variants(session: &mut Session, params: &Value) -> Result<Value, String> {
     let dir = PathBuf::from(
         params
@@ -72,6 +73,19 @@ pub fn export_variants(session: &mut Session, params: &Value) -> Result<Value, S
         };
         sets.push((name, values));
     }
+    let manifest_path = match params.get("manifest").and_then(Value::as_str) {
+        Some(path) => PathBuf::from(path),
+        None => dir.join(MANIFEST),
+    };
+    let replace = match params.get("replace") {
+        None | Some(Value::Null) => false,
+        Some(value) => value.as_bool().ok_or("replace must be a boolean")?,
+    };
+    let previous = if replace {
+        None
+    } else {
+        read_manifest(&manifest_path)?
+    };
     std::fs::create_dir_all(&dir)
         .map_err(|err| format!("Could not create {}: {err}", dir.display()))?;
     let mut variants = Vec::with_capacity(sets.len());
@@ -87,21 +101,110 @@ pub fn export_variants(session: &mut Session, params: &Value) -> Result<Value, S
         });
         variants.push(entry.map_err(|err| format!("variant `{name}`: {err}"))?);
     }
-    let manifest_path = match params.get("manifest").and_then(Value::as_str) {
-        Some(path) => PathBuf::from(path),
-        None => dir.join(MANIFEST),
-    };
-    let manifest = json!({
-        "generator": "Froxel",
-        "options": crate::remote::mesh_params(&options),
-        "variants": variants,
-    });
+    let options = crate::remote::mesh_params(&options);
+    let (mut manifest, changes) = merge_manifest(previous, variants, &options);
     let text = serde_json::to_string_pretty(&manifest).map_err(|err| err.to_string())?;
     std::fs::write(&manifest_path, text + "\n")
         .map_err(|err| format!("Could not write {}: {err}", manifest_path.display()))?;
-    let mut reply = manifest;
-    reply["manifest"] = json!(manifest_path.display().to_string());
-    Ok(reply)
+    manifest["manifest"] = json!(manifest_path.display().to_string());
+    manifest["added"] = json!(changes.added);
+    manifest["replaced"] = json!(changes.replaced);
+    manifest["kept"] = json!(changes.kept);
+    Ok(manifest)
+}
+
+/// The variant names an export added, replaced, and kept in its manifest.
+#[derive(Debug, Default, PartialEq)]
+pub struct ManifestChanges {
+    pub added: Vec<String>,
+    pub replaced: Vec<String>,
+    pub kept: Vec<String>,
+}
+
+/// The manifest at `path` when there is one. A file that is not a manifest
+/// is an error rather than something to overwrite.
+fn read_manifest(path: &Path) -> Result<Option<Value>, String> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(format!("Could not read {}: {err}", path.display())),
+    };
+    let value: Value = serde_json::from_str(&text).map_err(|err| {
+        format!(
+            "{} is not JSON ({err}); pass replace: true to write a fresh manifest",
+            path.display()
+        )
+    })?;
+    if !value.get("variants").is_some_and(Value::is_array) {
+        return Err(format!(
+            "{} has no variants list; pass replace: true to write a fresh manifest",
+            path.display()
+        ));
+    }
+    Ok(Some(value))
+}
+
+/// Merge this call's entries into `previous` by name, ignoring case: an
+/// entry exported now replaces the one of its name in place, the others
+/// stay in their order, and new names are appended. Every entry records
+/// its mesh `options` (a kept entry from an older manifest takes the old
+/// top-level ones); the top-level `options` is there only while every entry
+/// shares it. Other top-level fields of `previous` are kept.
+pub fn merge_manifest(
+    previous: Option<Value>,
+    exported: Vec<Value>,
+    options: &Value,
+) -> (Value, ManifestChanges) {
+    let mut manifest = match previous {
+        Some(Value::Object(map)) => map,
+        _ => Map::new(),
+    };
+    let old_options = manifest.remove("options");
+    let mut entries: Vec<Value> = match manifest.remove("variants") {
+        Some(Value::Array(entries)) => entries,
+        _ => Vec::new(),
+    };
+    let key = |entry: &Value| entry["name"].as_str().unwrap_or("").to_lowercase();
+    let mut fresh = vec![false; entries.len()];
+    let mut changes = ManifestChanges::default();
+    for mut entry in exported {
+        entry["options"] = options.clone();
+        let name = entry["name"].as_str().unwrap_or("").to_string();
+        match entries
+            .iter()
+            .position(|old| key(old) == name.to_lowercase())
+        {
+            Some(index) => {
+                entries[index] = entry;
+                fresh[index] = true;
+                changes.replaced.push(name);
+            }
+            None => {
+                entries.push(entry);
+                fresh.push(true);
+                changes.added.push(name);
+            }
+        }
+    }
+    for (entry, fresh) in entries.iter_mut().zip(&fresh) {
+        if *fresh {
+            continue;
+        }
+        changes
+            .kept
+            .push(entry["name"].as_str().unwrap_or("").to_string());
+        if entry.get("options").is_none_or(Value::is_null) {
+            if let (Some(old), Some(map)) = (&old_options, entry.as_object_mut()) {
+                map.insert("options".into(), old.clone());
+            }
+        }
+    }
+    manifest.insert("generator".into(), json!("Froxel"));
+    if entries.iter().all(|entry| entry["options"] == *options) {
+        manifest.insert("options".into(), options.clone());
+    }
+    manifest.insert("variants".into(), Value::Array(entries));
+    (Value::Object(manifest), changes)
 }
 
 /// Write one baked set and describe it for the manifest.
@@ -185,14 +288,26 @@ pub fn cli(args: &[String]) -> i32 {
                 .and_then(|()| export_variants(&mut session, &params));
             match done {
                 Ok(reply) => {
-                    for variant in reply["variants"].as_array().into_iter().flatten() {
+                    let exported: HashSet<&str> = ["added", "replaced"]
+                        .iter()
+                        .flat_map(|key| reply[*key].as_array().into_iter().flatten())
+                        .filter_map(Value::as_str)
+                        .collect();
+                    let variants = reply["variants"].as_array().into_iter().flatten();
+                    for variant in variants
+                        .filter(|variant| exported.contains(variant["name"].as_str().unwrap_or("")))
+                    {
                         eprintln!(
                             "wrote {} ({} quads)",
                             variant["glb"].as_str().unwrap_or(""),
                             variant["quads"]
                         );
                     }
-                    eprintln!("wrote {}", reply["manifest"].as_str().unwrap_or(""));
+                    eprintln!(
+                        "wrote {}: {}",
+                        reply["manifest"].as_str().unwrap_or(""),
+                        summary(&reply)
+                    );
                     0
                 }
                 Err(err) => {
@@ -208,9 +323,20 @@ pub fn cli(args: &[String]) -> i32 {
     }
 }
 
+/// "2 added, 1 replaced, 9 kept" from an export reply.
+pub fn summary(reply: &Value) -> String {
+    let count = |key: &str| reply[key].as_array().map_or(0, Vec::len);
+    format!(
+        "{} added, {} replaced, {} kept",
+        count("added"),
+        count("replaced"),
+        count("kept")
+    )
+}
+
 pub const USAGE: &str = "\
 usage: froxel variants --input <file.vox> --variants <sets.json> --out <dir>
-                       [--manifest <file.json>] [--no-vox]
+                       [--manifest <file.json>] [--replace] [--no-vox]
                        [--merge] [--vertex-colors] [--color-atlas]
                        [--export-hidden] [--split-objects]
                        [--ao STRENGTH] [--ao-radius CELLS]
@@ -218,7 +344,10 @@ usage: froxel variants --input <file.vox> --variants <sets.json> --out <dir>
 
 Bakes the scripted document once per parameter set and writes <name>.vox and
 <name>.glb for each into --out, then a manifest (default <out>/variants.json)
-with each set's parameters, markers, and bounds. sets.json is a list of
+with each set's parameters, markers, and bounds. An existing manifest is
+updated by variant name: the sets exported now replace their entries, the
+others are kept in order, and new names are appended; --replace writes a
+fresh manifest with only these sets. sets.json is a list of
 {\"name\": \"low\", \"params\": {\"height\": 12, \"wall/seed\": 3}}, or an object
 with that list under \"variants\". The mesh options are those of froxel export.";
 
@@ -243,6 +372,7 @@ fn cli_args(args: &[String]) -> Result<Option<(PathBuf, Value)>, String> {
             "--variants" => sets = Some(PathBuf::from(next(&mut index, "--variants")?)),
             "--out" => params["dir"] = json!(next(&mut index, "--out")?),
             "--manifest" => params["manifest"] = json!(next(&mut index, "--manifest")?),
+            "--replace" => params["replace"] = json!(true),
             "--no-vox" => params["vox"] = json!(false),
             "--merge" => params["merge"] = json!(true),
             "--vertex-colors" => params["vertexColors"] = json!(true),

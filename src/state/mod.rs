@@ -742,6 +742,9 @@ pub struct Session {
     pub sheet_reference: Option<PathBuf>,
     /// Draw the markers over Save preview and the contact sheets.
     pub preview_overlay: bool,
+    /// Export variants… writes a fresh manifest instead of merging into the
+    /// one on disk (MCP `export_variants` `replace`).
+    pub variants_replace: bool,
     /// The panels of the stone tools.
     pub stone: StonePanels,
     /// Smooth: passes and the neighbour thresholds of MCP `smooth`.
