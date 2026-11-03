@@ -129,6 +129,8 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
                     ui.separator();
                     render::scatter(ui, session);
                     ui.separator();
+                    stone::relief(ui, session);
+                    ui.separator();
                     stone::joints(ui, session);
                     ui.separator();
                     stone::weather(ui, session);

@@ -1,5 +1,5 @@
-// A gorge cliff wall: a fractured limestone face swept along a curve, with
-// real joints, chipped edges and pits, moss caps and curtains, algae at the
+// A gorge cliff wall: a fractured limestone face swept along a curve, broken
+// into columns of uneven width, relief, and height, with real joints, chipped edges and pits, moss caps and curtains, algae at the
 // waterline, and vines with yellow blooms. Markers give the game a ledge,
 // the wall top, collision boxes, and the two joining ends. Z is up; the
 // wall runs along +X and its cliff face looks toward +Y.
@@ -42,29 +42,38 @@ let l = length;
 let h = to_float(height);
 let mid = to_int(h * 0.55);
 
-// The wall's path bends gently, and its profile has a batter, a ledge at
-// mid height, and a narrower crown. u points to the cliff side (+Y).
+// The wall's path bends gently, and its profile has a batter and a narrower
+// crown. u points to the cliff side (+Y).
 let path = [[0, 0, 0], [l / 3, 8, 0], [2 * l / 3, -4, 0], [l, 4, 0]];
-let profile = [
-    [-6.0, 0.0], [7.0, 0.0], [6.0, h * 0.55], [9.0, h * 0.55],
-    [9.0, h * 0.55 + 2.0], [5.0, h * 0.55 + 2.0], [3.5, h], [-4.0, h]
-];
+let profile = [[-6.0, 0.0], [7.0, 0.0], [5.0, h * 0.55 + 2.0], [3.5, h], [-4.0, h]];
 sweep(path, profile, 1, #{curve: "smooth"});
 
 // Work on a box a cell larger than the wall, so plants can grow on it.
 let x0 = -12; let y0 = -16; let x1 = l + 12; let y1 = 24;
-joints(x0, y0, 0, x1, y1, height + 1, "columns",
-    #{spacing: [6, 13], course: [12, 28], dirt: 3, depth: 2, only: [1], seed: seed});
-weather(x0, y0, 0, x1, y1, height + 1,
-    #{chip: 0.12, pits: 0.015, broken: 2, noise: [4, 5, 6], noiseDensity: 0.3, only: [1], seed: seed});
+// Fractured columns stand out of the cliff face (+Y) and end at uneven
+// heights; the face is found in the cells, so they follow the curve.
+column_relief(x0, y0, 0, x1, y1 + 4, height + 3, "+y", 1,
+    #{width: [6, 12], out: [1, 3], top: [-6, 3], depth: 2, seed: seed});
+// A ledge at mid height, over the columns.
+sweep(path, [[3.0, h * 0.55], [10.0, h * 0.55], [10.0, h * 0.55 + 2.0], [3.0, h * 0.55 + 2.0]], 1,
+    #{curve: "smooth"});
+// The ledge top and the air above it is a walking surface: every tool below
+// leaves it flat.
+let ledge = [x0, y0, mid + 2, x1, y1 + 4, mid + 5];
+joints(x0, y0, 0, x1, y1, height + 3, "columns",
+    #{spacing: [6, 13], course: [12, 28], dirt: 3, depth: 2, only: [1], exclude: ledge, seed: seed});
+weather(x0, y0, 0, x1, y1, height + 3,
+    #{chip: 0.12, pits: 0.015, broken: 2, noise: [4, 5, 6], noiseDensity: 0.3, only: [1],
+      exclude: ledge, seed: seed});
 // The gorge floor, after the stone tools so it is not jointed; strands stop on it.
 fill_box(x0, y0, -2, x1, y1, -1, 7, #{mode: "empty"});
 let stone = [1, 2, 4, 5, 6];
-moss(x0, y0, -1, x1, y1, height + 2, [10, 11, 12],
-    #{only: stone, amount: 0.45, curtains: 0.3, length: [3, 10], seed: seed});
+moss(x0, y0, -1, x1, y1 + 4, height + 4, [10, 11, 12],
+    #{only: stone, amount: 0.45, curtains: 0.3, length: [3, 10], exclude: ledge, seed: seed});
 algae(x0, y0, 0, x1, y1, height, [13, 14, 15], #{band: [0, water], only: stone, seed: seed});
-vines(x0, y0, 0, x1, y1, height + 2, [16, 17, 18],
-    #{blooms: [19], amount: 0.14, bloomChance: 0.1, facing: [0, 1, 0], length: [6, height / 2], seed: seed});
+vines(x0, y0, 0, x1, y1 + 4, height + 4, [16, 17, 18],
+    #{blooms: [19], amount: 0.14, bloomChance: 0.1, facing: [0, 1, 0], length: [6, height / 2],
+      exclude: ledge, seed: seed});
 
 // Game markers, in mesh units.
 marker("ledge_mid", to_float(l / 3), 16.5, to_float(mid + 2));

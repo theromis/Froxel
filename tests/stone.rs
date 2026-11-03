@@ -409,3 +409,129 @@ fn excluded_boxes_keep_their_cells_through_joints_weather_and_growth() {
     // Outside the boxes the tools still act on the top.
     assert!(writes[2].iter().any(|w| w.2 == 16 && w.0 < 4));
 }
+
+fn relief_spec() -> ReliefSpec {
+    ReliefSpec {
+        region: Region::new((-2, -8, 0), (61, 12, 30), "column_relief").unwrap(),
+        facing: (1, -1),
+        width: (5, 9),
+        out: (1, 4),
+        crown: None,
+        top: (-6, 4),
+        lower: true,
+        depth: 3,
+        palette: 2,
+        exclude: Exclude::default(),
+        seed: 7,
+    }
+}
+
+/// A wall along +X whose face looks toward -Y, with its front at `front(x)`.
+fn wall(front: impl Fn(i32) -> i32) -> HashMap<Cell, u8> {
+    let mut cells = HashMap::new();
+    for x in 0..60 {
+        for z in 0..=24 {
+            for y in front(x)..front(x) + 8 {
+                cells.insert((x, y, z), 1u8);
+            }
+        }
+    }
+    cells
+}
+
+#[test]
+fn columns_stand_out_of_the_face_and_end_at_uneven_heights() {
+    let cells = wall(|_| 0);
+    let spec = relief_spec();
+    let done = column_relief(&cells, &spec).unwrap();
+    assert_eq!(done.crown, 24);
+    assert!(
+        done.columns >= 60 / 9 && done.columns <= 60 / 5 + 2,
+        "{done:?}"
+    );
+    let mut after = cells.clone();
+    for &(x, y, z, slot) in &done.writes {
+        assert!(spec.region.contains((x, y, z)));
+        if slot == 0 {
+            // Cuts only above a short column, never below the lowest top.
+            assert!(z > 24 - 6, "cut at z {z}");
+            after.remove(&(x, y, z));
+        } else {
+            assert_eq!(slot, 2);
+            assert!(!cells.contains_key(&(x, y, z)), "added onto a solid cell");
+            // In front of the face, or reaching back into it above the crown.
+            assert!(
+                (-4..0).contains(&y) || (z > 24 && (0..3).contains(&y)),
+                "({x}, {y}, {z})"
+            );
+            after.insert((x, y, z), 2);
+        }
+    }
+    // Relief: how far the face stands out varies along it, and so do the tops.
+    let reach: Vec<i32> = (0..60)
+        .map(|x| {
+            (-8..0)
+                .find(|y| after.contains_key(&(x, *y, 5)))
+                .unwrap_or(0)
+        })
+        .collect();
+    let tops: Vec<i32> = (0..60)
+        .map(|x| {
+            (0..=30)
+                .rev()
+                .find(|z| after.contains_key(&(x, -1, *z)))
+                .unwrap()
+        })
+        .collect();
+    assert!(reach.iter().min() < reach.iter().max(), "{reach:?}");
+    assert!(
+        tops.iter().any(|t| *t < 24) && tops.iter().any(|t| *t > 24),
+        "{tops:?}"
+    );
+    assert!(done.removed > 0);
+    assert_eq!(done, column_relief(&cells, &spec).unwrap());
+
+    // Only rising: nothing is removed.
+    let mut rising = relief_spec();
+    rising.lower = false;
+    let up = column_relief(&cells, &rising).unwrap();
+    assert_eq!(up.removed, 0);
+    assert!(up.writes.iter().all(|w| w.3 == 2));
+}
+
+#[test]
+fn columns_follow_a_curved_face_and_skip_excluded_boxes() {
+    // An arc: the face recedes toward the ends.
+    let front = |x: i32| ((x - 30) * (x - 30)) / 120;
+    let cells = wall(front);
+    let mut spec = relief_spec();
+    spec.lower = false;
+    spec.exclude = Exclude(vec![Region::spanning((20, -8, 0), (29, 12, 30))]);
+    let done = column_relief(&cells, &spec).unwrap();
+    for &(x, y, z, _) in &done.writes {
+        assert!(!spec.exclude.contains((x, y, z)));
+        // Each column cell sits in front of its own step of the face.
+        let f = front(x);
+        let back = if z > 24 { f + 2 } else { f - 1 };
+        assert!(
+            (f - 4..=back).contains(&y),
+            "({x}, {y}, {z}) against a face at {f}"
+        );
+    }
+    assert!(done.writes.iter().any(|w| w.0 < 5) && done.writes.iter().any(|w| w.0 > 55));
+}
+
+#[test]
+fn column_relief_refuses_bad_values() {
+    let cells = wall(|_| 0);
+    let mut spec = relief_spec();
+    spec.width = (0, 4);
+    assert!(column_relief(&cells, &spec).unwrap_err().contains("width"));
+    let mut spec = relief_spec();
+    spec.facing = (2, 1);
+    assert!(column_relief(&cells, &spec).unwrap_err().contains("facing"));
+    let spec = relief_spec();
+    assert!(column_relief(&HashMap::new(), &spec)
+        .unwrap_err()
+        .contains("no solid"));
+}

@@ -306,6 +306,32 @@ path. The third argument is one slot or a list. Options:
 
 It returns `#{changed, cells, length}`.
 
+### Column relief
+
+```rhai
+let report = column_relief(x0, y0, z0, x1, y1, z1, "-y", 1);
+let report = column_relief(x0, y0, z0, x1, y1, z1, [0, -1, 0], 1, #{width: [7, 13], out: [0, 5], crown: 75, top: [-12, 7], lower: false, seed: 4});
+```
+
+MCP `column_relief`: the cliff face in the box, facing `"+x"`, `"-x"`,
+`"+y"`, `"-y"` (or a vector along one of them), is broken into columns of
+`palette` that stand out of it and end at uneven heights. The face is found
+in the cells, so it follows a swept, curved wall. Options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `width` | `[6, 12]` | Column width range along the face, 1..=64. |
+| `out` | `[1, 4]` | How far a column stands out of the face, 0..=16. |
+| `crown` | highest solid cell | The height the column tops scatter around. |
+| `top` | `[-8, 4]` | Column top range relative to the crown, -256..=256. |
+| `lower` | `true` | A column ending below the crown cuts the wall above it; `false` only adds cells. |
+| `depth` | `3` | How far a column reaches back into the face, and how deep the cut above it goes, 1..=16. |
+| `exclude` | none | Boxes left alone (see [Protected boxes](#protected-boxes)). |
+| `seed` | `0` | A whole number of at least 0. |
+
+It returns `#{changed, columns, added, removed, crown}`. Run it after
+`sweep` and before `joints` and `weather`.
+
 ### Joints
 
 ```rhai
@@ -415,8 +441,9 @@ buttress roots built with `push`, `break_end` at the far end, a carved
 hollow, a ground slab, and `scatter` debris under the break.
 
 `examples/gorge_wall.rhai` (baked in `examples/gorge_wall.vox`) is a gorge
-cliff wall built with the stone tools: a profile with a ledge swept along a
-curve, `joints` columns, `weather`, `moss`, `algae` at the waterline,
+cliff wall built with the stone tools: a profile swept along a curve,
+`column_relief` columns, a ledge swept over them and kept flat with
+`exclude`, `joints` columns, `weather`, `moss`, `algae` at the waterline,
 `vines` with blooms, and markers for the ledge, the top, collision boxes,
 and both ends. `examples/gorge_wall_variants.json` is a parameter set list
 for `export_variants` and `froxel variants`.

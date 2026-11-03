@@ -279,7 +279,7 @@ fn dispatch(
                 "protocolVersion": version,
                 "capabilities": {"tools": {"listChanged": false}},
                 "serverInfo": {"name": "Froxel", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. preview writes a fast lit PNG (the viewport mesh and light, rasterised, well under a second) framed on the model or one object; use it to look after every step. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, grow limbs and roots with fill_tube, cut hollows with carve, soften with smooth, refine with set_voxels, and render after every step. Stone surfaces: joints cuts real joint gaps (columns, courses, cracks), weather chips edges, dents pits, and adds colour noise, and moss, algae, and vines grow plants on exposed faces (the caller gives the slots and their motion). Their exclude boxes (and scatter's) keep walking surfaces whole, with no refill afterwards. sweep fills a cross-section along a curve for curved walls, banks, and ledges. set_marker names points, collision boxes, and connectors that the .vox keeps and the glb carries as nodes; export_variants writes a .vox and .glb per parameter set with a manifest of parameters, markers, and bounds. examples/gorge_wall.rhai uses them all. A Rhai script (set_script) can call the same sculpt, voxel, object, rig, clip, and palette tools, with the MCP options in a trailing map, for a family of organic pieces (docs/scripting.md, examples/hollow_log.rhai)."
+                "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. preview writes a fast lit PNG (the viewport mesh and light, rasterised, well under a second) framed on the model or one object; use it to look after every step. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, grow limbs and roots with fill_tube, cut hollows with carve, soften with smooth, refine with set_voxels, and render after every step. Stone surfaces: column_relief breaks a cliff face into columns of uneven width, relief, and height, joints cuts real joint gaps (columns, courses, cracks), weather chips edges, dents pits, and adds colour noise, and moss, algae, and vines grow plants on exposed faces (the caller gives the slots and their motion). Their exclude boxes (and scatter's) keep walking surfaces whole, with no refill afterwards. sweep fills a cross-section along a curve for curved walls, banks, and ledges. set_marker names points, collision boxes, and connectors that the .vox keeps and the glb carries as nodes; export_variants writes a .vox and .glb per parameter set with a manifest of parameters, markers, and bounds. examples/gorge_wall.rhai uses them all. A Rhai script (set_script) can call the same sculpt, voxel, object, rig, clip, and palette tools, with the MCP options in a trailing map, for a family of organic pieces (docs/scripting.md, examples/hollow_log.rhai)."
             }),
         ));
     }
@@ -383,6 +383,7 @@ fn map_tool(name: &str, args: &Value) -> Result<(String, Value), String> {
         "break_end" => "voxel.break",
         "scatter" => "voxel.scatter",
         "joints" => "voxel.joints",
+        "column_relief" => "voxel.column_relief",
         "weather" => "voxel.weather",
         "moss" => "voxel.moss",
         "algae" => "voxel.algae",
@@ -656,6 +657,23 @@ fn tools() -> Vec<Value> {
             p["seed"] = int_prop("Seed. Defaults to 0.");
             p
         }, &["x0", "y0", "z0", "x1", "y1", "z1", "pattern"]),
+        tool("column_relief", "Break a cliff face of the active object into columns, for fractured limestone cliffs: along the face, columns of random width stand out of it by a random amount and end at uneven heights around the crown. The face is found in the cells of the inclusive box, so a swept, curved wall works: for each step along it, the median of the frontmost solid cell of every row up to the crown, which a ledge does not pull forward. A column fills empty cells from depth cells behind the face to out cells in front of it, from the box's bottom to its top. With lower (the default), a column that ends below the crown cuts the wall above it, depth cells back from the face, so the crown is uneven; lower false only adds cells, columns rising above the crown or ending short in front of it. Writes stay inside the box and out of exclude boxes. Run it after sweep and before joints and weather. Deterministic for a seed. A box of at most 2000000 cells. One undo step. Replies with columns, added, removed, and crown.", {
+            let mut p = json!({});
+            for key in ["x0", "y0", "z0", "x1", "y1", "z1"] {
+                p[key] = int_prop("Inclusive box corner; a few cells larger than the wall so columns can stand out of it");
+            }
+            p["facing"] = json!({"type": ["string", "array"], "description": "The face's outward direction, along x or y: +x, -x, +y, -y, or a vector such as [0, -1, 0]."});
+            p["palette"] = int_prop("Palette index of the columns, usually the stone.");
+            p["width"] = json!({"type": "array", "items": {"type": "integer"}, "description": "Column width range [min, max] along the face in cells, 1..=64, or one number. Defaults to [6, 12]."});
+            p["out"] = json!({"type": "array", "items": {"type": "integer"}, "description": "How far a column stands out of the face, [min, max] cells, 0..=16, or one number. Defaults to [1, 4]."});
+            p["crown"] = int_prop("Height the column tops scatter around. Defaults to the highest solid cell in the box.");
+            p["top"] = json!({"type": "array", "items": {"type": "integer"}, "description": "Column top range [min, max] relative to the crown in cells, -256..=256: negative ends short of it, positive rises above it. Defaults to [-8, 4]."});
+            p["lower"] = json!({"type": "boolean", "description": "A column ending below the crown cuts the wall above it, so the crown is uneven. false only adds cells (only rising). Defaults to true."});
+            p["depth"] = int_prop("How far a column reaches back into the face, and how deep the cut above a short column goes, 1..=16 cells. Defaults to 3.");
+            p["exclude"] = exclude_prop();
+            p["seed"] = int_prop("Seed. Defaults to 0.");
+            p
+        }, &["x0", "y0", "z0", "x1", "y1", "z1", "facing", "palette"]),
         tool("weather", "Weather the exposed cells of an inclusive box of the active object: chip edges and corners (small irregular chunks off cells exposed on two or more sides), dent flat faces with pits (real holes, not paint), and add subtle colour noise in soft patches. The faces a chip or pit uncovers take the broken slot, usually a slightly darker stone (not dirt). exclude boxes keep walking surfaces whole. Deterministic for a seed. A box of at most 2000000 cells. One undo step. Replies with chips, pits, removed, broken, and recoloured.", {
             let mut p = json!({});
             for key in ["x0", "y0", "z0", "x1", "y1", "z1"] {
@@ -853,7 +871,7 @@ fn tools() -> Vec<Value> {
             "x": num_prop("X in window points, origin at the top-left of the client area"),
             "y": num_prop("Y in window points, origin at the top-left of the client area")
         }), &["x", "y"]),
-        tool("set_script", "Store a Rhai script on an object and read its parameters. One undo step. Voxels change only when regenerate runs. A failure keeps the source and reports the script line. Scripts have the sculpt tools as functions (fill_box with a mode, fill_ellipsoid, fill_rounded_box, fill_tube, carve_box, carve_ellipsoid, carve_rounded_box, carve_tube, smooth, break_end, scatter, joints, weather, moss, algae, vines, sweep, and marker, collision_box, connector for markers) with the MCP options in a trailing map such as #{mode: \"empty\"}, get_voxels, set_voxels, and the document tools (set_palette, set_object, remove_object, mirror_object, add_bone, set_bone, remove_bone, bind_object, list_bones, set_pose, clear_pose, add_clip, set_clip_keys, list_clips, remove_clip), which apply after the script in the same undo step, plus sqrt, pow, PI, min, max, clamp, and push on arrays; docs/scripting.md lists them.", json!({
+        tool("set_script", "Store a Rhai script on an object and read its parameters. One undo step. Voxels change only when regenerate runs. A failure keeps the source and reports the script line. Scripts have the sculpt tools as functions (fill_box with a mode, fill_ellipsoid, fill_rounded_box, fill_tube, carve_box, carve_ellipsoid, carve_rounded_box, carve_tube, smooth, break_end, scatter, joints, column_relief, weather, moss, algae, vines, sweep, and marker, collision_box, connector for markers) with the MCP options in a trailing map such as #{mode: \"empty\"}, get_voxels, set_voxels, and the document tools (set_palette, set_object, remove_object, mirror_object, add_bone, set_bone, remove_bone, bind_object, list_bones, set_pose, clear_pose, add_clip, set_clip_keys, list_clips, remove_clip), which apply after the script in the same undo step, plus sqrt, pow, PI, min, max, clamp, and push on arrays; docs/scripting.md lists them.", json!({
             "object": int_prop("Object index. Omit for the active object."),
             "source": str_prop("Rhai source. Empty clears the script.")
         }), &["source"]),
@@ -948,6 +966,7 @@ fn hints(name: &str) -> [bool; 3] {
         | "break_end"
         | "scatter"
         | "joints"
+        | "column_relief"
         | "weather"
         | "moss"
         | "algae"

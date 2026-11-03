@@ -1,5 +1,5 @@
-//! The MCP stone tools in Rhai: `joints`, `weather`, `moss`, `algae`,
-//! `vines`, and `sweep`.
+//! The MCP stone tools in Rhai: `joints`, `column_relief`, `weather`,
+//! `moss`, `algae`, `vines`, and `sweep`.
 //!
 //! Each call turns its arguments into the MCP tool's arguments and runs
 //! `remote::stone_writes` on the object being written, as the MCP handler
@@ -17,6 +17,10 @@ use crate::remote::{self, Stone};
 
 const JOINTS: &[&str] = &[
     "spacing", "course", "width", "depth", "dirt", "only", "density", "exclude", "seed",
+];
+
+const RELIEF: &[&str] = &[
+    "width", "out", "crown", "top", "lower", "depth", "exclude", "seed",
 ];
 
 const WEATHER: &[&str] = &[
@@ -163,6 +167,50 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
                     },
                 );
             }
+        }
+    }
+    for with_opts in [false, true] {
+        let state = scratch.clone();
+        let run =
+            move |corners: [INT; 6], facing: Dynamic, palette: INT, opts: &Map| -> Fallible<Map> {
+                let mut args = options(opts, RELIEF, "column_relief")?;
+                args.extend(box_args(corners)?);
+                args.insert("facing".into(), json(&facing)?);
+                args.insert("palette".into(), palette.into());
+                state
+                    .borrow_mut()
+                    .stone(args, Stone::Relief)
+                    .map_err(runtime)
+            };
+        if with_opts {
+            engine.register_fn(
+                "column_relief",
+                move |x0: INT,
+                      y0: INT,
+                      z0: INT,
+                      x1: INT,
+                      y1: INT,
+                      z1: INT,
+                      facing: Dynamic,
+                      palette: INT,
+                      opts: Map| {
+                    run([x0, y0, z0, x1, y1, z1], facing, palette, &opts)
+                },
+            );
+        } else {
+            engine.register_fn(
+                "column_relief",
+                move |x0: INT,
+                      y0: INT,
+                      z0: INT,
+                      x1: INT,
+                      y1: INT,
+                      z1: INT,
+                      facing: Dynamic,
+                      palette: INT| {
+                    run([x0, y0, z0, x1, y1, z1], facing, palette, &Map::new())
+                },
+            );
         }
     }
     for with_opts in [false, true] {

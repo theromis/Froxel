@@ -5,7 +5,7 @@
 use egui::{RichText, Ui};
 
 use super::{section, DIM};
-use crate::state::{EditorMode, MarkerKind, Plant, Session, DIRECTIONS, FACINGS};
+use crate::state::{EditorMode, MarkerKind, Plant, Session, DIRECTIONS, FACINGS, RELIEF_FACINGS};
 use crate::tools::JointPattern;
 
 fn label(ui: &mut Ui, text: &str, tip: &str) {
@@ -51,13 +51,14 @@ fn slots_field(ui: &mut Ui, text: &mut String, hint: &str) {
     );
 }
 
-/// MCP `exclude`: boxes Scatter, Joints, Weather, and Growth leave alone.
+/// MCP `exclude`: boxes Scatter, Relief, Joints, Weather, and Growth leave
+/// alone.
 pub(super) fn protect(ui: &mut Ui, session: &mut Session) {
     let enabled = session.editor_mode == EditorMode::Model;
     ui.add_enabled_ui(enabled, |ui| {
         section(ui, "Protect");
         ui.label(
-            RichText::new("Boxes Scatter, Joints, Weather, and Growth leave alone: ledge tops, cave floors, river beds.")
+            RichText::new("Boxes Scatter, Relief, Joints, Weather, and Growth leave alone: ledge tops, cave floors, river beds.")
                 .small()
                 .color(DIM),
         );
@@ -148,6 +149,74 @@ pub(super) fn joints(ui: &mut Ui, session: &mut Session) {
             .clicked()
         {
             session.joints_from_panel();
+        }
+    });
+}
+
+/// MCP `column_relief`: a cliff face broken into columns.
+pub(super) fn relief(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.voxel_count() > 0 && session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Relief");
+        let panel = &mut session.stone.relief;
+        egui::Grid::new("relief-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Facing", "The face's outward direction. The face is found in the cells, so a swept, curved wall works.");
+                ui.horizontal(|ui| {
+                    for (index, (name, _)) in RELIEF_FACINGS.iter().enumerate() {
+                        if ui.selectable_label(panel.facing == index, *name).clicked() {
+                            panel.facing = index;
+                        }
+                    }
+                });
+                ui.end_row();
+                label(ui, "Palette", "Slot of the columns, usually the stone. 0 is the active slot.");
+                ui.add(egui::DragValue::new(&mut panel.palette).range(0..=255));
+                ui.end_row();
+                label(ui, "Width", "Column width range along the face, in cells.");
+                range_i32(ui, &mut panel.width, 1..=64);
+                ui.end_row();
+                label(ui, "Out", "How far a column stands out of the face, in cells.");
+                ui.horizontal(|ui| {
+                    for value in panel.out.iter_mut() {
+                        ui.add(egui::DragValue::new(value).range(0..=16));
+                    }
+                });
+                ui.end_row();
+                label(ui, "Crown", "Height the column tops scatter around. Off: the highest solid cell of the box.");
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut panel.crown_on, "");
+                    ui.add_enabled(
+                        panel.crown_on,
+                        egui::DragValue::new(&mut panel.crown).range(-1024..=1023),
+                    );
+                });
+                ui.end_row();
+                label(ui, "Top", "Column top range relative to the crown: negative ends short of it, positive rises above it.");
+                ui.horizontal(|ui| {
+                    for value in panel.top.iter_mut() {
+                        ui.add(egui::DragValue::new(value).range(-256..=256));
+                    }
+                });
+                ui.end_row();
+                label(ui, "Lower", "A column ending below the crown cuts the wall above it, so the crown is uneven. Off: columns only add cells.");
+                ui.checkbox(&mut panel.lower, "");
+                ui.end_row();
+                label(ui, "Depth", "How far a column reaches back into the face, and how deep the cut above a short column goes.");
+                ui.add(egui::Slider::new(&mut panel.depth, 1..=16));
+                ui.end_row();
+                label(ui, "Seed", "Same seed, same columns.");
+                ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
+                ui.end_row();
+            });
+        if ui
+            .button(scope(session, "Raise columns on"))
+            .on_hover_text("MCP column_relief over the selection's box, or the whole object, keeping the Protect boxes. One undo step.")
+            .clicked()
+        {
+            session.relief_from_panel();
         }
     });
 }

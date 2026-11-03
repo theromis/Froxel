@@ -160,6 +160,7 @@ tracer. A file with no scene graph still loads its first model.
 | `carve` | `shape` | Remove the solid cells inside a `box`, `ellipsoid`, `rounded_box`, or `tube`, given as for the fill tools. Replies with `removed`. One undo step |
 | `break_end` | `point`, `normal` | Break the active object across a plane: a jagged face, bark on its rim, sapwood inside, and tapered splinters out along the normal. Optional `depth`, `splinters` or `density`, `length`, `thickness`, `taper`, `rimBias`, `bark`, `sapwood`, `tips`, `seed`. One undo step |
 | `scatter` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Drop small pieces (shard, chip, pebble, chunk) that settle on what is below into a heap. Optional `count`, `kinds`, `size`, `seed`, `floor`, `clump`, `exclude`. One undo step |
+| `column_relief` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `facing`, `palette` | Break a cliff face into columns of random width that stand out of it and end at uneven heights around the crown. Optional `width`, `out`, `crown`, `top`, `lower`, `depth`, `exclude`, `seed`. Replies with `columns`, `added`, `removed`, `crown`. One undo step |
 | `joints` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `pattern` | Cut real joint gaps into the solid cells of the box: `columns`, `courses` (running bond), or `cracks`. Optional `spacing`, `course`, `width`, `depth`, `dirt`, `only`, `exclude`, `density`, `seed`. Replies with `removed` and `dirtied`. One undo step |
 | `weather` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Chip edges and corners, dent pits into flat faces, and add subtle colour noise on the exposed cells of the box. Optional `chip`, `chipSize`, `pits`, `pitDepth`, `broken`, `noise`, `noiseDensity`, `noiseScale`, `only`, `exclude`, `seed`. Replies with `chips`, `pits`, `removed`, `broken`, `recoloured`. One undo step |
 | `moss` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Moss cushions on tops and curtains with a ragged end down the side faces below them. Optional `amount`, `noise`, `faces`, `facing`, `band`, `only`, `exclude`, `layer`, `curtains`, `length`, `thickness`, `seed`. Replies with `added`, `painted`, `curtains`. One undo step |
@@ -307,6 +308,23 @@ so the outside of a bend is filled. A cell is in when its centre is inside
 the profile at some slab. With `palettes`, `pattern` `bands` (the default)
 lays them in layers `period` cells high by `v`, like strata; `rings` lays
 them along the path; `random` picks per cell from `seed`.
+
+`column_relief` breaks a cliff face into columns for a fractured cliff.
+`facing` is the face's outward direction along x or y (`+x`, `-x`, `+y`,
+`-y`, or a vector such as `[0, -1, 0]`). The face is found in the box's
+cells: for each step along it, the frontmost solid cell of every row from
+the box's bottom up to `crown` (default the highest solid cell in the box),
+and the median of those, so a ledge does not pull it forward and a swept,
+curved wall gives a curved face. Walking along the face, each column takes
+a width from `width` ([6, 12], 1..=64), stands `out` cells in front of the
+face ([1, 4], 0..=16), and ends at `crown` plus a value from `top` ([-8, 4],
+-256..=256). It fills empty cells with `palette` from `depth` cells behind
+the face (3, 1..=16) to its front, from the box's bottom to its top. With
+`lower` (the default), a column that ends below the crown cuts the wall
+above it, `depth` cells back from the face, so the crown is uneven; `lower`
+false only adds cells. A step with no wall gets no column. Writes stay
+inside the box and out of `exclude` boxes. Run it after `sweep` and before
+`joints` and `weather`, which then cut and chip the columns too.
 
 `joints` splits the solid cells of the box into stones and removes the cells
 on the boundary between two stones, `width` cells wide (1..=3, default 1),
@@ -821,6 +839,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `break_end` | Break section: Point (or Point at selection), Normal with ±X/Y/Z, Depth, Splinters, Length, Thickness, Taper, Rim bias, Bark, Sapwood, and Tip slots, Seed |
 | `exclude` (on the stone tools) | Protect section: one box per line, Add selection, Clear; Scatter, Joints, Weather, and Growth use it |
 | `scatter` | Scatter section: Pieces, Kinds, Size, Palettes, Clump, Seed, over the selection's box or above the whole object |
+| `column_relief` | Relief section: Facing ±X/±Y, Palette, Width, Out, Crown, Top, Lower, Depth, Seed, Raise columns on the selection's box or the whole object |
 | `joints` | Joints section: Columns, Courses, or Cracks, Spacing, Course (or Density), Width, Depth, Dirt, Only, Seed, over the selection's box or the whole object |
 | `weather` | Weather section: Chip, Chip size, Pits, Pit depth, Broken, Noise, Density, Patch, Only, Seed, over the selection's box or the whole object |
 | `moss`, `algae`, `vines` | Growth section: Moss, Algae, or Vines, Palettes, Amount, Noise, Faces, Facing, Band, Only, Paint, Curtains, Thickness, Length, Blooms, Bloom chance, Seed, over the selection's box or the whole object |

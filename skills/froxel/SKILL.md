@@ -71,7 +71,10 @@ If the tools are missing, the server is not configured. Point the user to
    ragged face with splinters) instead of cutting it clean, sweep curved
    walls, banks, and ledges with `sweep` (a profile along a smooth path),
    and pile debris
-   with `scatter`. Cut real joints into stone with `joints` (columns,
+   with `scatter`. Break a cliff face into standing columns with
+   `column_relief` (random width, relief, and uneven tops; it finds the face
+   itself, curved or not) instead of hand-writing boxes. Cut real joints
+   into stone with `joints` (columns,
    running bond courses, or cracks, with dirt at the bottom) instead of
    painting dark lines, then `weather` for chipped edges, pits, and
    subtle colour noise, then `moss` (caps and curtains), `algae` (a

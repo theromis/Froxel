@@ -1,5 +1,5 @@
-//! The stone panels: the fields of MCP `joints`, `weather`, `moss`, `algae`,
-//! `vines`, and `sweep`. Each panel's button builds
+//! The stone panels: the fields of MCP `joints`, `column_relief`, `weather`,
+//! `moss`, `algae`, `vines`, and `sweep`. Each panel's button builds
 //! the tool's MCP arguments over the selection's box (or the active object's
 //! box) and runs the MCP handler, so the editor and MCP share one path.
 
@@ -67,6 +67,69 @@ impl JointsPanel {
         }
         if self.dirt > 0 {
             args["dirt"] = json!(self.dirt);
+        }
+        Ok(args)
+    }
+}
+
+/// The Relief panel: MCP `column_relief`.
+#[derive(Clone, PartialEq)]
+pub struct ReliefPanel {
+    /// Index into [`RELIEF_FACINGS`].
+    pub facing: usize,
+    /// 0 is the active slot.
+    pub palette: i32,
+    pub width: [i32; 2],
+    pub out: [i32; 2],
+    /// Off: the highest solid cell of the box.
+    pub crown_on: bool,
+    pub crown: i32,
+    pub top: [i32; 2],
+    pub lower: bool,
+    pub depth: i32,
+    pub seed: i32,
+}
+
+/// The Relief panel's face directions.
+pub const RELIEF_FACINGS: [(&str, &str); 4] =
+    [("−Y", "-y"), ("+Y", "+y"), ("−X", "-x"), ("+X", "+x")];
+
+impl Default for ReliefPanel {
+    fn default() -> Self {
+        Self {
+            facing: 0,
+            palette: 0,
+            width: [6, 12],
+            out: [1, 4],
+            crown_on: false,
+            crown: 24,
+            top: [-8, 4],
+            lower: true,
+            depth: 3,
+            seed: 0,
+        }
+    }
+}
+
+impl ReliefPanel {
+    fn args(&self, active: u8) -> Result<Value, String> {
+        let palette = if self.palette > 0 {
+            self.palette
+        } else {
+            i32::from(active.max(1))
+        };
+        let mut args = json!({
+            "facing": RELIEF_FACINGS[self.facing.min(RELIEF_FACINGS.len() - 1)].1,
+            "palette": palette,
+            "width": [self.width[0], self.width[1].max(self.width[0])],
+            "out": [self.out[0], self.out[1].max(self.out[0])],
+            "top": [self.top[0], self.top[1].max(self.top[0])],
+            "lower": self.lower,
+            "depth": self.depth,
+            "seed": self.seed.max(0),
+        });
+        if self.crown_on {
+            args["crown"] = json!(self.crown);
         }
         Ok(args)
     }
@@ -396,11 +459,12 @@ pub const DIRECTIONS: [(&str, [i32; 3]); 6] = [
 
 #[derive(Clone, Default, PartialEq)]
 pub struct StonePanels {
-    /// The Protect section: MCP `exclude` boxes for Scatter, Joints,
-    /// Weather, and Growth, `x0 y0 z0 x1 y1 z1` separated by semicolons or
+    /// The Protect section: MCP `exclude` boxes for Scatter, Relief,
+    /// Joints, Weather, and Growth, `x0 y0 z0 x1 y1 z1` separated by semicolons or
     /// new lines.
     pub exclude: String,
     pub joints: JointsPanel,
+    pub relief: ReliefPanel,
     pub weather: WeatherPanel,
     pub growth: GrowthPanel,
     pub sweep: SweepPanel,
@@ -438,6 +502,20 @@ impl Session {
             format!(
                 "Cut {} joint cells, {} with dirt.",
                 reply["removed"], reply["dirtied"]
+            )
+        });
+    }
+
+    /// The Relief panel's button.
+    pub fn relief_from_panel(&mut self) {
+        let panel = &self.stone.relief;
+        // Room for a column to stand out of the face and rise above the crown.
+        let pad = panel.out[1].max(panel.top[1]).max(1);
+        let args = panel.args(self.active_slot);
+        self.stone_from_panel_padded("voxel.column_relief", args, pad, |reply| {
+            format!(
+                "Raised {} columns at crown {}: {} cells added, {} cut.",
+                reply["columns"], reply["crown"], reply["added"], reply["removed"]
             )
         });
     }
@@ -585,6 +663,18 @@ impl Session {
         args: Result<Value, String>,
         report: impl FnOnce(&Value) -> String,
     ) {
+        self.stone_from_panel_padded(method, args, 1, report);
+    }
+
+    /// [`Session::stone_from_panel`] with the object's box grown by `pad`
+    /// cells when nothing is selected.
+    fn stone_from_panel_padded(
+        &mut self,
+        method: &str,
+        args: Result<Value, String>,
+        pad: i32,
+        report: impl FnOnce(&Value) -> String,
+    ) {
         let mut args = match args.and_then(|args| Ok((args, self.stone.exclude_arg()?))) {
             Ok((mut args, exclude)) => {
                 args["exclude"] = exclude;
@@ -598,8 +688,8 @@ impl Session {
         let region = if self.picked.is_empty() {
             cell_bounds(self.active().cells.keys().copied()).map(|(min, max)| {
                 (
-                    crate::tools::add(min, (-1, -1, -1)),
-                    crate::tools::add(max, (1, 1, 1)),
+                    crate::tools::add(min, (-pad, -pad, -pad)),
+                    crate::tools::add(max, (pad, pad, pad)),
                 )
             })
         } else {

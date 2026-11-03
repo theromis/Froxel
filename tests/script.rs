@@ -1068,3 +1068,40 @@ fn exclude_keeps_a_walking_surface_in_scripts_as_in_mcp() {
     .unwrap_err();
     assert!(bad.contains("exclude must be a box"), "{bad}");
 }
+
+#[test]
+fn column_relief_matches_the_mcp_tool() {
+    use serde_json::json;
+    let script = run_cells(
+        r#"
+        fill_box(0, 0, 0, 47, 7, 20, 1);
+        let r = column_relief(-2, -8, 0, 49, 9, 26, "-y", 1,
+            #{width: [5, 9], out: [1, 4], top: [-5, 4], depth: 3, exclude: [10, -8, 0, 15, 9, 26], seed: 3});
+        if r.columns < 5 || r.crown != 20 { throw "columns " + r.columns; }
+        column_relief(-2, -2, 0, 3, 9, 26, [-1, 0, 0], 1, #{lower: false});
+        "#,
+    )
+    .unwrap();
+    let mcp = mcp_cells(&[
+        (
+            "voxel.fill",
+            json!({"x0": 0, "y0": 0, "z0": 0, "x1": 47, "y1": 7, "z1": 20, "palette": 1}),
+        ),
+        (
+            "voxel.column_relief",
+            json!({"x0": -2, "y0": -8, "z0": 0, "x1": 49, "y1": 9, "z1": 26, "facing": [0, -1, 0],
+                "palette": 1, "width": [5, 9], "out": [1, 4], "top": [-5, 4], "depth": 3,
+                "exclude": [10, -8, 0, 15, 9, 26], "seed": 3}),
+        ),
+        (
+            "voxel.column_relief",
+            json!({"x0": -2, "y0": -2, "z0": 0, "x1": 3, "y1": 9, "z1": 26, "facing": "-x",
+                "palette": 1, "lower": false}),
+        ),
+    ]);
+    assert_eq!(script, mcp);
+    let bad =
+        run_cells(r#"fill_box(0, 0, 0, 3, 3, 3, 1); column_relief(0, 0, 0, 3, 3, 3, "+z", 1);"#)
+            .unwrap_err();
+    assert!(bad.contains("facing"), "{bad}");
+}

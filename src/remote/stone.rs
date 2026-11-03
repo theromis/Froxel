@@ -1,5 +1,5 @@
-//! The stone tools: MCP `joints`, `weather`, `moss`, `algae`, `vines`, and
-//! `sweep`, their arguments, and their replies.
+//! The stone tools: MCP `joints`, `column_relief`, `weather`, `moss`,
+//! `algae`, `vines`, and `sweep`, their arguments, and their replies.
 //!
 //! Each tool turns its MCP arguments into writes against a cell map and a
 //! reply. The MCP handler writes them to the active object as one undo step;
@@ -20,6 +20,7 @@ use crate::state::{Cell, Session};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Stone {
     Joints,
+    Relief,
     Weather,
     Moss,
     Algae,
@@ -54,6 +55,14 @@ pub(crate) fn stone_writes(
             let done = crate::tools::joints(cells, &joints_spec(params)?)?;
             reply.insert("removed".into(), json!(done.removed));
             reply.insert("dirtied".into(), json!(done.dirtied));
+            done.writes
+        }
+        Stone::Relief => {
+            let done = crate::tools::column_relief(cells, &relief_spec(params)?)?;
+            reply.insert("columns".into(), json!(done.columns));
+            reply.insert("added".into(), json!(done.added));
+            reply.insert("removed".into(), json!(done.removed));
+            reply.insert("crown".into(), json!(done.crown));
             done.writes
         }
         Stone::Weather => {
@@ -151,6 +160,53 @@ pub(crate) fn joints_spec(params: &Value) -> Result<crate::tools::JointSpec, Str
         dirt: one_slot(params, "dirt")?,
         only: slot_list(params, "only")?,
         density: opt_f64(params, "density")?.unwrap_or(0.8),
+        exclude: exclude_boxes(params)?,
+        seed: seed(params)?,
+    })
+}
+
+/// MCP `column_relief` arguments as a spec.
+pub(crate) fn relief_spec(params: &Value) -> Result<crate::tools::ReliefSpec, String> {
+    let bad =
+        "facing must be +x, -x, +y, -y, or one of [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]";
+    let facing = match params.get("facing") {
+        None | Some(Value::Null) => return Err(format!("facing is required: {bad}")),
+        Some(Value::String(name)) => match name.as_str() {
+            "+x" | "x" => (0, 1),
+            "-x" => (0, -1),
+            "+y" | "y" => (1, 1),
+            "-y" => (1, -1),
+            _ => return Err(bad.into()),
+        },
+        Some(_) => {
+            let v = super::opt_vec3(params, "facing").map_err(|_| bad.to_string())?;
+            let v = v.expect("present");
+            crate::tools::relief_facing(f64::from(v[0]), f64::from(v[1]), f64::from(v[2]))
+                .ok_or(bad)?
+        }
+    };
+    let palette = one_slot(params, "palette")?
+        .ok_or("palette is required: the slot of the columns, usually the stone")?;
+    let lower = match params.get("lower") {
+        None | Some(Value::Null) => true,
+        Some(found) => found.as_bool().ok_or("lower must be true or false")?,
+    };
+    let crown = match params.get("crown") {
+        None | Some(Value::Null) => None,
+        Some(found) => Some(
+            super::as_i32(found).ok_or("crown must be a whole number: the height of the crown")?,
+        ),
+    };
+    Ok(crate::tools::ReliefSpec {
+        region: region(params, "column_relief")?,
+        facing,
+        width: whole_pair(params, "width", (6, 12))?,
+        out: whole_pair(params, "out", (1, 4))?,
+        crown,
+        top: whole_pair(params, "top", (-8, 4))?,
+        lower,
+        depth: whole(params, "depth", 3, 1, 16)? as i32,
+        palette,
         exclude: exclude_boxes(params)?,
         seed: seed(params)?,
     })

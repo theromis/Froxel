@@ -4,6 +4,14 @@
 
 ### Added
 
+- Column relief: MCP `column_relief`, Rhai `column_relief(box, facing,
+  palette, opts)`, and the Relief section break a cliff face into columns
+  of random width that stand out of it and end at uneven heights around a
+  crown, cutting the crown above short ones unless `lower` is false. The
+  face is found in the cells, so swept, curved walls work.
+  `examples/gorge_wall.rhai` uses it and keeps its ledge flat with
+  `exclude`.
+
 - Protected boxes: `exclude` on MCP and Rhai `scatter`, `joints`,
   `weather`, `moss`, `algae`, and `vines` (one inclusive box or a list of
   up to 64) keeps walking surfaces whole: no cell inside is cut, chipped,

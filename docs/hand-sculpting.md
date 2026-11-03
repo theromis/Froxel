@@ -77,7 +77,13 @@ per point to lean or taper it. `palettes` with `pattern: "bands"` lays
 horizontal strata.
 
 `examples/gorge_wall.rhai` puts the stone tools together in order: sweep,
-joints, weather, moss, algae, vines, then markers.
+column relief, the ledge, joints, weather, moss, algae, vines, then markers.
+
+`column_relief` breaks a cliff face into columns of random width that
+stand out of it by a random amount and end at uneven heights around the
+crown, cutting the crown above a short one unless `lower` is false. It
+finds the face in the cells, so a swept, curved wall works; give it the
+face direction and a box a few cells larger than the wall.
 
 `joints` cuts real gaps between stones, one cell wide and `depth` deep,
 with a `dirt` slot at the bottom of each gap: `columns` for fractured

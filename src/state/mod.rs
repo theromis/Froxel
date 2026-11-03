@@ -889,7 +889,7 @@ pub(crate) use markers::append_gltf_markers;
 pub use markers::{
     cell_box, check_direction, check_marker_name, check_point, Marker, MarkerKind, MAX_MARKERS,
 };
-pub use stone::{Plant, StonePanels, DIRECTIONS, FACINGS};
+pub use stone::{Plant, StonePanels, DIRECTIONS, FACINGS, RELIEF_FACINGS};
 pub(crate) use vox::rotation_codec_errors;
 
 #[cfg(test)]
