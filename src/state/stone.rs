@@ -1,4 +1,4 @@
-//! The stone panels: the fields of MCP `joints`. Each panel's button builds
+//! The stone panels: the fields of MCP `joints` and `weather`. Each panel's button builds
 //! the tool's MCP arguments over the selection's box (or the active object's
 //! box) and runs the MCP handler, so the editor and MCP share one path.
 
@@ -71,9 +71,64 @@ impl JointsPanel {
     }
 }
 
+/// The Weather panel.
+#[derive(Clone, PartialEq)]
+pub struct WeatherPanel {
+    pub chip: f32,
+    pub chip_size: i32,
+    pub pits: f32,
+    pub pit_depth: i32,
+    /// 0 keeps the uncovered faces' colour.
+    pub broken: i32,
+    /// Noise slots separated by commas or spaces; empty adds no noise.
+    pub noise: String,
+    pub noise_density: f32,
+    pub noise_scale: f32,
+    pub only: String,
+    pub seed: i32,
+}
+
+impl Default for WeatherPanel {
+    fn default() -> Self {
+        Self {
+            chip: 0.15,
+            chip_size: 2,
+            pits: 0.02,
+            pit_depth: 1,
+            broken: 0,
+            noise: String::new(),
+            noise_density: 0.35,
+            noise_scale: 3.0,
+            only: String::new(),
+            seed: 0,
+        }
+    }
+}
+
+impl WeatherPanel {
+    fn args(&self) -> Result<Value, String> {
+        let mut args = json!({
+            "chip": self.chip,
+            "chipSize": self.chip_size,
+            "pits": self.pits,
+            "pitDepth": self.pit_depth,
+            "noise": slots("Noise", &self.noise)?,
+            "noiseDensity": self.noise_density,
+            "noiseScale": self.noise_scale,
+            "only": slots("Only", &self.only)?,
+            "seed": self.seed.max(0),
+        });
+        if self.broken > 0 {
+            args["broken"] = json!(self.broken);
+        }
+        Ok(args)
+    }
+}
+
 #[derive(Clone, Default, PartialEq)]
 pub struct StonePanels {
     pub joints: JointsPanel,
+    pub weather: WeatherPanel,
 }
 
 fn slots(what: &str, text: &str) -> Result<Value, String> {
@@ -90,6 +145,17 @@ impl Session {
             format!(
                 "Cut {} joint cells, {} with dirt.",
                 reply["removed"], reply["dirtied"]
+            )
+        });
+    }
+
+    /// The Weather panel's button.
+    pub fn weather_from_panel(&mut self) {
+        let args = self.stone.weather.args();
+        self.stone_from_panel("voxel.weather", args, |reply| {
+            format!(
+                "{} chips and {} pits; {} faces broken, {} cells recoloured.",
+                reply["chips"], reply["pits"], reply["broken"], reply["recoloured"]
             )
         });
     }

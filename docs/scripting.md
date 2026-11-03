@@ -307,6 +307,32 @@ curved wall), or `"cracks"` (an irregular crack network). Options:
 
 It returns `#{changed, removed, dirtied}`.
 
+### Weather
+
+```rhai
+let report = weather(x0, y0, z0, x1, y1, z1);
+let report = weather(x0, y0, z0, x1, y1, z1, #{chip: 0.15, pits: 0.02, broken: 3, noise: [4, 5, 6], only: [1, 3], seed: 4});
+```
+
+MCP `weather` on the exposed cells of the box: edges and corners lose
+small chips, flat faces take pits (real dents), and the faces they uncover
+take `broken`; then `noise` slots recolour soft patches. Options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `chip` | `0.15` | Chance that an edge cell starts a chip, 0..=1. Corners are likelier. |
+| `chipSize` | `2` | Most cells one chip takes, 1..=8. |
+| `pits` | `0.02` | Chance that a flat face cell starts a pit, 0..=1. |
+| `pitDepth` | `1` | Deepest pit, 1..=4. |
+| `broken` | keep | Slot of the faces a chip or pit uncovers, about 0.9 x the stone. |
+| `noise` | none | Slots of the colour noise. |
+| `noiseDensity` | `0.35` | Share of exposed cells the noise recolours. |
+| `noiseScale` | `3` | Noise patch size in cells, 1..=32. |
+| `only` | every slot | Act only on these slots. |
+| `seed` | `0` | A whole number of at least 0. |
+
+It returns `#{changed, chips, pits, removed, broken, recoloured}`.
+
 ### Example
 
 `examples/hollow_log.rhai` (baked in `examples/hollow_log.vox`) builds a

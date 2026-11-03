@@ -1502,3 +1502,26 @@ fn joints_cut_as_one_undo_step() {
     ));
     assert!(bad.contains("columns, courses, or cracks"), "{bad}");
 }
+
+#[test]
+fn weather_chips_as_one_undo_step() {
+    let mut head = Headless::new();
+    head.ok(
+        "fill_box",
+        json!({"x0": 0, "y0": 0, "z0": 0, "x1": 15, "y1": 5, "z1": 9, "palette": 2}),
+    );
+    let before = head.session.active().cells.clone();
+    let reply = head.ok(
+        "weather",
+        json!({"x0": 0, "y0": 0, "z0": 0, "x1": 15, "y1": 5, "z1": 9, "chip": 0.4, "broken": 3, "noise": [4, 5], "seed": 1}),
+    );
+    assert!(reply["chips"].as_i64().unwrap() > 0, "{reply}");
+    assert!(reply["recoloured"].as_i64().unwrap() > 0, "{reply}");
+    head.ok("undo", json!({}));
+    assert_eq!(head.session.active().cells, before);
+    let bad = error_text(&head.call(
+        "weather",
+        json!({"x0": 0, "y0": 0, "z0": 0, "x1": 4, "y1": 4, "z1": 4, "pitDepth": 9}),
+    ));
+    assert!(bad.contains("pitDepth"), "{bad}");
+}

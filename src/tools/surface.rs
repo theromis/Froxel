@@ -146,6 +146,16 @@ fn fade(t: f64) -> f64 {
     t * t * (3.0 - 2.0 * t)
 }
 
+/// A stable 0..1 value for one cell and a salt.
+pub(super) fn cell01(c: Cell, seed: u64, salt: u64) -> f64 {
+    hash01(
+        i64::from(c.0),
+        i64::from(c.1),
+        i64::from(c.2),
+        seed ^ salt.wrapping_mul(0x5851_f42d_4c95_7f2d),
+    )
+}
+
 /// Cells whose slot is listed, or every cell when `only` is empty.
 pub(super) fn allowed(only: &[u8], slot: u8) -> bool {
     only.is_empty() || only.contains(&slot)
@@ -154,6 +164,20 @@ pub(super) fn allowed(only: &[u8], slot: u8) -> bool {
 pub(super) fn check_slot(slot: u8, what: &str) -> Result<(), String> {
     if slot == 0 {
         return Err(format!("{what} must be a palette index 1..=255"));
+    }
+    Ok(())
+}
+
+pub(super) fn check_slots(slots: &[u8], what: &str) -> Result<(), String> {
+    if slots.contains(&0) {
+        return Err(format!("{what} must hold palette indices 1..=255"));
+    }
+    Ok(())
+}
+
+pub(super) fn check_unit(value: f64, what: &str) -> Result<(), String> {
+    if !(0.0..=1.0).contains(&value) {
+        return Err(format!("{what} must be 0..=1"));
     }
     Ok(())
 }

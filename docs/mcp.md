@@ -160,6 +160,7 @@ tracer. A file with no scene graph still loads its first model.
 | `break_end` | `point`, `normal` | Break the active object across a plane: a jagged face, bark on its rim, sapwood inside, and tapered splinters out along the normal. Optional `depth`, `splinters` or `density`, `length`, `thickness`, `taper`, `rimBias`, `bark`, `sapwood`, `tips`, `seed`. One undo step |
 | `scatter` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Drop small pieces (shard, chip, pebble, chunk) that settle on what is below into a heap. Optional `count`, `kinds`, `size`, `seed`, `floor`, `clump`. One undo step |
 | `joints` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `pattern` | Cut real joint gaps into the solid cells of the box: `columns`, `courses` (running bond), or `cracks`. Optional `spacing`, `course`, `width`, `depth`, `dirt`, `only`, `density`, `seed`. Replies with `removed` and `dirtied`. One undo step |
+| `weather` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Chip edges and corners, dent pits into flat faces, and add subtle colour noise on the exposed cells of the box. Optional `chip`, `chipSize`, `pits`, `pitDepth`, `broken`, `noise`, `noiseDensity`, `noiseScale`, `only`, `seed`. Replies with `chips`, `pits`, `removed`, `broken`, `recoloured`. One undo step |
 | `smooth` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Majority filter in an inclusive box of at most 2000000 cells that keeps colours. Optional `iterations` (1..=8), `fillAt`, `removeAt`. Replies with `filled`, `removed`, `iterations`. One undo step |
 | `get_voxels` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Non-empty **local** cells inside an inclusive box, at most 100000 |
 | `set_palette` | `index`, `r`, `g`, `b` or `entries` | Replace one slot, or many via `entries`, as one undo step. `a` defaults to 255. Optional `motion` (`none`, `sway`, `bob`) and `motion_amount` (0..4) |
@@ -289,6 +290,20 @@ irregular network between jagged pieces `spacing` across, `density` (default
 [6, 11]; `course` to [10, 24] for columns and [3, 5] for courses. `only`
 limits the cut to some slots, so moss or plants added before stay. The same
 `seed` gives the same joints.
+
+`weather` reads the shape as it is when called. An edge or corner cell
+(exposed on two sides that are not opposite) starts a chip with chance
+`chip` (default 0.15; corners up to twice that), which takes up to
+`chipSize` exposed cells (1..=8, default 2) in an irregular chunk. A flat
+face cell (exposed on one side) starts a pit with chance `pits` (default
+0.02), a dent `pitDepth` cells deep at most (1..=4, default 1), half of
+them two cells wide. Every solid cell a chip or pit uncovers takes `broken`
+when given: a slightly darker stone, about 0.9 x, not dirt. Then the
+remaining exposed cells take `noise` slots in soft patches `noiseScale`
+cells across (default 3) with a little speckle, `noiseDensity` of them
+(default 0.35); give a few tones within a few units of the stone so it does
+not look blotchy. `only` limits it to some slots. The same `seed` gives the
+same result.
 
 `smooth` reads each cell's 26 neighbours inside the box (cells outside it
 are read, never changed). An empty cell with at least `fillAt` solid
@@ -699,6 +714,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `break_end` | Break section: Point (or Point at selection), Normal with ±X/Y/Z, Depth, Splinters, Length, Thickness, Taper, Rim bias, Bark, Sapwood, and Tip slots, Seed |
 | `scatter` | Scatter section: Pieces, Kinds, Size, Palettes, Clump, Seed, over the selection's box or above the whole object |
 | `joints` | Joints section: Columns, Courses, or Cracks, Spacing, Course (or Density), Width, Depth, Dirt, Only, Seed, over the selection's box or the whole object |
+| `weather` | Weather section: Chip, Chip size, Pits, Pit depth, Broken, Noise, Density, Patch, Only, Seed, over the selection's box or the whole object |
 | `smooth` | Smooth section: Passes, Fill at, Remove at, over the selection or the whole object |
 | `set_palette` | Palette dock (colour and alpha) and the Material section (motion) |
 | `set_active_object`, `add_object`, `set_object`, `remove_object` | Objects tree and the Object inspector |

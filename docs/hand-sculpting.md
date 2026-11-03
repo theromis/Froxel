@@ -76,6 +76,11 @@ limestone, `courses` for masonry in a running bond, `cracks` for a crack
 network. Cut joints before moss and plants, or pass `only` with the stone
 slots.
 
+`weather` chips edges and corners, dents pits into flat faces, and adds
+subtle colour noise; the faces a chip or pit uncovers take `broken`, a
+slightly darker stone. Run it after `joints`, so the new block edges chip
+too, and before the plants.
+
 `smooth` softens a blocky region. It fills an empty cell that most of its
 26 neighbours surround and removes a solid cell that few of them touch, and
 a filled cell takes the colour most of its neighbours hold. One pass with

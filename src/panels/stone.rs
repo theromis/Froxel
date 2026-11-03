@@ -1,4 +1,4 @@
-//! Inspector sections of the stone tools: Joints. Each button runs the MCP
+//! Inspector sections of the stone tools: Joints and Weather. Each button runs the MCP
 //! tool over the selection's box, or the whole active object.
 
 use egui::{RichText, Ui};
@@ -112,6 +112,57 @@ pub(super) fn joints(ui: &mut Ui, session: &mut Session) {
             .clicked()
         {
             session.joints_from_panel();
+        }
+    });
+}
+
+/// MCP `weather`: chips, pits, and colour noise.
+pub(super) fn weather(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.voxel_count() > 0 && session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Weather");
+        let panel = &mut session.stone.weather;
+        egui::Grid::new("weather-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Chip", "Chance that an edge cell loses a chip; corners are likelier.");
+                ui.add(egui::Slider::new(&mut panel.chip, 0.0..=1.0).max_decimals(2));
+                ui.end_row();
+                label(ui, "Chip size", "Most cells one chip takes.");
+                ui.add(egui::Slider::new(&mut panel.chip_size, 1..=8));
+                ui.end_row();
+                label(ui, "Pits", "Chance that a flat face cell is dented.");
+                ui.add(egui::Slider::new(&mut panel.pits, 0.0..=1.0).max_decimals(3));
+                ui.end_row();
+                label(ui, "Pit depth", "Deepest pit in cells.");
+                ui.add(egui::Slider::new(&mut panel.pit_depth, 1..=4));
+                ui.end_row();
+                label(ui, "Broken", "Palette slot for the faces a chip or pit uncovers, a slightly darker stone. 0 keeps their colour.");
+                ui.add(egui::DragValue::new(&mut panel.broken).range(0..=255));
+                ui.end_row();
+                label(ui, "Noise", "Palette slots of the subtle colour noise; empty adds none.");
+                slots_field(ui, &mut panel.noise, "no noise");
+                ui.end_row();
+                label(ui, "Density", "Share of the exposed cells the noise recolours.");
+                ui.add(egui::Slider::new(&mut panel.noise_density, 0.0..=1.0).max_decimals(2));
+                ui.end_row();
+                label(ui, "Patch", "Noise patch size in cells.");
+                ui.add(egui::Slider::new(&mut panel.noise_scale, 1.0..=32.0).max_decimals(1));
+                ui.end_row();
+                label(ui, "Only", "Act only on these palette slots; empty acts on every slot.");
+                slots_field(ui, &mut panel.only, "every slot");
+                ui.end_row();
+                label(ui, "Seed", "Same seed, same weathering.");
+                ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
+                ui.end_row();
+            });
+        if ui
+            .button(scope(session, "Weather"))
+            .on_hover_text("MCP weather over the selection's box, or the whole object. One undo step.")
+            .clicked()
+        {
+            session.weather_from_panel();
         }
     });
 }

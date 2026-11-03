@@ -863,6 +863,8 @@ fn stone_tools_match_the_mcp_tools() {
         fill_box(0, 0, 0, 23, 5, 15, 1);
         let cut = joints(0, 0, 0, 23, 5, 15, "columns", #{dirt: 2, depth: 2, seed: 5});
         if cut.removed == 0 { throw "no joints"; }
+        let worn = weather(0, 0, 0, 23, 5, 15, #{chip: 0.3, broken: 3, noise: [4, 5], only: [1], seed: 2});
+        if worn.chips == 0 { throw "no chips"; }
         "#,
     )
     .unwrap();
@@ -875,6 +877,11 @@ fn stone_tools_match_the_mcp_tools() {
             "voxel.joints",
             json!({"x0": 0, "y0": 0, "z0": 0, "x1": 23, "y1": 5, "z1": 15, "pattern": "columns",
                 "dirt": 2, "depth": 2, "seed": 5}),
+        ),
+        (
+            "voxel.weather",
+            json!({"x0": 0, "y0": 0, "z0": 0, "x1": 23, "y1": 5, "z1": 15, "chip": 0.3,
+                "broken": 3, "noise": [4, 5], "only": [1], "seed": 2}),
         ),
     ]);
     assert_eq!(script, mcp);

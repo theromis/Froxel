@@ -128,6 +128,8 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
                     render::scatter(ui, session);
                     ui.separator();
                     stone::joints(ui, session);
+                    ui.separator();
+                    stone::weather(ui, session);
                 });
         },
     );

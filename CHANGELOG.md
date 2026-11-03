@@ -4,6 +4,11 @@
 
 ### Added
 
+- Weather: MCP `weather`, Rhai `weather(x0, y0, z0, x1, y1, z1, opts)`, and
+  the Weather section chip edges and corners, dent pits into flat faces,
+  and add subtle colour noise on exposed stone; uncovered faces take a
+  `broken` slot.
+
 - Joints: MCP `joints`, Rhai `joints(x0, y0, z0, x1, y1, z1, pattern, opts)`,
   and the Joints section cut real joint gaps into stone: vertical columns of
   random widths, running bond courses, or a crack network, `width` wide and

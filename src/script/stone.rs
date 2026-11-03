@@ -1,4 +1,4 @@
-//! The MCP stone tools in Rhai: `joints`.
+//! The MCP stone tools in Rhai: `joints` and `weather`.
 //!
 //! Each call turns its arguments into the MCP tool's arguments and runs
 //! `remote::stone_writes` on the object being written, as the MCP handler
@@ -18,7 +18,46 @@ const JOINTS: &[&str] = &[
     "spacing", "course", "width", "depth", "dirt", "only", "density", "seed",
 ];
 
+const WEATHER: &[&str] = &[
+    "chip",
+    "chipSize",
+    "pits",
+    "pitDepth",
+    "broken",
+    "noise",
+    "noiseDensity",
+    "noiseScale",
+    "only",
+    "seed",
+];
+
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
+    for with_opts in [false, true] {
+        let state = scratch.clone();
+        let run = move |corners: [INT; 6], opts: &Map| -> Fallible<Map> {
+            let mut args = options(opts, WEATHER, "weather")?;
+            args.extend(box_args(corners)?);
+            state
+                .borrow_mut()
+                .stone(args, Stone::Weather)
+                .map_err(runtime)
+        };
+        if with_opts {
+            engine.register_fn(
+                "weather",
+                move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT, opts: Map| {
+                    run([x0, y0, z0, x1, y1, z1], &opts)
+                },
+            );
+        } else {
+            engine.register_fn(
+                "weather",
+                move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT| {
+                    run([x0, y0, z0, x1, y1, z1], &Map::new())
+                },
+            );
+        }
+    }
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |corners: [INT; 6], pattern: &str, opts: &Map| -> Fallible<Map> {

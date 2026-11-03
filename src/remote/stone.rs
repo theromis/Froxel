@@ -1,4 +1,5 @@
-//! The stone tools: MCP `joints`, their arguments, and their replies.
+//! The stone tools: MCP `joints` and `weather`, their arguments, and their
+//! replies.
 //!
 //! Each tool turns its MCP arguments into writes against a cell map and a
 //! reply. The MCP handler writes them to the active object as one undo step;
@@ -16,6 +17,7 @@ use crate::state::{Cell, Session};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Stone {
     Joints,
+    Weather,
 }
 
 pub(crate) type Writes = Vec<(i32, i32, i32, i32)>;
@@ -45,6 +47,15 @@ pub(crate) fn stone_writes(
             let done = crate::tools::joints(cells, &joints_spec(params)?)?;
             reply.insert("removed".into(), json!(done.removed));
             reply.insert("dirtied".into(), json!(done.dirtied));
+            done.writes
+        }
+        Stone::Weather => {
+            let done = crate::tools::weather(cells, &weather_spec(params)?)?;
+            reply.insert("chips".into(), json!(done.chips));
+            reply.insert("pits".into(), json!(done.pits));
+            reply.insert("removed".into(), json!(done.removed));
+            reply.insert("broken".into(), json!(done.broken));
+            reply.insert("recoloured".into(), json!(done.recoloured));
             done.writes
         }
     };
@@ -113,6 +124,23 @@ pub(crate) fn joints_spec(params: &Value) -> Result<crate::tools::JointSpec, Str
         dirt: one_slot(params, "dirt")?,
         only: slot_list(params, "only")?,
         density: opt_f64(params, "density")?.unwrap_or(0.8),
+        seed: seed(params)?,
+    })
+}
+
+/// MCP `weather` arguments as a spec.
+pub(crate) fn weather_spec(params: &Value) -> Result<crate::tools::WeatherSpec, String> {
+    Ok(crate::tools::WeatherSpec {
+        region: region(params, "weather")?,
+        chip: opt_f64(params, "chip")?.unwrap_or(0.15),
+        chip_size: whole(params, "chipSize", 2, 1, 8)? as u32,
+        pits: opt_f64(params, "pits")?.unwrap_or(0.02),
+        pit_depth: whole(params, "pitDepth", 1, 1, 4)? as u32,
+        broken: one_slot(params, "broken")?,
+        noise: slot_list(params, "noise")?,
+        noise_density: opt_f64(params, "noiseDensity")?.unwrap_or(0.35),
+        noise_scale: opt_f64(params, "noiseScale")?.unwrap_or(3.0),
+        only: slot_list(params, "only")?,
         seed: seed(params)?,
     })
 }
