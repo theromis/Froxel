@@ -45,6 +45,7 @@ mod still;
 mod tools;
 mod trace;
 mod trace_gpu;
+mod variants;
 mod viewport;
 
 use std::collections::VecDeque;
@@ -232,6 +233,9 @@ fn main(
     }
     if args.first().is_some_and(|arg| arg == "export") {
         std::process::exit(cli::export(&args[1..]));
+    }
+    if args.first().is_some_and(|arg| arg == "variants") {
+        std::process::exit(variants::cli(&args[1..]));
     }
     if args.first().is_some_and(|arg| arg == "voxrt") {
         std::process::exit(cli::voxrt(&args[1..]));
@@ -681,6 +685,7 @@ usage: froxel [--control PORT] [--bridge PORT] [file.vox]
        froxel bridge --input <file.vox> [--port PORT]
        froxel mcp [--connect HOST:PORT] [--launch]
        froxel render --input <file.vox> --output <file.png>
+       froxel variants --input <file.vox> --variants <sets.json> --out <dir>
        froxel voxrt --input <file.vox> [--dump]"
                 );
                 std::process::exit(0);

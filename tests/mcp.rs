@@ -1684,3 +1684,62 @@ fn markers_save_export_and_follow_their_object() {
     let none = error_text(&head.call("remove_marker", json!({"name": "nope"})));
     assert!(none.contains("no marker"), "{none}");
 }
+
+#[test]
+fn export_variants_writes_each_set_and_leaves_the_document() {
+    let mut head = Headless::new();
+    let source = r#"
+        let h = param_int("height", 4, 1, 20);
+        fill_box(0, 0, 0, 5, 3, h - 1, 2);
+        marker("top", 3, 2, h);
+        collision_box(0, 0, 0, 5, 3, h - 1);
+    "#;
+    head.ok("set_script", json!({"source": source}));
+    head.ok("regenerate", json!({}));
+    let before = head.session.active().cells.clone();
+    let undo = head.session.can_undo();
+    let dir = std::env::temp_dir().join("froxel-mcp-variants");
+    let _ = std::fs::remove_dir_all(&dir);
+    let reply = head.ok(
+        "export_variants",
+        json!({"dir": dir.to_string_lossy(), "merge": true, "colorAtlas": true, "aoStrength": 0.5,
+            "variants": [{"name": "low", "params": {"height": 3}}, {"name": "tall", "params": {"height": 12}}]}),
+    );
+    let variants = reply["variants"].as_array().unwrap();
+    assert_eq!(variants.len(), 2);
+    assert_eq!(variants[0]["params"]["Object/height"], 3);
+    assert_eq!(variants[1]["bounds"]["voxel"]["max"], json!([6, 4, 12]));
+    assert_eq!(
+        variants[1]["markers"][0]["world"]["point"],
+        json!([3.0, 2.0, 12.0])
+    );
+    assert_eq!(reply["options"]["colorAtlas"], true);
+    for name in [
+        "low.vox",
+        "low.glb",
+        "tall.vox",
+        "tall.glb",
+        "variants.json",
+    ] {
+        assert!(dir.join(name).is_file(), "{name} is missing");
+    }
+    // A written variant reopens with its own cells and markers.
+    let mut tall = Session::new();
+    tall.open_vox(&dir.join("tall.vox")).unwrap();
+    assert_eq!(tall.voxel_count(), 6 * 4 * 12);
+    assert_eq!(tall.markers.len(), 2);
+    // The open document is as it was.
+    assert_eq!(head.session.active().cells, before);
+    assert_eq!(head.session.can_undo(), undo);
+    let twice = error_text(&head.call(
+        "export_variants",
+        json!({"dir": dir.to_string_lossy(), "variants": [{"name": "a"}, {"name": "A"}]}),
+    ));
+    assert!(twice.contains("used twice"), "{twice}");
+    let unknown = error_text(&head.call(
+        "export_variants",
+        json!({"dir": dir.to_string_lossy(), "variants": [{"params": {"width": 2}}]}),
+    ));
+    assert!(unknown.contains("unknown parameter"), "{unknown}");
+    let _ = std::fs::remove_dir_all(&dir);
+}

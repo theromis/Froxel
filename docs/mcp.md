@@ -199,6 +199,7 @@ tracer. A file with no scene graph still loads its first model.
 | `remove_marker` | `name` or `all` | Remove one marker, or every marker. One undo step |
 | `list_markers` | — | Markers with `local`, `world`, and `gltf` coordinates |
 | `export_mesh` | `path` | Write a glTF 2.0 `.glb` of every object. `merge` defaults to false. `vertexColors` defaults to false. `exportHidden` and `splitObjects` default to false. A slot with motion adds `TEXCOORD_1`. Clips become glTF animations. Markers become nodes. The reply includes `structure` and `markers` |
+| `export_variants` | `variants`, `dir` | Bake the scripted document once per parameter set `{name?, params}` and write `<name>.vox` and `<name>.glb` into `dir` with the `export_mesh` options, then a manifest (default `dir/variants.json`) of each set's parameters, markers, and bounds. Optional `manifest`, `vox`, `timeoutSeconds`. The document and its undo history stay as they were |
 | `export_models` | `models` | Write 1 to 16 `.glb` files. Each item is `{path, source?, merge?, vertexColors?, exportHidden?, splitObjects?}`. `source` is a `.vox` opened in its own session, so the open document stays. Each file's `structure` lists nodes, meshes, skins, animations, and warnings |
 | `set_script` | `source`, optional `object` | Store a Rhai script and read its parameters. One undo step. Does not rebuild voxels |
 | `get_script` | optional `object` | Source, auto flag, and parameters |
@@ -771,6 +772,25 @@ node index. The export replies and `list_markers` give each marker in
 `collision_box`, and `connector` make the same markers on the objects it
 builds; a rerun replaces them and leaves markers placed by hand.
 
+### Variants
+
+`export_variants` turns one scripted document into a family of files. Each
+item of `variants` is `{name?, params}`: `params` maps parameter names (or
+`object/name`, as `set_params` does) to values, and `name` is the file stem
+(letters, digits, `_`, `-`, `.`; default `variant_1`, …, unique ignoring
+case). For each set the parameters are applied and every script runs, as
+`regenerate` does, inside a scratch run: afterwards the document, its
+parameters, and its undo history are as before. `<name>.glb` is written
+with the `export_mesh` options (`merge`, `colorAtlas`, `aoStrength`,
+`aoRadius`, `aoTarget`, `vertexColors`, `exportHidden`, `splitObjects`) and
+`<name>.vox` unless `vox` is false. The manifest JSON lists, per set,
+`requested` (the values given), `params` (every parameter after clamping,
+keyed `object/name`), `markers` (as `list_markers`), `bounds` (`voxel` mesh
+units and `gltf`), `quads`, `voxels`, and the file paths, plus the mesh
+`options`. Every set is checked before a file is written; a set that fails
+stops the call with its name. `froxel variants` is the same from the
+command line.
+
 ### In the editor
 
 Every tool that edits or writes the document has a place in the editor
@@ -805,6 +825,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `set_view` | Orbit, pan, and zoom in the viewport; Camera section: Orthographic |
 | `set_script`, `get_script`, `set_params`, `list_params`, `regenerate` | Script section |
 | `set_marker`, `remove_marker`, `list_markers` | Markers section: the list with ✕ to remove, Name, Point, Box, or Connector with Facing, Add at selection |
+| `export_variants` | Export section: Export variants… picks a variants JSON file and a folder and uses the section's options |
 | `export_mesh` | Export section and File > Export Mesh, with Occlusion, AO radius, AO target |
 | `export_models` | File > Export Models and the Export section's Export models: pick `.vox` files and a folder |
 

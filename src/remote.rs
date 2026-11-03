@@ -851,6 +851,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         }
         "mesh.export" => export_mesh(session, &params),
         "mesh.export_batch" => export_batch(session, &params),
+        "mesh.export_variants" => crate::variants::export_variants(session, &params),
         "ui.screenshot" | "ui.inspect" | "ui.click" => Err(NO_WINDOW.into()),
         "control.methods" => Ok(Value::Array(
             METHODS
@@ -1053,7 +1054,7 @@ pub fn mesh_params(options: &crate::export::MeshExport) -> Value {
     })
 }
 
-fn mesh_options(params: &Value) -> Result<crate::export::MeshExport, String> {
+pub(crate) fn mesh_options(params: &Value) -> Result<crate::export::MeshExport, String> {
     Ok(crate::export::MeshExport {
         merge: opt_bool(params, "merge")?.unwrap_or(false),
         vertex_colors: opt_bool(params, "vertexColors")?.unwrap_or(false),

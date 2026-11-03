@@ -4,6 +4,12 @@
 
 ### Added
 
+- Variant export: MCP `export_variants`, `froxel variants`, and the Export
+  panel's Export variants… bake a scripted document once per parameter set
+  and write a `.vox` and a `.glb` per set with the `export_models` mesh
+  options, plus a manifest of each set's parameters, markers, and bounds.
+  The document and its undo history stay as they were.
+
 - Markers: MCP `set_marker`, `remove_marker`, and `list_markers`, Rhai
   `marker`, `collision_box`, and `connector`, and the Markers section name
   points, collision boxes, and connectors on an object. The `.vox` keeps

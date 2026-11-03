@@ -100,6 +100,10 @@ grow on plants.
 piece, so the game reads them from the exported glb (nodes with
 `extras.froxel`) instead of measuring the model again.
 
+When a scripted piece needs several sizes, `export_variants` writes a
+`.vox` and `.glb` per parameter set with a manifest of the parameters,
+markers, and bounds.
+
 `smooth` softens a blocky region. It fills an empty cell that most of its
 26 neighbours surround and removes a solid cell that few of them touch, and
 a filled cell takes the colour most of its neighbours hold. One pass with

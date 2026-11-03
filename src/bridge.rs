@@ -479,7 +479,10 @@ fn evaluate_within(
     Ok(json!({"op": "result", "path": path}))
 }
 
-fn apply_values(session: &mut Session, values: &Map<String, Value>) -> Result<(), String> {
+pub(crate) fn apply_values(
+    session: &mut Session,
+    values: &Map<String, Value>,
+) -> Result<(), String> {
     let mut grouped: BTreeMap<usize, Vec<(String, ParamValue)>> = BTreeMap::new();
     for (key, value) in values {
         let (index, name) = resolve(session, key)?;

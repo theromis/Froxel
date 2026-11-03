@@ -714,6 +714,31 @@ impl Session {
         result
     }
 
+    /// Run `work` on the document and put everything back afterwards, the
+    /// undo history too, whether it succeeds or fails. Variant export uses
+    /// it to bake each parameter set without leaving a trace.
+    pub fn scratch_run<T>(
+        &mut self,
+        work: impl FnOnce(&mut Self) -> Result<T, String>,
+    ) -> Result<T, String> {
+        self.commit();
+        let before = self.snapshot();
+        let undo = std::mem::take(&mut self.undo);
+        let redo = std::mem::take(&mut self.redo);
+        let selected = self.selected;
+        let result = work(self);
+        self.restore(before);
+        self.pending = None;
+        self.gesture = false;
+        self.undo = undo;
+        self.redo = redo;
+        self.selected = selected.min(self.objects.len().saturating_sub(1));
+        self.clamp_selection();
+        self.clear_picked();
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+        result
+    }
+
     /// Mirror the active object through the origin and make the copy active.
     /// `mirror_bones` decides whether its bone subtree is copied too.
     pub fn mirror_selected(&mut self, axis: usize) -> Result<usize, String> {

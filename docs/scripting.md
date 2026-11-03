@@ -558,6 +558,20 @@ fill_tube(points, 3, #{curve: "smooth"});
 
 Any function that is not listed on this page is not registered.
 
+## Variants
+
+A script describes a family; MCP `export_variants` (or `froxel variants`,
+or the Export panel's **Export variants…**) bakes it once per parameter set
+and writes a `.vox`, a `.glb`, and a manifest with each set's parameters,
+markers, and bounds. Scripts themselves never write files.
+
+```json
+[
+  {"name": "cliff_low", "params": {"height": 18, "seed": 3}},
+  {"name": "cliff_tall", "params": {"height": 40, "seed": 7}}
+]
+```
+
 ## Storage
 
 Scripts live in an `MVSC` chunk, version 2 (version 1 is still readable). MagicaVoxel skips chunks it does

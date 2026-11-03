@@ -38,6 +38,10 @@ If the tools are missing, the server is not configured. Point the user to
   `marker`, `collision_box`, and `connector`. They are saved in the `.vox`,
   listed in export replies, and exported as glTF nodes with
   `extras.froxel`, so collision never drifts from the model.
+- **Variants**: `export_variants` bakes a scripted document once per
+  parameter set and writes `<name>.vox`, `<name>.glb` (with the
+  `export_mesh` options), and a manifest of parameters, markers, and bounds.
+  `froxel variants` is the command-line form.
 
 ## Coordinates and rules
 

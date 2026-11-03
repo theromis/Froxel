@@ -240,6 +240,14 @@ ambient occlusion in `COLOR_0` or the colour atlas.
 froxel export --input ruins.vox --output ruins.glb --merge --ao 0.8 --ao-radius 3
 ```
 
+`froxel variants --input wall.vox --variants sets.json --out variants/`
+bakes a scripted document once per parameter set in `sets.json` (a list of
+`{"name": "low", "params": {"height": 12}}`) and writes `low.vox`,
+`low.glb`, and a `variants.json` manifest of each set's parameters,
+markers, and bounds; it takes the `froxel export` mesh flags and
+`--no-vox`. MCP `export_variants` and the Export panel's **Export
+variants…** do the same.
+
 `froxel voxrt --input model.vox` loads a file, saves it, loads the save, and
 checks that nothing changed: objects, palette, materials, scene graph, bones,
 scripts, and motion. `--dump` prints the chunk tree instead.

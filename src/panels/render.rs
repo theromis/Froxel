@@ -123,6 +123,13 @@ pub(super) fn export(ui: &mut Ui, session: &mut Session) {
         {
             session.export_models_dialog();
         }
+        if ui
+            .button("Export variants…")
+            .on_hover_text("Bake the script once per parameter set in a variants JSON file and write a .vox, a .glb with these options, and a manifest per set (MCP export_variants)")
+            .clicked()
+        {
+            session.export_variants_dialog();
+        }
     });
 }
 

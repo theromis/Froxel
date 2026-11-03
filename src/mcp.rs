@@ -279,7 +279,7 @@ fn dispatch(
                 "protocolVersion": version,
                 "capabilities": {"tools": {"listChanged": false}},
                 "serverInfo": {"name": "Froxel", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. preview writes a fast lit PNG (the viewport mesh and light, rasterised, well under a second) framed on the model or one object; use it to look after every step. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, grow limbs and roots with fill_tube, cut hollows with carve, soften with smooth, refine with set_voxels, and render after every step. Stone surfaces: joints cuts real joint gaps (columns, courses, cracks), weather chips edges, dents pits, and adds colour noise, and moss, algae, and vines grow plants on exposed faces (the caller gives the slots and their motion). sweep fills a cross-section along a curve for curved walls, banks, and ledges. set_marker names points, collision boxes, and connectors that the .vox keeps and the glb carries as nodes. A Rhai script (set_script) can call the same sculpt, voxel, object, rig, clip, and palette tools, with the MCP options in a trailing map, for a family of organic pieces (docs/scripting.md, examples/hollow_log.rhai)."
+                "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. preview writes a fast lit PNG (the viewport mesh and light, rasterised, well under a second) framed on the model or one object; use it to look after every step. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, grow limbs and roots with fill_tube, cut hollows with carve, soften with smooth, refine with set_voxels, and render after every step. Stone surfaces: joints cuts real joint gaps (columns, courses, cracks), weather chips edges, dents pits, and adds colour noise, and moss, algae, and vines grow plants on exposed faces (the caller gives the slots and their motion). sweep fills a cross-section along a curve for curved walls, banks, and ledges. set_marker names points, collision boxes, and connectors that the .vox keeps and the glb carries as nodes; export_variants writes a .vox and .glb per parameter set with a manifest of parameters, markers, and bounds. A Rhai script (set_script) can call the same sculpt, voxel, object, rig, clip, and palette tools, with the MCP options in a trailing map, for a family of organic pieces (docs/scripting.md, examples/hollow_log.rhai)."
             }),
         ));
     }
@@ -422,6 +422,7 @@ fn map_tool(name: &str, args: &Value) -> Result<(String, Value), String> {
         "ui_click" => "ui.click",
         "export_mesh" => "mesh.export",
         "export_models" => "mesh.export_batch",
+        "export_variants" => "mesh.export_variants",
         "set_script" => "script.set",
         "get_script" => "script.get",
         "set_params" => "script.params",
@@ -878,6 +879,21 @@ fn tools() -> Vec<Value> {
             "aoRadius": {"type": "integer", "minimum": 0, "maximum": 8, "description": "Reach of the occlusion in cells beyond the four that touch a corner, as a cosine-weighted hemisphere, so deep crevices and overhangs darken more. 0 or 1 is the corner term alone. Defaults to 3."},
             "aoTarget": {"type": "string", "enum": ["auto", "vertex", "texture", "both"], "description": "Where aoStrength goes. vertex: a per-corner COLOR_0; faces whose corners shade differently are not merged, which costs triangles. texture: each cell's colour atlas texel is darkened by the mean of its corners and faces merge exactly as without occlusion; needs colorAtlas. both: the two at once, for a shader that uses one (a material multiplying texture by COLOR_0 darkens twice). auto (default): texture with colorAtlas, else vertex."}
         }), &["path"]),
+        tool("export_variants", "Bake a scripted document once per parameter set and write <name>.vox and <name>.glb for each into dir, with the export_mesh mesh options, then a manifest JSON (default dir/variants.json) with each set's requested and resolved parameters, markers (local, world, glTF), bounds (voxel and glTF), quads, and voxels. Parameters are keyed by name, or object/name when two objects share one, as in set_params. Every script runs per set, as regenerate does. The open document and its undo history are left as they were. One failing set stops the call with its name. Replies with the manifest and its path.", json!({
+            "variants": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"type": "object"}, "description": "1 to 64 sets: {name?, params}. name is a file stem of letters, digits, _, -, . (default variant_1, ...); params maps parameter names to values."},
+            "dir": str_prop("Folder for the .vox, .glb, and manifest files. It is created."),
+            "manifest": str_prop("Manifest path. Defaults to dir/variants.json."),
+            "vox": {"type": "boolean", "description": "Write a .vox per set too. Defaults to true."},
+            "timeoutSeconds": num_prop("Script deadline per object and set, up to 3600. Defaults to 300."),
+            "merge": {"type": "boolean", "description": "As export_mesh. Defaults to false."},
+            "vertexColors": {"type": "boolean", "description": "As export_mesh. Defaults to false."},
+            "colorAtlas": {"type": "boolean", "description": "As export_mesh. Defaults to false."},
+            "aoStrength": num_prop("As export_mesh, 0..1. Defaults to 0, off."),
+            "aoRadius": int_prop("As export_mesh, 0..8. Defaults to 3."),
+            "aoTarget": {"type": "string", "enum": ["auto", "vertex", "texture", "both"], "description": "As export_mesh. Defaults to auto."},
+            "exportHidden": {"type": "boolean", "description": "As export_mesh. Defaults to false."},
+            "splitObjects": {"type": "boolean", "description": "As export_mesh. Defaults to false."}
+        }), &["variants", "dir"]),
         tool("export_models", "Write 1 to 16 .glb files and report each file's structure: nodes, meshes (vertices, indices, bounds), skins, and animations. A warning names an empty mesh, a skin with no joints, a nameless or duplicated node, or an animation with no channels. source opens that .vox in its own session, so the open document is not replaced. Omit source to export the open document. One model's failure is reported on that model and does not skip the others.", json!({
             "models": {"type": "array", "minItems": 1, "maxItems": 16, "description": "Each item is {path, source?, merge?, vertexColors?, exportHidden?, splitObjects?, colorAtlas?, aoStrength?, aoRadius?, aoTarget?}, with the export_mesh meanings. path ends in .glb. source, when set, is a .vox file.", "items": {"type": "object"}}
         }), &["models"]),
@@ -954,7 +970,8 @@ fn hints(name: &str) -> [bool; 3] {
         | "set_script"
         | "set_params"
         | "export_mesh"
-        | "export_models" => [false, true, true],
+        | "export_models"
+        | "export_variants" => [false, true, true],
         other => panic!("no annotation hints for tool `{other}`"),
     }
 }
