@@ -412,7 +412,7 @@ pub(super) fn sweep(ui: &mut Ui, session: &mut Session) {
                 label(ui, "Curve", "Smooth passes a curve through the points; off joins them with straight runs.");
                 ui.checkbox(&mut panel.smooth, "Smooth");
                 ui.end_row();
-                label(ui, "Profile", "A rounded rectangle standing on the path, or a polygon of u v points (u to the left of the path, v up).");
+                label(ui, "Profile", "A rounded rectangle standing on the path, or a polygon of u v points (u to the left of the path, v up). A cell is in when its centre is inside the profile at the nearest point of the path.");
                 ui.horizontal(|ui| {
                     ui.selectable_value(&mut panel.polygon, false, "Rectangle");
                     ui.selectable_value(&mut panel.polygon, true, "Polygon");

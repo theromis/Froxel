@@ -305,7 +305,8 @@ centred on the path), `height` (up from it), and `radius` (rounded corners)
 make a rounded rectangle. `curve` `smooth` passes a Catmull-Rom curve
 through the points; extra slabs turn about a sharp corner or a fast twist,
 so the outside of a bend is filled. A cell is in when its centre is inside
-the profile at some slab. With `palettes`, `pattern` `bands` (the default)
+the profile at the slab nearest it, so a flat top stays one flat layer
+through the points of a smooth path. With `palettes`, `pattern` `bands` (the default)
 lays them in layers `period` cells high by `v`, like strata; `rings` lays
 them along the path; `random` picks per cell from `seed`.
 

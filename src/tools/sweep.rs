@@ -5,7 +5,8 @@
 //! along it) and `v` up, so a wall profile stands on the path. The curve is
 //! cut into thin slabs, each the profile in the plane across the path at one
 //! sample; slabs overlap, and extra slabs turn about a sharp bend or a fast
-//! twist so the outside of a bend has no gaps.
+//! twist so the outside of a bend has no gaps. The nearest slab decides
+//! each cell, so the overlap never adds a layer.
 
 use std::collections::HashMap;
 
@@ -149,7 +150,8 @@ struct Slab {
     half: f64,
 }
 
-/// Every cell whose centre lies inside the swept profile.
+/// Every cell whose centre lies inside the swept profile, in the plane
+/// across the path at the slab nearest that centre.
 pub fn sweep(
     points: &[SweepPoint],
     curve: bool,
@@ -196,24 +198,34 @@ pub fn sweep(
             "the sweep is too large to test ({work} cells over its slabs, limit {MAX_SWEEP_WORK}); make the profile smaller or the path shorter, or split it"
         ));
     }
-    let mut found: HashMap<Cell, (f64, f64, f64)> = HashMap::new();
-    for (slab, (min, max)) in slabs.iter().zip(boxes) {
+    // Each cell is decided by the slab whose plane is nearest its centre, so
+    // overlapping slabs never add a layer the nearest slab leaves out. The
+    // first pass finds the cells some slab covers, the second keeps the
+    // nearest slab's answer for each.
+    let test = |slab: &Slab, x: i32, y: i32, z: i32| -> Option<(f64, f64, f64, f64)> {
+        let offset = sub([f64::from(x), f64::from(y), f64::from(z)], slab.at);
+        let along = dot(offset, slab.tangent).abs();
+        if along > slab.half {
+            return None;
+        }
         let (sin, cos) = (-slab.twist.to_radians()).sin_cos();
+        let (u, v) = (dot(offset, slab.left), dot(offset, slab.up));
+        let pu = snap((u * cos - v * sin) / slab.scale);
+        let pv = snap((u * sin + v * cos) / slab.scale);
+        Some((along, slab.along, pu, pv))
+    };
+    let mut found: HashMap<Cell, (f64, Option<(f64, f64, f64)>)> = HashMap::new();
+    for (slab, (min, max)) in slabs.iter().zip(&boxes) {
         for z in min[2]..=max[2] {
             for y in min[1]..=max[1] {
                 for x in min[0]..=max[0] {
                     if found.contains_key(&(x, y, z)) {
                         continue;
                     }
-                    let offset = sub([f64::from(x), f64::from(y), f64::from(z)], slab.at);
-                    if dot(offset, slab.tangent).abs() > slab.half {
-                        continue;
-                    }
-                    let (u, v) = (dot(offset, slab.left), dot(offset, slab.up));
-                    let pu = (u * cos - v * sin) / slab.scale;
-                    let pv = (u * sin + v * cos) / slab.scale;
-                    if profile.contains(pu, pv) {
-                        found.insert((x, y, z), (slab.along, pu, pv));
+                    if let Some((_, along, pu, pv)) = test(slab, x, y, z) {
+                        if profile.contains(pu, pv) {
+                            found.insert((x, y, z), (f64::MAX, Some((along, pu, pv))));
+                        }
                     }
                 }
             }
@@ -224,9 +236,29 @@ pub fn sweep(
             ));
         }
     }
+    for (slab, (min, max)) in slabs.iter().zip(&boxes) {
+        for z in min[2]..=max[2] {
+            for y in min[1]..=max[1] {
+                for x in min[0]..=max[0] {
+                    let Some(entry) = found.get_mut(&(x, y, z)) else {
+                        continue;
+                    };
+                    let Some((distance, along, pu, pv)) = test(slab, x, y, z) else {
+                        continue;
+                    };
+                    if distance < entry.0 {
+                        *entry = (
+                            distance,
+                            profile.contains(pu, pv).then_some((along, pu, pv)),
+                        );
+                    }
+                }
+            }
+        }
+    }
     let mut cells: Vec<SweepCell> = found
         .into_iter()
-        .map(|(cell, (along, u, v))| SweepCell { cell, along, u, v })
+        .filter_map(|(cell, (_, hit))| hit.map(|(along, u, v)| SweepCell { cell, along, u, v }))
         .collect();
     cells.sort_by_key(|c| (c.cell.2, c.cell.1, c.cell.0));
     Ok(cells)
@@ -363,6 +395,17 @@ fn catmull(p0: [f64; 3], p1: [f64; 3], p2: [f64; 3], p3: [f64; 3], t: f64) -> ([
         d[i] = 0.5 * (b + 2.0 * c * t + 3.0 * e * t2);
     }
     (at, d)
+}
+
+/// Rounds away the error the frame leaves, so a centre on a profile edge
+/// (a whole-number `v` on a flat top) falls the same way at every slab.
+fn snap(value: f64) -> f64 {
+    let fine = (value * 1.0e6).round() / 1.0e6;
+    if (value - fine).abs() < 1.0e-7 {
+        fine
+    } else {
+        value
+    }
 }
 
 fn lerp3(a: [f64; 3], b: [f64; 3], t: f64) -> [f64; 3] {

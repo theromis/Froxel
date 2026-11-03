@@ -294,7 +294,9 @@ for curved walls, banks, and ledges. Each point is `[x, y, z]`,
 `[x, y, z, twist]`, `[x, y, z, twist, scale]`, or a map with those keys.
 The profile is a list of `[u, v]` points (u to the left of the path, v up)
 or a map `#{width, height, radius}` for a rounded rectangle standing on the
-path. The third argument is one slot or a list. Options:
+path. A cell is in when its centre is inside the profile at the nearest
+point of the path, so a flat top stays one layer. The third argument is one
+slot or a list. Options:
 
 | Option | Default | Meaning |
 | --- | --- | --- |

@@ -535,3 +535,32 @@ fn column_relief_refuses_bad_values() {
         .unwrap_err()
         .contains("no solid"));
 }
+
+#[test]
+fn a_flat_topped_profile_on_a_smooth_wavy_path_has_one_flat_top() {
+    let shelf = Profile::Polygon(vec![
+        [-3.0, -13.0],
+        [19.0, -13.0],
+        [19.0, 37.0],
+        [0.0, 37.0],
+    ]);
+    // Points every 12 cells along x, y wobbling up to 1.5 either way.
+    let wobble = [0.0, 1.2, -0.7, 1.5, -1.5, 0.4, -1.1, 0.9, 0.0];
+    let path: Vec<SweepPoint> = wobble
+        .iter()
+        .enumerate()
+        .map(|(i, &y)| point(i as f64 * 12.0, y, 0.0))
+        .collect();
+    let cells = sweep(&path, true, &shelf).unwrap();
+    let mut tops: HashMap<(i32, i32), i32> = HashMap::new();
+    for c in &cells {
+        let top = tops.entry((c.cell.0, c.cell.1)).or_insert(i32::MIN);
+        *top = (*top).max(c.cell.2);
+    }
+    // Inside the flat part of the top: clear of the sloped face, the back, and the ends.
+    let ribs: Vec<_> = tops
+        .iter()
+        .filter(|((x, y), &z)| (1..=95).contains(x) && (2..=17).contains(y) && z != 36)
+        .collect();
+    assert!(ribs.is_empty(), "columns whose top is not 36: {ribs:?}");
+}
