@@ -123,6 +123,20 @@ scenes with the bridge stopped:
 cargo build && GODOT_PATH=/path/to/godot python3 tests/bridge_godot.py
 ```
 
+## MCP parity
+
+A capability added to MCP goes, in the same change, into:
+- Rhai scripting, on the same code path;
+- the editor UI;
+- everything that describes it: UI tooltips and hints, the MCP server
+  instructions and tool descriptions, `froxel --help` and command help, docs
+  (mcp.md, scripting.md, hand-sculpting.md), the skill, and examples.
+
+MCP-only plumbing (screenshots, ui_inspect, ui_click, session handling) is
+exempt, and so are the tools that write files (render, model_view, preview,
+export_mesh, export_models): scripts never write files. A feature is not done
+until all of these exist. (User decision, 2026-11-02.)
+
 ## Git
 
 Commit straight to `main`. Do not create branches.
