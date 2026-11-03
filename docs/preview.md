@@ -146,6 +146,12 @@ is the same bytes every time. The reply adds `columns`, `rows`, and
   "reference": {"path": "concepts/gorge_cliffs_v01.png", "label": "concept"}}}
 ```
 
+![The gorge wall example's three variants at the game preset, with markers](images/preview-contact-sheet.png)
+
+`froxel preview --input examples/gorge_wall.vox --variants
+examples/gorge_wall_variants.json --preset game --overlay all --width 480
+--height 340 --columns 3` draws the sheet above.
+
 The Render section's Sheet of files… and Sheet of variants… buttons make
 the same sheet from the window's camera angle; Reference… sets the PNG for
 the first tile.
