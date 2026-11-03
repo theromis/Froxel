@@ -158,8 +158,17 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
     });
     slider_i32(ui, session, "Samples", SliderTarget::MaxSamples, 16..=8192);
     section(ui, "Camera");
-    ui.checkbox(&mut session.orthographic, "Orthographic")
-        .on_hover_text("Parallel projection in the viewport, the tracer, and saved images");
+    ui.horizontal(|ui| {
+        ui.checkbox(&mut session.orthographic, "Orthographic")
+            .on_hover_text("Parallel projection in the viewport, the tracer, and saved images");
+        if ui
+            .button("Game view")
+            .on_hover_text("The gameplay camera: orthographic, yaw -60, pitch 25 (MCP set_view and preview preset game)")
+            .clicked()
+        {
+            session.game_view();
+        }
+    });
     ui.checkbox(&mut session.aces, "ACES tonemap");
     ui.checkbox(&mut session.denoise, "Denoise")
         .on_hover_text(crate::denoise::hover());
@@ -203,6 +212,47 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
             .clicked()
         {
             session.save_still("render.flat");
+        }
+    });
+    ui.horizontal(|ui| {
+        if ui
+            .button("Sheet of files…")
+            .on_hover_text("A contact sheet of picked .vox files from this camera angle, each labelled with its name (MCP preview inputs)")
+            .clicked()
+        {
+            session.save_sheet(false);
+        }
+        if ui
+            .button("Sheet of variants…")
+            .on_hover_text("A contact sheet of the script baked once per parameter set in a variants JSON file, labelled with each set's name and parameters (MCP preview variants)")
+            .clicked()
+        {
+            session.save_sheet(true);
+        }
+    });
+    ui.horizontal(|ui| {
+        let name = session
+            .sheet_reference
+            .as_deref()
+            .and_then(|path| path.file_name())
+            .map(|name| name.to_string_lossy().into_owned());
+        if ui
+            .button("Reference…")
+            .on_hover_text("A concept PNG placed as the first tile of the next contact sheet (MCP preview reference)")
+            .clicked()
+        {
+            session.pick_sheet_reference();
+        }
+        match name {
+            Some(name) => {
+                ui.label(RichText::new(name).small().color(DIM));
+                if ui.small_button("✕").on_hover_text("No reference").clicked() {
+                    session.sheet_reference = None;
+                }
+            }
+            None => {
+                ui.label(RichText::new("no reference").small().color(DIM));
+            }
         }
     });
     let show_bones = session.show_bones;

@@ -738,6 +738,8 @@ pub struct Session {
     pub(crate) tube_preview: Option<(Vec<crate::tools::TubePoint>, HashMap<Cell, u8>)>,
     pub break_panel: BreakPanel,
     pub scatter_panel: ScatterPanel,
+    /// The contact sheet's reference PNG, the first tile when set.
+    pub sheet_reference: Option<PathBuf>,
     /// The panels of the stone tools.
     pub stone: StonePanels,
     /// Smooth: passes and the neighbour thresholds of MCP `smooth`.

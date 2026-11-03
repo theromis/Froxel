@@ -40,6 +40,7 @@ mod preview;
 mod remote;
 mod rig;
 mod script;
+mod sheet;
 mod state;
 mod still;
 mod tools;

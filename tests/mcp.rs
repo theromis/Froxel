@@ -1743,3 +1743,93 @@ fn export_variants_writes_each_set_and_leaves_the_document() {
     assert!(unknown.contains("unknown parameter"), "{unknown}");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn preview_lays_variants_files_and_a_reference_out_in_a_contact_sheet() {
+    let mut head = Headless::new();
+    head.ok(
+        "set_script",
+        json!({"source": "let h = param_int(\"h\", 3, 1, 12); fill_box(0, 0, 0, 3, 3, h, 2);"}),
+    );
+    head.ok("regenerate", json!({}));
+    let before = head.session.active().cells.clone();
+    let dir = std::env::temp_dir().join(format!("froxel-sheet-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    // A reference: a 4x2 PNG, red on the left and blue on the right.
+    let concept = dir.join("concept.png");
+    let mut rgba = Vec::new();
+    for _ in 0..2 {
+        rgba.extend([
+            255, 0, 0, 255, 255, 0, 0, 255, 0, 0, 255, 255, 0, 0, 255, 255,
+        ]);
+    }
+    crate::trace::write_rgba_png(&concept, 4, 2, &rgba).unwrap();
+    let path = dir.join("sheet.png");
+    let args = json!({
+        "path": path,
+        "width": 64,
+        "height": 48,
+        "preset": "game",
+        "variants": [{"name": "low", "params": {"h": 2}}, {"name": "tall", "params": {"h": 11}}],
+        "reference": {"path": concept, "label": "concept"},
+        "columns": 3,
+        "background": "#101010"
+    });
+    let reply = head.ok("preview", args.clone());
+    assert_eq!(
+        (reply["yaw"].as_f64(), reply["orthographic"].as_bool()),
+        (Some(-60.0), Some(true))
+    );
+    let tiles = reply["tiles"].as_array().unwrap();
+    assert_eq!(tiles.len(), 3);
+    assert_eq!(tiles[0]["label"], "concept");
+    assert_eq!(tiles[2]["params"], json!({"h": 11}));
+    assert!(tiles[2]["voxels"].as_u64() > tiles[1]["voxels"].as_u64());
+    // The document is as it was.
+    assert_eq!(head.session.active().cells, before);
+    let (w, h, image) = read_png(&path);
+    assert_eq!(
+        (w, h),
+        (
+            reply["width"].as_u64().unwrap() as u32,
+            reply["height"].as_u64().unwrap() as u32
+        )
+    );
+    assert_eq!(w, 8 + 3 * (64 + 8));
+    let px = |x: u32, y: u32| &image[((y * w + x) * 4) as usize..((y * w + x) * 4 + 3) as usize];
+    // The reference keeps its aspect: red left, blue right, background above.
+    assert_eq!(px(8 + 16, 8 + 24), &[255, 0, 0]);
+    assert_eq!(px(8 + 48, 8 + 24), &[0, 0, 255]);
+    assert_eq!(px(8 + 32, 8 + 2), &[16, 16, 16]);
+    // Each model tile draws something, and labels sit under the tiles.
+    for tile in &tiles[1..] {
+        let (x, y) = (
+            tile["x"].as_u64().unwrap() as u32,
+            tile["y"].as_u64().unwrap() as u32,
+        );
+        assert_ne!(px(x + 32, y + 24), &[16, 16, 16]);
+    }
+    assert!((8 + 48..h).any(|y| (8..w).any(|x| px(x, y) != [16, 16, 16])));
+    // Deterministic.
+    let first = std::fs::read(&path).unwrap();
+    head.ok("preview", args);
+    assert_eq!(std::fs::read(&path).unwrap(), first);
+    // Files on disk, labelled by their names.
+    let vox = dir.join("block.vox");
+    head.ok("save_file", json!({"path": vox}));
+    let reply = head.ok(
+        "preview",
+        json!({"path": path, "width": 32, "height": 32, "inputs": [vox, {"path": vox, "label": "again"}]}),
+    );
+    assert_eq!(reply["tiles"][0]["label"], "block");
+    assert_eq!(reply["tiles"][1]["label"], "again");
+    let bad = error_text(&head.call(
+        "preview",
+        json!({"path": path, "preset": "nope", "inputs": [vox]}),
+    ));
+    assert!(bad.contains("game"), "{bad}");
+    let many: Vec<_> = (0..70).map(|_| json!(vox)).collect();
+    let bad = error_text(&head.call("preview", json!({"path": path, "inputs": many})));
+    assert!(bad.contains("at most"), "{bad}");
+    std::fs::remove_dir_all(dir).unwrap();
+}

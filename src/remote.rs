@@ -407,20 +407,67 @@ fn preview(session: &mut Session, params: &Value) -> Result<Value, String> {
         return Err("path is empty".into());
     }
     let max = crate::preview::MAX_SIZE as i32;
+    let sheet = crate::sheet::wanted(params);
+    // A sheet's width and height are each tile's.
+    let side = if sheet { crate::sheet::TILE } else { 1024 } as i32;
     let mut preview = crate::preview::Preview {
-        width: opt_i32_range(params, "width", 1024, 1, max)? as u32,
-        height: opt_i32_range(params, "height", 1024, 1, max)? as u32,
+        width: opt_i32_range(params, "width", side, 1, max)? as u32,
+        height: opt_i32_range(params, "height", side, 1, max)? as u32,
         ..Default::default()
     };
+    let preset = match opt_str(params, "preset")? {
+        Some(name) => Some(crate::sheet::preset(&name, params.get("presets"))?),
+        None => None,
+    };
+    if let Some(preset) = preset {
+        preview.yaw = preset.yaw;
+        preview.pitch = preset.pitch;
+        preview.orthographic = preset.orthographic;
+        preview.fov = preset.fov.unwrap_or(preview.fov);
+        preview.margin = preset.margin.unwrap_or(preview.margin);
+    }
     let (yaw, pitch) = view_angles(params)?;
     preview.yaw = yaw.map_or(preview.yaw, |value| value as f32);
     preview.pitch = pitch.map_or(preview.pitch, |value| value as f32);
-    preview.orthographic = opt_bool(params, "orthographic")?.unwrap_or(false);
+    preview.orthographic = opt_bool(params, "orthographic")?.unwrap_or(preview.orthographic);
     if let Some(margin) = opt_f64(params, "margin")? {
         preview.margin = margin as f32;
     }
     if let Some(fov) = opt_f64(params, "fov")? {
         preview.fov = fov as f32;
+    }
+    if sheet {
+        let object = match params.get("object") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(name)) => Some(name.clone()),
+            Some(Value::Number(number)) => Some(number.to_string()),
+            Some(_) => return Err("object must be an index or a name".into()),
+        };
+        preview.isolate = opt_bool(params, "isolate")?.unwrap_or(false);
+        preview.antialias = opt_bool(params, "antialias")?.unwrap_or(true);
+        if params
+            .get("background")
+            .is_some_and(|value| !value.is_null())
+        {
+            preview.background = background(params)?;
+        }
+        if preview.isolate && object.is_none() {
+            return Err("isolate needs object".into());
+        }
+        if render_pose(params)?.is_some() {
+            return Err("pose is not used with a contact sheet".into());
+        }
+        crate::preview::check(&crate::preview::Preview {
+            object: object.as_ref().map(|_| 0),
+            ..preview.clone()
+        })?;
+        return crate::sheet::contact_sheet(
+            session,
+            params,
+            &preview,
+            object.as_deref(),
+            Path::new(&path),
+        );
     }
     preview.object = match params.get("object") {
         None | Some(Value::Null) => None,
@@ -473,7 +520,15 @@ fn preview(session: &mut Session, params: &Value) -> Result<Value, String> {
 /// Move the window camera. frame re-centres on every object first, so a
 /// named view always shows the whole model.
 fn set_view(session: &mut Session, params: &Value) -> Result<Value, String> {
-    let (yaw, pitch) = view_angles(params)?;
+    let (mut yaw, mut pitch) = view_angles(params)?;
+    let preset = match opt_str(params, "preset")? {
+        Some(name) => Some(crate::sheet::preset(&name, params.get("presets"))?),
+        None => None,
+    };
+    if let Some(preset) = preset {
+        yaw = yaw.or(Some(f64::from(preset.yaw)));
+        pitch = pitch.or(Some(f64::from(preset.pitch)));
+    }
     let frame = opt_bool(params, "frame")?.unwrap_or(true);
     let distance = opt_f64(params, "distance")?;
     if let Some(distance) = distance {
@@ -484,7 +539,8 @@ fn set_view(session: &mut Session, params: &Value) -> Result<Value, String> {
             return Err("distance is out of range".into());
         }
     }
-    let orthographic = opt_bool(params, "orthographic")?;
+    let orthographic =
+        opt_bool(params, "orthographic")?.or(preset.map(|preset| preset.orthographic));
     let bones = opt_bool(params, "bones")?;
     let (old_yaw, old_pitch) = (session.yaw, session.pitch);
     if frame {

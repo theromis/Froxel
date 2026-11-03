@@ -4,6 +4,15 @@
 
 ### Added
 
+- Contact sheets and camera presets: MCP `preview` and `froxel preview`
+  take `inputs` (several `.vox` files, or the open document with
+  parameters), `variants` (parameter sets of the scripted document), and a
+  `reference` concept PNG, and lay them out in one labelled PNG grid.
+  `preset` names a camera (`game`: orthographic, yaw −60, pitch 25), and
+  `presets` / `--presets` define or override presets; `set_view` takes
+  them too. The Render section has Sheet of files…, Sheet of variants…, and
+  Reference…, and the Camera section a Game view button.
+
 - Rhai strings: `"ledge_" + 4`, a number or bool on either side of `+`
   with a string, `+=`, `to_string`, and `len`, so loops name markers and
   objects; backtick interpolation (`` `ledge_${i}` ``) works too.

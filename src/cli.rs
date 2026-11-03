@@ -88,28 +88,36 @@ pub fn export(args: &[String]) -> i32 {
     }
 }
 
-/// `froxel preview`: the fast lit raster of MCP `preview`.
+/// `froxel preview`: the fast lit raster of MCP `preview`, or a contact
+/// sheet of several inputs or of the variants of one.
 pub fn preview(args: &[String]) -> i32 {
     match preview_args(args) {
         Ok(None) => 0,
-        Ok(Some((input, output, object, preview))) => {
+        Ok(Some((open, params))) => {
             let started = std::time::Instant::now();
             let mut session = Session::new();
-            let written = session.open_vox(&input).and_then(|()| {
-                let mut preview = preview;
-                if let Some(key) = &object {
-                    preview.object = Some(crate::preview::find_object(&session, key)?);
-                }
-                crate::preview::write(&session, &preview, &output)
-            });
+            let written = match &open {
+                Some(input) => session.open_vox(input),
+                None => Ok(()),
+            }
+            .and_then(|()| crate::remote::apply(&mut session, "render.preview", &params));
             match written {
-                Ok(frame) => {
-                    eprintln!(
-                        "wrote {} ({} triangles, {} ms)",
-                        output.display(),
-                        frame.triangles,
-                        started.elapsed().as_millis()
-                    );
+                Ok(reply) => {
+                    let path = reply["path"].as_str().unwrap_or("");
+                    match reply["tiles"].as_array() {
+                        Some(tiles) => eprintln!(
+                            "wrote {path} ({}x{}, {} tiles, {} ms)",
+                            reply["width"],
+                            reply["height"],
+                            tiles.len(),
+                            started.elapsed().as_millis()
+                        ),
+                        None => eprintln!(
+                            "wrote {path} ({} triangles, {} ms)",
+                            reply["triangles"],
+                            started.elapsed().as_millis()
+                        ),
+                    }
                     0
                 }
                 Err(err) => {
@@ -126,12 +134,15 @@ pub fn preview(args: &[String]) -> i32 {
 }
 
 const PREVIEW_USAGE: &str = "\
-usage: froxel preview --input <file.vox> --out <file.png>
+usage: froxel preview --input <file.vox> [--input <file.vox> ...] --out <file.png>
                       [--width N] [--height N] [--yaw DEG] [--pitch DEG]
                       [--view front|back|left|right|top|bottom]
+                      [--preset game|default|NAME] [--presets <presets.json>]
                       [--ortho] [--fov DEG] [--margin F]
                       [--object NAME|INDEX] [--isolate]
                       [--background #rrggbb[aa]] [--no-antialias]
+                      [--variants <sets.json>] [--reference <concept.png>]
+                      [--reference-label TEXT] [--columns N] [--no-labels]
 
 The editor viewport's mesh and light (sun plus ambient), rasterised on the
 CPU: no path tracer, no window, no GPU. The camera orbits at yaw and pitch
@@ -140,16 +151,26 @@ of the image per side, default 0.06). --isolate draws only --object.
 Defaults: 1024x1024 (1..4096), yaw 30, pitch 25, perspective with the
 viewport's 50 degree vertical --fov (10..120), the viewport grey
 background, and 2x2 antialiasing up to 2048x2048. --output is an alias of
---out.";
+--out.
+
+--preset game is the gameplay camera: orthographic, yaw -60, pitch 25.
+--presets reads a JSON object of name: {yaw, pitch, orthographic, fov,
+margin} that defines presets or overrides the built-in ones; --yaw, --pitch,
+--ortho, --fov, and --margin still win over a preset.
+
+A contact sheet: several --input files, --variants (the parameter sets of
+froxel variants, baked from the one --input), or --reference (a PNG placed
+as the first tile, labelled with --reference-label or its file name) draw
+one tile per model in a grid of --columns (default about square) with each
+tile's name and parameters under it unless --no-labels. --width and
+--height are then each tile's size (default 512x512); the sheet is at most
+8192 pixels a side and holds at most 64 models.";
 
 #[allow(clippy::type_complexity)]
-fn preview_args(
-    args: &[String],
-) -> Result<Option<(PathBuf, PathBuf, Option<String>, crate::preview::Preview)>, String> {
-    let mut input = None;
-    let mut output = None;
-    let mut object = None;
-    let mut preview = crate::preview::Preview::default();
+fn preview_args(args: &[String]) -> Result<Option<(Option<PathBuf>, serde_json::Value)>, String> {
+    use serde_json::{json, Value};
+    let mut inputs: Vec<PathBuf> = Vec::new();
+    let mut params = json!({});
     let mut angles = false;
     let mut view = false;
     let mut index = 0;
@@ -167,33 +188,70 @@ fn preview_args(
                 eprintln!("{PREVIEW_USAGE}");
                 return Ok(None);
             }
-            "--input" => input = Some(PathBuf::from(value(&mut index)?)),
-            "--out" | "--output" => output = Some(PathBuf::from(value(&mut index)?)),
-            "--width" => preview.width = parse_u32(&value(&mut index)?, arg, 1, max)?,
-            "--height" => preview.height = parse_u32(&value(&mut index)?, arg, 1, max)?,
+            "--input" => inputs.push(PathBuf::from(value(&mut index)?)),
+            "--out" | "--output" => params["path"] = json!(value(&mut index)?),
+            "--width" => params["width"] = json!(parse_u32(&value(&mut index)?, arg, 1, max)?),
+            "--height" => params["height"] = json!(parse_u32(&value(&mut index)?, arg, 1, max)?),
             "--yaw" => {
-                preview.yaw = parse_f32(&value(&mut index)?, arg)?;
+                params["yaw"] = json!(parse_f32(&value(&mut index)?, arg)?);
                 angles = true;
             }
             "--pitch" => {
-                preview.pitch = parse_f32(&value(&mut index)?, arg)?;
+                params["pitch"] = json!(parse_f32(&value(&mut index)?, arg)?);
                 angles = true;
             }
             "--view" => {
-                (preview.yaw, preview.pitch) = crate::remote::named_view(&value(&mut index)?)?;
+                let name = value(&mut index)?;
+                crate::remote::named_view(&name)?;
+                params["view"] = json!(name);
                 view = true;
             }
-            "--ortho" | "--orthographic" => preview.orthographic = true,
-            "--fov" => preview.fov = parse_f32(&value(&mut index)?, arg)?,
-            "--margin" => preview.margin = parse_f32(&value(&mut index)?, arg)?,
-            "--object" => object = Some(value(&mut index)?),
-            "--isolate" => preview.isolate = true,
-            "--background" => {
-                preview.background = crate::remote::background(
-                    &serde_json::json!({"background": value(&mut index)?}),
-                )?;
+            "--preset" => params["preset"] = json!(value(&mut index)?),
+            "--presets" => {
+                let path = PathBuf::from(value(&mut index)?);
+                let text = std::fs::read_to_string(&path)
+                    .map_err(|err| format!("Could not read {}: {err}", path.display()))?;
+                let found: Value = serde_json::from_str(&text)
+                    .map_err(|err| format!("{} is not JSON: {err}", path.display()))?;
+                params["presets"] = match found {
+                    Value::Object(mut map) if map.get("presets").is_some_and(Value::is_object) => {
+                        map.remove("presets").expect("checked")
+                    }
+                    other => other,
+                };
             }
-            "--no-antialias" => preview.antialias = false,
+            "--ortho" | "--orthographic" => params["orthographic"] = json!(true),
+            "--fov" => params["fov"] = json!(parse_f32(&value(&mut index)?, arg)?),
+            "--margin" => params["margin"] = json!(parse_f32(&value(&mut index)?, arg)?),
+            "--object" => {
+                let key = value(&mut index)?;
+                params["object"] = match key.parse::<u64>() {
+                    Ok(number) => json!(number),
+                    Err(_) => json!(key),
+                };
+            }
+            "--isolate" => params["isolate"] = json!(true),
+            "--background" => {
+                let text = value(&mut index)?;
+                crate::remote::background(&json!({"background": text}))?;
+                params["background"] = json!(text);
+            }
+            "--no-antialias" => params["antialias"] = json!(false),
+            "--variants" => {
+                params["variants"] =
+                    crate::variants::read_sets(std::path::Path::new(&value(&mut index)?))?;
+            }
+            "--reference" => params["reference"] = json!({"path": value(&mut index)?}),
+            "--reference-label" => params["referenceLabel"] = json!(value(&mut index)?),
+            "--columns" => {
+                params["columns"] = json!(parse_u32(
+                    &value(&mut index)?,
+                    arg,
+                    1,
+                    crate::sheet::MAX_TILES as u32
+                )?)
+            }
+            "--no-labels" => params["labels"] = json!(false),
             other => return Err(format!("unknown argument `{other}`\n{PREVIEW_USAGE}")),
         }
         index += 1;
@@ -201,20 +259,42 @@ fn preview_args(
     if angles && view {
         return Err("pass --view or --yaw and --pitch, not both".into());
     }
-    if preview.isolate && object.is_none() {
+    if params.get("isolate").is_some() && params.get("object").is_none() {
         return Err("--isolate needs --object".into());
     }
-    let (Some(input), Some(output)) = (input, output) else {
+    if let Some(label) = params
+        .as_object_mut()
+        .and_then(|map| map.remove("referenceLabel"))
+    {
+        if params.get("reference").is_none() {
+            return Err("--reference-label needs --reference".into());
+        }
+        params["reference"]["label"] = label;
+    }
+    let Some(output) = params
+        .get("path")
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+    else {
         return Err(PREVIEW_USAGE.into());
     };
+    if inputs.is_empty() {
+        return Err(PREVIEW_USAGE.into());
+    }
     if !output.extension().is_some_and(|ext| ext == "png") {
         return Err("--out must end in .png".into());
     }
-    crate::preview::check(&crate::preview::Preview {
-        object: object.as_ref().map(|_| 0),
-        ..preview.clone()
-    })?;
-    Ok(Some((input, output, object, preview)))
+    if inputs.len() == 1 {
+        return Ok(Some((inputs.pop(), params)));
+    }
+    if params.get("variants").is_some() {
+        return Err("--variants bakes one --input; pass a single one".into());
+    }
+    params["inputs"] = json!(inputs
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>());
+    Ok(Some((None, params)))
 }
 
 const EXPORT_USAGE: &str = "\

@@ -90,6 +90,9 @@ If the tools are missing, the server is not configured. Point the user to
    is flat palette colour, orthographic, with no lighting. Use `view` (`front`,
    `back`, `left`, `right`, `top`, `bottom`) and its `views` list to write a
    whole turnaround in one call. Use `render` to judge lighting and material.
+   `preview` `preset: "game"` is the gameplay camera. To compare a family,
+   give `preview` `variants` (or `inputs`) and a `reference` concept: one
+   labelled contact sheet instead of pasting images together.
 4. **Soften** a blocky region with `smooth` (it keeps colours and removes
    anything one cell thick, so leave twigs out of its box), then **refine**
    with `set_voxels`: cut the snout, place the eyes, add the colour breaks.

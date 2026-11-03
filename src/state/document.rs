@@ -71,6 +71,7 @@ impl Session {
             tube_preview: None,
             break_panel: BreakPanel::default(),
             scatter_panel: ScatterPanel::default(),
+            sheet_reference: None,
             stone: StonePanels::default(),
             smooth_iterations: 1,
             smooth_fill_at: 17,

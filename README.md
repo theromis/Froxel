@@ -224,7 +224,9 @@ above is 48 such renders, one every 7.5° of `--yaw`.
 `froxel preview` draws the same `.vox` as the edit viewport lights it,
 rasterised on the CPU in a fraction of a second, fitted to the model (or
 `--object`) with a margin. [docs/preview.md](docs/preview.md) has the
-flags; MCP `preview` is the same image.
+flags; MCP `preview` is the same image. `--preset game` is the gameplay
+camera (orthographic, yaw −60, pitch 25), and several `--input` files,
+`--variants`, or a `--reference` concept make a labelled contact sheet.
 
 ```sh
 froxel preview --input model.vox --out preview.png --yaw -35 --pitch 30 --width 1600 --height 800

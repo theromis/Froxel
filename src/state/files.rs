@@ -851,6 +851,71 @@ impl Session {
         };
     }
 
+    /// Save Contact Sheet: MCP `preview` with `inputs` (picked .vox files) or
+    /// `variants` (a picked variants JSON file baked from the open
+    /// document), with the Reference PNG when one is set, from the window's
+    /// camera angles and projection.
+    pub fn save_sheet(&mut self, variants: bool) {
+        let mut params = serde_json::json!({
+            "yaw": self.yaw.to_degrees(),
+            "pitch": self.pitch.to_degrees(),
+            "orthographic": self.orthographic,
+        });
+        if variants {
+            let Some(sets) = dialog::pick_open("Variants JSON", &["json"]) else {
+                return;
+            };
+            match crate::variants::read_sets(&sets) {
+                Ok(list) => params["variants"] = list,
+                Err(err) => {
+                    self.status = err;
+                    return;
+                }
+            }
+        } else {
+            let files = dialog::pick_open_many("MagicaVoxel", &["vox"]);
+            if files.is_empty() {
+                return;
+            }
+            params["inputs"] = files
+                .iter()
+                .map(|path| serde_json::json!(path.to_string_lossy()))
+                .collect();
+        }
+        if let Some(reference) = &self.sheet_reference {
+            params["reference"] = serde_json::json!(reference.to_string_lossy());
+        }
+        let Some(path) = self.pick_render_path() else {
+            return;
+        };
+        params["path"] = serde_json::json!(path.to_string_lossy());
+        self.status = match crate::remote::apply(self, "render.preview", &params) {
+            Ok(reply) => format!(
+                "Saved a contact sheet of {} tiles to {}.",
+                reply["tiles"].as_array().map_or(0, Vec::len),
+                path.display()
+            ),
+            Err(err) => err,
+        };
+    }
+
+    /// The contact sheet's Reference… button: a concept PNG for the first
+    /// tile.
+    pub fn pick_sheet_reference(&mut self) {
+        if let Some(path) = dialog::pick_open("PNG", &["png"]) {
+            self.sheet_reference = Some(path);
+        }
+    }
+
+    /// The Camera section's Game view: MCP `set_view` with preset `game`.
+    pub fn game_view(&mut self) {
+        let params = serde_json::json!({"preset": "game"});
+        self.status = match crate::remote::apply(self, "view.set", &params) {
+            Ok(_) => "Game view: orthographic, yaw -60, pitch 25.".into(),
+            Err(err) => err,
+        };
+    }
+
     /// File > Export Models: MCP `export_models` for .vox files on disk, each
     /// to a .glb of the same name in one folder, with the Export panel's
     /// options. The open document is left as it is.
