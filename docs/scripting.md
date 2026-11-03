@@ -333,6 +333,36 @@ take `broken`; then `noise` slots recolour soft patches. Options:
 
 It returns `#{changed, chips, pits, removed, broken, recoloured}`.
 
+### Moss, algae, and vines
+
+```rhai
+moss(x0, y0, z0, x1, y1, z1, [10, 11, 12], #{curtains: 0.3, length: [3, 12], only: [1, 3], seed: 2});
+algae(x0, y0, z0, x1, y1, z1, [13, 14, 15], #{band: [0, 9], only: [1, 3]});
+vines(x0, y0, z0, x1, y1, z1, [16, 17, 18], #{blooms: [19], facing: [0, -1, 0], length: [6, 22]});
+```
+
+MCP `moss`, `algae`, and `vines` on the exposed faces of the box. The
+plant slots come second, one slot or a list; give vine slots rising sway
+with `set_motion` (or `set_palette` with `motion`). Options shared by all
+three:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `amount` | 0.5, 0.9, 0.08 | Moss and algae coverage (algae at the bottom of its band); the share of top edge cells a vine starts from. |
+| `noise` | `0.5` | 0 grows in smooth patches, 1 in ragged speckle. |
+| `faces` | top and side; side for vines | `"top"`, `"side"`, `"bottom"`, `"all"`, or a list. |
+| `facing` | any | Only faces pointing within 60 degrees of `[x, y, z]`. |
+| `band` | none | Only cells with z in `[low, high]`; algae thins from its bottom to its top. |
+| `only` | every slot | Grow only on cells of these slots. |
+| `layer` | grow; paint for algae | `"grow"` adds a layer on the face, `"paint"` recolours it. Vines always grow. |
+| `seed` | `0` | A whole number of at least 0. |
+
+Moss also takes `curtains` (0.3, the share of capped top edges a curtain
+runs down from), `length` ([2, 8]), and `thickness` (1..=3). Vines take
+`length` ([4, 16]), `blooms` (slots), and `bloomChance` (0.06). Each returns
+`#{changed, added, painted}`, with `curtains` for moss and `strands` and
+`blooms` for vines.
+
 ### Example
 
 `examples/hollow_log.rhai` (baked in `examples/hollow_log.vox`) builds a

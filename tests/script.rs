@@ -865,6 +865,10 @@ fn stone_tools_match_the_mcp_tools() {
         if cut.removed == 0 { throw "no joints"; }
         let worn = weather(0, 0, 0, 23, 5, 15, #{chip: 0.3, broken: 3, noise: [4, 5], only: [1], seed: 2});
         if worn.chips == 0 { throw "no chips"; }
+        moss(-1, -1, -1, 24, 6, 16, [6, 7], #{curtains: 0.5, only: [1, 3, 4, 5], seed: 1});
+        algae(-1, -1, -1, 24, 6, 16, [8, 9], #{band: [0, 5]});
+        let hung = vines(-1, -1, -1, 24, 6, 16, [10, 11], #{amount: 0.3, blooms: [12], facing: [0, -1, 0]});
+        if hung.strands == 0 { throw "no vines"; }
         "#,
     )
     .unwrap();
@@ -882,6 +886,21 @@ fn stone_tools_match_the_mcp_tools() {
             "voxel.weather",
             json!({"x0": 0, "y0": 0, "z0": 0, "x1": 23, "y1": 5, "z1": 15, "chip": 0.3,
                 "broken": 3, "noise": [4, 5], "only": [1], "seed": 2}),
+        ),
+        (
+            "voxel.moss",
+            json!({"x0": -1, "y0": -1, "z0": -1, "x1": 24, "y1": 6, "z1": 16, "palettes": [6, 7],
+                "curtains": 0.5, "only": [1, 3, 4, 5], "seed": 1}),
+        ),
+        (
+            "voxel.algae",
+            json!({"x0": -1, "y0": -1, "z0": -1, "x1": 24, "y1": 6, "z1": 16, "palettes": [8, 9],
+                "band": [0, 5]}),
+        ),
+        (
+            "voxel.vines",
+            json!({"x0": -1, "y0": -1, "z0": -1, "x1": 24, "y1": 6, "z1": 16, "palettes": [10, 11],
+                "amount": 0.3, "blooms": [12], "facing": [0, -1, 0]}),
         ),
     ]);
     assert_eq!(script, mcp);

@@ -880,7 +880,7 @@ pub use geom::palette_slot_at;
 #[allow(unused_imports)] // keeps `crate::state::raycast` after the move into geom
 pub use geom::raycast;
 pub(crate) use geom::{occupied_bounds, resolved_box};
-pub use stone::StonePanels;
+pub use stone::{Plant, StonePanels, FACINGS};
 pub(crate) use vox::rotation_codec_errors;
 
 #[cfg(test)]

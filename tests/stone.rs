@@ -157,3 +157,119 @@ fn weather_leaves_other_slots_and_refuses_bad_values() {
     spec.noise = vec![0];
     assert!(weather(&cells, &spec).unwrap_err().contains("noise"));
 }
+
+fn growth_spec(kind: GrowthKind, palettes: Vec<u8>) -> GrowthSpec {
+    GrowthSpec {
+        kind,
+        region: Region::new((-1, -1, -1), (20, 6, 16), "grow").unwrap(),
+        palettes,
+        amount: 0.6,
+        noise: 0.5,
+        faces: vec![Face::Top, Face::Side],
+        facing: None,
+        band: None,
+        only: Vec::new(),
+        layer: Layer::Grow,
+        seed: 3,
+    }
+}
+
+const MOSS: GrowthKind = GrowthKind::Moss {
+    curtains: 0.6,
+    length: (2, 6),
+    thickness: 2,
+};
+
+#[test]
+fn moss_caps_tops_and_hangs_curtains_on_the_sides() {
+    let cells = slab((0, 0, 0), (19, 5, 15), 1);
+    let done = grow(&cells, &growth_spec(MOSS, vec![4, 5])).unwrap();
+    assert!(done.added > 0 && done.strands > 0, "{done:?}");
+    assert_eq!(done.painted, 0);
+    let mut tops = 0;
+    let mut sides = 0;
+    for &(x, y, z, slot) in &done.writes {
+        assert!(!cells.contains_key(&(x, y, z)), "grow wrote a solid cell");
+        assert!([4, 5].contains(&slot));
+        if z >= 16 {
+            tops += 1;
+        } else {
+            sides += 1;
+            // A curtain hangs from the top: no moss low on the wall.
+            assert!(z >= 15 - 6, "curtain cell at z {z}");
+        }
+    }
+    assert!(tops > 0 && sides > 0, "{tops} tops, {sides} sides");
+    assert_eq!(done, grow(&cells, &growth_spec(MOSS, vec![4, 5])).unwrap());
+    let mut paint = growth_spec(MOSS, vec![4]);
+    paint.layer = Layer::Paint;
+    let painted = grow(&cells, &paint).unwrap();
+    assert!(painted.added == 0 && painted.painted > 0, "{painted:?}");
+    assert!(painted
+        .writes
+        .iter()
+        .all(|w| cells.contains_key(&(w.0, w.1, w.2))));
+}
+
+#[test]
+fn algae_thins_upward_inside_its_band() {
+    let cells = slab((0, 0, 0), (39, 5, 15), 1);
+    let mut spec = growth_spec(GrowthKind::Algae, vec![6, 7, 8]);
+    spec.region = Region::new((0, 0, 0), (39, 5, 15), "grow").unwrap();
+    spec.amount = 1.0;
+    spec.band = Some((0, 9));
+    spec.faces = vec![Face::Side];
+    spec.layer = Layer::Paint;
+    let done = grow(&cells, &spec).unwrap();
+    let count = |z: i32| done.writes.iter().filter(|w| w.2 == z).count();
+    assert!(count(0) > count(8), "{} low, {} high", count(0), count(8));
+    assert!(done.writes.iter().all(|w| (0..=9).contains(&w.2)));
+    // Low cells take the first slot more than the last.
+    let low = done.writes.iter().filter(|w| w.2 <= 1);
+    let (first, last) = low.fold((0, 0), |(f, l), w| {
+        (f + usize::from(w.3 == 6), l + usize::from(w.3 == 8))
+    });
+    assert!(first > last, "{first} first, {last} last");
+}
+
+#[test]
+fn vines_hang_from_top_edges_graded_to_the_tip() {
+    let cells = slab((0, 0, 0), (19, 5, 15), 1);
+    let mut spec = growth_spec(
+        GrowthKind::Vines {
+            length: (6, 10),
+            blooms: vec![9],
+            bloom_chance: 0.2,
+        },
+        vec![4, 5, 6],
+    );
+    spec.amount = 0.3;
+    spec.faces = vec![Face::Side];
+    spec.facing = Some([0.0, -1.0, 0.0]);
+    let done = grow(&cells, &spec).unwrap();
+    assert!(done.strands > 0 && done.blooms > 0, "{done:?}");
+    for &(x, y, z, slot) in &done.writes {
+        assert!(!cells.contains_key(&(x, y, z)));
+        if slot != 9 {
+            // Strands hang in front of the -Y face only.
+            assert!(y < 0, "strand at y {y}");
+            if z == 15 {
+                assert_eq!(slot, 4, "the anchor takes the first slot");
+            }
+        }
+    }
+    assert!(done.writes.iter().any(|w| w.3 == 6 && w.2 < 12));
+}
+
+#[test]
+fn growth_refuses_bad_values() {
+    let cells = slab((0, 0, 0), (9, 5, 9), 1);
+    let mut spec = growth_spec(MOSS, vec![]);
+    assert!(grow(&cells, &spec).unwrap_err().contains("palettes"));
+    spec.palettes = vec![4];
+    spec.amount = 2.0;
+    assert!(grow(&cells, &spec).unwrap_err().contains("amount"));
+    spec.amount = 0.5;
+    spec.band = Some((5, 1));
+    assert!(grow(&cells, &spec).unwrap_err().contains("band"));
+}

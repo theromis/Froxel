@@ -1525,3 +1525,36 @@ fn weather_chips_as_one_undo_step() {
     ));
     assert!(bad.contains("pitDepth"), "{bad}");
 }
+
+#[test]
+fn moss_algae_and_vines_grow_as_one_undo_step_each() {
+    let mut head = Headless::new();
+    head.ok(
+        "fill_box",
+        json!({"x0": 0, "y0": 0, "z0": 0, "x1": 19, "y1": 5, "z1": 15, "palette": 2}),
+    );
+    let before = head.session.active().cells.clone();
+    let corners = json!({"x0": -1, "y0": -1, "z0": -1, "x1": 20, "y1": 6, "z1": 16});
+    let with = |extra: Value| {
+        let mut args = corners.clone();
+        for (key, value) in extra.as_object().unwrap() {
+            args[key] = value.clone();
+        }
+        args
+    };
+    let moss = head.ok("moss", with(json!({"palettes": [4, 5], "seed": 1})));
+    assert!(moss["added"].as_i64().unwrap() > 0, "{moss}");
+    head.ok("undo", json!({}));
+    assert_eq!(head.session.active().cells, before);
+    let algae = head.ok("algae", with(json!({"palettes": [6, 7], "band": [0, 5]})));
+    assert!(algae["painted"].as_i64().unwrap() > 0, "{algae}");
+    let vines = head.ok(
+        "vines",
+        with(json!({"palettes": [8, 9], "blooms": 10, "amount": 0.3, "facing": [0, -1, 0]})),
+    );
+    assert!(vines["strands"].as_i64().unwrap() > 0, "{vines}");
+    let faces = error_text(&head.call("moss", with(json!({"palettes": 4, "faces": "front"}))));
+    assert!(faces.contains("top, side, bottom, all"), "{faces}");
+    let none = error_text(&head.call("vines", corners.clone()));
+    assert!(none.contains("palettes"), "{none}");
+}

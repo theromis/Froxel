@@ -81,6 +81,15 @@ subtle colour noise; the faces a chip or pit uncovers take `broken`, a
 slightly darker stone. Run it after `joints`, so the new block edges chip
 too, and before the plants.
 
+`moss`, `algae`, and `vines` grow plants on exposed faces filtered by
+`faces`, `facing`, and a height `band`. Moss caps tops and hangs curtains
+with a ragged end down the faces below; algae is a band at the waterline,
+dense low and thinning upward in clumps; vines hang from top edges, graded
+through their slots to the tip, with occasional blooms. Give the vine slots
+`set_palette` `motion` `sway` rising from the anchor to the tip and leave
+moss and algae still. Pass `only` with the stone slots so plants do not
+grow on plants.
+
 `smooth` softens a blocky region. It fills an empty cell that most of its
 26 neighbours surround and removes a solid cell that few of them touch, and
 a filled cell takes the colour most of its neighbours hold. One pass with

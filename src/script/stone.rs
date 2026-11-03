@@ -1,4 +1,5 @@
-//! The MCP stone tools in Rhai: `joints` and `weather`.
+//! The MCP stone tools in Rhai: `joints`, `weather`, `moss`, `algae`, and
+//! `vines`.
 //!
 //! Each call turns its arguments into the MCP tool's arguments and runs
 //! `remote::stone_writes` on the object being written, as the MCP handler
@@ -10,7 +11,7 @@ use std::rc::Rc;
 use rhai::{Dynamic, Engine, Map, INT};
 use serde_json::Value;
 
-use super::shapes::{box_args, options, Args, Fallible};
+use super::shapes::{box_args, json, options, Args, Fallible};
 use super::{runtime, Scratch};
 use crate::remote::{self, Stone};
 
@@ -31,7 +32,79 @@ const WEATHER: &[&str] = &[
     "seed",
 ];
 
+const MOSS: &[&str] = &[
+    "amount",
+    "noise",
+    "faces",
+    "facing",
+    "band",
+    "only",
+    "layer",
+    "curtains",
+    "length",
+    "thickness",
+    "seed",
+];
+const ALGAE: &[&str] = &[
+    "amount", "noise", "faces", "facing", "band", "only", "layer", "seed",
+];
+const VINES: &[&str] = &[
+    "amount",
+    "noise",
+    "faces",
+    "facing",
+    "band",
+    "only",
+    "length",
+    "blooms",
+    "bloomChance",
+    "seed",
+];
+
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
+    for (name, tool, allowed) in [
+        ("moss", Stone::Moss, MOSS),
+        ("algae", Stone::Algae, ALGAE),
+        ("vines", Stone::Vines, VINES),
+    ] {
+        for with_opts in [false, true] {
+            let state = scratch.clone();
+            let run = move |corners: [INT; 6], palettes: Dynamic, opts: &Map| -> Fallible<Map> {
+                let mut args = options(opts, allowed, name)?;
+                args.extend(box_args(corners)?);
+                args.insert("palettes".into(), json(&palettes)?);
+                state.borrow_mut().stone(args, tool).map_err(runtime)
+            };
+            if with_opts {
+                engine.register_fn(
+                    name,
+                    move |x0: INT,
+                          y0: INT,
+                          z0: INT,
+                          x1: INT,
+                          y1: INT,
+                          z1: INT,
+                          palettes: Dynamic,
+                          opts: Map| {
+                        run([x0, y0, z0, x1, y1, z1], palettes, &opts)
+                    },
+                );
+            } else {
+                engine.register_fn(
+                    name,
+                    move |x0: INT,
+                          y0: INT,
+                          z0: INT,
+                          x1: INT,
+                          y1: INT,
+                          z1: INT,
+                          palettes: Dynamic| {
+                        run([x0, y0, z0, x1, y1, z1], palettes, &Map::new())
+                    },
+                );
+            }
+        }
+    }
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |corners: [INT; 6], opts: &Map| -> Fallible<Map> {

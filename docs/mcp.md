@@ -161,6 +161,9 @@ tracer. A file with no scene graph still loads its first model.
 | `scatter` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Drop small pieces (shard, chip, pebble, chunk) that settle on what is below into a heap. Optional `count`, `kinds`, `size`, `seed`, `floor`, `clump`. One undo step |
 | `joints` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `pattern` | Cut real joint gaps into the solid cells of the box: `columns`, `courses` (running bond), or `cracks`. Optional `spacing`, `course`, `width`, `depth`, `dirt`, `only`, `density`, `seed`. Replies with `removed` and `dirtied`. One undo step |
 | `weather` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Chip edges and corners, dent pits into flat faces, and add subtle colour noise on the exposed cells of the box. Optional `chip`, `chipSize`, `pits`, `pitDepth`, `broken`, `noise`, `noiseDensity`, `noiseScale`, `only`, `seed`. Replies with `chips`, `pits`, `removed`, `broken`, `recoloured`. One undo step |
+| `moss` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Moss cushions on tops and curtains with a ragged end down the side faces below them. Optional `amount`, `noise`, `faces`, `facing`, `band`, `only`, `layer`, `curtains`, `length`, `thickness`, `seed`. Replies with `added`, `painted`, `curtains`. One undo step |
+| `algae` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | An algae band, dense at the bottom of `band` and thinning upward in clumps. Optional `band`, `amount`, `noise`, `faces`, `facing`, `only`, `layer`, `seed`. Replies with `added`, `painted`. One undo step |
+| `vines` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Vine strands hanging from top edges, graded through `palettes` to the tip, with optional `blooms`. Optional `amount`, `length`, `bloomChance`, `noise`, `faces`, `facing`, `band`, `only`, `seed`. Replies with `added`, `strands`, `blooms`. One undo step |
 | `smooth` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Majority filter in an inclusive box of at most 2000000 cells that keeps colours. Optional `iterations` (1..=8), `fillAt`, `removeAt`. Replies with `filled`, `removed`, `iterations`. One undo step |
 | `get_voxels` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Non-empty **local** cells inside an inclusive box, at most 100000 |
 | `set_palette` | `index`, `r`, `g`, `b` or `entries` | Replace one slot, or many via `entries`, as one undo step. `a` defaults to 255. Optional `motion` (`none`, `sway`, `bob`) and `motion_amount` (0..4) |
@@ -304,6 +307,36 @@ cells across (default 3) with a little speckle, `noiseDensity` of them
 (default 0.35); give a few tones within a few units of the stone so it does
 not look blotchy. `only` limits it to some slots. The same `seed` gives the
 same result.
+
+`moss`, `algae`, and `vines` grow on the exposed faces of the solid cells
+in the box whose face passes the filter: `faces` (`top`, `side`, `bottom`,
+`all`, or a list), `facing` (only faces whose outward normal points within
+60 degrees of a direction, such as `[0, -1, 0]` for the front), and `band`
+(only cells with z in `[low, high]`). `only` limits the host cells to some
+slots, usually the stone. `amount` and `noise` set how much grows and how
+ragged it is (0 smooth patches, 1 speckle); the same `seed` gives the same
+growth. `layer` `grow` adds the plant on the empty side of each face and
+writes only empty cells; `paint` recolours the surface cells. The caller
+gives the plant slots and their motion: set `set_palette` `motion` `sway`
+on vine slots, rising from the anchor (about 0.1) to the tip (about 1), and
+leave moss and algae still. At most 400000 cells per call.
+
+- `moss` (default `faces` top and side, `amount` 0.5, `layer` grow) caps
+  the tops that pass in soft patches, a second or third layer where it is
+  densest (`thickness` 1..=3), and runs curtains down the side faces below
+  a capped top edge: `curtains` (default 0.3) of the edges, `length` [2, 8]
+  cells, neighbouring columns starting together and ending raggedly.
+  `palettes` are picked in patches.
+- `algae` (default `amount` 0.9, `layer` paint) covers the faces inside
+  `band` (the box's height without one) densest at its bottom and thinning
+  to nothing at its top in noisy clumps, stone peeking through.
+  `palettes` go from the bottom of the band to its top.
+- `vines` (default `faces` side, `amount` 0.08) starts a strand beside
+  `amount` of the top edge cells whose side passes, and lets it fall
+  through empty cells for `length` [4, 16] cells, wandering a little along
+  the edge with `noise`, until something solid is below. `palettes` are
+  graded from the anchor to the tip; `blooms` puts a bloom cell beside a
+  strand cell with chance `bloomChance` (default 0.06).
 
 `smooth` reads each cell's 26 neighbours inside the box (cells outside it
 are read, never changed). An empty cell with at least `fillAt` solid
@@ -715,6 +748,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `scatter` | Scatter section: Pieces, Kinds, Size, Palettes, Clump, Seed, over the selection's box or above the whole object |
 | `joints` | Joints section: Columns, Courses, or Cracks, Spacing, Course (or Density), Width, Depth, Dirt, Only, Seed, over the selection's box or the whole object |
 | `weather` | Weather section: Chip, Chip size, Pits, Pit depth, Broken, Noise, Density, Patch, Only, Seed, over the selection's box or the whole object |
+| `moss`, `algae`, `vines` | Growth section: Moss, Algae, or Vines, Palettes, Amount, Noise, Faces, Facing, Band, Only, Paint, Curtains, Thickness, Length, Blooms, Bloom chance, Seed, over the selection's box or the whole object |
 | `smooth` | Smooth section: Passes, Fill at, Remove at, over the selection or the whole object |
 | `set_palette` | Palette dock (colour and alpha) and the Material section (motion) |
 | `set_active_object`, `add_object`, `set_object`, `remove_object` | Objects tree and the Object inspector |

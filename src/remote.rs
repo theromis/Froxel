@@ -602,6 +602,9 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "voxel.scatter" => scatter(session, &params),
         "voxel.joints" => stone::apply_stone(session, &params, Stone::Joints),
         "voxel.weather" => stone::apply_stone(session, &params, Stone::Weather),
+        "voxel.moss" => stone::apply_stone(session, &params, Stone::Moss),
+        "voxel.algae" => stone::apply_stone(session, &params, Stone::Algae),
+        "voxel.vines" => stone::apply_stone(session, &params, Stone::Vines),
         "voxel.get_box" => {
             let cells: Vec<Value> = box_cells(&session.active().cells, &params)?
                 .into_iter()
@@ -1100,6 +1103,9 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.scatter", "x0, y0, z0, x1, y1, z1, palettes, count?, kinds?, size?, seed?, floor?, clump?", "Drop small pieces that settle into a heap"),
     ("voxel.joints", "x0, y0, z0, x1, y1, z1, pattern, spacing?, course?, width?, depth?, dirt?, only?, density?, seed?", "Cut joint gaps: columns, running bond courses, or cracks"),
     ("voxel.weather", "x0, y0, z0, x1, y1, z1, chip?, chipSize?, pits?, pitDepth?, broken?, noise?, noiseDensity?, noiseScale?, only?, seed?", "Chip edges and corners, dent pits, and add colour noise on exposed cells"),
+    ("voxel.moss", "x0, y0, z0, x1, y1, z1, palettes, amount?, noise?, faces?, facing?, band?, only?, layer?, curtains?, length?, thickness?, seed?", "Moss caps on tops and curtains down faces with a ragged end"),
+    ("voxel.algae", "x0, y0, z0, x1, y1, z1, palettes, band?, amount?, noise?, faces?, facing?, only?, layer?, seed?", "Algae band at the waterline, dense low and thinning upward in clumps"),
+    ("voxel.vines", "x0, y0, z0, x1, y1, z1, palettes, amount?, length?, blooms?, bloomChance?, noise?, faces?, facing?, band?, only?, seed?", "Vine strands hanging from top edges, with blooms"),
     ("voxel.smooth", "x0, y0, z0, x1, y1, z1, iterations?, fillAt?, removeAt?", "Majority filter in a box that keeps colours"),
     ("voxel.get_box", "x0, y0, z0, x1, y1, z1", "Non-empty cells inside an inclusive box, at most 100000"),
     ("palette.set", "index, r, g, b, a?, motion?, motion_amount? | entries", "Replace one slot, or many, as one undo step"),

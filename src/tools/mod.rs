@@ -7,6 +7,7 @@ use crate::state::Cell;
 
 mod debris;
 mod generate;
+mod growth;
 mod joints;
 mod scatter;
 mod sculpt;
@@ -16,6 +17,7 @@ mod weather;
 
 pub use debris::{break_end, BreakSpec, Broken, Splinters};
 pub use generate::{foliage, generate, Gen, MAX_GENERATOR_CELLS};
+pub use growth::{grow, Face, GrowthKind, GrowthSpec, Layer};
 pub use joints::{joints, JointPattern, JointSpec};
 pub use scatter::{scatter, PieceKind, ScatterSpec, Scattered, MAX_PIECES};
 #[cfg(test)]

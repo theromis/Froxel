@@ -4,6 +4,12 @@
 
 ### Added
 
+- Growth: MCP `moss`, `algae`, and `vines`, the Rhai functions of the same
+  names, and the Growth section grow plants on exposed faces filtered by
+  face, facing, and a height band: moss cushions and ragged curtains, an
+  algae band that thins upward in clumps, and vine strands graded to the tip
+  with blooms. The caller gives the slots and their motion.
+
 - Weather: MCP `weather`, Rhai `weather(x0, y0, z0, x1, y1, z1, opts)`, and
   the Weather section chip edges and corners, dent pits into flat faces,
   and add subtle colour noise on exposed stone; uncovered faces take a

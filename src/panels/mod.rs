@@ -130,6 +130,8 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
                     stone::joints(ui, session);
                     ui.separator();
                     stone::weather(ui, session);
+                    ui.separator();
+                    stone::growth(ui, session);
                 });
         },
     );

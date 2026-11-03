@@ -1,10 +1,10 @@
-//! Inspector sections of the stone tools: Joints and Weather. Each button runs the MCP
+//! Inspector sections of the stone tools: Joints, Weather, and Growth. Each button runs the MCP
 //! tool over the selection's box, or the whole active object.
 
 use egui::{RichText, Ui};
 
 use super::{section, DIM};
-use crate::state::{EditorMode, Session};
+use crate::state::{EditorMode, Plant, Session, FACINGS};
 use crate::tools::JointPattern;
 
 fn label(ui: &mut Ui, text: &str, tip: &str) {
@@ -163,6 +163,126 @@ pub(super) fn weather(ui: &mut Ui, session: &mut Session) {
             .clicked()
         {
             session.weather_from_panel();
+        }
+    });
+}
+
+/// MCP `moss`, `algae`, and `vines`: plants on exposed faces.
+pub(super) fn growth(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.voxel_count() > 0 && session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Growth");
+        let panel = &mut session.stone.growth;
+        egui::Grid::new("growth-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Plant", "Moss: cushions on tops and curtains down faces. Algae: a waterline band, dense low and thinning up. Vines: strands hanging from top edges.");
+                ui.horizontal(|ui| {
+                    for (plant, name) in [
+                        (Plant::Moss, "Moss"),
+                        (Plant::Algae, "Algae"),
+                        (Plant::Vines, "Vines"),
+                    ] {
+                        if ui.selectable_label(panel.plant == plant, name).clicked() {
+                            panel.set_plant(plant);
+                        }
+                    }
+                });
+                ui.end_row();
+                let tip = match panel.plant {
+                    Plant::Moss => "Moss slots, picked in patches. Empty is the active slot.",
+                    Plant::Algae => "Algae slots from the bottom of the band to its top. Empty is the active slot.",
+                    Plant::Vines => "Vine slots from the anchor to the tip; give them rising sway in Material. Empty is the active slot.",
+                };
+                label(ui, "Palettes", tip);
+                slots_field(ui, &mut panel.palettes, "active slot");
+                ui.end_row();
+                let tip = match panel.plant {
+                    Plant::Moss => "Coverage of the faces.",
+                    Plant::Algae => "Coverage at the bottom of the band.",
+                    Plant::Vines => "Share of top edge cells a strand starts from.",
+                };
+                label(ui, "Amount", tip);
+                ui.add(egui::Slider::new(&mut panel.amount, 0.0..=1.0).max_decimals(2));
+                ui.end_row();
+                label(ui, "Noise", "0 grows in smooth patches, 1 in ragged speckle.");
+                ui.add(egui::Slider::new(&mut panel.noise, 0.0..=1.0).max_decimals(2));
+                ui.end_row();
+                label(ui, "Faces", "Which faces it grows on.");
+                ui.horizontal(|ui| {
+                    for (on, name) in panel.faces.iter_mut().zip(["Top", "Side", "Bottom"]) {
+                        ui.toggle_value(on, name);
+                    }
+                });
+                ui.end_row();
+                label(ui, "Facing", "Only faces pointing within 60 degrees of this direction.");
+                ui.horizontal(|ui| {
+                    for (index, (name, _)) in FACINGS.iter().enumerate() {
+                        if ui.selectable_label(panel.facing == index, *name).clicked() {
+                            panel.facing = index;
+                        }
+                    }
+                });
+                ui.end_row();
+                label(ui, "Band", "Only cells with z in this band, such as the waterline. Algae thins from its bottom to its top.");
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut panel.band_on, "");
+                    ui.add_enabled_ui(panel.band_on, |ui| {
+                        ui.add(egui::DragValue::new(&mut panel.band[0]).range(-1024..=1023));
+                        ui.add(egui::DragValue::new(&mut panel.band[1]).range(-1024..=1023));
+                    });
+                });
+                ui.end_row();
+                label(ui, "Only", "Grow only on these palette slots, such as the stone; empty grows on every slot.");
+                slots_field(ui, &mut panel.only, "every slot");
+                ui.end_row();
+                if panel.plant != Plant::Vines {
+                    label(ui, "Paint", "Recolour the surface instead of adding a layer on it.");
+                    ui.checkbox(&mut panel.paint, "");
+                    ui.end_row();
+                }
+                if panel.plant == Plant::Moss {
+                    label(ui, "Curtains", "Share of top edges a curtain runs down from.");
+                    ui.add(egui::Slider::new(&mut panel.curtains, 0.0..=1.0).max_decimals(2));
+                    ui.end_row();
+                    label(ui, "Thickness", "Cushion thickness on tops.");
+                    ui.add(egui::Slider::new(&mut panel.thickness, 1..=3));
+                    ui.end_row();
+                }
+                if panel.plant != Plant::Algae {
+                    let tip = if panel.plant == Plant::Moss {
+                        "Curtain length range in cells."
+                    } else {
+                        "Strand length range in cells."
+                    };
+                    label(ui, "Length", tip);
+                    range_i32(ui, &mut panel.length, 1..=128);
+                    ui.end_row();
+                }
+                if panel.plant == Plant::Vines {
+                    label(ui, "Blooms", "Bloom slots beside the strands; empty grows none.");
+                    slots_field(ui, &mut panel.blooms, "none");
+                    ui.end_row();
+                    label(ui, "Bloom chance", "Chance of a bloom beside each strand cell.");
+                    ui.add(egui::Slider::new(&mut panel.bloom_chance, 0.0..=1.0).max_decimals(2));
+                    ui.end_row();
+                }
+                label(ui, "Seed", "Same seed, same growth.");
+                ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
+                ui.end_row();
+            });
+        let verb = match session.stone.growth.plant {
+            Plant::Moss => "Grow moss on",
+            Plant::Algae => "Grow algae on",
+            Plant::Vines => "Hang vines from",
+        };
+        if ui
+            .button(scope(session, verb))
+            .on_hover_text("MCP moss, algae, or vines over the selection's box, or the whole object. One undo step.")
+            .clicked()
+        {
+            session.growth_from_panel();
         }
     });
 }

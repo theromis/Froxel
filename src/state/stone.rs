@@ -1,4 +1,5 @@
-//! The stone panels: the fields of MCP `joints` and `weather`. Each panel's button builds
+//! The stone panels: the fields of MCP `joints`, `weather`, `moss`, `algae`,
+//! and `vines`. Each panel's button builds
 //! the tool's MCP arguments over the selection's box (or the active object's
 //! box) and runs the MCP handler, so the editor and MCP share one path.
 
@@ -125,10 +126,147 @@ impl WeatherPanel {
     }
 }
 
+/// Which plant the Growth panel grows.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Plant {
+    Moss,
+    Algae,
+    Vines,
+}
+
+/// The Growth panel: MCP `moss`, `algae`, and `vines`.
+#[derive(Clone, PartialEq)]
+pub struct GrowthPanel {
+    pub plant: Plant,
+    /// Plant slots separated by commas or spaces; empty is the active slot.
+    pub palettes: String,
+    pub amount: f32,
+    pub noise: f32,
+    /// Top, side, bottom.
+    pub faces: [bool; 3],
+    /// Index into [`FACINGS`]; 0 is any direction.
+    pub facing: usize,
+    pub band_on: bool,
+    pub band: [i32; 2],
+    pub only: String,
+    pub paint: bool,
+    pub curtains: f32,
+    pub length: [i32; 2],
+    pub thickness: i32,
+    pub blooms: String,
+    pub bloom_chance: f32,
+    pub seed: i32,
+}
+
+/// The Growth panel's facing choices.
+pub const FACINGS: [(&str, Option<[i32; 3]>); 5] = [
+    ("Any", None),
+    ("−Y", Some([0, -1, 0])),
+    ("+Y", Some([0, 1, 0])),
+    ("−X", Some([-1, 0, 0])),
+    ("+X", Some([1, 0, 0])),
+];
+
+impl Default for GrowthPanel {
+    fn default() -> Self {
+        let mut panel = Self {
+            plant: Plant::Moss,
+            palettes: String::new(),
+            amount: 0.5,
+            noise: 0.5,
+            faces: [true, true, false],
+            facing: 0,
+            band_on: false,
+            band: [0, 4],
+            only: String::new(),
+            paint: false,
+            curtains: 0.3,
+            length: [2, 8],
+            thickness: 1,
+            blooms: String::new(),
+            bloom_chance: 0.06,
+            seed: 0,
+        };
+        panel.set_plant(Plant::Moss);
+        panel
+    }
+}
+
+impl GrowthPanel {
+    /// The defaults of a newly picked plant.
+    pub fn set_plant(&mut self, plant: Plant) {
+        self.plant = plant;
+        let (amount, faces, paint, length) = match plant {
+            Plant::Moss => (0.5, [true, true, false], false, [2, 8]),
+            Plant::Algae => (0.9, [true, true, false], true, self.length),
+            Plant::Vines => (0.08, [false, true, false], false, [4, 16]),
+        };
+        self.amount = amount;
+        self.faces = faces;
+        self.paint = paint;
+        self.length = length;
+        self.band_on = plant == Plant::Algae;
+    }
+
+    fn method(&self) -> &'static str {
+        match self.plant {
+            Plant::Moss => "voxel.moss",
+            Plant::Algae => "voxel.algae",
+            Plant::Vines => "voxel.vines",
+        }
+    }
+
+    fn args(&self, active: u8) -> Result<Value, String> {
+        let mut palettes = parse_slots(&self.palettes).map_err(|err| format!("Palettes: {err}"))?;
+        if palettes.is_empty() {
+            palettes.push(active.max(1));
+        }
+        let faces: Vec<&str> = ["top", "side", "bottom"]
+            .into_iter()
+            .zip(self.faces)
+            .filter(|(_, on)| *on)
+            .map(|(name, _)| name)
+            .collect();
+        let mut args = json!({
+            "palettes": palettes,
+            "amount": self.amount,
+            "noise": self.noise,
+            "faces": faces,
+            "only": slots("Only", &self.only)?,
+            "seed": self.seed.max(0),
+        });
+        if let Some(facing) = FACINGS[self.facing.min(FACINGS.len() - 1)].1 {
+            args["facing"] = json!(facing);
+        }
+        if self.band_on {
+            args["band"] = json!([self.band[0], self.band[1].max(self.band[0])]);
+        }
+        let length = json!([self.length[0], self.length[1].max(self.length[0])]);
+        match self.plant {
+            Plant::Moss => {
+                args["layer"] = json!(if self.paint { "paint" } else { "grow" });
+                args["curtains"] = json!(self.curtains);
+                args["length"] = length;
+                args["thickness"] = json!(self.thickness);
+            }
+            Plant::Algae => {
+                args["layer"] = json!(if self.paint { "paint" } else { "grow" });
+            }
+            Plant::Vines => {
+                args["length"] = length;
+                args["blooms"] = slots("Blooms", &self.blooms)?;
+                args["bloomChance"] = json!(self.bloom_chance);
+            }
+        }
+        Ok(args)
+    }
+}
+
 #[derive(Clone, Default, PartialEq)]
 pub struct StonePanels {
     pub joints: JointsPanel,
     pub weather: WeatherPanel,
+    pub growth: GrowthPanel,
 }
 
 fn slots(what: &str, text: &str) -> Result<Value, String> {
@@ -157,6 +295,26 @@ impl Session {
                 "{} chips and {} pits; {} faces broken, {} cells recoloured.",
                 reply["chips"], reply["pits"], reply["broken"], reply["recoloured"]
             )
+        });
+    }
+
+    /// The Growth panel's button.
+    pub fn growth_from_panel(&mut self) {
+        let panel = &self.stone.growth;
+        let method = panel.method();
+        let args = panel.args(self.active_slot);
+        self.stone_from_panel(method, args, |reply| {
+            let mut text = format!(
+                "Grew {} cells, painted {}",
+                reply["added"], reply["painted"]
+            );
+            if let Some(curtains) = reply.get("curtains") {
+                text += &format!(", {curtains} curtains");
+            }
+            if let Some(strands) = reply.get("strands") {
+                text += &format!(", {strands} strands, {} blooms", reply["blooms"]);
+            }
+            text + "."
         });
     }
 

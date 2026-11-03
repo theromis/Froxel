@@ -279,7 +279,7 @@ fn dispatch(
                 "protocolVersion": version,
                 "capabilities": {"tools": {"listChanged": false}},
                 "serverInfo": {"name": "Froxel", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. preview writes a fast lit PNG (the viewport mesh and light, rasterised, well under a second) framed on the model or one object; use it to look after every step. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, grow limbs and roots with fill_tube, cut hollows with carve, soften with smooth, refine with set_voxels, and render after every step. Stone surfaces: joints cuts real joint gaps (columns, courses, cracks), weather chips edges, dents pits, and adds colour noise. A Rhai script (set_script) can call the same sculpt, voxel, object, rig, clip, and palette tools, with the MCP options in a trailing map, for a family of organic pieces (docs/scripting.md, examples/hollow_log.rhai)."
+                "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. preview writes a fast lit PNG (the viewport mesh and light, rasterised, well under a second) framed on the model or one object; use it to look after every step. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, grow limbs and roots with fill_tube, cut hollows with carve, soften with smooth, refine with set_voxels, and render after every step. Stone surfaces: joints cuts real joint gaps (columns, courses, cracks), weather chips edges, dents pits, and adds colour noise, and moss, algae, and vines grow plants on exposed faces (the caller gives the slots and their motion). A Rhai script (set_script) can call the same sculpt, voxel, object, rig, clip, and palette tools, with the MCP options in a trailing map, for a family of organic pieces (docs/scripting.md, examples/hollow_log.rhai)."
             }),
         ));
     }
@@ -384,6 +384,9 @@ fn map_tool(name: &str, args: &Value) -> Result<(String, Value), String> {
         "scatter" => "voxel.scatter",
         "joints" => "voxel.joints",
         "weather" => "voxel.weather",
+        "moss" => "voxel.moss",
+        "algae" => "voxel.algae",
+        "vines" => "voxel.vines",
         "get_voxels" => "voxel.get_box",
         "set_palette" => "palette.set",
         "set_active_object" => "object.set_active",
@@ -663,6 +666,17 @@ fn tools() -> Vec<Value> {
             p["seed"] = int_prop("Seed. Defaults to 0.");
             p
         }, &["x0", "y0", "z0", "x1", "y1", "z1"]),
+        tool("moss", "Grow moss on the exposed faces of an inclusive box of the active object that pass the face filter: cushions on tops (where the top face passes) and curtains running down side faces from a top edge, each with a ragged end. Coverage comes in soft patches mixed with speckle by noise. layer grow adds the moss on the empty side of each face (only empty cells are written); paint recolours the surface cells. palettes are picked in patches, darker and lighter moss. Cut joints and weather the stone first. Deterministic for a seed. A box of at most 2000000 cells, at most 400000 cells written. One undo step. Replies with added, painted, and curtains.", growth_props(&[
+            ("curtains", num_prop("Share of moss-capped top edges a curtain runs down from (any top edge when faces leaves out top), 0..=1. Defaults to 0.3. 0 grows caps only.")),
+            ("length", json!({"type": "array", "items": {"type": "integer"}, "description": "Curtain length range [min, max] in cells, 1..=64, or one number. Defaults to [2, 8]."})),
+            ("thickness", int_prop("Cushion thickness on tops, 1..=3 (layer grow). Defaults to 1.")),
+        ], "Coverage, 0..=1. Defaults to 0.5.", "top and side"), &["x0", "y0", "z0", "x1", "y1", "z1", "palettes"]),
+        tool("algae", "Paint algae on the exposed faces of an inclusive box of the active object inside a height band, usually the waterline: dense at the bottom of the band and thinning upward in noisy clumps with stone peeking through. palettes go from the bottom of the band to its top (a darker tone low, a lighter one high). Deterministic for a seed. A box of at most 2000000 cells. One undo step. Replies with added and painted.", growth_props(&[], "Coverage at the bottom of the band, 0..=1. Defaults to 0.9.", "top and side"), &["x0", "y0", "z0", "x1", "y1", "z1", "palettes"]),
+        tool("vines", "Hang vine strands from the top edges of an inclusive box of the active object: each strand starts beside an edge cell whose side passes the face filter and falls straight down through empty cells, wandering a little along the edge with noise, until its length or something solid below. palettes are graded from the anchor to the tip, so give them motion sway rising from the anchor (set_palette motion). blooms adds an occasional bloom cell beside a strand. Only empty cells are written. Deterministic for a seed. A box of at most 2000000 cells, at most 400000 cells written. One undo step. Replies with added, strands, and blooms.", growth_props(&[
+            ("length", json!({"type": "array", "items": {"type": "integer"}, "description": "Strand length range [min, max] in cells, 1..=128, or one number. Defaults to [4, 16]."})),
+            ("blooms", json!({"type": "array", "items": {"type": "integer"}, "description": "Palette indices of blooms beside the strands. Omit for none."})),
+            ("bloomChance", num_prop("Chance of a bloom beside each strand cell, 0..=1. Defaults to 0.06.")),
+        ], "Share of top edge cells a strand starts from, 0..=1. Defaults to 0.08.", "side"), &["x0", "y0", "z0", "x1", "y1", "z1", "palettes"]),
         tool("mirror_object", "Copy an object mirrored across a world axis through the origin. Cells use -coord-1 on that axis. One undo step. mirrorBones also copies the bound bone and its descendants, swapping an _l/_r suffix. The copy is unbound unless mirrorBones is true.", json!({
             "index": int_prop("Object index to copy"),
             "axis": str_prop("x, y, or z"),
@@ -799,7 +813,7 @@ fn tools() -> Vec<Value> {
             "x": num_prop("X in window points, origin at the top-left of the client area"),
             "y": num_prop("Y in window points, origin at the top-left of the client area")
         }), &["x", "y"]),
-        tool("set_script", "Store a Rhai script on an object and read its parameters. One undo step. Voxels change only when regenerate runs. A failure keeps the source and reports the script line. Scripts have the sculpt tools as functions (fill_box with a mode, fill_ellipsoid, fill_rounded_box, fill_tube, carve_box, carve_ellipsoid, carve_rounded_box, carve_tube, smooth, break_end, scatter, joints, weather) with the MCP options in a trailing map such as #{mode: \"empty\"}, get_voxels, set_voxels, and the document tools (set_palette, set_object, remove_object, mirror_object, add_bone, set_bone, remove_bone, bind_object, list_bones, set_pose, clear_pose, add_clip, set_clip_keys, list_clips, remove_clip), which apply after the script in the same undo step, plus sqrt, pow, PI, min, max, clamp, and push on arrays; docs/scripting.md lists them.", json!({
+        tool("set_script", "Store a Rhai script on an object and read its parameters. One undo step. Voxels change only when regenerate runs. A failure keeps the source and reports the script line. Scripts have the sculpt tools as functions (fill_box with a mode, fill_ellipsoid, fill_rounded_box, fill_tube, carve_box, carve_ellipsoid, carve_rounded_box, carve_tube, smooth, break_end, scatter, joints, weather, moss, algae, vines) with the MCP options in a trailing map such as #{mode: \"empty\"}, get_voxels, set_voxels, and the document tools (set_palette, set_object, remove_object, mirror_object, add_bone, set_bone, remove_bone, bind_object, list_bones, set_pose, clear_pose, add_clip, set_clip_keys, list_clips, remove_clip), which apply after the script in the same undo step, plus sqrt, pow, PI, min, max, clamp, and push on arrays; docs/scripting.md lists them.", json!({
             "object": int_prop("Object index. Omit for the active object."),
             "source": str_prop("Rhai source. Empty clears the script.")
         }), &["source"]),
@@ -880,6 +894,9 @@ fn hints(name: &str) -> [bool; 3] {
         | "scatter"
         | "joints"
         | "weather"
+        | "moss"
+        | "algae"
+        | "vines"
         | "set_palette"
         | "set_object"
         | "set_bone"
@@ -901,6 +918,27 @@ fn hints(name: &str) -> [bool; 3] {
         | "export_models" => [false, true, true],
         other => panic!("no annotation hints for tool `{other}`"),
     }
+}
+
+/// The arguments `moss`, `algae`, and `vines` share, plus `extra`.
+fn growth_props(extra: &[(&str, Value)], amount: &str, faces: &str) -> Value {
+    let mut p = json!({});
+    for key in ["x0", "y0", "z0", "x1", "y1", "z1"] {
+        p[key] = int_prop("Inclusive box corner");
+    }
+    p["palettes"] = json!({"type": "array", "items": {"type": "integer"}, "description": "Plant palette indices. A single integer works too."});
+    p["amount"] = num_prop(amount);
+    p["noise"] = num_prop("0 grows in smooth patches, 1 in ragged speckle. Defaults to 0.5.");
+    p["faces"] = json!({"type": ["string", "array"], "description": format!("Faces it grows on: top, side, bottom, all, or a list of them. Defaults to {faces}.")});
+    p["facing"] = vec3_prop("Only faces whose outward normal points within 60 degrees of this direction, such as [0, -1, 0] for the front.");
+    p["band"] = json!({"type": "array", "items": {"type": "integer"}, "description": "Only cells with z in [low, high], such as a waterline band. algae thins from its bottom to its top and uses the box's height without one."});
+    p["only"] = json!({"type": "array", "items": {"type": "integer"}, "description": "Grow only on cells of these palette indices (the stone slots). Omit for every slot."});
+    p["layer"] = json!({"type": "string", "enum": ["grow", "paint"], "description": "grow adds cells on the empty side of each face; paint recolours the surface. Defaults to grow, paint for algae. vines always grow."});
+    p["seed"] = int_prop("Seed. Defaults to 0.");
+    for (key, value) in extra {
+        p[*key] = value.clone();
+    }
+    p
 }
 
 fn mode_prop() -> Value {
