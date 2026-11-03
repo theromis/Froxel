@@ -620,6 +620,7 @@ mod document;
 mod drag;
 mod files;
 mod geom;
+mod import;
 mod markers;
 mod objects;
 mod organic;
@@ -766,6 +767,8 @@ pub struct Session {
     pub(crate) sculpt_stroke: Option<organic::SculptStroke>,
     /// Carve from views and Compare silhouette, and the overlay.
     pub silhouette: SilhouettePanels,
+    /// The Import mesh panel.
+    pub import: ImportPanel,
     /// Smooth: passes and the neighbour thresholds of MCP `smooth`.
     pub smooth_iterations: i32,
     pub smooth_fill_at: i32,
@@ -911,6 +914,7 @@ pub use geom::palette_slot_at;
 #[allow(unused_imports)] // keeps `crate::state::raycast` after the move into geom
 pub use geom::raycast;
 pub(crate) use geom::{occupied_bounds, resolved_box};
+pub use import::ImportPanel;
 pub(crate) use markers::append_gltf_markers;
 pub use markers::{
     cell_box, check_direction, check_marker_name, check_point, Marker, MarkerKind, MAX_MARKERS,

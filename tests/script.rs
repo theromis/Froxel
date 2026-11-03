@@ -1217,3 +1217,91 @@ fn script_loft_deform_and_brush_match_the_mcp_tools() {
     let err = run_cells(r#"loft([[0, 0, 0, 2], [4, 0, 0, 2]], 1, #{radios: 2});"#).unwrap_err();
     assert!(err.contains("no option `radios`"), "{err}");
 }
+
+const CUBE_MESH: &str = r#"
+    let positions = [];
+    for z in 0..2 { for y in 0..2 { for x in 0..2 { positions.push([x, y, z]); } } }
+    let triangles = [[0, 2, 3], [0, 3, 1], [4, 5, 7], [4, 7, 6], [0, 1, 5], [0, 5, 4],
+        [2, 6, 7], [2, 7, 3], [0, 4, 6], [0, 6, 2], [1, 3, 7], [1, 7, 5]];
+"#;
+
+#[test]
+fn voxelize_builds_what_import_mesh_builds() {
+    use serde_json::json;
+    let script = run_cells(&format!(
+        "{CUBE_MESH}
+        let done = voxelize(#{{positions: positions, triangles: triangles}},
+            #{{size: 6, palette: 5, position: [2, 0, 0], fill: \"shell\"}});
+        if done.cells != 216 - 64 || done.bounds.size[0] != 6 {{ throw `bad ${{done}}`; }}
+        voxelize(#{{positions: positions, triangles: triangles}}, #{{size: 4, palette: 6, mode: \"paint\"}});"
+    ))
+    .unwrap();
+    let cube = format!(
+        "{}/tests/fixtures/mesh/cube.obj",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let mcp = mcp_cells(&[
+        (
+            "mesh.import",
+            json!({"path": cube, "size": 6, "palette": 5, "position": [2, 0, 0], "fill": "shell"}),
+        ),
+        (
+            "mesh.import",
+            json!({"path": cube, "size": 4, "palette": 6, "mode": "paint"}),
+        ),
+    ]);
+    assert_eq!(script, mcp);
+    let err = run_cells(&format!(
+        "{CUBE_MESH} voxelize(#{{positions: positions, triangles: [[0, 1, 9]]}});"
+    ))
+    .unwrap_err();
+    assert!(err.contains("index positions"), "{err}");
+    let err = run_cells(&format!(
+        "{CUBE_MESH} voxelize(#{{positions: positions, triangles: triangles}}, #{{path: \"x.glb\"}});"
+    ))
+    .unwrap_err();
+    assert!(err.contains("no option `path`"), "{err}");
+}
+
+#[test]
+fn voxelize_adds_palette_slots_after_the_run() {
+    let mut session = Session::new();
+    session.replace_empty();
+    session
+        .set_script(
+            0,
+            &format!(
+                "{CUBE_MESH}
+                let colors = [];
+                for i in 0..8 {{ colors.push([30, 160, 40]); }}
+                let done = voxelize(#{{positions: positions, triangles: triangles, colors: colors}},
+                    #{{size: 4, tolerance: 0}});
+                if done.newSlots.len() != 1 {{ throw `bad ${{done}}`; }}"
+            ),
+        )
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    assert_eq!(session.active().cells.len(), 64);
+    assert!(session.active().cells.values().all(|&s| s == 255));
+    assert_eq!(session.palette[255], [30, 160, 40, 255]);
+}
+
+#[test]
+fn the_faceted_boulder_example_voxelizes_and_weathers() {
+    let mut session = Session::new();
+    session.replace_empty();
+    session
+        .set_script(0, include_str!("../examples/faceted_boulder.rhai"))
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    let cells = &session.active().cells;
+    assert!(cells.len() > 3000, "{}", cells.len());
+    for slot in [1, 2, 3] {
+        assert!(cells.values().any(|&s| s == slot), "slot {slot}");
+    }
+    if let Ok(dir) = std::env::var("FROXEL_EXAMPLE_OUT") {
+        session
+            .write_vox(&std::path::Path::new(&dir).join("faceted_boulder.vox"))
+            .unwrap();
+    }
+}

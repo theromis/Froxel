@@ -13,7 +13,9 @@ It is how agents should model living things through MCP.
 
 ## Steps
 
-1. **Block out.** Build the large forms with `fill_box`,
+1. **Block out.** Import a sculpted or generated mesh with `import_mesh`
+   when there is one (see "Start from a mesh"). Otherwise build the large
+   forms with `fill_box`,
    `fill_rounded_box`, and `fill_ellipsoid`. Grow limbs, roots, branches,
    tails, and twigs with `fill_tube`. Cut hollows, tunnels, and pits with
    `carve`. Get the proportions and the silhouette right before any detail.
@@ -75,6 +77,34 @@ compare_silhouette   path="hero-vs.png" concept="hero.png" preset="game"
 `examples/carved_stump.rhai` does the same in a script, with the views as
 rows. In the editor, the Carve from views and Compare silhouette sections
 hold the same fields, and the comparison shows over the viewport.
+
+## Start from a mesh
+
+A unique organic asset (a fallen tree, a creature, a hero rock) built only
+from tubes and boxes tends to read as pipes. When the form can be sculpted
+in Blender, or generated from the approved concept by an image-to-3D tool,
+bring that mesh in with `import_mesh` and finish it with the voxel tools:
+
+```
+import_mesh          path="fallen_tree.glb" voxelSize=0.08 anchor="bottom" newObject=true name="fallen_tree"
+preview              path="tree_import.png"
+model_view           path="tree_side.png" view="left"                # compare with the concept
+smooth               x0=-40 y0=-12 z0=0 x1=40 y1=12 z1=20 iterations=1
+weather              x0=-40 y0=-12 z0=0 x1=40 y1=12 z1=20 chip=0.2 noise=[3, 4]
+moss                 x0=-41 y0=-13 z0=0 x1=41 y1=13 z1=21 palettes=[6, 7]
+preview              path="tree_finished.png"
+```
+
+`voxelSize` keeps the mesh's real size at the game's voxel size; `size`
+fits its longest axis to a number of cells instead. The colours of the
+base-colour texture go into the palette (reusing close slots, adding at
+most `maxNewSlots`); pass `slots` to map onto a palette you have already
+chosen, such as bark and moss slots, so the finishing tools find them.
+Read the reply's `bounds` for the boxes of the next tools. `fill` `shell`
+keeps only the surface, for a hollow log to carve into. `mode` `paint`
+projects a textured mesh's colours onto a form already in the object.
+`docs/mcp.md` describes the options; `froxel import` does the same from
+the command line.
 
 ## Organic shapes
 

@@ -1277,6 +1277,7 @@ dependencies = [
  "serde_json",
  "winit",
  "winresource",
+ "zune-jpeg",
 ]
 
 [[package]]

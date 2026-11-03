@@ -28,6 +28,7 @@ mod denoise;
 mod export;
 mod gpu;
 mod icons;
+mod import;
 mod lighting;
 mod mcp;
 mod menu;
@@ -242,6 +243,9 @@ fn main(
     }
     if args.first().is_some_and(|arg| arg == "export") {
         std::process::exit(cli::export(&args[1..]));
+    }
+    if args.first().is_some_and(|arg| arg == "import") {
+        std::process::exit(cli::import(&args[1..]));
     }
     if args.first().is_some_and(|arg| arg == "variants") {
         std::process::exit(variants::cli(&args[1..]));
@@ -698,6 +702,7 @@ usage: froxel [--control PORT] [--bridge PORT] [file.vox]
        froxel export --input <file.vox> --output <file.glb>
        froxel carve --views <views.json> --out <file.vox> (--help for its flags)
        froxel compare --input <file.vox> --concept <concept.png> --out <overlay.png> (--help for its flags)
+       froxel import --mesh <file.glb|.obj> --output <file.vox> (--help for its flags)
        froxel variants --input <file.vox> --variants <sets.json> --out <dir>
        froxel voxrt --input <file.vox> [--dump]"
                 );

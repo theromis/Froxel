@@ -1,0 +1,133 @@
+//! The Import mesh panel: the fields of MCP `import_mesh`. Its button and
+//! File > Import Mesh… build the tool's arguments and run the MCP handler,
+//! so the editor and MCP share one path.
+
+use serde_json::{json, Value};
+
+use super::{dialog, Session};
+
+#[derive(Clone, PartialEq)]
+pub struct ImportPanel {
+    pub path: String,
+    /// 0 size in cells, 1 voxel size in metres, 2 cells per unit.
+    pub fit: usize,
+    pub size: i32,
+    pub voxel_size: f32,
+    pub scale: f32,
+    pub z_up: bool,
+    pub rotation: [f32; 3],
+    pub position: [i32; 3],
+    /// 0 min, 1 center, 2 bottom.
+    pub anchor: usize,
+    pub shell: bool,
+    pub vertex_only: bool,
+    /// Palette indices to map to; empty quantizes into the palette.
+    pub slots: String,
+    pub max_new: i32,
+    pub tolerance: f32,
+    /// 0 replace, 1 empty, 2 paint.
+    pub mode: usize,
+    pub new_object: bool,
+}
+
+impl Default for ImportPanel {
+    fn default() -> Self {
+        Self {
+            path: String::new(),
+            fit: 0,
+            size: crate::remote::DEFAULT_IMPORT_SIZE as i32,
+            voxel_size: 0.08,
+            scale: 12.5,
+            z_up: false,
+            rotation: [0.0; 3],
+            position: [0; 3],
+            anchor: 0,
+            shell: false,
+            vertex_only: false,
+            slots: String::new(),
+            max_new: crate::remote::DEFAULT_MAX_NEW_SLOTS as i32,
+            tolerance: crate::remote::DEFAULT_TOLERANCE as f32,
+            mode: 0,
+            new_object: true,
+        }
+    }
+}
+
+impl ImportPanel {
+    pub(crate) fn args(&self) -> Result<Value, String> {
+        if self.path.trim().is_empty() {
+            return Err("Choose a .glb, .gltf, or .obj to import.".into());
+        }
+        let anchor = ["min", "center", "bottom"][self.anchor.min(2)];
+        let mode = ["replace", "empty", "paint"][self.mode.min(2)];
+        let mut args = json!({
+            "path": self.path.trim(),
+            "upAxis": if self.z_up { "z" } else { "y" },
+            "rotation": self.rotation,
+            "position": self.position,
+            "anchor": anchor,
+            "fill": if self.shell { "shell" } else { "solid" },
+            "colors": if self.vertex_only { "vertex" } else { "auto" },
+            "maxNewSlots": self.max_new.clamp(0, 255),
+            "tolerance": self.tolerance,
+            "mode": mode,
+            "newObject": self.new_object,
+        });
+        match self.fit {
+            1 => args["voxelSize"] = json!(self.voxel_size),
+            2 => args["scale"] = json!(self.scale),
+            _ => args["size"] = json!(self.size),
+        }
+        let slots = super::parse_slots(&self.slots).map_err(|err| format!("Slots: {err}"))?;
+        if !slots.is_empty() {
+            args["slots"] = json!(slots);
+        }
+        Ok(args)
+    }
+}
+
+impl Session {
+    /// File > Import Mesh…: pick a mesh and import it with the panel's options.
+    pub fn import_mesh_dialog(&mut self) {
+        let Some(path) = dialog::pick_open("Mesh", &["glb", "gltf", "obj"]) else {
+            return;
+        };
+        self.import.path = path.display().to_string();
+        self.import_from_panel();
+    }
+
+    /// The Import mesh panel's button: MCP `import_mesh`.
+    pub fn import_from_panel(&mut self) {
+        let args = match self.import.args() {
+            Ok(args) => args,
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
+        self.status = match crate::remote::apply(self, "mesh.import", &args) {
+            Ok(reply) => {
+                let size = &reply["bounds"]["size"];
+                let mut status = format!(
+                    "Imported {} cells ({} x {} x {}) into {}, {} slots, {} new.",
+                    reply["written"],
+                    size[0],
+                    size[1],
+                    size[2],
+                    reply["name"].as_str().unwrap_or("the object"),
+                    reply["slots"].as_array().map_or(0, Vec::len),
+                    reply["newSlots"].as_array().map_or(0, Vec::len),
+                );
+                if let Some(warnings) = reply["warnings"].as_array() {
+                    for warning in warnings.iter().filter_map(Value::as_str) {
+                        status.push(' ');
+                        status.push_str(warning);
+                    }
+                }
+                status
+            }
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+}

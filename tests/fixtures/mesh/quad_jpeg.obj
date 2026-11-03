@@ -1,0 +1,12 @@
+mtllib quad_jpeg.mtl
+v 0 0 0
+v 1 0 0
+v 1 0 1
+v 0 0 1
+vt 0 1
+vt 1 1
+vt 1 0
+vt 0 0
+usemtl checker
+f 1/1 3/3 2/2
+f 1/1 4/4 3/3

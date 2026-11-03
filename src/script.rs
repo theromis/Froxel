@@ -20,6 +20,7 @@ use rhai::{Array, Dynamic, Engine, EvalAltResult, OptimizationLevel, Position, I
 use crate::state::{Cell, Motion, Session, Volume};
 
 mod document;
+mod import;
 mod markers;
 mod math;
 mod organic;
@@ -301,6 +302,7 @@ pub(crate) fn execute(
     stone::register(&mut engine, &scratch);
     organic::register(&mut engine, &scratch);
     silhouette::register(&mut engine, &scratch);
+    import::register(&mut engine, &scratch);
     markers::register(&mut engine, &scratch);
     let mut scope = rhai::Scope::new();
     scope.push_constant("PI", std::f64::consts::PI);

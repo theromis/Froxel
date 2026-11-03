@@ -25,8 +25,9 @@ const MAX_OPS: usize = 4_096;
 type Fallible<T> = Result<T, Box<EvalAltResult>>;
 
 /// What a run may read of the document: object names, bones, and clips as
-/// MCP `list_bones` and `list_clips` return them, and the palette colours
-/// `carve_from_views` quantises to.
+/// MCP `list_bones` and `list_clips` return them, the palette colours
+/// `carve_from_views` quantises to, and the palette and used slots `voxelize`
+/// maps into.
 #[derive(Clone, Default)]
 pub(crate) struct DocView {
     pub(crate) names: Vec<String>,
@@ -34,6 +35,9 @@ pub(crate) struct DocView {
     pub(crate) clips: Value,
     /// 256 colours; empty is the default palette.
     pub(crate) palette: Vec<[u8; 3]>,
+    /// The palette with alpha and the slots a cell holds, for `voxelize`.
+    pub(crate) palette_rgba: Vec<[u8; 4]>,
+    pub(crate) used: Vec<bool>,
 }
 
 impl DocView {
@@ -47,6 +51,8 @@ impl DocView {
             bones: remote::bones_json(session),
             clips: remote::clips_json(session),
             palette: remote::session_palette(session).to_vec(),
+            palette_rgba: session.palette.to_vec(),
+            used: remote::used_slots(session).to_vec(),
         }
     }
 }
@@ -384,7 +390,7 @@ fn has(reply: &Value, key: &str, name: &str) -> bool {
         .is_some_and(|items| items.iter().any(|item| item["name"] == name))
 }
 
-fn dynamic(value: &Value) -> Dynamic {
+pub(super) fn dynamic(value: &Value) -> Dynamic {
     match value {
         Value::Null => Dynamic::UNIT,
         Value::Bool(flag) => Dynamic::from_bool(*flag),

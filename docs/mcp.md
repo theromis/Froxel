@@ -161,6 +161,7 @@ tracer. A file with no scene graph still loads its first model.
 | `deform` | `op` | `bend`, `taper`, or `twist` the active object (or the cells of a box `x0`..`z1`) along `axis`, or `displace` its surface with 3D noise. Optional `axis`, `origin`, `length`, `center`, `angle`, `direction`, `start`, `end`, `amplitude`, `scale`, `octaves`, `seed`, `bias`. Slots are kept. Replies with `cells`, `result`, `added`, `removed`. One undo step |
 | `brush` | `op`, `points` | Sculpt brush dabs along **local** points: `inflate`, `deflate` (`dig`), `smooth`, `flatten`, or `grab` (`drag`). Optional `radius`, `strength`, `falloff` (`smooth`, `linear`, `constant`), `only`, `palette`, `vector` (grab), `spacing`. Replies with `dabs`, `added`, `removed`. One undo step |
 | `carve_from_views` | `views` | Fill the visual hull of 2 or 3 orthographic views (front, side, top) of a concept's turnaround sheet into the active object: each view's silhouette is extruded along its depth axis and the cells every view covers are kept. A view is a PNG `path` with `crop`, `background` (`auto`, `alpha`, or a key colour with `tolerance`), and `cellsPerPixel` or `size`, or `rows` with a `legend`. Optional `size`, `origin`, `cellsPerPixel`, `palette` or `slots`, `coverage`, `shell`, `smooth`, `mode`. Replies with `cells`, `bounds`, `size`, and each view's `grid` and `covered`. At most 4000000 cells in the box, one undo step. See [Silhouettes](#silhouettes) |
+| `import_mesh` | `path` | Voxelize a `.glb`, `.gltf`, or `.obj` (with its `.mtl` and textures) into the active object, or a new one with `newObject` (and `name`). Optional `size`, `scale`, or `voxelSize`; `upAxis`, `rotation`, `position`, `anchor` (`min`, `center`, `bottom`), `fill` (`solid`, `shell`), `colors` (`auto`, `vertex`), `palette` or `slots`, `maxNewSlots`, `tolerance`, `mode`. Replies with `cells`, `shell`, `interior`, `written`, `changed`, `slots`, `newSlots`, `bounds`, `scale`, `triangles`, `primitives`, `textures`, `warnings`. At most 256 cells per axis and 2000000 cells, one undo step |
 | `carve` | `shape` | Remove the solid cells inside a `box`, `ellipsoid`, `rounded_box`, or `tube`, given as for the fill tools. Replies with `removed`. One undo step |
 | `break_end` | `point`, `normal` | Break the active object across a plane: a jagged face, bark on its rim, sapwood inside, and tapered splinters out along the normal. Optional `depth`, `splinters` or `density`, `length`, `thickness`, `taper`, `rimBias`, `bark`, `sapwood`, `tips`, `seed`. One undo step |
 | `scatter` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Drop small pieces (shard, chip, pebble, chunk) that settle on what is below into a heap. Optional `count`, `kinds`, `size`, `seed`, `floor`, `clump`, `exclude`. One undo step |
@@ -398,6 +399,64 @@ slot, or `palette`. Replies with `dabs`, `added`, and `removed`.
 
 `examples/fallen_tree.rhai` builds a fallen trunk with a root flare and a
 forked limb with `loft`, `deform` `displace`, and `brush`.
+
+`import_mesh` brings a form made elsewhere (sculpted in Blender, or made
+from a concept by an image-to-3D tool) into the voxel workflow, where the
+stone, moss, bark, and sculpt tools finish it. It reads binary `.glb`, and
+`.gltf` with embedded (`data:`) or external buffers and images; every
+triangle primitive (triangles, strips, fans) of every mesh node of the
+default scene is placed under its node's world transform (TRS or
+`matrix`). Skins and morph targets are ignored, so a rigged mesh comes in
+its bind pose; Draco and meshopt compression are refused (export without
+them). A material gives its `baseColorFactor` and `baseColorTexture` (PNG
+or JPEG, with its sampler's wrap and `KHR_texture_transform`), or the
+diffuse of `KHR_materials_pbrSpecularGlossiness`; `COLOR_0` multiplies it.
+An `.obj` reads `v` (with optional `r g b` vertex colours), `vt`, faces of
+any size, and its `.mtl`'s `Kd`, `d`, and `map_Kd`. A texture it cannot
+read is skipped with a line in `warnings`.
+
+The file is Y-up (glTF, and OBJ as Blender writes it) and becomes Z-up:
+file `(x, y, z)` is cell `(x, -z, y)`, the inverse of the glTF export, so a
+model exported by Froxel comes back the same way round. `upAxis` `z` keeps
+the file's axes. `rotation` then turns it, in degrees about x, then y, then
+z. Size it with one of `size` (cells along the longest axis, 1..=256, the
+default 64), `scale` (cells per file unit), or `voxelSize` (metres per
+cell: `0.08` keeps a glTF's real size at 0.08 m voxels). `position` is
+where `anchor` lands, in the active object's local cells: `min` (the
+default) the low corner of the mesh's box, `center`, or `bottom` (the
+centre of its bottom face). With `newObject`, `position` is the new
+object's world position and the anchor is its local origin.
+
+Every cell a triangle touches is the shell. `fill` `solid` (the default)
+adds the inside: a cell is in when at least two of the three rays through
+its centre along x, y, and z have crossed the surface an odd number of
+times, so a small hole in a scanned or generated mesh does not empty the
+row. `shell` writes only the surface. A face that lands exactly on a cell
+boundary goes to the cell behind it, so a 1 m cube at `voxelSize` `0.25`
+is exactly 4 cells a side.
+
+Each shell cell takes the colour at the nearest point of its nearest
+triangle: the base-colour texture (bilinear) times the factor times the
+vertex colours, or the vertex colours alone with `colors` `vertex`. Inside
+cells take the colour of the nearest shell cell. The colours then go into
+the palette: one within `tolerance` (sRGB distance, default 12) of a
+palette slot reuses it; the others are reduced by median cut to at most
+`maxNewSlots` colours (default 32), each written into a slot no cell of
+the document uses, from 255 down, unless it too is close to a slot; every
+colour then takes the nearest slot. `maxNewSlots` `0` maps onto the
+palette as it is. `slots` maps only to the slots given and leaves the
+palette alone, and `palette` paints every cell one slot. `mode` is the
+fill tools' `replace`, `empty`, or `paint` (`paint` recolours the cells
+that are already there, projecting a textured mesh onto a voxel form).
+
+The size is checked before anything changes: at most 256 cells per axis
+and 2000000 cells. The reply's `bounds` are the voxelized cells' `min`,
+`max`, and `size` in local cells; `scale` is cells per file unit and
+`unitsPerCell` its inverse; `slots` are the slots written and `newSlots`
+the ones given new colours. Object creation, palette slots, and cells are
+one undo step. Scripts read no files, so `import_mesh` has no script form;
+Rhai `voxelize` runs the same voxelizer and palette mapping on a mesh the
+script builds. `froxel import` is the same import from the command line.
 
 `column_relief` breaks a cliff face into columns for a fractured cliff.
 `facing` is the face's outward direction along x or y (`+x`, `-x`, `+y`,
@@ -857,7 +916,9 @@ same names (`set_voxels`, `fill_tube`, `mirror_object`, `add_bone`,
 map; object, rig, clip, and palette calls apply after the script, in order,
 in the regenerate's undo step. Only the tools that write files (`render`,
 `model_view`, `preview`, `compare_silhouette`, `export_mesh`,
-`export_models`) and the session and UI tools have no script form. A
+`export_models`), `import_mesh` (scripts read no files; `voxelize`
+runs its voxelizer on a mesh the script builds), and the session and UI
+tools have no script form. A
 script reads no files either, so its `carve_from_views` takes `rows`
 instead of PNG paths.
 
@@ -1019,6 +1080,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `sweep` | Sweep section: Points (one per line, Point at selection adds the selection's centre), Smooth, Rectangle (Width, Height, Radius) or Polygon, Palettes, Bands, Rings, or Random, Period, Mode, Seed |
 | `carve_from_views` | Carve from views section: three view rows (on, side, Image…, crop, Flip), Cells / px, Size, Origin, Background (Auto, Alpha, Key with tolerance), Colour from views or the active slot, Shell, Smooth, Carve |
 | `compare_silhouette` | Compare silhouette section: Concept Image…, Crop, Background, Flip, Camera (Viewport, Game, Front, Left, Top), Align (Fit, Height, Width), Compare; the overlay shows in the viewport's bottom-right corner until Hide overlay; MCP `compare_silhouette` over the control port shows it there too |
+| `import_mesh` | File > Import Mesh… and the Import mesh section: File, Size, Voxel, or Scale, File is Z-up, Rotation, Position, Anchor, Solid or Shell, Texture or Vertex colour, Slots, New slots, Tolerance, Mode, New object |
 | `carve` | Remove mode with Box, Generator, or Tube |
 | `loft` | Loft section: Points (one per line, x y z then optional rx ry roll flatTop noise frequency; Point at selection adds the selection's centre), Smooth, Round ends, Radii, Roll, Flat top, Noise, Lumps, Palettes, Rings, Stripes, or Random, Period, Mode, Seed |
 | `deform` | Deform section: Bend, Taper, Twist, or Displace; Axis, Origin, Length; Angle and Toward, Start and End, or Amplitude, Scale, Octaves, Bias, Seed; over the selection's box or the whole object |

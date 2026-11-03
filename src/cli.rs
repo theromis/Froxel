@@ -1,5 +1,5 @@
-//! `froxel render`, `froxel preview`, `froxel export`, `froxel carve`,
-//! `froxel compare`, and `froxel voxrt`.
+//! `froxel render`, `froxel preview`, `froxel export`, `froxel import`,
+//! `froxel carve`, `froxel compare`, and `froxel voxrt`.
 
 use std::path::{Path, PathBuf};
 
@@ -1252,4 +1252,156 @@ fn compare_args(args: &[String]) -> Result<Option<(PathBuf, serde_json::Value, b
         }
     }
     Ok(Some((input, params, as_json)))
+}
+
+const IMPORT_USAGE: &str = "\
+usage: froxel import --mesh <file.glb|.gltf|.obj> --output <file.vox>
+                     [--input <base.vox>] [--size CELLS | --voxel-size METRES | --scale CELLS_PER_UNIT]
+                     [--z-up] [--rotation X,Y,Z] [--position X,Y,Z] [--anchor min|center|bottom]
+                     [--shell] [--vertex-colors] [--palette SLOT | --slots A,B,...]
+                     [--max-new-slots N] [--tolerance D] [--mode replace|empty|paint]
+                     [--new-object] [--name NAME]
+
+MCP import_mesh from the command line: voxelize the mesh into the first object
+of --input (or a new document), or a new object with --new-object, and save
+the .vox. --size is cells along the longest axis (default 64); --voxel-size
+0.08 keeps a glTF's real size at 0.08 m voxels. The file's Y-up becomes Z-up
+unless --z-up. --shell writes only the surface. Colours come from the
+base-colour texture, factor, and vertex colours (--vertex-colors: vertex
+colours only), reuse palette slots within --tolerance (default 12), and add
+at most --max-new-slots (default 32) in slots no cell uses; --slots maps to
+those slots only, --palette paints one. Prints the import report as JSON.";
+
+/// `froxel import`: a mesh voxelized into a `.vox` with the `import_mesh`
+/// options.
+pub fn import(args: &[String]) -> i32 {
+    match import_args(args) {
+        Ok(None) => 0,
+        Ok(Some((input, output, params))) => {
+            let mut session = Session::new();
+            let done = match &input {
+                Some(input) => session.open_vox(input),
+                None => {
+                    session.replace_empty();
+                    Ok(())
+                }
+            }
+            .and_then(|()| crate::remote::apply(&mut session, "mesh.import", &params))
+            .and_then(|reply| {
+                if let Some(parent) = output
+                    .parent()
+                    .filter(|parent| !parent.as_os_str().is_empty())
+                {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|err| format!("Could not create {}: {err}", parent.display()))?;
+                }
+                session.write_vox(&output)?;
+                Ok(reply)
+            });
+            match done {
+                Ok(reply) => {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&reply).unwrap_or_default()
+                    );
+                    eprintln!("wrote {}", output.display());
+                    0
+                }
+                Err(err) => {
+                    eprintln!("{err}");
+                    1
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            2
+        }
+    }
+}
+
+fn import_args(
+    args: &[String],
+) -> Result<Option<(Option<PathBuf>, PathBuf, serde_json::Value)>, String> {
+    use serde_json::json;
+    let mut input = None;
+    let mut output = None;
+    let mut params = json!({});
+    let mut index = 0;
+    let numbers = |text: &str, what: &str, count: usize| -> Result<Vec<f64>, String> {
+        let values = text
+            .split(',')
+            .map(|part| part.trim().parse::<f64>())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| format!("{what} must be {count} numbers separated by commas"))?;
+        if values.len() == count || count == 0 {
+            Ok(values)
+        } else {
+            Err(format!(
+                "{what} must be {count} numbers separated by commas"
+            ))
+        }
+    };
+    while index < args.len() {
+        let flag = args[index].as_str();
+        let mut value = || -> Result<&String, String> {
+            index += 1;
+            args.get(index)
+                .ok_or_else(|| format!("{flag} needs a value"))
+        };
+        match flag {
+            "-h" | "--help" => {
+                eprintln!("{IMPORT_USAGE}");
+                return Ok(None);
+            }
+            "--mesh" => params["path"] = json!(value()?),
+            "--input" => input = Some(PathBuf::from(value()?)),
+            "--output" => output = Some(PathBuf::from(value()?)),
+            "--size" | "--voxel-size" | "--scale" | "--max-new-slots" | "--tolerance"
+            | "--palette" => {
+                let text = value()?;
+                let number: f64 = text
+                    .parse()
+                    .map_err(|_| format!("{flag} must be a number, not `{text}`"))?;
+                let key = match flag {
+                    "--size" => "size",
+                    "--voxel-size" => "voxelSize",
+                    "--scale" => "scale",
+                    "--max-new-slots" => "maxNewSlots",
+                    "--tolerance" => "tolerance",
+                    _ => "palette",
+                };
+                params[key] = if number.fract() == 0.0 {
+                    json!(number as i64)
+                } else {
+                    json!(number)
+                };
+            }
+            "--rotation" => params["rotation"] = json!(numbers(value()?, "--rotation", 3)?),
+            "--position" => params["position"] = json!(numbers(value()?, "--position", 3)?),
+            "--slots" => {
+                let slots: Vec<i64> = numbers(value()?, "--slots", 0)?
+                    .into_iter()
+                    .map(|v| v as i64)
+                    .collect();
+                params["slots"] = json!(slots);
+            }
+            "--anchor" => params["anchor"] = json!(value()?),
+            "--mode" => params["mode"] = json!(value()?),
+            "--name" => params["name"] = json!(value()?),
+            "--z-up" => params["upAxis"] = json!("z"),
+            "--shell" => params["fill"] = json!("shell"),
+            "--vertex-colors" => params["colors"] = json!("vertex"),
+            "--new-object" => params["newObject"] = json!(true),
+            other => return Err(format!("unknown argument `{other}`\n{IMPORT_USAGE}")),
+        }
+        index += 1;
+    }
+    match (params.get("path"), output) {
+        (Some(_), Some(output)) if output.extension().is_some_and(|ext| ext == "vox") => {
+            Ok(Some((input, output, params)))
+        }
+        (Some(_), Some(_)) => Err("--output must end in .vox".into()),
+        _ => Err(IMPORT_USAGE.into()),
+    }
 }

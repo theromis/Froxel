@@ -38,6 +38,9 @@ animation clips. An AI agent can drive all of it through the built-in
   CPU. Denoising is built in.
 - **glTF export.** `.glb` with merged coplanar faces, no T-junctions, and a palette
   texture or vertex colours.
+- **Mesh import.** A `.glb`, `.gltf`, or `.obj` sculpted in Blender or made by an
+  image-to-3D tool, voxelized solid or as a shell at a cell count or a voxel size
+  in metres, its texture and vertex colours quantized into the palette.
 - **Scripts.** Objects can carry a sandboxed [Rhai](https://rhai.rs/) script with
   sliders for its parameters.
 - **Bridges.** Godot and Blender can drive those sliders and import the mesh
@@ -261,6 +264,12 @@ ambient occlusion in `COLOR_0` or the colour atlas.
 ```sh
 froxel export --input ruins.vox --output ruins.glb --merge --ao 0.8 --ao-radius 3
 ```
+
+`froxel import --mesh tree.glb --output tree.vox --voxel-size 0.08` voxelizes
+a mesh with the MCP `import_mesh` options as flags (`--size`, `--scale`,
+`--z-up`, `--rotation`, `--position`, `--anchor`, `--shell`, `--slots`,
+`--max-new-slots`, `--tolerance`, `--input` for a document to add to,
+`--new-object`) and prints the report: cells, slots, and bounds.
 
 `froxel variants --input wall.vox --variants sets.json --out variants/`
 bakes a scripted document once per parameter set in `sets.json` (a list of

@@ -30,7 +30,9 @@ If the tools are missing, the server is not configured. Point the user to
   `set_palette`, …). The document tools apply after the script in order;
   guard `add_bone`, `add_clip`, and `mirror_object` with `has_bone`,
   `has_clip`, and `has_object` so a rerun does not fail. Only file-writing
-  tools have no script form. Name things in loops with `"ledge_" + i` or
+  tools have no script form, and `import_mesh` (scripts read no files):
+  `voxelize(#{positions, triangles, colors}, opts)` voxelizes a mesh the
+  script builds (`examples/faceted_boulder.rhai`). Name things in loops with `"ledge_" + i` or
   `` `ledge_${i}` ``. See `docs/scripting.md` and
   `examples/hollow_log.rhai`.
 
@@ -73,7 +75,13 @@ If the tools are missing, the server is not configured. Point the user to
    their visual hull, coloured from the nearest view. Do not copy cells from
    the flat views by hand. The hull is the outer limit: carve the concave
    parts (gaps between legs, under a log) afterwards.
-2. **Block out** the large forms with `fill_rounded_box` and
+2. **Block out.** For a unique organic asset (a fallen tree, a creature, a
+   hero rock) with a mesh sculpted in Blender or generated from the concept
+   by an image-to-3D tool, start with `import_mesh` (`voxelSize` 0.08 for
+   0.08 m voxels, `anchor: "bottom"`, `newObject: true`, and `slots` to map
+   onto your bark, stone, or moss slots) and finish it with the tools below;
+   tubes and boxes alone make such an asset read as pipes. Otherwise block
+   out the large forms with `fill_rounded_box` and
    `fill_ellipsoid`. Grow limbs, roots, branches, and twigs with `fill_tube`
    (a radius per point, so it tapers; `curve: "smooth"` bends it). Build
    trunks, roots, and limbs that must not read as pipes with `loft` (an

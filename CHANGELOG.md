@@ -15,6 +15,18 @@
   the editor shows it over the viewport. `examples/carved_stump.rhai`
   carves a stump from three views.
 
+- Mesh import: MCP `import_mesh`, File > Import Mesh… with the Import mesh
+  section, and `froxel import` voxelize a `.glb`, `.gltf` (embedded or
+  external buffers and textures), or `.obj` (with `.mtl` and textures) into
+  the active object or a new one: every primitive under its node
+  transforms, sized by cells, scale, or metres per voxel, rotated and
+  anchored, solid (a vote of ray parity on three axes, so small holes do not
+  empty it) or shell, coloured from the base-colour texture, factor, and
+  vertex colours, and quantized into the palette (close slots reused, at
+  most `maxNewSlots` added, or mapped to given `slots`). One undo step. Rhai
+  `voxelize` runs the same voxelizer on a mesh the script builds
+  (`examples/faceted_boulder.rhai`); scripts read no files.
+
 - Preview overlays: MCP `preview` `overlay` (and `froxel preview
   --overlay`) draws collision boxes, points, and connectors over the model
   with their names, faded and dashed where the model hides them, and

@@ -2179,3 +2179,91 @@ fn loft_deform_and_brush_shape_a_trunk_one_undo_step_each() {
     ));
     assert!(radius.contains("radius"), "{radius}");
 }
+
+fn mesh_fixture(name: &str) -> String {
+    format!("{}/tests/fixtures/mesh/{name}", env!("CARGO_MANIFEST_DIR"))
+}
+
+#[test]
+fn import_mesh_voxelizes_into_the_palette_as_one_undo_step() {
+    let mut head = Headless::new();
+    let before = head.session.palette;
+    let reply = head.ok(
+        "import_mesh",
+        json!({"path": mesh_fixture("cube.obj"), "size": 8, "tolerance": 0}),
+    );
+    assert_eq!(reply["cells"], 512, "{reply}");
+    assert_eq!(reply["changed"], 512, "{reply}");
+    assert_eq!(reply["interior"], 216, "{reply}");
+    assert_eq!(reply["bounds"]["size"], json!([8, 8, 8]), "{reply}");
+    assert_eq!(
+        reply["newSlots"],
+        json!([{"index": 255, "color": [204, 26, 26]}])
+    );
+    assert_eq!(head.session.palette[255], [204, 26, 26, 255]);
+    assert!(head.session.active().cells.values().all(|&s| s == 255));
+    head.ok("undo", json!({}));
+    assert!(head.session.active().cells.is_empty());
+    assert_eq!(head.session.palette, before);
+
+    // The same red again reuses slot 255 rather than adding one.
+    head.ok(
+        "import_mesh",
+        json!({"path": mesh_fixture("cube.obj"), "size": 4, "tolerance": 0}),
+    );
+    let again = head.ok(
+        "import_mesh",
+        json!({"path": mesh_fixture("cube.obj"), "size": 4, "position": [10, 0, 0], "tolerance": 0}),
+    );
+    assert_eq!(again["slots"], json!([255]));
+    assert_eq!(again["newSlots"], json!([]));
+}
+
+#[test]
+fn import_mesh_into_a_new_object_maps_slots_and_paints() {
+    let mut head = Headless::new();
+    let reply = head.ok(
+        "import_mesh",
+        json!({"path": mesh_fixture("parts.glb"), "voxelSize": 0.5, "newObject": true,
+            "name": "parts", "position": [4, 0, 0], "anchor": "bottom", "fill": "shell"}),
+    );
+    assert_eq!(reply["name"], "parts", "{reply}");
+    assert_eq!(reply["primitives"], 2);
+    assert_eq!(reply["bounds"]["size"], json!([12, 6, 4]));
+    assert_eq!(reply["interior"], 0);
+    let object = head.session.active();
+    assert_eq!(object.translation, (4, 0, 0));
+    assert_eq!(reply["slots"].as_array().unwrap().len(), 2, "{reply}");
+    // slots maps every colour to the given slot; the palette stays.
+    let palette = head.session.palette;
+    let mapped = head.ok(
+        "import_mesh",
+        json!({"path": mesh_fixture("quad.gltf"), "size": 4, "slots": [7], "position": [0, 0, 8]}),
+    );
+    assert_eq!(mapped["slots"], json!([7]));
+    assert_eq!(head.session.palette, palette);
+    // paint recolours only solid cells: of the quad's 16 on z 0, the parts'
+    // shell (x -6..=5, y -3..=2) holds 6.
+    let voxels = head.session.voxel_count();
+    let painted = head.ok(
+        "import_mesh",
+        json!({"path": mesh_fixture("quad.gltf"), "size": 4, "palette": 9, "mode": "paint"}),
+    );
+    assert_eq!(
+        (painted["cells"].as_i64(), painted["written"].as_i64()),
+        (Some(16), Some(6))
+    );
+    assert_eq!(head.session.voxel_count(), voxels);
+    let both = error_text(&head.call(
+        "import_mesh",
+        json!({"path": mesh_fixture("quad.gltf"), "palette": 2, "slots": [3]}),
+    ));
+    assert!(both.contains("not both"), "{both}");
+    let fit = error_text(&head.call(
+        "import_mesh",
+        json!({"path": mesh_fixture("quad.gltf"), "size": 8, "scale": 2}),
+    ));
+    assert!(fit.contains("one of size"), "{fit}");
+    let missing = error_text(&head.call("import_mesh", json!({"path": mesh_fixture("nope.glb")})));
+    assert!(missing.contains("Could not read"), "{missing}");
+}

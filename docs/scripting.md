@@ -8,7 +8,9 @@ script produced last time, so MagicaVoxel opens it as an ordinary model.
 
 The engine is constructed with `Engine::new_raw()`. Nothing in the standard
 library that touches the clock, the filesystem, the network, or a process is
-registered. There is no `print`, `eval`, `import`, or `timestamp`. Limits:
+registered. There is no `print`, `eval`, `import`, or `timestamp`, and no
+function reads a file: MCP `import_mesh` has no script form, and
+`voxelize` takes the mesh inline. Limits:
 
 | Limit | Value |
 | --- | --- |
@@ -414,6 +416,44 @@ roots from front, side, and top rows.
 
 MCP `compare_silhouette` writes a file, so it has no script form; check a
 script's result with it over MCP.
+
+### Voxelize
+
+```rhai
+let report = voxelize(#{positions: positions, triangles: triangles});
+let report = voxelize(#{positions: positions, triangles: triangles, colors: colors},
+    #{size: 32, anchor: "bottom", slots: [1, 2]});
+```
+
+The voxelizer and palette mapping of MCP `import_mesh` on a mesh the script
+builds. Scripts read no files, so `import_mesh` itself is not a script
+function (like the tools that write files); import a file with MCP, File >
+Import Mesh…, or `froxel import`, or pass its triangles here. The mesh is a
+map: `positions` is a list of `[x, y, z]`, `triangles` a list of
+`[a, b, c]` indices into it from 0, and `colors` (optional) one sRGB
+`[r, g, b]` (0..=255) per position, interpolated across each triangle. The
+options are the MCP tool's except `path`, `newObject`, and `name`:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `size` | `64` | Cells along the longest axis. Or `scale` (cells per unit) or `voxelSize` (units per cell). |
+| `upAxis` | `"z"` | `"y"` turns a Y-up mesh to Z-up. Scripts default to z, the cells' own axes; MCP defaults to y. |
+| `rotation` | `[0, 0, 0]` | Degrees about x, then y, then z. |
+| `position` | `[0, 0, 0]` | Where the anchor lands, in local cells. |
+| `anchor` | `"min"` | `"center"` or `"bottom"`. |
+| `fill` | `"solid"` | `"shell"` writes only the cells the surface touches. |
+| `colors` | `"auto"` | `"vertex"`: the same for a script mesh, which has no texture. |
+| `palette` | none | Paint every cell this slot. |
+| `slots` | none | Map colours only to these slots. |
+| `maxNewSlots` | `32` | New palette slots for colours far from every slot, written after the run like `set_slot`. |
+| `tolerance` | `12` | sRGB distance under which a slot is reused. |
+| `mode` | `"replace"` | `"empty"` adds only into empty cells; `"paint"` recolours solid ones. |
+
+It returns the MCP reply as a map: `#{changed, cells, shell, interior,
+written, slots, newSlots, bounds, scale, triangles, ...}`, where `bounds`
+is `#{min, max, size}`. A mesh is at most 4 096 positions and 4 096
+triangles (the array limit). `examples/faceted_boulder.rhai` builds a
+lumpy sphere, voxelizes it, and weathers and mosses it.
 
 ### Column relief
 
