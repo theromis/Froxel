@@ -1,15 +1,17 @@
-//! Math and array functions for scripts beyond the first set in `execute`.
+//! Math, array, and string functions for scripts beyond the first set in
+//! `execute`.
 //!
 //! Numbers may be integers or floats. `min`, `max`, `clamp`, and `pow` keep
 //! an integer result when every argument is an integer.
 
-use rhai::{Array, Dynamic, Engine, EvalAltResult, FLOAT, INT};
+use rhai::{Array, Dynamic, Engine, EvalAltResult, ImmutableString, FLOAT, INT};
 
 use super::{runtime, MAX_ARRAY};
 
 type Fallible<T> = Result<T, Box<EvalAltResult>>;
 
 pub(super) fn register(engine: &mut Engine) {
+    strings(engine);
     engine.register_fn("PI", || std::f64::consts::PI);
     engine.register_fn("to_float", |value: FLOAT| value);
     engine.register_fn("to_int", |value: INT| value);
@@ -142,4 +144,48 @@ fn position(len: usize, index: INT) -> usize {
     let len = len as INT;
     let index = if index < 0 { index + len } else { index };
     index.clamp(0, len) as usize
+}
+
+/// `to_string`, `len`, and `+` and `+=` between a string and a number or a
+/// bool, so `"ledge_" + 4` names a marker. A float prints as string
+/// interpolation prints it (`1.0`, `2.5`).
+fn strings(engine: &mut Engine) {
+    fn float_text(value: FLOAT) -> String {
+        Dynamic::from_float(value).to_string()
+    }
+    engine.register_fn("to_string", |value: INT| value.to_string());
+    engine.register_fn("to_string", float_text);
+    engine.register_fn("to_string", |value: bool| value.to_string());
+    engine.register_fn("to_string", |value: char| value.to_string());
+    engine.register_fn("to_string", |value: ImmutableString| value);
+    engine.register_fn("len", |text: &mut ImmutableString| {
+        text.chars().count() as INT
+    });
+    engine.register_fn("+", |text: ImmutableString, value: INT| {
+        format!("{text}{value}")
+    });
+    engine.register_fn("+", |value: INT, text: ImmutableString| {
+        format!("{value}{text}")
+    });
+    engine.register_fn("+", |text: ImmutableString, value: FLOAT| {
+        format!("{text}{}", float_text(value))
+    });
+    engine.register_fn("+", |value: FLOAT, text: ImmutableString| {
+        format!("{}{text}", float_text(value))
+    });
+    engine.register_fn("+", |text: ImmutableString, value: bool| {
+        format!("{text}{value}")
+    });
+    engine.register_fn("+", |value: bool, text: ImmutableString| {
+        format!("{value}{text}")
+    });
+    engine.register_fn("+=", |text: &mut ImmutableString, value: INT| {
+        *text = format!("{text}{value}").into();
+    });
+    engine.register_fn("+=", |text: &mut ImmutableString, value: FLOAT| {
+        *text = format!("{text}{}", float_text(value)).into();
+    });
+    engine.register_fn("+=", |text: &mut ImmutableString, value: bool| {
+        *text = format!("{text}{value}").into();
+    });
 }

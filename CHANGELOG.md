@@ -4,6 +4,10 @@
 
 ### Added
 
+- Rhai strings: `"ledge_" + 4`, a number or bool on either side of `+`
+  with a string, `+=`, `to_string`, and `len`, so loops name markers and
+  objects; backtick interpolation (`` `ledge_${i}` ``) works too.
+
 - Column relief: MCP `column_relief`, Rhai `column_relief(box, facing,
   palette, opts)`, and the Relief section break a cliff face into columns
   of random width that stand out of it and end at uneven heights around a

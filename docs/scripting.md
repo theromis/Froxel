@@ -610,6 +610,25 @@ for i in 0..5 {
 fill_tube(points, 3, #{curve: "smooth"});
 ```
 
+## Strings
+
+```rhai
+for i in 0..3 {
+    marker("ledge_" + i, to_float(i * 12), 4.0, 30.0);   // ledge_0, ledge_1, ledge_2
+    collision_box(`ledge_${i}_box`, i * 12, 0, 0, i * 12 + 8, 8, 29);
+}
+let note = "height " + 2.5 + " m, lit " + true;      // "height 2.5 m, lit true"
+let label = "piece_"; label += 4;                       // "piece_4"
+```
+
+`+` joins two strings, and a string with a whole number, a float, or a bool
+on either side; `+=` appends one to a string. Backtick strings interpolate
+any value with `${...}`. `to_string(x)` (or `x.to_string()`) gives the text
+of a number, bool, or string, and `text.len()` its length in characters. A
+float prints as interpolation prints it, with a decimal point (`1.0`,
+`2.5`). Strings name markers, objects, and parameters; a string is at most
+16 384 bytes.
+
 Any function that is not listed on this page is not registered.
 
 ## Variants

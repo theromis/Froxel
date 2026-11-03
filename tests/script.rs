@@ -1105,3 +1105,25 @@ fn column_relief_matches_the_mcp_tool() {
             .unwrap_err();
     assert!(bad.contains("facing"), "{bad}");
 }
+
+#[test]
+fn strings_join_numbers_and_bools() {
+    run_cells(
+        r#"
+        let n = 4;
+        let names = ["ledge_" + n, n + "_ledge", "w" + 2.5, "on_" + true, false + "!"];
+        let want = ["ledge_4", "4_ledge", "w2.5", "on_true", "false!"];
+        for i in 0..names.len() {
+            if names[i] != want[i] { throw "got " + names[i] + " for " + want[i]; }
+        }
+        if `ledge_${n}_${1.5}` != "ledge_4_1.5" { throw "interpolation"; }
+        if to_string(7) != "7" || 7.to_string() != "7" || to_string(1.0) != "1.0" { throw "to_string"; }
+        if true.to_string() != "true" || "ab".to_string() != "ab" { throw "to_string"; }
+        let s = "box_"; s += 3; s += "_"; s += 0.5;
+        if s != "box_3_0.5" || s.len() != 9 { throw "+= " + s; }
+        marker("ledge_" + n, 0.0, 0.0, 1.0);
+        set(0, 0, 0, 1);
+        "#,
+    )
+    .unwrap();
+}
