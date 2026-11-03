@@ -8,8 +8,10 @@ use std::path::{Component, Path, PathBuf};
 use serde_json::{json, Map, Value};
 
 mod markers;
+mod organic;
 mod stone;
 pub(crate) use markers::marker_kind;
+pub(crate) use organic::{organic_writes, Organic};
 pub(crate) use stone::{stone_writes, Stone};
 
 use crate::state::{Cell, GlassMode, Session};
@@ -797,6 +799,9 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "voxel.algae" => stone::apply_stone(session, &params, Stone::Algae),
         "voxel.vines" => stone::apply_stone(session, &params, Stone::Vines),
         "voxel.sweep" => stone::apply_stone(session, &params, Stone::Sweep),
+        "voxel.deform" => organic::apply_organic(session, &params, Organic::Deform),
+        "voxel.loft" => organic::apply_organic(session, &params, Organic::Loft),
+        "voxel.brush" => organic::apply_organic(session, &params, Organic::Brush),
         "marker.set" => markers::set_marker(session, &params),
         "marker.remove" => markers::remove_marker(session, &params),
         "marker.list" => Ok(markers::list_markers(session)),
@@ -1311,6 +1316,9 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.algae", "x0, y0, z0, x1, y1, z1, palettes, band?, amount?, noise?, faces?, facing?, only?, exclude?, layer?, seed?", "Algae band at the waterline, dense low and thinning upward in clumps"),
     ("voxel.vines", "x0, y0, z0, x1, y1, z1, palettes, amount?, length?, blooms?, bloomChance?, noise?, faces?, facing?, band?, only?, exclude?, seed?", "Vine strands hanging from top edges, with blooms"),
     ("voxel.sweep", "points, profile | width + height + radius?, curve?, palette | palettes, pattern?, period?, seed?, mode?", "Fill a 2D profile along a polyline or smooth curve, with twist and scale per point"),
+    ("voxel.deform", "op, x0..z1?, axis?, origin?, length?, center?, angle?, direction?, start?, end?, amplitude?, scale?, octaves?, seed?, bias?", "Bend, taper, or twist the object or a box along an axis, or displace its surface with noise; slots kept"),
+    ("voxel.loft", "points, radius? | rx? + ry?, roll?, flatTop?, noise?, frequency?, curve?, caps?, palette | palettes, pattern?, period?, sectors?, seed?, mode?", "Fill a solid along a curve whose elliptical, flattened, noisy section changes per point"),
+    ("voxel.brush", "op, points, radius?, strength?, falloff?, only?, palette?, vector?, spacing?", "Sculpt brush dabs along points: inflate, deflate, smooth, flatten, or grab"),
     ("marker.set", "name, kind?, point | x0..z1 | min + max, direction?, object?", "Name a point, collision box, or connector on an object; replaces one of the same name"),
     ("marker.remove", "name | all", "Remove one marker, or all"),
     ("marker.list", "", "Markers with local, world, and glTF coordinates"),

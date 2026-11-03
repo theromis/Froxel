@@ -308,6 +308,68 @@ slot or a list. Options:
 
 It returns `#{changed, cells, length}`.
 
+### Loft
+
+```rhai
+let report = loft(points, slot_or_slots);
+let report = loft([#{x: 0, y: 0, z: 6, rx: 8, ry: 6, flatTop: -0.3}, [30, 0, 4, 4, 3.5]], [3, 4],
+    #{curve: "smooth", noise: 0.15, frequency: 6, seed: 2, pattern: "stripes", sectors: 10});
+```
+
+MCP `loft`: a solid along `points` whose section changes from point to
+point, for a trunk, root, or limb that tapers, bends, and is egg-shaped and
+knobbly. Each point is `[x, y, z]`, `[x, y, z, r]`, `[x, y, z, rx, ry]`,
+`[x, y, z, rx, ry, roll]`, or a map with `x`, `y`, `z` and any of
+`radius`, `rx`, `ry`, `roll`, `flatTop`, `noise`, `frequency`. The second
+argument is one slot or a list. Options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `radius`, `rx`, `ry` | — | Section radii of points that leave them out (0.5..=128); `ry` defaults to `rx`. |
+| `roll` | `0` | Section turn about the path, degrees. |
+| `flatTop` | `0` | -1..=1: above 0 cuts the top flat (1 halves it), below 0 the bottom. |
+| `noise` | `0` | Knobbly outline, a fraction of the radius, 0..=0.9. |
+| `frequency` | `5` | About how many lumps around the outline. |
+| `curve` | `"polyline"` | `"smooth"` passes a curve through the points. |
+| `caps` | `"flat"` | `"round"` rounds the ends. |
+| `pattern` | `"rings"` | With a list: `"rings"`, `"stripes"`, or `"random"`. |
+| `period`, `sectors` | `2`, slots | Ring length; stripes around. |
+| `seed` | `0` | Outline noise and random pattern. |
+| `mode` | `"replace"` | `"empty"` or `"paint"`. |
+
+It returns `#{changed, cells, length}`.
+
+### Deform
+
+```rhai
+deform("bend", #{axis: "x", angle: 35, direction: "+z", origin: 20});
+deform(x0, y0, z0, x1, y1, z1, "displace", #{amplitude: 2, scale: 6, bias: 0.5, seed: 3});
+```
+
+MCP `deform` on the object being written, or on the cells of a box when the
+six corners come first. `op` is `"bend"`, `"taper"`, `"twist"`, or
+`"displace"`. Options: `axis` (`"x"`, `"y"`, `"z"`), `origin`, `length`,
+`center` (`[a, b]`), `angle` (degrees, bend and twist), `direction` (bend,
+such as `"+z"`), `start` and `end` (taper), and for displace `amplitude`,
+`scale`, `octaves`, `seed`, `bias`. Defaults and ranges are the MCP tool's
+(`docs/mcp.md`). Slots are kept. It returns
+`#{changed, cells, result, added, removed}`.
+
+### Brush
+
+```rhai
+brush("inflate", [[10, 0, 8], [16, 0, 8, 4]], #{strength: 0.8, only: [3, 4]});
+brush("grab", [[0, 0, 14, 6]], #{vector: [-2, 0, 1]});
+```
+
+MCP `brush`: sculpt dabs along a list of points, each `[x, y, z]`,
+`[x, y, z, radius]`, `[x, y, z, radius, strength]`, or a map. `op` is
+`"inflate"`, `"deflate"` (`"dig"`), `"smooth"`, `"flatten"`, or `"grab"`
+(`"drag"`). Options: `radius` (3), `strength` (0.5, grab 1), `falloff`
+(`"smooth"`, `"linear"`, `"constant"`), `only` (slots it may change),
+`palette` (slot of added cells), `vector` (grab), `spacing` (half the
+radius). It returns `#{changed, dabs, added, removed}`.
+
 ### Column relief
 
 ```rhai
@@ -441,6 +503,13 @@ weathers while the top stays flat: no refill after the dressing.
 fallen hollow log with every shape call: a striped tube trunk, `smooth`,
 buttress roots built with `push`, `break_end` at the far end, a carved
 hollow, a ground slab, and `scatter` debris under the break.
+
+`examples/fallen_tree.rhai` (baked in `examples/fallen_tree.vox`) builds a
+fallen tree with the organic tools: a `loft` trunk that tapers, sags, and is
+egg-shaped and flattened where it rests, flat `loft` roots in a flare at the
+torn root plate, a forked limb of three lofts, `deform` `displace` bark
+lumps, and `brush` calls that smooth the limb joint, raise a burl, dig a rot
+pocket, and grab the root plate back.
 
 `examples/gorge_wall.rhai` (baked in `examples/gorge_wall.vox`) is a gorge
 cliff wall built with the stone tools: a profile swept along a curve,

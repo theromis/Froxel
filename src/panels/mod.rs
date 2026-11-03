@@ -139,6 +139,10 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
                     ui.separator();
                     stone::sweep(ui, session);
                     ui.separator();
+                    organic::loft(ui, session);
+                    ui.separator();
+                    organic::deform(ui, session);
+                    ui.separator();
                     stone::markers(ui, session);
                 });
         },
@@ -561,6 +565,7 @@ pub(super) fn material_slider_i32(
     });
 }
 
+mod organic;
 mod outliner;
 mod palette;
 mod render;

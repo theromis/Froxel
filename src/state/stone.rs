@@ -369,7 +369,7 @@ impl Default for SweepPanel {
 
 /// Numbers in `text` split by spaces, commas, semicolons, or new lines into
 /// rows of 2 to 5.
-fn rows(
+pub(super) fn rows(
     text: &str,
     what: &str,
     sizes: std::ops::RangeInclusive<usize>,

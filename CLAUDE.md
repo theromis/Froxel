@@ -11,7 +11,8 @@ and undo), `pointer`,
 `selection`, `drag`, `pick`, `geom`, and `vox/` (`.vox` read, write, the
 `MVRG` rig chunk, and the `MVAN` clip chunk). `viewport.rs` is orbit and pointer input. `panels/` is the side
 UI. `tools/` is brush shapes, generators, and the MCP sculpt shapes
-(`sculpt.rs`: `fill_tube`, `carve`, `smooth`). `mesh.rs` and `gpu.rs` draw the
+(`sculpt.rs`: `fill_tube`, `carve`, `smooth`; `loft.rs`, `deform.rs`, and
+`brush.rs`: `loft`, `deform`, and the sculpt `brush`). `mesh.rs` and `gpu.rs` draw the
 edit-mode mesh. `trace/` is the CPU path tracer. `trace_gpu.rs` plus
 `trace.wgsl` and `blit.wgsl` are the wgpu tracer used by Render mode.
 `preview.rs` is the fast lit CPU raster of the viewport mesh behind MCP
@@ -82,8 +83,8 @@ view: each pixel is the palette colour of the first cell hit, with no light
 or tonemap. MCP `set_view` moves the window camera; its `orthographic` also
 switches the edit viewport.
 
-**V** **L** **B** **F** **U** **M** select brush, line, box, face, mutator, and
-marquee. **T** **R** **G** select Add, Remove, and Paint, in Model mode only.
+**V** **L** **B** **F** **S** **U** **M** select brush, line, box, face, sculpt,
+mutator, and marquee. **T** **R** **G** select Add, Remove, and Paint, in Model mode only.
 **Tab** switches Model and Object mode. In Object mode **X** **Y** **Z** rotate
 and Shift flips.
 

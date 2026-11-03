@@ -23,7 +23,7 @@ If the tools are missing, the server is not configured. Point the user to
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `moss`, `algae`, `vines`, `sweep`, and `marker`,
+  (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `moss`, `algae`, `vines`, `sweep`, `loft`, `deform`, `brush`, and `marker`,
   `collision_box`, `connector`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -69,7 +69,13 @@ If the tools are missing, the server is not configured. Point the user to
 1. `new_document`, then `set_palette` with the colours you need.
 2. **Block out** the large forms with `fill_rounded_box` and
    `fill_ellipsoid`. Grow limbs, roots, branches, and twigs with `fill_tube`
-   (a radius per point, so it tapers; `curve: "smooth"` bends it). Cut
+   (a radius per point, so it tapers; `curve: "smooth"` bends it). Build
+   trunks, roots, and limbs that must not read as pipes with `loft` (an
+   elliptical section per point with `roll`, `flatTop`, and a knobbly
+   `noise` outline), reshape with `deform` (`bend`, `taper`, `twist`, and
+   `displace` for burls and lumps), and refine the silhouette with `brush`
+   (`inflate`, `deflate`, `smooth`, `flatten`, `grab` along points; see
+   `examples/fallen_tree.rhai`). Cut
    hollows, tunnels, and pits with `carve`. Snap wood with `break_end` (a
    ragged face with splinters) instead of cutting it clean, sweep curved
    walls, banks, and ledges with `sweep` (a profile along a smooth path),
@@ -166,6 +172,9 @@ tools fail; use `preview`, `render`, and `model_view` instead.
 ## Mistakes to avoid
 
 - Filling over existing detail with a box when you meant to recolour.
+- A round `fill_tube` for a trunk or a big root: it reads as a pipe. Use
+  `loft` with an egg-shaped, flattened, noisy section, then `deform`
+  `displace` and `brush`.
 - Writing world coordinates into an object whose `position` is not
   `[0, 0, 0]`.
 - Sculpting a curled or posed creature instead of rigging a straight one.

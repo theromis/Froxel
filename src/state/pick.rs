@@ -49,6 +49,8 @@ impl Session {
                 cmd = Some(Cmd::Tool(Tool::Box));
             } else if i.key_pressed(egui::Key::F) && !command {
                 cmd = Some(Cmd::Tool(Tool::Face));
+            } else if i.key_pressed(egui::Key::S) && !command {
+                cmd = Some(Cmd::Tool(Tool::Sculpt));
             } else if i.key_pressed(egui::Key::U) && !command {
                 cmd = Some(Cmd::Tool(Tool::Mutator));
             } else if i.key_pressed(egui::Key::M) && !command {

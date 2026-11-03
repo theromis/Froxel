@@ -48,6 +48,8 @@ pub fn tool(tool: Tool) -> char {
         // The subset has no tube glyph; the desktop strip draws one with
         // [`paint_tool`].
         Tool::Tube => glyph::POLYLINE,
+        // The desktop strip draws a dab with [`paint_tool`].
+        Tool::Sculpt => glyph::BUBBLES,
         Tool::Mutator => glyph::BUBBLES,
         Tool::Marquee => glyph::MARQUEE,
         Tool::BoxSelect => glyph::SELECT_ALL,
@@ -66,7 +68,7 @@ pub fn mode(mode: ToolMode) -> char {
 /// Draw a tool's icon in the middle of a button: its glyph, or for Tube a
 /// tapering curve.
 pub fn paint_tool(ui: &egui::Ui, response: &egui::Response, tool: Tool, selected: bool) {
-    if tool != Tool::Tube {
+    if tool != Tool::Tube && tool != Tool::Sculpt {
         paint(ui, response, self::tool(tool), selected);
         return;
     }
@@ -75,6 +77,25 @@ pub fn paint_tool(ui: &egui::Ui, response: &egui::Response, tool: Tool, selected
     } else {
         ui.visuals().widgets.inactive.fg_stroke.color
     };
+    if tool == Tool::Sculpt {
+        // A dab: a lump rising out of a surface line, inside the brush ring.
+        let rect = response.rect.shrink(response.rect.width() * 0.2);
+        let c = rect.center();
+        let r = rect.width() * 0.5;
+        ui.painter()
+            .circle_stroke(c, r, egui::Stroke::new(1.5, color));
+        let base = c.y + r * 0.35;
+        ui.painter().line_segment(
+            [
+                egui::pos2(c.x - r * 0.8, base),
+                egui::pos2(c.x + r * 0.8, base),
+            ],
+            egui::Stroke::new(2.0, color),
+        );
+        ui.painter()
+            .circle_filled(egui::pos2(c.x, base), r * 0.45, color);
+        return;
+    }
     let rect = response.rect.shrink(response.rect.width() * 0.22);
     let steps = 12;
     let at = |t: f32| {

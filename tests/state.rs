@@ -2143,3 +2143,102 @@ fn scatter_panel_drops_pieces_onto_the_object() {
     session.undo();
     assert_eq!(session.active().cells.len(), before);
 }
+
+fn sculpt_floor() -> Session {
+    let mut session = Session::new();
+    session.replace_empty();
+    for x in -4..=24 {
+        for y in -6..=6 {
+            for z in -3..=0 {
+                session.objects[0].cells.insert((x, y, z), 4);
+            }
+        }
+    }
+    session.tool = Tool::Sculpt;
+    session
+}
+
+#[test]
+fn a_sculpt_drag_inflates_along_the_path_as_one_undo_step() {
+    let mut session = sculpt_floor();
+    let before = session.active().cells.clone();
+    session.sculpt.radius = 3.0;
+    session.sculpt.strength = 1.0;
+    let down = Vec3::new(0.0, 0.0, -1.0);
+    let at = |x: f32| (Vec3::new(x + 0.5, 0.5, 20.0), down);
+    point(&mut session, true, true, false, at(2.0));
+    for x in [4.0, 6.0, 8.0, 10.0, 12.0] {
+        point(&mut session, true, false, false, at(x));
+    }
+    point(&mut session, false, false, true, at(12.0));
+    let cells = &session.active().cells;
+    assert_eq!(cells.get(&(2, 0, 1)), Some(&4), "a ridge rose at the press");
+    assert_eq!(cells.get(&(12, 0, 1)), Some(&4), "and along the drag");
+    assert!(
+        !cells.contains_key(&(20, 0, 1)),
+        "past the drag nothing grew"
+    );
+    session.undo();
+    assert_eq!(session.active().cells, before);
+}
+
+#[test]
+fn a_sculpt_grab_pulls_the_pressed_point_along_the_drag() {
+    let mut session = sculpt_floor();
+    session.sculpt.op = crate::tools::BrushOp::Grab;
+    session.sculpt.radius = 4.0;
+    session.sculpt.strength = 1.0;
+    // Look along -Y so the view plane is XZ, and drag the floor's front edge up.
+    let look = Vec3::new(0.0, 1.0, 0.0);
+    point(
+        &mut session,
+        true,
+        true,
+        false,
+        (Vec3::new(10.5, -20.0, 0.5), look),
+    );
+    point(
+        &mut session,
+        true,
+        false,
+        false,
+        (Vec3::new(10.5, -20.0, 3.5), look),
+    );
+    point(
+        &mut session,
+        false,
+        false,
+        true,
+        (Vec3::new(10.5, -20.0, 3.5), look),
+    );
+    let cells = &session.active().cells;
+    assert!(cells.contains_key(&(10, -6, 2)), "the edge rose");
+    assert!(!cells.contains_key(&(22, -6, 2)), "far cells stay");
+}
+
+#[test]
+fn the_deform_and_loft_panels_run_the_mcp_tools() {
+    let mut session = Session::new();
+    session.replace_empty();
+    session.organic.loft.points = "0 0 0 4 3\n20 0 2 2 2".into();
+    session.organic.loft.smooth = false;
+    session.organic.loft.noise = 0.0;
+    session.active_slot = 5;
+    session.loft_from_panel();
+    assert!(session.status.starts_with("Lofted"), "{}", session.status);
+    let lofted = session.active().cells.clone();
+    assert_eq!(lofted.get(&(0, 4, 0)), Some(&5));
+    session.organic.deform.op = 0;
+    session.organic.deform.axis = 0;
+    session.organic.deform.angle = 45.0;
+    session.organic.deform.direction = 4;
+    session.deform_from_panel();
+    assert!(session.status.starts_with("Deformed"), "{}", session.status);
+    let high = |cells: &HashMap<Cell, u8>| cells.keys().map(|c| c.2).max().unwrap();
+    assert!(high(&session.active().cells) > high(&lofted) + 4);
+    session.undo();
+    assert_eq!(session.active().cells, lofted);
+    session.organic.loft.points = "0 0".into();
+    session.loft_from_panel();
+    assert!(session.status.contains("Points"), "{}", session.status);
+}

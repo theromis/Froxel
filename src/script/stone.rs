@@ -280,17 +280,22 @@ impl Scratch {
         self.keep_going()?;
         let (writes, counts) = remote::stone_writes(self.cells(), &Value::Object(args), tool)?;
         let changed = self.apply(&writes)?;
-        let mut reply: Map = counts
-            .into_iter()
-            .map(|(key, value)| {
-                let value = match value.as_i64() {
-                    Some(int) => Dynamic::from_int(int),
-                    None => Dynamic::from_float(value.as_f64().unwrap_or(0.0)),
-                };
-                (key.into(), value)
-            })
-            .collect();
-        reply.insert("changed".into(), Dynamic::from_int(changed));
-        Ok(reply)
+        Ok(reply(counts, changed))
     }
+}
+
+/// A tool's counts and `changed` as a Rhai map.
+pub(super) fn reply(counts: serde_json::Map<String, Value>, changed: INT) -> Map {
+    let mut reply: Map = counts
+        .into_iter()
+        .map(|(key, value)| {
+            let value = match value.as_i64() {
+                Some(int) => Dynamic::from_int(int),
+                None => Dynamic::from_float(value.as_f64().unwrap_or(0.0)),
+            };
+            (key.into(), value)
+        })
+        .collect();
+    reply.insert("changed".into(), Dynamic::from_int(changed));
+    reply
 }

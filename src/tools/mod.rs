@@ -5,10 +5,14 @@
 
 use crate::state::Cell;
 
+mod brush;
 mod debris;
+mod deform;
+mod field;
 mod generate;
 mod growth;
 mod joints;
+mod loft;
 mod relief;
 mod scatter;
 mod sculpt;
@@ -17,10 +21,13 @@ mod surface;
 mod sweep;
 mod weather;
 
+pub use brush::{brush, BrushOp, BrushSpec, Dab, Falloff};
 pub use debris::{break_end, BreakSpec, Broken, Splinters};
+pub use deform::{deform, DeformOp, DeformSpec, Displace};
 pub use generate::{foliage, generate, Gen, MAX_GENERATOR_CELLS};
 pub use growth::{grow, Face, GrowthKind, GrowthSpec, Layer};
 pub use joints::{joints, JointPattern, JointSpec};
+pub use loft::{loft, loft_length, Caps, LoftPoint, Section};
 pub use relief::{column_relief, relief_facing, ReliefSpec};
 pub use scatter::{scatter, PieceKind, ScatterSpec, Scattered, MAX_PIECES};
 #[cfg(test)]
@@ -74,3 +81,7 @@ mod tests;
 #[cfg(test)]
 #[path = "../../tests/stone.rs"]
 mod stone_tests;
+
+#[cfg(test)]
+#[path = "../../tests/organic.rs"]
+mod organic_tests;

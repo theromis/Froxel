@@ -22,6 +22,7 @@ pub enum Tool {
     Face,
     Generator,
     Tube,
+    Sculpt,
     Mutator,
     Marquee,
     BoxSelect,
@@ -39,6 +40,7 @@ impl Tool {
             Tool::Face => "Face",
             Tool::Generator => "Generator",
             Tool::Tube => "Tube",
+            Tool::Sculpt => "Sculpt",
             Tool::Mutator => "Mutator",
             Tool::Marquee => "Marquee",
             Tool::BoxSelect => "Box Select",
@@ -620,6 +622,7 @@ mod files;
 mod geom;
 mod markers;
 mod objects;
+mod organic;
 mod pick;
 mod pointer;
 mod selection;
@@ -755,6 +758,11 @@ pub struct Session {
     pub variants_replace: bool,
     /// The panels of the stone tools.
     pub stone: StonePanels,
+    /// The Deform and Loft panels.
+    pub organic: OrganicPanels,
+    /// The Sculpt tool's brush (MCP `brush`) and the drag in progress.
+    pub sculpt: SculptBrush,
+    pub(crate) sculpt_stroke: Option<organic::SculptStroke>,
     /// Smooth: passes and the neighbour thresholds of MCP `smooth`.
     pub smooth_iterations: i32,
     pub smooth_fill_at: i32,
@@ -904,6 +912,7 @@ pub(crate) use markers::append_gltf_markers;
 pub use markers::{
     cell_box, check_direction, check_marker_name, check_point, Marker, MarkerKind, MAX_MARKERS,
 };
+pub use organic::{OrganicPanels, SculptBrush, DEFORM_OPS, SCULPT_OPS};
 pub use stone::{Plant, StonePanels, DIRECTIONS, FACINGS, RELIEF_FACINGS};
 pub(crate) use vox::rotation_codec_errors;
 

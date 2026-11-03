@@ -691,6 +691,44 @@ fn the_hollow_log_is_hollow_snapped_and_rooted() {
     assert!(log.values().any(|&s| s == 8), "the ground is missing");
 }
 
+#[test]
+fn the_fallen_tree_has_a_root_flare_a_forked_limb_and_lumps() {
+    let mut session = Session::new();
+    session.replace_empty();
+    session
+        .set_script(0, include_str!("../examples/fallen_tree.rhai"))
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    let tree = cells_of(&session);
+    session.regenerate_script(0).unwrap();
+    assert_eq!(
+        cells_of(&session),
+        tree,
+        "the same seed builds the same tree"
+    );
+    // The trunk is wider than tall and flattened where it rests.
+    let slice: Vec<_> = tree
+        .keys()
+        .filter(|c| c.0 == 20 && c.2 >= 0 && tree[c] != 8)
+        .collect();
+    let wide = slice.iter().map(|c| c.1).max().unwrap() - slice.iter().map(|c| c.1).min().unwrap();
+    let tall = slice.iter().map(|c| c.2).max().unwrap() - slice.iter().map(|c| c.2).min().unwrap();
+    assert!(wide > tall, "wide {wide}, tall {tall}");
+    // Root bark flares out past the trunk at the root end.
+    let roots: Vec<_> = tree
+        .iter()
+        .filter(|(_, s)| **s == 5)
+        .map(|(c, _)| *c)
+        .collect();
+    assert!(roots.iter().any(|c| c.1.abs() > 14) && roots.iter().any(|c| c.2 > 18));
+    // The limb rises well above the trunk and splits into two tips.
+    let high: Vec<_> = tree.keys().filter(|c| c.2 > 28).collect();
+    assert!(!high.is_empty(), "no limb above the trunk");
+    let far: Vec<_> = tree.keys().filter(|c| c.1 > 22 && c.2 > 12).collect();
+    assert!(!far.is_empty(), "no second fork branch");
+    assert!(tree.values().any(|&s| s == 8), "the ground is missing");
+}
+
 const RIGGED: &str = r#"
 fill_box(0, 0, 0, 3, 3, 3, 1);
 object("arm");
@@ -1126,4 +1164,56 @@ fn strings_join_numbers_and_bools() {
         "#,
     )
     .unwrap();
+}
+
+#[test]
+fn script_loft_deform_and_brush_match_the_mcp_tools() {
+    use serde_json::json;
+    let script = run_cells(
+        r#"
+        let trunk = loft([[0, 0, 0, 7, 5], #{x: 18, y: 3, z: 1, rx: 5, flatTop: -0.3}, [36, 0, 3, 3, 3, 20]], [2, 3],
+            #{curve: "smooth", noise: 0.2, frequency: 5, seed: 1, pattern: "rings", period: 3});
+        if trunk.cells == 0 || trunk.length < 30.0 { throw "no loft"; }
+        let bent = deform("bend", #{axis: "x", angle: 30, direction: "+z", origin: 18});
+        if bent.removed == 0 { throw "no bend"; }
+        deform(0, -10, -10, 12, 10, 10, "displace", #{amplitude: 2, scale: 5, bias: 0.5, seed: 3});
+        deform("taper", #{axis: "x", start: 1.0, end: 0.7});
+        let dabs = brush("inflate", [[4, 0, 6], [12, 0, 6, 4]], #{strength: 0.8});
+        if dabs.dabs < 2 { throw "no dabs"; }
+        brush("smooth", [[8, 0, 6]]);
+        "#,
+    )
+    .unwrap();
+    let mcp = mcp_cells(&[
+        (
+            "voxel.loft",
+            json!({"points": [[0, 0, 0, 7, 5], {"x": 18, "y": 3, "z": 1, "rx": 5, "flatTop": -0.3},
+                [36, 0, 3, 3, 3, 20]], "palettes": [2, 3], "curve": "smooth", "noise": 0.2,
+                "frequency": 5, "seed": 1, "pattern": "rings", "period": 3}),
+        ),
+        (
+            "voxel.deform",
+            json!({"op": "bend", "axis": "x", "angle": 30, "direction": "+z", "origin": 18}),
+        ),
+        (
+            "voxel.deform",
+            json!({"op": "displace", "x0": 0, "y0": -10, "z0": -10, "x1": 12, "y1": 10, "z1": 10,
+                "amplitude": 2, "scale": 5, "bias": 0.5, "seed": 3}),
+        ),
+        (
+            "voxel.deform",
+            json!({"op": "taper", "axis": "x", "start": 1.0, "end": 0.7}),
+        ),
+        (
+            "voxel.brush",
+            json!({"op": "inflate", "points": [[4, 0, 6], [12, 0, 6, 4]], "strength": 0.8}),
+        ),
+        (
+            "voxel.brush",
+            json!({"op": "smooth", "points": [[8, 0, 6]]}),
+        ),
+    ]);
+    assert_eq!(script, mcp);
+    let err = run_cells(r#"loft([[0, 0, 0, 2], [4, 0, 0, 2]], 1, #{radios: 2});"#).unwrap_err();
+    assert!(err.contains("no option `radios`"), "{err}");
 }

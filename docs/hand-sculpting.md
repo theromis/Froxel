@@ -53,6 +53,25 @@ that tapers from radius 1.5 to 0.5 with `aspect` 0.4 and `profile` `blade`
 is a flat splinter, and a short wide one is a broken plank end or a shard.
 `roll` turns the flat side about the axis.
 
+A round tube reads as a pipe. For a trunk, a root, or a limb, `loft`
+gives each point its own section: an ellipse with two radii (`rx` across,
+`ry` up), a `roll`, a flat side (`flatTop`; negative flattens the bottom
+where a log rests on the ground), and a knobbly outline (`noise` and
+`frequency`). One smooth loft from a wide, egg-shaped root end to a thin
+round tip tapers, sags, and lumps in one call.
+
+`deform` then reshapes what is there, on the whole object or a box of it:
+`bend` curls a limb toward a direction by an angle over a length, `taper`
+narrows it, `twist` turns it, and `displace` pushes the surface in and out
+with noise for burls and lumps (`bias` 1 only bulges, -1 only dents). Slots
+are kept.
+
+`brush` refines the silhouette like Blender's clay and grab brushes: dabs
+along a path of points `inflate` a burl, `deflate` (dig) a rot pocket,
+`smooth` the joint where a limb leaves the trunk, `flatten` a face, or
+`grab` a stub out along a vector. `only` keeps it off other slots. In the
+editor the Sculpt tool (**S**) is the same brush by drag.
+
 `carve` removes the cells inside a `box`, `ellipsoid`, `rounded_box`, or
 `tube`: a hollow trunk, a tunnel, a burrow, an eye socket. A carved tube
 with a radius just under the trunk's makes a hollow log in one call.
@@ -172,6 +191,27 @@ scatter(to_int(tip[0]) - 4, -reach - 6, 0, length + 10, reach + 6, 2 * reach + 6
 The order matters as it does for the tools: smooth while the trunk is
 solid, add the roots before carving so the hollow cuts them out of the
 opening, and add the ground after the break.
+
+`examples/fallen_tree.rhai` is a fallen tree that does not read as a pipe:
+
+```rhai
+loft([
+    #{x: 0.0, y: 0.0, z: r * 0.85, rx: r * 1.15, ry: r * 0.95, flatTop: -0.3},
+    #{x: len * 0.3, y: 1.5, z: r * 0.8, rx: r, ry: r * 0.85, flatTop: -0.25},
+    #{x: len * 0.65, y: -1.0, z: r * 0.7, rx: r * 0.75, ry: r * 0.65, flatTop: -0.2},
+    #{x: len, y: 1.0, z: r * 0.55, rx: r * 0.5, ry: r * 0.45, noise: 0.08},
+], [3, 4], #{curve: "smooth", noise: 0.14, frequency: 7, seed: seed, pattern: "stripes", sectors: 12});
+// ... flat roots in a flare, a bough and its two fork branches: loft(..., #{mode: "empty"}) ...
+deform(-reach, -reach, 0, length + 2, reach, reach * 2, "displace", #{
+    amplitude: lumps, scale: r * 1.2, octaves: 2, bias: 0.6, seed: seed
+});
+brush("smooth", [[base[0] - 2.0, base[1], base[2] - 1.0], [base[0] + 3.0, base[1] + 1.5, base[2] + 1.0]], #{radius: r * 0.6, strength: 0.8});
+brush("inflate", [[len * 0.4, -r, r * 0.9], [len * 0.44, -r, r * 1.0]], #{radius: r * 0.55, strength: 0.9, only: [3, 4]});
+brush("grab", [[0.0, 0.0, r * 2.4, r * 1.2]], #{vector: [-2.0, 0.0, 1.0]});
+```
+
+Loft the main forms first, displace them while they are thick, and brush
+last, on the forms as they will stay.
 
 ## Tips
 

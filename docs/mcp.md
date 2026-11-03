@@ -157,6 +157,9 @@ tracer. A file with no scene graph still loads its first model.
 | `fill_rounded_box` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palette`, `radius` | Same box, with an edge bevel of `radius` voxels. `radius` 0 is the full box. The radius is clamped to half the shortest side |
 | `fill_tube` | `points`, `palette` or `palettes` | Fill a tube through 2..=1024 **local** points, each with its own radius. Optional `radius`, `curve` (`polyline`, `smooth`), `aspect`, `roll`, `profile` (`round`, `blade`), `pattern` (`rings`, `stripes`, `random`), `period`, `sectors`, `seed`, `mode`. At most 2000000 cells, one undo step |
 | `sweep` | `points`, `profile` or `width` and `height`, `palette` or `palettes` | Fill a 2D cross-section along 2..=1024 **local** points, kept perpendicular to the path, for curved walls, banks, and ledges. Each point may carry `twist` and `scale`. Optional `radius`, `curve` (`polyline`, `smooth`), `pattern` (`bands`, `rings`, `random`), `period`, `seed`, `mode`. Replies with `cells` and `length`. At most 2000000 cells, one undo step |
+| `loft` | `points`, `palette` or `palettes` | Fill a solid along 2..=1024 **local** points whose cross-section changes per point: an ellipse (`rx`, `ry`) turned by `roll`, cut flat by `flatTop`, with outline `noise` and `frequency`. Optional `radius` and the section fields as defaults, `curve` (`polyline`, `smooth`), `caps` (`flat`, `round`), `pattern` (`rings`, `stripes`, `random`), `period`, `sectors`, `seed`, `mode`. Replies with `cells` and `length`. At most 2000000 cells, one undo step |
+| `deform` | `op` | `bend`, `taper`, or `twist` the active object (or the cells of a box `x0`..`z1`) along `axis`, or `displace` its surface with 3D noise. Optional `axis`, `origin`, `length`, `center`, `angle`, `direction`, `start`, `end`, `amplitude`, `scale`, `octaves`, `seed`, `bias`. Slots are kept. Replies with `cells`, `result`, `added`, `removed`. One undo step |
+| `brush` | `op`, `points` | Sculpt brush dabs along **local** points: `inflate`, `deflate` (`dig`), `smooth`, `flatten`, or `grab` (`drag`). Optional `radius`, `strength`, `falloff` (`smooth`, `linear`, `constant`), `only`, `palette`, `vector` (grab), `spacing`. Replies with `dabs`, `added`, `removed`. One undo step |
 | `carve` | `shape` | Remove the solid cells inside a `box`, `ellipsoid`, `rounded_box`, or `tube`, given as for the fill tools. Replies with `removed`. One undo step |
 | `break_end` | `point`, `normal` | Break the active object across a plane: a jagged face, bark on its rim, sapwood inside, and tapered splinters out along the normal. Optional `depth`, `splinters` or `density`, `length`, `thickness`, `taper`, `rimBias`, `bark`, `sapwood`, `tips`, `seed`. One undo step |
 | `scatter` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Drop small pieces (shard, chip, pebble, chunk) that settle on what is below into a heap. Optional `count`, `kinds`, `size`, `seed`, `floor`, `clump`, `exclude`. One undo step |
@@ -309,6 +312,90 @@ the profile at the slab nearest it, so a flat top stays one flat layer
 through the points of a smooth path. With `palettes`, `pattern` `bands` (the default)
 lays them in layers `period` cells high by `v`, like strata; `rings` lays
 them along the path; `random` picks per cell from `seed`.
+
+`loft` is the trunk and limb tool: one call makes a solid that tapers,
+bends, and is egg-shaped and knobbly, where a `fill_tube` is a round pipe.
+Each point carries a section: `rx` is the half-width across the path, `ry`
+the half-height along the frame's normal (up for a level path), `roll`
+turns both about the path in degrees, `flatTop` (-1..=1) cuts the top flat
+at `ry * (1 - flatTop)` (1 halves it; below 0 cuts the bottom, for a log
+lying on the ground), `noise` (0..=0.9, a fraction of the radius) makes the
+outline knobbly with about `frequency` lumps around, and lumps about as
+long as they are wide along the path. Points are `[x, y, z]`,
+`[x, y, z, r]`, `[x, y, z, rx, ry]`, `[x, y, z, rx, ry, roll]`, or a map
+`{x, y, z, radius?, rx?, ry?, roll?, flatTop?, noise?, frequency?}`; a value
+a point leaves out takes the call's own (`radius`, `rx`, `ry`, `roll`,
+`flatTop`, `noise`, `frequency`, default 5). Radii are 0.5..=128. Sections
+run linearly between the points; `curve` `smooth` passes a Catmull-Rom curve
+through them. A cell is in when its centre is inside the section at the
+nearest point of the path. `caps` `flat` (the default) cuts the ends square
+at the end points; `round` rounds them. `palettes` lay out as `fill_tube`'s:
+`rings` along the length every `period` cells, `stripes` in `sectors`
+around it (bark grooves), `random` per cell. `seed` picks the outline noise
+and the random pattern, so a loft is the same for the same arguments.
+
+```json
+{"name": "loft", "arguments": {"points": [
+  {"x": 0, "y": 0, "z": 6, "rx": 8, "ry": 6.5, "flatTop": -0.3},
+  {"x": 20, "y": 1.5, "z": 5.5, "rx": 7, "ry": 6, "flatTop": -0.25},
+  {"x": 42, "y": -1, "z": 5, "rx": 5, "ry": 4.5},
+  {"x": 64, "y": 1, "z": 4, "rx": 3.5, "ry": 3}],
+  "curve": "smooth", "noise": 0.14, "frequency": 7, "seed": 5,
+  "palettes": [3, 4], "pattern": "stripes", "sectors": 12}}
+```
+
+`deform` reshapes what is there. With no box it acts on every solid cell
+of the active object; with `x0`..`z1` (all six) only the cells inside move,
+and the rest stay. `bend`, `taper`, and `twist` run along `axis` (`x`, `y`,
+or `z`, default `z`) from `origin` (default the cells' lowest along it) for
+`length` cells (default their extent), about `center`, the two other
+coordinates in x, y, z order (default the cells' mean):
+
+- `bend` curls the cells toward `direction` (`+x`, `-y`, ...; across the
+  axis; default `+x` for `z`, else `+z`) by `angle` degrees (-180..=180)
+  along a circle of radius `length / angle`; past the length they carry on
+  straight. A negative angle bends the other way. A limb bent 40° at its
+  middle, or a root bent down where it meets the ground.
+- `taper` scales across the axis from `start` (default 1) at the origin to
+  `end` (default 0.5) at the end of the length, 0.05..=16.
+- `twist` turns about the axis by `angle` degrees over the length.
+- `displace` pushes the surface in and out with fractal 3D noise: at most
+  `amplitude` cells (0.5..=32, default 2), bumps about `scale` cells wide
+  (default 8), `octaves` finer layers (1..=6, default 2), `seed`, and
+  `bias` (-1 only dents, 0 both, the default, 1 only bulges). Bulges, burls,
+  and lumps at a chosen scale; a low positive bias keeps a thin limb from
+  thinning to a hole. Only cells in the box change.
+
+Each target cell takes the slot of the cell it came from (`displace` grows
+a cell from the nearest solid one), so palette slots are kept. Replies with
+`cells` (read), `result` (left), `added`, and `removed`.
+
+`brush` refines a silhouette after the rough form, like Blender's clay and
+grab brushes. It lays dabs along `points` (`[x, y, z]`,
+`[x, y, z, radius]`, `[x, y, z, radius, strength]`, or a map), extra ones
+between points farther apart than `spacing` (default half the radius; 0
+lays one per point), each reading what the dabs before it left. `radius`
+(0.5..=64, default 3) and `strength` (0..=1, default 0.5, grab 1) are the
+defaults of points that leave them out. `falloff` is `smooth` (default),
+`linear`, or `constant`. `op`:
+
+- `inflate` pushes the surface out by up to `strength * radius / 2` cells
+  at a dab's centre, fading with the falloff; `deflate` (or `dig`) pushes
+  it in the same way.
+- `smooth` blurs solid and empty cells under the dab so bumps and pits
+  melt; strength sets the passes.
+- `flatten` cuts bumps and fills pits toward the mean plane of the surface
+  under the dab; strength 1 levels it.
+- `grab` (or `drag`) moves the cells under each dab by `vector` cells times
+  strength at its centre, less toward its radius; the move may not exceed
+  the radius. Grab lays one dab per point.
+
+`only` limits the brush to cells of those slots: others never change, and
+inflate grows only from them. Added cells take the nearest solid cell's
+slot, or `palette`. Replies with `dabs`, `added`, and `removed`.
+
+`examples/fallen_tree.rhai` builds a fallen trunk with a root flare and a
+forked limb with `loft`, `deform` `displace`, and `brush`.
 
 `column_relief` breaks a cliff face into columns for a fractured cliff.
 `facing` is the face's outward direction along x or y (`+x`, `-x`, `+y`,
@@ -854,6 +941,9 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `fill_tube` | Tube tool: drag from the start radius to the end radius; Chain adds a point per drag and Smooth curves through them until Finish; Flatten, Roll, and Blade shape it; Solid, Rings, Stripes, or Random with a second slot |
 | `sweep` | Sweep section: Points (one per line, Point at selection adds the selection's centre), Smooth, Rectangle (Width, Height, Radius) or Polygon, Palettes, Bands, Rings, or Random, Period, Mode, Seed |
 | `carve` | Remove mode with Box, Generator, or Tube |
+| `loft` | Loft section: Points (one per line, x y z then optional rx ry roll flatTop noise frequency; Point at selection adds the selection's centre), Smooth, Round ends, Radii, Roll, Flat top, Noise, Lumps, Palettes, Rings, Stripes, or Random, Period, Mode, Seed |
+| `deform` | Deform section: Bend, Taper, Twist, or Displace; Axis, Origin, Length; Angle and Toward, Start and End, or Amplitude, Scale, Octaves, Bias, Seed; over the selection's box or the whole object |
+| `brush` | Sculpt tool (**S**): Inflate, Deflate, Smooth, Flatten, or Grab; Radius, Strength, Falloff, Only. A drag lays dabs on the surface; Grab pulls the pressed point along the drag in the view plane. One undo step per drag |
 | `break_end` | Break section: Point (or Point at selection), Normal with ±X/Y/Z, Depth, Splinters, Length, Thickness, Taper, Rim bias, Bark, Sapwood, and Tip slots, Seed |
 | `exclude` (on the stone tools) | Protect section: one box per line, Add selection, Clear; Scatter, Joints, Weather, and Growth use it |
 | `scatter` | Scatter section: Pieces, Kinds, Size, Palettes, Clump, Seed, over the selection's box or above the whole object |

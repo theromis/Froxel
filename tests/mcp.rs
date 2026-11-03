@@ -2124,3 +2124,58 @@ fn preview_overlay_draws_markers_and_fades_what_the_model_hides() {
     assert!(bad.contains("overlay must be"), "{bad}");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn loft_deform_and_brush_shape_a_trunk_one_undo_step_each() {
+    let mut head = Headless::new();
+    let loft = head.ok(
+        "loft",
+        json!({"points": [[0, 0, 0, 8, 6], {"x": 20, "y": 4, "z": 2, "rx": 5, "flatTop": -0.3},
+            [40, 0, 4, 3, 3, 30]], "curve": "smooth", "noise": 0.25, "frequency": 6, "seed": 2,
+            "palettes": [2, 3], "pattern": "rings", "period": 3}),
+    );
+    assert!(loft["cells"].as_i64().unwrap() > 1500, "{loft}");
+    assert!(loft["length"].as_f64().unwrap() > 39.0, "{loft}");
+    let lofted = head.session.active().cells.clone();
+    let bend = head.ok(
+        "deform",
+        json!({"op": "bend", "axis": "x", "angle": 40, "direction": "+z", "origin": 20}),
+    );
+    assert!(bend["removed"].as_i64().unwrap() > 0, "{bend}");
+    let bent = head.session.active().cells.clone();
+    assert!(bent.keys().map(|c| c.2).max() > lofted.keys().map(|c| c.2).max());
+    let lumps = head.ok(
+        "deform",
+        json!({"op": "displace", "amplitude": 2, "scale": 5, "bias": 0.5, "seed": 4,
+            "x0": 0, "y0": -12, "z0": -12, "x1": 20, "y1": 12, "z1": 12}),
+    );
+    assert!(lumps["added"].as_i64().unwrap() > 0, "{lumps}");
+    let brushed = head.ok(
+        "brush",
+        json!({"op": "inflate", "points": [[5, 0, 6], [15, 0, 6, 4, 1]], "radius": 3}),
+    );
+    assert!(brushed["dabs"].as_i64().unwrap() >= 3, "{brushed}");
+    let grab = head.ok(
+        "brush",
+        json!({"op": "grab", "points": [[40, 0, 4, 4]], "vector": [2, 0, 3]}),
+    );
+    assert!(grab["changed"].as_i64().unwrap() > 0, "{grab}");
+    for _ in 0..4 {
+        head.ok("undo", json!({}));
+    }
+    assert_eq!(head.session.active().cells, lofted);
+    let op = error_text(&head.call("deform", json!({"op": "squash"})));
+    assert!(op.contains("bend, taper, twist, or displace"), "{op}");
+    let partial = error_text(&head.call("deform", json!({"op": "taper", "x0": 0})));
+    assert!(partial.contains("all of x0"), "{partial}");
+    let vector = error_text(&head.call(
+        "brush",
+        json!({"op": "smooth", "points": [[0, 0, 0]], "vector": [1, 0, 0]}),
+    ));
+    assert!(vector.contains("grab only"), "{vector}");
+    let radius = error_text(&head.call(
+        "loft",
+        json!({"points": [[0, 0, 0], [4, 0, 0]], "palette": 2}),
+    ));
+    assert!(radius.contains("radius"), "{radius}");
+}

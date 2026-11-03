@@ -22,6 +22,7 @@ use crate::state::{Cell, Motion, Session, Volume};
 mod document;
 mod markers;
 mod math;
+mod organic;
 mod shapes;
 mod stone;
 
@@ -297,6 +298,7 @@ pub(crate) fn execute(
     shapes::register(&mut engine, &scratch);
     document::register(&mut engine, &scratch);
     stone::register(&mut engine, &scratch);
+    organic::register(&mut engine, &scratch);
     markers::register(&mut engine, &scratch);
     let mut scope = rhai::Scope::new();
     scope.push_constant("PI", std::f64::consts::PI);

@@ -95,6 +95,9 @@ impl Session {
             if self.tool == Tool::Tube {
                 self.finish_tube_drag();
             }
+            if self.tool == Tool::Sculpt {
+                self.finish_sculpt();
+            }
             self.stroke = None;
             self.commit();
             self.grab = Grab::None;
@@ -164,6 +167,7 @@ impl Session {
                 | Tool::Face
                 | Tool::Generator
                 | Tool::Tube
+                | Tool::Sculpt
                 | Tool::Mutator
         )
     }
@@ -192,6 +196,7 @@ impl Session {
                 self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
             }
             self.stroke = None;
+            self.sculpt_stroke = None;
         }
         self.grab = Grab::None;
     }
@@ -242,6 +247,10 @@ impl Session {
         let Some((origin, dir)) = ray else {
             return;
         };
+        if self.tool == Tool::Sculpt {
+            self.sculpt_drag(origin, dir);
+            return;
+        }
         if self.tool == Tool::Brush {
             // Aim at the model as it was when the stroke began. A click spans
             // several frames, and aiming at the live cells would stack a voxel

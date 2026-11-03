@@ -279,7 +279,7 @@ fn dispatch(
                 "protocolVersion": version,
                 "capabilities": {"tools": {"listChanged": false}},
                 "serverInfo": {"name": "Froxel", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. preview writes a fast lit PNG (the viewport mesh and light, rasterised, well under a second) framed on the model or one object; use it to look after every step. Its preset game is the gameplay camera, lighting (old_pond, or a project's lightingPresets) shows colour under a game's sun and ambient instead of the viewport light, overlay draws collision boxes, points, and connectors over the model, and inputs, variants, and reference make one labelled contact sheet of several models beside a concept image. Its previewTriangles is the unmerged mesh it draws, not the game's: its export counts (with export set to the game's options, e.g. colorAtlas) are what export_mesh writes. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, grow limbs and roots with fill_tube, cut hollows with carve, soften with smooth, refine with set_voxels, and render after every step. Stone surfaces: column_relief breaks a cliff face into columns of uneven width, relief, and height, joints cuts real joint gaps (columns, courses, cracks), weather chips edges, dents pits, and adds colour noise, and moss, algae, and vines grow plants on exposed faces (the caller gives the slots and their motion). Their exclude boxes (and scatter's) keep walking surfaces whole, with no refill afterwards. sweep fills a cross-section along a curve for curved walls, banks, and ledges. set_marker names points, collision boxes, and connectors that the .vox keeps and the glb carries as nodes; export_variants writes a .vox and .glb per parameter set and merges them by name into a manifest of parameters, markers, and bounds (replace: true starts it fresh). examples/gorge_wall.rhai uses them all. A Rhai script (set_script) can call the same sculpt, voxel, object, rig, clip, and palette tools, with the MCP options in a trailing map, for a family of organic pieces (docs/scripting.md, examples/hollow_log.rhai)."
+                "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. preview writes a fast lit PNG (the viewport mesh and light, rasterised, well under a second) framed on the model or one object; use it to look after every step. Its preset game is the gameplay camera, lighting (old_pond, or a project's lightingPresets) shows colour under a game's sun and ambient instead of the viewport light, overlay draws collision boxes, points, and connectors over the model, and inputs, variants, and reference make one labelled contact sheet of several models beside a concept image. Its previewTriangles is the unmerged mesh it draws, not the game's: its export counts (with export set to the game's options, e.g. colorAtlas) are what export_mesh writes. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, grow limbs and roots with fill_tube, cut hollows with carve, soften with smooth, refine with set_voxels, and render after every step. Organic forms (trunks, roots, limbs, rocks) should not read as pipes or boxes: loft builds a trunk or limb whose elliptical, flattened, knobbly section changes along a curve; deform bends, tapers, twists, or displaces (lumps, burls) an object or a box; brush inflates, deflates, smooths, flattens, or grabs the surface along a path of points to refine the silhouette (examples/fallen_tree.rhai). Stone surfaces: column_relief breaks a cliff face into columns of uneven width, relief, and height, joints cuts real joint gaps (columns, courses, cracks), weather chips edges, dents pits, and adds colour noise, and moss, algae, and vines grow plants on exposed faces (the caller gives the slots and their motion). Their exclude boxes (and scatter's) keep walking surfaces whole, with no refill afterwards. sweep fills a cross-section along a curve for curved walls, banks, and ledges. set_marker names points, collision boxes, and connectors that the .vox keeps and the glb carries as nodes; export_variants writes a .vox and .glb per parameter set and merges them by name into a manifest of parameters, markers, and bounds (replace: true starts it fresh). examples/gorge_wall.rhai uses them all. A Rhai script (set_script) can call the same sculpt, voxel, object, rig, clip, and palette tools, with the MCP options in a trailing map, for a family of organic pieces (docs/scripting.md, examples/hollow_log.rhai)."
             }),
         ));
     }
@@ -389,6 +389,9 @@ fn map_tool(name: &str, args: &Value) -> Result<(String, Value), String> {
         "algae" => "voxel.algae",
         "vines" => "voxel.vines",
         "sweep" => "voxel.sweep",
+        "deform" => "voxel.deform",
+        "loft" => "voxel.loft",
+        "brush" => "voxel.brush",
         "set_marker" => "marker.set",
         "remove_marker" => "marker.remove",
         "list_markers" => "marker.list",
@@ -717,6 +720,60 @@ fn tools() -> Vec<Value> {
             "seed": int_prop("Seed of the random pattern. Defaults to 0."),
             "mode": mode_prop()
         }), &["points"]),
+        tool("deform", "Reshape the active object, or the solid cells of an inclusive box of it (x0..z1, all six or none), so a trunk, root, limb, or rock stops reading as a pipe or a box. op bend curls the cells toward direction by angle degrees over length cells of the axis from origin, and carries the rest on straight; taper scales them across the axis from start at the origin to end at the end of the length; twist turns them about the axis by angle degrees over the length; displace pushes the surface in and out with fractal 3D noise of amplitude cells, bumps about scale cells wide, octaves finer layers, and bias (-1 only dents, 0 both, 1 only bulges), for burls, lumps, and knobs. axis is x, y, or z (default z); origin defaults to the cells' lowest along it, length to their extent, and center (the two other coordinates, in x, y, z order) to their mean. Each target cell takes the slot of the cell it came from, so palette slots are kept. Deterministic for a seed. At most 2000000 cells. One undo step. Replies with cells (read), result (left), added, and removed.", merged(json!({
+            "op": {"type": "string", "enum": ["bend", "taper", "twist", "displace"], "description": "The deform."},
+            "x0": int_prop("Region corner (optional; with all six only the box's cells change)"),
+            "y0": int_prop("Region corner"),
+            "z0": int_prop("Region corner"),
+            "x1": int_prop("Region corner"),
+            "y1": int_prop("Region corner"),
+            "z1": int_prop("Region corner"),
+            "axis": {"type": "string", "enum": ["x", "y", "z"], "description": "bend, taper, twist: the axis they run along. Defaults to z."},
+            "origin": num_prop("bend, taper, twist: where along the axis they start, in local cells. Defaults to the cells' lowest."),
+            "length": num_prop("bend, taper, twist: how far along the axis they run, 0.5..=4096. Defaults to the cells' extent."),
+            "center": {"type": "array", "items": {"type": "number"}, "description": "bend, taper, twist: the line they work about, [a, b] as the two other coordinates in x, y, z order (for axis z, [x, y]). Defaults to the cells' mean."}
+        }), json!({
+            "angle": num_prop("bend: degrees, -180..=180 (negative bends away from direction). twist: degrees over the length."),
+            "direction": {"type": "string", "enum": ["+x", "-x", "+y", "-y", "+z", "-z"], "description": "bend: the way the cells curl, across the axis. Defaults to +x for axis z, else +z."},
+            "start": num_prop("taper: scale at the origin, 0.05..=16. Defaults to 1."),
+            "end": num_prop("taper: scale at the end of the length, 0.05..=16. Defaults to 0.5."),
+            "amplitude": num_prop("displace: the most the surface moves, 0.5..=32 cells. Defaults to 2."),
+            "scale": num_prop("displace: bump size in cells, 1..=512. Defaults to 8."),
+            "octaves": int_prop("displace: 1..=6 layers, each half the size and height. Defaults to 2."),
+            "seed": int_prop("displace: noise seed. Defaults to 0."),
+            "bias": num_prop("displace: -1 only dents, 0 dents and bulges (default), 1 only bulges.")
+        })), &["op"]),
+        tool("loft", "Fill a solid along a path of 2..=1024 local points whose cross-section changes from point to point, for trunks, roots, limbs, and branches that taper, bend, and are egg-shaped and knobbly in one call instead of a round fill_tube. Each point's section is an ellipse with rx (half-width across the path) and ry (half-height along the frame's normal, up for a level path), turned by roll degrees, cut flat by flatTop (0 none, 1 halves it at the path; negative flattens the bottom, for a log lying on the ground), with an outline noise of noise (a fraction of the radius, 0..=0.9) and about frequency lumps around. Sections run linearly between the points; a value a point leaves out takes the call's own (radius, rx, ry, roll, flatTop, noise, frequency). curve smooth passes a Catmull-Rom curve through the points; polyline (default) joins them straight. caps flat (default) cuts the ends square, round rounds them. A cell is in when its centre is inside the section at the nearest point of the path. Colour with palette, or palettes and a pattern as fill_tube: rings along the length every period cells, stripes in sectors around it, random per cell. seed picks the outline noise and the random pattern. Writes as mode says. At most 2000000 cells. One undo step. Replies with cells and length.", merged(json!({
+            "points": {"type": "array", "items": {"type": ["array", "object"]}, "description": "Path points: [x, y, z], [x, y, z, r], [x, y, z, rx, ry], [x, y, z, rx, ry, roll], or {x, y, z, radius?, rx?, ry?, roll?, flatTop?, noise?, frequency?}. Radii 0.5..=128; a whole-number point is a cell centre."},
+            "radius": num_prop("Default rx and ry of points that leave them out."),
+            "rx": num_prop("Default half-width across the path."),
+            "ry": num_prop("Default half-height. Defaults to rx."),
+            "roll": num_prop("Default roll of the section about the path, in degrees. Defaults to 0."),
+            "flatTop": num_prop("Default flat side, -1..=1: above 0 cuts the top at ry * (1 - flatTop), below 0 the bottom. Defaults to 0."),
+            "noise": num_prop("Default outline noise as a fraction of the radius, 0..=0.9. Defaults to 0."),
+            "frequency": num_prop("Default lumps around the outline, 0..=64. Defaults to 5.")
+        }), json!({
+            "curve": str_prop("polyline (default) or smooth"),
+            "caps": {"type": "string", "enum": ["flat", "round"], "description": "flat (default) or round ends."},
+            "palette": int_prop("Palette index, or pass palettes"),
+            "palettes": {"type": "array", "items": {"type": "integer"}, "description": "Palette indices laid out by pattern"},
+            "pattern": {"type": "string", "enum": ["rings", "stripes", "random"], "description": "rings (default) along the length, stripes around it, random per cell"},
+            "period": num_prop("Ring length in cells, 0.5..=512. Defaults to 2."),
+            "sectors": int_prop("Stripes around, 1..=256. Defaults to the number of palettes."),
+            "seed": int_prop("Seed of the outline noise and the random pattern. Defaults to 0."),
+            "mode": mode_prop()
+        })), &["points"]),
+        tool("brush", "Sculpt the active object's surface with brush dabs along a path of points, like Blender's clay and grab brushes, to refine a silhouette after the rough form. op inflate pushes the surface out by up to strength x radius / 2 cells at each dab's centre; deflate (or dig) pushes it in the same way; smooth blurs solid and empty cells so bumps and pits melt (strength sets the passes); flatten cuts bumps and fills pits toward the mean plane of the surface under the dab; grab (or drag) moves the cells under each dab by vector cells times strength, with the falloff, so it pulls a branch stub out or bends a lip over. Each point is [x, y, z], [x, y, z, radius], or [x, y, z, radius, strength]; points leave out radius (default 3, 0.5..=64) and strength (0..=1, default 0.5, grab 1). Dabs are laid between points every spacing cells (default half the radius, 0 none; grab lays one per point), and each reads what the dabs before it left. falloff is smooth (default), linear, or constant. only limits the brush to cells of those slots: other cells never change and do not grow. Added cells take the nearest solid cell's slot, or palette. One undo step. Replies with dabs, added, and removed.", json!({
+            "op": {"type": "string", "enum": ["inflate", "deflate", "dig", "smooth", "flatten", "grab", "drag"], "description": "The brush."},
+            "points": {"type": "array", "items": {"type": ["array", "object"]}, "description": "Dab centres in local cells: [x, y, z], [x, y, z, radius], [x, y, z, radius, strength], or {x, y, z, radius?, strength?}."},
+            "radius": num_prop("Default dab radius in cells, 0.5..=64. Defaults to 3."),
+            "strength": num_prop("Default strength, 0..=1. Defaults to 0.5, or 1 for grab."),
+            "falloff": {"type": "string", "enum": ["smooth", "linear", "constant"], "description": "How a dab fades to its radius. Defaults to smooth."},
+            "only": {"type": "array", "items": {"type": "integer"}, "description": "Palette indices the brush may change; other cells stay. Omit for all."},
+            "palette": int_prop("Slot of added cells. Defaults to the nearest solid cell's."),
+            "vector": vec3_prop("grab: [dx, dy, dz] cells a dab's centre moves at strength 1; at most the radius."),
+            "spacing": num_prop("Most cells between dabs, 0..=256; 0 lays one per point. Defaults to half the radius.")
+        }), &["op", "points"]),
         tool("set_marker", "Name a point, a collision box, or a connector (a piece's joining end) on an object, for a game to read: a ledge top, a spawn, a collision volume, where two pieces join. It is saved in the .vox, listed in the export_mesh and export_models replies, and exported as a glTF node named after the marker with extras.froxel (kind, plus size, min, and max for a box and direction for a connector, whose node rotation turns -Z toward it) and in the scene's extras.froxelMarkers. Coordinates are the object's local mesh units: cell (x, y, z) spans x..x+1, so the top centre of cell (4, 4, 10) is [4.5, 4.5, 11]. The marker moves with its object. A marker of the same name is replaced. One undo step. Replies with the marker in local, world, and glTF coordinates.", json!({
             "name": str_prop("Marker name, 1 to 64 characters, such as ledge_top_4m. The glTF node takes it."),
             "kind": {"type": "string", "enum": ["point", "box", "connector"], "description": "point (default), box (collision), or connector"},
@@ -887,7 +944,7 @@ fn tools() -> Vec<Value> {
             "x": num_prop("X in window points, origin at the top-left of the client area"),
             "y": num_prop("Y in window points, origin at the top-left of the client area")
         }), &["x", "y"]),
-        tool("set_script", "Store a Rhai script on an object and read its parameters. One undo step. Voxels change only when regenerate runs. A failure keeps the source and reports the script line. Scripts have the sculpt tools as functions (fill_box with a mode, fill_ellipsoid, fill_rounded_box, fill_tube, carve_box, carve_ellipsoid, carve_rounded_box, carve_tube, smooth, break_end, scatter, joints, column_relief, weather, moss, algae, vines, sweep, and marker, collision_box, connector for markers) with the MCP options in a trailing map such as #{mode: \"empty\"}, get_voxels, set_voxels, and the document tools (set_palette, set_object, remove_object, mirror_object, add_bone, set_bone, remove_bone, bind_object, list_bones, set_pose, clear_pose, add_clip, set_clip_keys, list_clips, remove_clip), which apply after the script in the same undo step, plus sqrt, pow, PI, min, max, clamp, push on arrays, and strings (\"ledge_\" + 4, `ledge_${i}`, to_string); docs/scripting.md lists them.", json!({
+        tool("set_script", "Store a Rhai script on an object and read its parameters. One undo step. Voxels change only when regenerate runs. A failure keeps the source and reports the script line. Scripts have the sculpt tools as functions (fill_box with a mode, fill_ellipsoid, fill_rounded_box, fill_tube, carve_box, carve_ellipsoid, carve_rounded_box, carve_tube, smooth, break_end, scatter, joints, column_relief, weather, moss, algae, vines, sweep, loft, deform, brush, and marker, collision_box, connector for markers) with the MCP options in a trailing map such as #{mode: \"empty\"}, get_voxels, set_voxels, and the document tools (set_palette, set_object, remove_object, mirror_object, add_bone, set_bone, remove_bone, bind_object, list_bones, set_pose, clear_pose, add_clip, set_clip_keys, list_clips, remove_clip), which apply after the script in the same undo step, plus sqrt, pow, PI, min, max, clamp, push on arrays, and strings (\"ledge_\" + 4, `ledge_${i}`, to_string); docs/scripting.md lists them.", json!({
             "object": int_prop("Object index. Omit for the active object."),
             "source": str_prop("Rhai source. Empty clears the script.")
         }), &["source"]),
@@ -989,6 +1046,9 @@ fn hints(name: &str) -> [bool; 3] {
         | "algae"
         | "vines"
         | "sweep"
+        | "deform"
+        | "loft"
+        | "brush"
         | "set_marker"
         | "remove_marker"
         | "set_palette"
@@ -1128,7 +1188,11 @@ Screenshots need the editor:
   froxel mcp --connect 127.0.0.1:7979
 
 --launch opens the editor with that control port when nothing is listening.
-render path-traces a PNG in this process. The window path-traces in Render mode."
+render path-traces a PNG in this process. The window path-traces in Render mode.
+
+Organic shaping: loft (a section that changes along a curve), deform (bend,
+taper, twist, displace), and brush (inflate, deflate, smooth, flatten, grab
+along points). tools/list describes every tool; docs/mcp.md has examples."
     );
 }
 

@@ -11,7 +11,7 @@ const STRIP_GAP: f32 = 4.0;
 /// The tool strip: one column of tool icons, then the Add, Remove, and
 /// Paint modes. Their settings are in [`options`].
 pub(super) fn strip(ui: &mut Ui, session: &mut Session) {
-    const TOOLS: [(Tool, &str, &str); 12] = [
+    const TOOLS: [(Tool, &str, &str); 13] = [
         (Tool::Brush, "Brush", "V"),
         (Tool::Line, "Line", "L"),
         (Tool::Circle, "Circle", ""),
@@ -20,6 +20,7 @@ pub(super) fn strip(ui: &mut Ui, session: &mut Session) {
         (Tool::Face, "Face", "F"),
         (Tool::Generator, "Generator", ""),
         (Tool::Tube, "Tube", ""),
+        (Tool::Sculpt, "Sculpt", "S"),
         (Tool::Mutator, "Mutator", "U"),
         (Tool::Marquee, "Marquee", "M"),
         (Tool::BoxSelect, "Box Select", ""),
@@ -87,7 +88,10 @@ pub(super) fn options(ui: &mut Ui, session: &mut Session) {
     ui.label(RichText::new(session.tool.name()).strong());
     ui.separator();
 
-    if !matches!(session.tool, Tool::Face | Tool::Generator | Tool::Tube) {
+    if !matches!(
+        session.tool,
+        Tool::Face | Tool::Generator | Tool::Tube | Tool::Sculpt
+    ) {
         slider_i32(ui, session, "Size", SliderTarget::BrushSize, 1..=63);
         session.brush_size = session.brush_size.clamp(1, 63);
         segment(
@@ -206,6 +210,7 @@ pub(super) fn options(ui: &mut Ui, session: &mut Session) {
             generator(ui, session);
         }
         Tool::Tube => tube(ui, session),
+        Tool::Sculpt => sculpt(ui, session),
         Tool::Mutator => {
             ui.add_enabled_ui(false, |ui| {
                 let mut foliage = 0;
@@ -310,6 +315,48 @@ fn tube(ui: &mut Ui, session: &mut Session) {
         }
         _ => {}
     }
+}
+
+/// The Sculpt tool: MCP `brush` by drag. A drag lays dabs on the surface
+/// under the pointer, half a radius apart; Grab pulls the pressed point
+/// along the drag in the view plane. The stroke is one undo step.
+fn sculpt(ui: &mut Ui, session: &mut Session) {
+    row(ui, |ui| {
+        for (name, op, tip) in SCULPT_OPS {
+            ui.selectable_value(&mut session.sculpt.op, op, name)
+                .on_hover_text(tip);
+        }
+    });
+    let brush = &mut session.sculpt;
+    row(ui, |ui| {
+        ui.label(RichText::new("Radius").small().color(DIM))
+            .on_hover_text("Dab radius in cells (MCP brush radius)");
+        ui.add(egui::Slider::new(&mut brush.radius, 0.5..=32.0).max_decimals(1));
+    });
+    row(ui, |ui| {
+        ui.label(RichText::new("Strength").small().color(DIM)).on_hover_text(
+            "0..1. Inflate and deflate push up to strength × radius / 2 cells per dab; grab moves the full drag at 1",
+        );
+        ui.add(egui::Slider::new(&mut brush.strength, 0.0..=1.0).max_decimals(2));
+    });
+    row(ui, |ui| {
+        ui.label(RichText::new("Falloff").small().color(DIM))
+            .on_hover_text("How a dab fades from its centre to its radius");
+        for (index, name) in ["Smooth", "Linear", "Constant"].into_iter().enumerate() {
+            ui.selectable_value(&mut brush.falloff, index, name);
+        }
+    });
+    row(ui, |ui| {
+        ui.label(RichText::new("Only").small().color(DIM))
+            .on_hover_text(
+                "Palette slots the brush may change, such as 3, 4; empty changes every slot",
+            );
+        ui.add(
+            egui::TextEdit::singleline(&mut brush.only)
+                .hint_text("all slots")
+                .desired_width(80.0),
+        );
+    });
 }
 
 pub(super) fn axis_row(ui: &mut Ui, axis: &mut Axis) {
