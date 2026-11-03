@@ -36,7 +36,9 @@ const BREAK: &[&str] = &[
     "tips",
     "seed",
 ];
-const SCATTER: &[&str] = &["count", "kinds", "size", "seed", "floor", "clump"];
+const SCATTER: &[&str] = &[
+    "count", "kinds", "size", "seed", "floor", "clump", "exclude",
+];
 
 pub(super) type Fallible<T> = Result<T, Box<EvalAltResult>>;
 pub(super) type Args = serde_json::Map<String, Value>;

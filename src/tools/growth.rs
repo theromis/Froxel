@@ -10,7 +10,9 @@
 use std::collections::{HashMap, HashSet};
 
 use super::debris::Rng;
-use super::surface::{allowed, cell01, check_slots, check_unit, noise3, step, Region, FACES};
+use super::surface::{
+    allowed, cell01, check_slots, check_unit, noise3, step, Exclude, Region, FACES,
+};
 use crate::state::Cell;
 
 /// Most cells one growth call writes.
@@ -91,6 +93,9 @@ pub struct GrowthSpec {
     pub band: Option<(i32, i32)>,
     /// Grow only on cells of these slots. Empty grows on every slot.
     pub only: Vec<u8>,
+    /// Boxes left alone: nothing grows from a cell inside one, and no cell
+    /// inside one is added or painted.
+    pub exclude: Exclude,
     pub layer: Layer,
     pub seed: u64,
 }
@@ -126,7 +131,7 @@ pub fn grow(cells: &HashMap<Cell, u8>, spec: &GrowthSpec) -> Result<Grown, Strin
             return Err("band must be [low, high] with low <= high".into());
         }
     }
-    let mut out = Out::new(cells);
+    let mut out = Out::new(cells, &spec.exclude);
     match &spec.kind {
         GrowthKind::Moss {
             curtains,
@@ -168,6 +173,7 @@ fn check_range(range: (i32, i32), min: i32, max: i32, what: &str) -> Result<(), 
 /// The writes so far, over the document's cells.
 struct Out<'a> {
     cells: &'a HashMap<Cell, u8>,
+    exclude: &'a Exclude,
     added: HashMap<Cell, u8>,
     painted: HashMap<Cell, u8>,
     order: Vec<Cell>,
@@ -176,9 +182,10 @@ struct Out<'a> {
 }
 
 impl<'a> Out<'a> {
-    fn new(cells: &'a HashMap<Cell, u8>) -> Self {
+    fn new(cells: &'a HashMap<Cell, u8>, exclude: &'a Exclude) -> Self {
         Out {
             cells,
+            exclude,
             added: HashMap::new(),
             painted: HashMap::new(),
             order: Vec::new(),
@@ -202,7 +209,7 @@ impl<'a> Out<'a> {
 
     /// Add a plant cell in an empty spot. Returns false when it is taken.
     fn add(&mut self, c: Cell, slot: u8) -> Result<bool, String> {
-        if self.solid(&c) {
+        if self.solid(&c) || self.exclude.contains(c) {
             return Ok(false);
         }
         self.room()?;
@@ -213,7 +220,10 @@ impl<'a> Out<'a> {
 
     /// Recolour a document cell once.
     fn paint(&mut self, c: Cell, slot: u8) -> Result<bool, String> {
-        if self.painted.contains_key(&c) || self.cells.get(&c) == Some(&slot) {
+        if self.painted.contains_key(&c)
+            || self.cells.get(&c) == Some(&slot)
+            || self.exclude.contains(c)
+        {
             return Ok(false);
         }
         self.room()?;
@@ -255,7 +265,7 @@ impl GrowthSpec {
         self.region
             .solid(cells)
             .into_iter()
-            .filter(|c| allowed(&self.only, cells[c]))
+            .filter(|c| allowed(&self.only, cells[c]) && !self.exclude.contains(*c))
             .collect()
     }
 

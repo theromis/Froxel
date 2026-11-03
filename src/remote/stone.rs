@@ -10,7 +10,10 @@ use std::collections::HashMap;
 
 use serde_json::{json, Map, Value};
 
-use super::{box_corners, fill_mode, opt_f64, opt_str, range_pair, req_i32, slot_list, FillMode};
+use super::{
+    box_corners, exclude_boxes, fill_mode, opt_f64, opt_str, range_pair, req_i32, slot_list,
+    FillMode,
+};
 use crate::state::{Cell, Session};
 
 /// A stone tool, by its `voxel.*` method.
@@ -148,6 +151,7 @@ pub(crate) fn joints_spec(params: &Value) -> Result<crate::tools::JointSpec, Str
         dirt: one_slot(params, "dirt")?,
         only: slot_list(params, "only")?,
         density: opt_f64(params, "density")?.unwrap_or(0.8),
+        exclude: exclude_boxes(params)?,
         seed: seed(params)?,
     })
 }
@@ -165,6 +169,7 @@ pub(crate) fn weather_spec(params: &Value) -> Result<crate::tools::WeatherSpec, 
         noise_density: opt_f64(params, "noiseDensity")?.unwrap_or(0.35),
         noise_scale: opt_f64(params, "noiseScale")?.unwrap_or(3.0),
         only: slot_list(params, "only")?,
+        exclude: exclude_boxes(params)?,
         seed: seed(params)?,
     })
 }
@@ -254,6 +259,7 @@ pub(crate) fn growth_spec(params: &Value, tool: Stone) -> Result<crate::tools::G
         facing,
         band,
         only: slot_list(params, "only")?,
+        exclude: exclude_boxes(params)?,
         layer,
         seed: seed(params)?,
     })

@@ -41,6 +41,15 @@ impl Region {
         Ok(Region { min, max })
     }
 
+    /// The box of two corners in any order, of any size: an exclude box
+    /// only answers [`Region::contains`], so it has no cell limit.
+    pub fn spanning(a: Cell, b: Cell) -> Region {
+        Region {
+            min: (a.0.min(b.0), a.1.min(b.1), a.2.min(b.2)),
+            max: (a.0.max(b.0), a.1.max(b.1), a.2.max(b.2)),
+        }
+    }
+
     pub fn contains(&self, c: Cell) -> bool {
         (self.min.0..=self.max.0).contains(&c.0)
             && (self.min.1..=self.max.1).contains(&c.1)
@@ -56,6 +65,21 @@ impl Region {
             .collect();
         found.sort_unstable_by_key(|c| (c.2, c.1, c.0));
         found
+    }
+}
+
+/// Most boxes in one `exclude`.
+pub const MAX_EXCLUDE: usize = 64;
+
+/// Inclusive boxes a tool leaves alone (MCP `exclude`): walking surfaces
+/// such as a ledge top, a cave floor, or a river bed. No cell inside one is
+/// removed, recoloured, or written, and a plant does not grow from one.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Exclude(pub Vec<Region>);
+
+impl Exclude {
+    pub fn contains(&self, c: Cell) -> bool {
+        self.0.iter().any(|region| region.contains(c))
     }
 }
 

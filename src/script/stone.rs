@@ -16,7 +16,7 @@ use super::{runtime, Scratch};
 use crate::remote::{self, Stone};
 
 const JOINTS: &[&str] = &[
-    "spacing", "course", "width", "depth", "dirt", "only", "density", "seed",
+    "spacing", "course", "width", "depth", "dirt", "only", "density", "exclude", "seed",
 ];
 
 const WEATHER: &[&str] = &[
@@ -29,6 +29,7 @@ const WEATHER: &[&str] = &[
     "noiseDensity",
     "noiseScale",
     "only",
+    "exclude",
     "seed",
 ];
 
@@ -39,6 +40,7 @@ const MOSS: &[&str] = &[
     "facing",
     "band",
     "only",
+    "exclude",
     "layer",
     "curtains",
     "length",
@@ -46,7 +48,7 @@ const MOSS: &[&str] = &[
     "seed",
 ];
 const ALGAE: &[&str] = &[
-    "amount", "noise", "faces", "facing", "band", "only", "layer", "seed",
+    "amount", "noise", "faces", "facing", "band", "only", "exclude", "layer", "seed",
 ];
 const VINES: &[&str] = &[
     "amount",
@@ -55,6 +57,7 @@ const VINES: &[&str] = &[
     "facing",
     "band",
     "only",
+    "exclude",
     "length",
     "blooms",
     "bloomChance",

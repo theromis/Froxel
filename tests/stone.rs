@@ -28,6 +28,7 @@ fn joint_spec(pattern: JointPattern) -> JointSpec {
         dirt: Some(9),
         only: Vec::new(),
         density: 0.8,
+        exclude: Exclude::default(),
         seed: 4,
     }
 }
@@ -104,6 +105,7 @@ fn weather_spec() -> WeatherSpec {
         noise_density: 0.4,
         noise_scale: 3.0,
         only: Vec::new(),
+        exclude: Exclude::default(),
         seed: 8,
     }
 }
@@ -169,6 +171,7 @@ fn growth_spec(kind: GrowthKind, palettes: Vec<u8>) -> GrowthSpec {
         facing: None,
         band: None,
         only: Vec::new(),
+        exclude: Exclude::default(),
         layer: Layer::Grow,
         seed: 3,
     }
@@ -354,4 +357,55 @@ fn sweep_takes_a_polygon_and_refuses_bad_input() {
             .unwrap_err()
             .contains("3 to 256")
     );
+}
+
+/// The top layer of the slab and the air above it: a walking surface.
+fn ledge_top() -> Exclude {
+    Exclude(vec![
+        Region::spanning((4, 0, 15), (15, 5, 15)),
+        Region::spanning((4, 0, 16), (15, 5, 20)),
+    ])
+}
+
+#[test]
+fn excluded_boxes_keep_their_cells_through_joints_weather_and_growth() {
+    let cells = slab((0, 0, 0), (19, 5, 15), 1);
+    let exclude = ledge_top();
+    let mut joint = joint_spec(JointPattern::Columns);
+    joint.exclude = exclude.clone();
+    let mut weather = weather_spec();
+    weather.region = Region::new((0, 0, 0), (19, 5, 15), "weather").unwrap();
+    weather.chip = 0.6;
+    weather.pits = 0.5;
+    weather.exclude = exclude.clone();
+    let mut moss = growth_spec(MOSS, vec![4, 5]);
+    moss.amount = 1.0;
+    moss.exclude = exclude.clone();
+    let mut vines = growth_spec(
+        GrowthKind::Vines {
+            length: (2, 4),
+            blooms: vec![6],
+            bloom_chance: 0.5,
+        },
+        vec![4],
+    );
+    vines.amount = 1.0;
+    vines.exclude = exclude.clone();
+    let writes = [
+        joints(&cells, &joint).unwrap().writes,
+        crate::tools::weather(&cells, &weather).unwrap().writes,
+        grow(&cells, &moss).unwrap().writes,
+        grow(&cells, &vines).unwrap().writes,
+    ];
+    for (tool, writes) in writes.iter().enumerate() {
+        assert!(!writes.is_empty(), "tool {tool} wrote nothing");
+        for &(x, y, z, _) in writes {
+            assert!(
+                !exclude.contains((x, y, z)),
+                "tool {tool} wrote ({x}, {y}, {z})"
+            );
+        }
+    }
+    // Outside the boxes the tools still act on the top.
+    assert!(writes[2].iter().any(|w| w.2 == 16 && w.0 < 4));
 }

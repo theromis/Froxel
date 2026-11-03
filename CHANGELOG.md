@@ -4,6 +4,12 @@
 
 ### Added
 
+- Protected boxes: `exclude` on MCP and Rhai `scatter`, `joints`,
+  `weather`, `moss`, `algae`, and `vines` (one inclusive box or a list of
+  up to 64) keeps walking surfaces whole: no cell inside is cut, chipped,
+  recoloured, or grown on, and no debris rests in one. The Protect section
+  holds the boxes for the Scatter, Joints, Weather, and Growth sections.
+
 - `examples/gorge_wall.rhai`: a fractured, mossy gorge wall swept along a
   curve, with algae, vines, and markers, and
   `examples/gorge_wall_variants.json` for variant export.

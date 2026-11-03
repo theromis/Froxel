@@ -1109,12 +1109,12 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.tube", "points, radius?, curve?, palette | palettes, pattern?, period?, sectors?, seed?, mode?", "Fill a tapered tube through 2..=1024 points, at most 2000000 cells"),
     ("voxel.carve", "shape, x0..z1 | points, radius?, curve?", "Remove the cells inside a box, ellipsoid, rounded_box, or tube"),
     ("voxel.break", "point, normal, depth?, splinters? | density?, length?, thickness?, taper?, rimBias?, bark?, sapwood?, tips?, seed?", "Jagged fracture across a plane with splinters"),
-    ("voxel.scatter", "x0, y0, z0, x1, y1, z1, palettes, count?, kinds?, size?, seed?, floor?, clump?", "Drop small pieces that settle into a heap"),
-    ("voxel.joints", "x0, y0, z0, x1, y1, z1, pattern, spacing?, course?, width?, depth?, dirt?, only?, density?, seed?", "Cut joint gaps: columns, running bond courses, or cracks"),
-    ("voxel.weather", "x0, y0, z0, x1, y1, z1, chip?, chipSize?, pits?, pitDepth?, broken?, noise?, noiseDensity?, noiseScale?, only?, seed?", "Chip edges and corners, dent pits, and add colour noise on exposed cells"),
-    ("voxel.moss", "x0, y0, z0, x1, y1, z1, palettes, amount?, noise?, faces?, facing?, band?, only?, layer?, curtains?, length?, thickness?, seed?", "Moss caps on tops and curtains down faces with a ragged end"),
-    ("voxel.algae", "x0, y0, z0, x1, y1, z1, palettes, band?, amount?, noise?, faces?, facing?, only?, layer?, seed?", "Algae band at the waterline, dense low and thinning upward in clumps"),
-    ("voxel.vines", "x0, y0, z0, x1, y1, z1, palettes, amount?, length?, blooms?, bloomChance?, noise?, faces?, facing?, band?, only?, seed?", "Vine strands hanging from top edges, with blooms"),
+    ("voxel.scatter", "x0, y0, z0, x1, y1, z1, palettes, count?, kinds?, size?, seed?, floor?, clump?, exclude?", "Drop small pieces that settle into a heap"),
+    ("voxel.joints", "x0, y0, z0, x1, y1, z1, pattern, spacing?, course?, width?, depth?, dirt?, only?, exclude?, density?, seed?", "Cut joint gaps: columns, running bond courses, or cracks"),
+    ("voxel.weather", "x0, y0, z0, x1, y1, z1, chip?, chipSize?, pits?, pitDepth?, broken?, noise?, noiseDensity?, noiseScale?, only?, exclude?, seed?", "Chip edges and corners, dent pits, and add colour noise on exposed cells"),
+    ("voxel.moss", "x0, y0, z0, x1, y1, z1, palettes, amount?, noise?, faces?, facing?, band?, only?, exclude?, layer?, curtains?, length?, thickness?, seed?", "Moss caps on tops and curtains down faces with a ragged end"),
+    ("voxel.algae", "x0, y0, z0, x1, y1, z1, palettes, band?, amount?, noise?, faces?, facing?, only?, exclude?, layer?, seed?", "Algae band at the waterline, dense low and thinning upward in clumps"),
+    ("voxel.vines", "x0, y0, z0, x1, y1, z1, palettes, amount?, length?, blooms?, bloomChance?, noise?, faces?, facing?, band?, only?, exclude?, seed?", "Vine strands hanging from top edges, with blooms"),
     ("voxel.sweep", "points, profile | width + height + radius?, curve?, palette | palettes, pattern?, period?, seed?, mode?", "Fill a 2D profile along a polyline or smooth curve, with twist and scale per point"),
     ("marker.set", "name, kind?, point | x0..z1 | min + max, direction?, object?", "Name a point, collision box, or connector on an object; replaces one of the same name"),
     ("marker.remove", "name | all", "Remove one marker, or all"),
@@ -1829,6 +1829,37 @@ fn slot_list(params: &Value, key: &str) -> Result<Vec<u8>, String> {
         .collect()
 }
 
+/// MCP `exclude`: one inclusive box `[x0, y0, z0, x1, y1, z1]` or a list of
+/// them, at most [`crate::tools::MAX_EXCLUDE`]. Missing is none.
+pub(crate) fn exclude_boxes(params: &Value) -> Result<crate::tools::Exclude, String> {
+    let bad = "exclude must be a box [x0, y0, z0, x1, y1, z1] or a list of them";
+    let boxes: Vec<&Value> = match params.get("exclude") {
+        None | Some(Value::Null) => return Ok(crate::tools::Exclude::default()),
+        Some(Value::Array(list)) if list.iter().all(Value::is_array) => list.iter().collect(),
+        Some(one @ Value::Array(_)) => vec![one],
+        Some(_) => return Err(bad.into()),
+    };
+    if boxes.len() > crate::tools::MAX_EXCLUDE {
+        return Err(format!(
+            "exclude takes at most {} boxes",
+            crate::tools::MAX_EXCLUDE
+        ));
+    }
+    let mut regions = Vec::with_capacity(boxes.len());
+    for found in boxes {
+        let corners: Vec<i32> = found
+            .as_array()
+            .filter(|list| list.len() == 6)
+            .and_then(|list| list.iter().map(as_i32).collect())
+            .ok_or(bad)?;
+        regions.push(crate::tools::Region::spanning(
+            (corners[0], corners[1], corners[2]),
+            (corners[3], corners[4], corners[5]),
+        ));
+    }
+    Ok(crate::tools::Exclude(regions))
+}
+
 /// A `[min, max]` pair, or one number for both.
 fn range_pair(params: &Value, key: &str, default: (f64, f64)) -> Result<(f64, f64), String> {
     match params.get(key) {
@@ -1968,6 +1999,7 @@ pub(crate) fn scatter_spec(params: &Value) -> Result<crate::tools::ScatterSpec, 
             Some(found) => Some(as_i32(found).ok_or("floor must be an integer")?),
         },
         clump: opt_f64(params, "clump")?.unwrap_or(0.5),
+        exclude: exclude_boxes(params)?,
     };
     Ok(spec)
 }

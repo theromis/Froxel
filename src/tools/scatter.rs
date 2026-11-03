@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use super::debris::{hash01, Rng};
 use super::sculpt::{tube_shaped, TubePoint, TubeShape, MAX_SCULPT_CELLS};
+use super::surface::Exclude;
 use crate::state::Cell;
 
 /// Most pieces in one scatter.
@@ -61,13 +62,17 @@ pub struct ScatterSpec {
     pub floor: Option<i32>,
     /// 0 spreads pieces evenly over the region; 1 piles them in its middle.
     pub clump: f64,
+    /// Boxes left alone: a piece that would come to rest with a cell inside
+    /// one is skipped.
+    pub exclude: Exclude,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Scattered {
     pub writes: Vec<(i32, i32, i32, i32)>,
     pub placed: usize,
-    /// Pieces that met a solid cell at the region's top and were left out.
+    /// Pieces that met a solid cell at the region's top, or would rest in an
+    /// excluded box, and were left out.
     pub skipped: usize,
 }
 
@@ -143,6 +148,13 @@ pub fn scatter(cells: &HashMap<Cell, u8>, spec: &ScatterSpec) -> Result<Scattere
         let mut z = top;
         while z > floor && fits(z - 1, &added) {
             z -= 1;
+        }
+        if shape.iter().any(|o| {
+            spec.exclude
+                .contains((spot[0] + o.0, spot[1] + o.1, z + o.2))
+        }) {
+            skipped += 1;
+            continue;
         }
         for o in &shape {
             added.insert((spot[0] + o.0, spot[1] + o.1, z + o.2), slot);

@@ -76,7 +76,9 @@ If the tools are missing, the server is not configured. Point the user to
    painting dark lines, then `weather` for chipped edges, pits, and
    subtle colour noise, then `moss` (caps and curtains), `algae` (a
    waterline band), and `vines` (hanging strands with blooms) with your own
-   slots and `set_palette` motion. Do not compute tubes or carves in
+   slots and `set_palette` motion. Pass `exclude` boxes (a ledge top, a
+   cave floor, a river bed, with the air above) to these tools and
+   `scatter` so walking surfaces stay flat instead of refilling them. Do not compute tubes or carves in
    an outside script. Get the silhouette and proportions right first.
 3. **Look.** Use `preview` for a quick lit look at shape and framing after
    every edit: it is the viewport's light, rasterised in well under a second,

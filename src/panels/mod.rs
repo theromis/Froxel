@@ -125,6 +125,8 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
                     ui.separator();
                     render::break_end(ui, session);
                     ui.separator();
+                    stone::protect(ui, session);
+                    ui.separator();
                     render::scatter(ui, session);
                     ui.separator();
                     stone::joints(ui, session);

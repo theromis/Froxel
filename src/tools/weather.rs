@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::debris::Rng;
 use super::surface::{
-    allowed, cell01, check_slot, check_slots, check_unit, noise3, step, Region, FACES,
+    allowed, cell01, check_slot, check_slots, check_unit, noise3, step, Exclude, Region, FACES,
 };
 use crate::state::Cell;
 
@@ -31,6 +31,8 @@ pub struct WeatherSpec {
     pub noise_scale: f64,
     /// Act only on cells of these slots. Empty acts on every slot.
     pub only: Vec<u8>,
+    /// Boxes left alone: no chip, pit, broken face, or noise inside them.
+    pub exclude: Exclude,
     pub seed: u64,
 }
 
@@ -66,7 +68,10 @@ pub fn weather(cells: &HashMap<Cell, u8>, spec: &WeatherSpec) -> Result<Weathere
     let mut gone: HashSet<Cell> = HashSet::new();
     let solid = |c: &Cell, gone: &HashSet<Cell>| cells.contains_key(c) && !gone.contains(c);
     let usable = |c: &Cell, gone: &HashSet<Cell>| {
-        region.contains(*c) && solid(c, gone) && allowed(&spec.only, cells[c])
+        region.contains(*c)
+            && !spec.exclude.contains(*c)
+            && solid(c, gone)
+            && allowed(&spec.only, cells[c])
     };
     let open = |c: Cell, gone: &HashSet<Cell>| -> Vec<Cell> {
         FACES

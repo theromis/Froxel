@@ -51,6 +51,41 @@ fn slots_field(ui: &mut Ui, text: &mut String, hint: &str) {
     );
 }
 
+/// MCP `exclude`: boxes Scatter, Joints, Weather, and Growth leave alone.
+pub(super) fn protect(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Protect");
+        ui.label(
+            RichText::new("Boxes Scatter, Joints, Weather, and Growth leave alone: ledge tops, cave floors, river beds.")
+                .small()
+                .color(DIM),
+        );
+        ui.add(
+            egui::TextEdit::multiline(&mut session.stone.exclude)
+                .hint_text("x0 y0 z0 x1 y1 z1, one box per line")
+                .desired_rows(2)
+                .desired_width(f32::INFINITY),
+        )
+        .on_hover_text("MCP exclude: inclusive boxes in local cells. No cell inside one is cut, chipped, pitted, recoloured, or grown on, and no debris lands in one.");
+        ui.horizontal(|ui| {
+            if ui
+                .button("Add selection")
+                .on_hover_text("Add the selection's box, such as a walking surface.")
+                .clicked()
+            {
+                session.protect_selection();
+            }
+            if ui
+                .add_enabled(!session.stone.exclude.is_empty(), egui::Button::new("Clear"))
+                .clicked()
+            {
+                session.stone.exclude.clear();
+            }
+        });
+    });
+}
+
 /// MCP `joints`: real gaps between stones.
 pub(super) fn joints(ui: &mut Ui, session: &mut Session) {
     let enabled = session.voxel_count() > 0 && session.editor_mode == EditorMode::Model;

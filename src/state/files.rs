@@ -422,6 +422,15 @@ impl Session {
     /// object's box raised by the largest piece so pieces can land on top.
     pub fn scatter_from_panel(&mut self) {
         let panel = self.scatter_panel.clone();
+        let exclude = match self.stone.exclude_arg().and_then(|boxes| {
+            crate::remote::exclude_boxes(&serde_json::json!({ "exclude": boxes }))
+        }) {
+            Ok(exclude) => exclude,
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
         let palettes = match parse_slots(&panel.palettes) {
             Ok(slots) if slots.is_empty() => vec![self.active_slot.max(1)],
             Ok(slots) => slots,
@@ -456,6 +465,7 @@ impl Session {
             seed: panel.seed.max(0) as u64,
             floor: None,
             clump: f64::from(panel.clump),
+            exclude,
         };
         self.status = match self.scatter_active(&spec) {
             Ok(done) => format!(

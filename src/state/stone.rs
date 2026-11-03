@@ -396,11 +396,32 @@ pub const DIRECTIONS: [(&str, [i32; 3]); 6] = [
 
 #[derive(Clone, Default, PartialEq)]
 pub struct StonePanels {
+    /// The Protect section: MCP `exclude` boxes for Scatter, Joints,
+    /// Weather, and Growth, `x0 y0 z0 x1 y1 z1` separated by semicolons or
+    /// new lines.
+    pub exclude: String,
     pub joints: JointsPanel,
     pub weather: WeatherPanel,
     pub growth: GrowthPanel,
     pub sweep: SweepPanel,
     pub markers: MarkersPanel,
+}
+
+impl StonePanels {
+    /// The Protect boxes as MCP `exclude`.
+    pub(crate) fn exclude_arg(&self) -> Result<Value, String> {
+        let boxes = rows(&self.exclude, "Protect", 6..=6)?;
+        if boxes.len() > crate::tools::MAX_EXCLUDE {
+            return Err(format!(
+                "Protect: at most {} boxes",
+                crate::tools::MAX_EXCLUDE
+            ));
+        }
+        Ok(json!(boxes
+            .iter()
+            .map(|row| row.iter().map(|v| v.round() as i64).collect::<Vec<_>>())
+            .collect::<Vec<_>>()))
+    }
 }
 
 fn slots(what: &str, text: &str) -> Result<Value, String> {
@@ -469,6 +490,23 @@ impl Session {
             Err(err) => err,
         };
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// Add the selection's box to the Protect boxes.
+    pub fn protect_selection(&mut self) {
+        let Some((min, max)) = cell_bounds(self.picked.iter().copied()) else {
+            self.status = "Select the cells to keep clear, such as a ledge top.".into();
+            return;
+        };
+        let line = format!(
+            "{} {} {} {} {} {}",
+            min.0, min.1, min.2, max.0, max.1, max.2
+        );
+        let exclude = &mut self.stone.exclude;
+        if !exclude.is_empty() && !exclude.ends_with('\n') {
+            exclude.push('\n');
+        }
+        exclude.push_str(&line);
     }
 
     /// Add the selection's centre as the next Sweep point.
@@ -547,8 +585,11 @@ impl Session {
         args: Result<Value, String>,
         report: impl FnOnce(&Value) -> String,
     ) {
-        let mut args = match args {
-            Ok(args) => args,
+        let mut args = match args.and_then(|args| Ok((args, self.stone.exclude_arg()?))) {
+            Ok((mut args, exclude)) => {
+                args["exclude"] = exclude;
+                args
+            }
             Err(err) => {
                 self.status = err;
                 return;

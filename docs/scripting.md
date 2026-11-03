@@ -277,9 +277,10 @@ list. Options:
 | `seed` | `0` | A whole number of at least 0. |
 | `floor` | box bottom | Lowest z a piece may reach. |
 | `clump` | `0.5` | 0 spreads pieces over the box; 1 piles them in its middle. |
+| `exclude` | none | Boxes no piece may rest in (see [Protected boxes](#protected-boxes)). |
 
 It returns `#{changed, pieces, skipped}`; `skipped` counts pieces that met a
-solid cell at the top of the box. Other objects do not stop a falling piece.
+solid cell at the top of the box or would rest in an `exclude` box. Other objects do not stop a falling piece.
 
 ### Sweep
 
@@ -327,6 +328,7 @@ curved wall), or `"cracks"` (an irregular crack network). Options:
 | `dirt` | keep | Slot of the solid cell at the bottom of each gap. |
 | `only` | every slot | Cut only these slots. |
 | `density` | `0.8` | Cracks: the share of piece boundaries that crack. |
+| `exclude` | none | Boxes left uncut (see [Protected boxes](#protected-boxes)). |
 | `seed` | `0` | A whole number of at least 0. |
 
 It returns `#{changed, removed, dirtied}`.
@@ -353,6 +355,7 @@ take `broken`; then `noise` slots recolour soft patches. Options:
 | `noiseDensity` | `0.35` | Share of exposed cells the noise recolours. |
 | `noiseScale` | `3` | Noise patch size in cells, 1..=32. |
 | `only` | every slot | Act only on these slots. |
+| `exclude` | none | Boxes left alone (see [Protected boxes](#protected-boxes)). |
 | `seed` | `0` | A whole number of at least 0. |
 
 It returns `#{changed, chips, pits, removed, broken, recoloured}`.
@@ -378,6 +381,7 @@ three:
 | `facing` | any | Only faces pointing within 60 degrees of `[x, y, z]`. |
 | `band` | none | Only cells with z in `[low, high]`; algae thins from its bottom to its top. |
 | `only` | every slot | Grow only on cells of these slots. |
+| `exclude` | none | Boxes nothing grows from or into (see [Protected boxes](#protected-boxes)). |
 | `layer` | grow; paint for algae | `"grow"` adds a layer on the face, `"paint"` recolours it. Vines always grow. |
 | `seed` | `0` | A whole number of at least 0. |
 
@@ -386,6 +390,22 @@ runs down from), `length` ([2, 8]), and `thickness` (1..=3). Vines take
 `length` ([4, 16]), `blooms` (slots), and `bloomChance` (0.06). Each returns
 `#{changed, added, painted}`, with `curtains` for moss and `strands` and
 `blooms` for vines.
+
+### Protected boxes
+
+```rhai
+let floor = [cx0, -4, fz, cx1, cd, fz + 3];          // the cave floor and the air above it
+let tops = [[0, 0, 37, 80, 19, 40], floor];
+weather(x0, y0, z0, x1, y1, z1, #{chip: 0.16, pits: 0.02, broken: 2, exclude: tops});
+moss(x0, y0, z0, x1, y1, z1, [10, 11, 12], #{exclude: tops});
+```
+
+`exclude` on `scatter`, `joints`, `weather`, `moss`, `algae`, and `vines`
+is one inclusive box `[x0, y0, z0, x1, y1, z1]` or a list of up to 64, of
+any size. No cell inside a box is removed, recoloured, or written, no plant
+grows from a cell inside one, and no piece rests in one. Give a walking
+surface's solid top layer and the air above it, and the stone around it
+weathers while the top stays flat: no refill after the dressing.
 
 ### Example
 

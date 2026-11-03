@@ -1014,3 +1014,57 @@ fn the_gorge_wall_is_jointed_overgrown_and_marked() {
     );
     assert_eq!(session.markers.len(), 9);
 }
+
+#[test]
+fn exclude_keeps_a_walking_surface_in_scripts_as_in_mcp() {
+    use serde_json::json;
+    let script = run_cells(
+        r#"
+        fill_box(0, 0, 0, 23, 5, 15, 1);
+        let top = [[0, 0, 15, 23, 5, 15], [0, 0, 16, 23, 5, 20]];
+        weather(0, 0, 0, 23, 5, 15, #{chip: 0.5, pits: 0.4, broken: 3, exclude: top, seed: 2});
+        moss(-1, -1, -1, 24, 6, 20, [6, 7], #{amount: 1.0, exclude: top, seed: 1});
+        scatter(0, 0, 16, 23, 5, 20, [8], #{count: 20, exclude: [0, 0, 16, 23, 5, 20]});
+        "#,
+    )
+    .unwrap();
+    let top = json!([[0, 0, 15, 23, 5, 15], [0, 0, 16, 23, 5, 20]]);
+    let mcp = mcp_cells(&[
+        (
+            "voxel.fill",
+            json!({"x0": 0, "y0": 0, "z0": 0, "x1": 23, "y1": 5, "z1": 15, "palette": 1}),
+        ),
+        (
+            "voxel.weather",
+            json!({"x0": 0, "y0": 0, "z0": 0, "x1": 23, "y1": 5, "z1": 15, "chip": 0.5,
+                "pits": 0.4, "broken": 3, "exclude": top, "seed": 2}),
+        ),
+        (
+            "voxel.moss",
+            json!({"x0": -1, "y0": -1, "z0": -1, "x1": 24, "y1": 6, "z1": 20,
+                "palettes": [6, 7], "amount": 1.0, "exclude": top, "seed": 1}),
+        ),
+        (
+            "voxel.scatter",
+            json!({"x0": 0, "y0": 0, "z0": 16, "x1": 23, "y1": 5, "z1": 20, "palettes": [8],
+                "count": 20, "exclude": [0, 0, 16, 23, 5, 20]}),
+        ),
+    ]);
+    assert_eq!(script, mcp);
+    // The top stays a flat slot-1 floor with nothing above it.
+    for y in 0..=5 {
+        for x in 0..=23 {
+            assert_eq!(script.get(&(x, y, 15)), Some(&1), "({x}, {y}, 15)");
+            assert!(!script.contains_key(&(x, y, 16)), "({x}, {y}, 16)");
+        }
+    }
+    // Weathering and moss still reach the sides.
+    assert!(script
+        .values()
+        .any(|slot| *slot == 3 || *slot == 6 || *slot == 7));
+    let bad = run_cells(
+        r#"fill_box(0, 0, 0, 3, 3, 3, 1); weather(0, 0, 0, 3, 3, 3, #{exclude: [1, 2]});"#,
+    )
+    .unwrap_err();
+    assert!(bad.contains("exclude must be a box"), "{bad}");
+}

@@ -99,6 +99,12 @@ through their slots to the tip, with occasional blooms. Give the vine slots
 moss and algae still. Pass `only` with the stone slots so plants do not
 grow on plants.
 
+Pass `exclude` boxes to `joints`, `weather`, the plants, and `scatter` to
+keep walking surfaces whole: a ledge top, a cave floor, or a river bed (its
+top layer and the air above it) stays flat while the stone around it is
+cut, chipped, and grown on, so it needs no refill. The editor's Protect
+section holds the boxes; Add selection appends the selected box.
+
 `set_marker` names a ledge top, a collision box, or a connector on the
 piece, so the game reads them from the exported glb (nodes with
 `extras.froxel`) instead of measuring the model again.

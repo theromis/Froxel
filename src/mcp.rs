@@ -279,7 +279,7 @@ fn dispatch(
                 "protocolVersion": version,
                 "capabilities": {"tools": {"listChanged": false}},
                 "serverInfo": {"name": "Froxel", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. preview writes a fast lit PNG (the viewport mesh and light, rasterised, well under a second) framed on the model or one object; use it to look after every step. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, grow limbs and roots with fill_tube, cut hollows with carve, soften with smooth, refine with set_voxels, and render after every step. Stone surfaces: joints cuts real joint gaps (columns, courses, cracks), weather chips edges, dents pits, and adds colour noise, and moss, algae, and vines grow plants on exposed faces (the caller gives the slots and their motion). sweep fills a cross-section along a curve for curved walls, banks, and ledges. set_marker names points, collision boxes, and connectors that the .vox keeps and the glb carries as nodes; export_variants writes a .vox and .glb per parameter set with a manifest of parameters, markers, and bounds. examples/gorge_wall.rhai uses them all. A Rhai script (set_script) can call the same sculpt, voxel, object, rig, clip, and palette tools, with the MCP options in a trailing map, for a family of organic pieces (docs/scripting.md, examples/hollow_log.rhai)."
+                "instructions": "Edits apply to the active object, in that object's local cells. render path-traces a PNG in this process. preview writes a fast lit PNG (the viewport mesh and light, rasterised, well under a second) framed on the model or one object; use it to look after every step. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, grow limbs and roots with fill_tube, cut hollows with carve, soften with smooth, refine with set_voxels, and render after every step. Stone surfaces: joints cuts real joint gaps (columns, courses, cracks), weather chips edges, dents pits, and adds colour noise, and moss, algae, and vines grow plants on exposed faces (the caller gives the slots and their motion). Their exclude boxes (and scatter's) keep walking surfaces whole, with no refill afterwards. sweep fills a cross-section along a curve for curved walls, banks, and ledges. set_marker names points, collision boxes, and connectors that the .vox keeps and the glb carries as nodes; export_variants writes a .vox and .glb per parameter set with a manifest of parameters, markers, and bounds. examples/gorge_wall.rhai uses them all. A Rhai script (set_script) can call the same sculpt, voxel, object, rig, clip, and palette tools, with the MCP options in a trailing map, for a family of organic pieces (docs/scripting.md, examples/hollow_log.rhai)."
             }),
         ));
     }
@@ -624,7 +624,7 @@ fn tools() -> Vec<Value> {
             "tips": int_prop("Palette index for the outer part of each splinter, often a lighter wood. Omit to use the sapwood."),
             "seed": int_prop("Seed. Defaults to 0.")
         }), &["point", "normal"]),
-        tool("scatter", "Scatter small pieces of debris (shard, chip, pebble, chunk) into the active object, for a heap at a break, chips at a stump, gravel. Each piece starts inside the inclusive box's x and y at its top and falls straight down until the next step would touch a solid cell (the model or a piece before it) or pass floor, so pieces rest on what is below and pile up. Only cells, no physics; only empty cells are written. A piece that meets a solid cell at the top of the box is skipped. Deterministic for a seed. At most 2000 pieces, a box of 2000000 cells, and 200000 new cells. One undo step. Replies with pieces and skipped.", {
+        tool("scatter", "Scatter small pieces of debris (shard, chip, pebble, chunk) into the active object, for a heap at a break, chips at a stump, gravel. Each piece starts inside the inclusive box's x and y at its top and falls straight down until the next step would touch a solid cell (the model or a piece before it) or pass floor, so pieces rest on what is below and pile up. Only cells, no physics; only empty cells are written. A piece that meets a solid cell at the top of the box, or would rest in an exclude box, is skipped. Deterministic for a seed. At most 2000 pieces, a box of 2000000 cells, and 200000 new cells. One undo step. Replies with pieces and skipped.", {
             let mut p = json!({});
             for key in ["x0", "y0", "z0", "x1", "y1", "z1"] {
                 p[key] = int_prop("Inclusive box corner");
@@ -636,9 +636,10 @@ fn tools() -> Vec<Value> {
             p["seed"] = int_prop("Seed. Defaults to 0.");
             p["floor"] = int_prop("Lowest z a piece may rest at. Defaults to the box's bottom.");
             p["clump"] = num_prop("0 spreads pieces evenly over the box; 1 piles them in its middle. Defaults to 0.5.");
+            p["exclude"] = exclude_prop();
             p
         }, &["x0", "y0", "z0", "x1", "y1", "z1", "palettes"]),
-        tool("joints", "Cut real joint gaps into the solid cells of an inclusive box of the active object, for fractured limestone, masonry, and cracked rock. The cells are split into stones by pattern: columns (vertical columns of random widths, seen from above as a jittered grid, with a bed joint now and then), courses (horizontal courses of blocks whose vertical joints shift from course to course, a running bond), or cracks (an irregular network between jagged pieces). Cells on a boundary are removed down to depth cells under the surface; the solid cell at the bottom of each gap takes the dirt slot. Deterministic for a seed. A box of at most 2000000 cells. One undo step. Replies with removed and dirtied.", {
+        tool("joints", "Cut real joint gaps into the solid cells of an inclusive box of the active object, for fractured limestone, masonry, and cracked rock. The cells are split into stones by pattern: columns (vertical columns of random widths, seen from above as a jittered grid, with a bed joint now and then), courses (horizontal courses of blocks whose vertical joints shift from course to course, a running bond), or cracks (an irregular network between jagged pieces). Cells on a boundary are removed down to depth cells under the surface; the solid cell at the bottom of each gap takes the dirt slot. exclude boxes keep walking surfaces whole. Deterministic for a seed. A box of at most 2000000 cells. One undo step. Replies with removed and dirtied.", {
             let mut p = json!({});
             for key in ["x0", "y0", "z0", "x1", "y1", "z1"] {
                 p[key] = int_prop("Inclusive box corner");
@@ -651,10 +652,11 @@ fn tools() -> Vec<Value> {
             p["dirt"] = int_prop("Palette index for the solid cell at the bottom of each gap, such as dark dirt. Omit to keep its colour.");
             p["only"] = json!({"type": "array", "items": {"type": "integer"}, "description": "Cut only cells of these palette indices (the stone slots), so moss and plants stay. Omit to cut every slot."});
             p["density"] = num_prop("cracks: the share of piece boundaries that crack, 0..=1. Defaults to 0.6.");
+            p["exclude"] = exclude_prop();
             p["seed"] = int_prop("Seed. Defaults to 0.");
             p
         }, &["x0", "y0", "z0", "x1", "y1", "z1", "pattern"]),
-        tool("weather", "Weather the exposed cells of an inclusive box of the active object: chip edges and corners (small irregular chunks off cells exposed on two or more sides), dent flat faces with pits (real holes, not paint), and add subtle colour noise in soft patches. The faces a chip or pit uncovers take the broken slot, usually a slightly darker stone (not dirt). Deterministic for a seed. A box of at most 2000000 cells. One undo step. Replies with chips, pits, removed, broken, and recoloured.", {
+        tool("weather", "Weather the exposed cells of an inclusive box of the active object: chip edges and corners (small irregular chunks off cells exposed on two or more sides), dent flat faces with pits (real holes, not paint), and add subtle colour noise in soft patches. The faces a chip or pit uncovers take the broken slot, usually a slightly darker stone (not dirt). exclude boxes keep walking surfaces whole. Deterministic for a seed. A box of at most 2000000 cells. One undo step. Replies with chips, pits, removed, broken, and recoloured.", {
             let mut p = json!({});
             for key in ["x0", "y0", "z0", "x1", "y1", "z1"] {
                 p[key] = int_prop("Inclusive box corner");
@@ -668,6 +670,7 @@ fn tools() -> Vec<Value> {
             p["noiseDensity"] = num_prop("Share of exposed cells the noise recolours, 0..=1. Defaults to 0.35.");
             p["noiseScale"] = num_prop("Noise patch size in cells, 1..=32. Defaults to 3.");
             p["only"] = json!({"type": "array", "items": {"type": "integer"}, "description": "Act only on cells of these palette indices (the stone slots). Omit to act on every slot."});
+            p["exclude"] = exclude_prop();
             p["seed"] = int_prop("Seed. Defaults to 0.");
             p
         }, &["x0", "y0", "z0", "x1", "y1", "z1"]),
@@ -976,6 +979,11 @@ fn hints(name: &str) -> [bool; 3] {
     }
 }
 
+/// `exclude`: boxes a stone tool leaves alone.
+fn exclude_prop() -> Value {
+    json!({"type": "array", "items": {"type": ["integer", "array"]}, "description": "Boxes left alone: one inclusive box [x0, y0, z0, x1, y1, z1] or a list of up to 64, such as a ledge top, a cave floor, or a river bed (the solid top layer, the air above it, or both). No cell inside one is changed, and nothing grows from or lands in one, so a walking surface needs no refill afterwards."})
+}
+
 /// The arguments `moss`, `algae`, and `vines` share, plus `extra`.
 fn growth_props(extra: &[(&str, Value)], amount: &str, faces: &str) -> Value {
     let mut p = json!({});
@@ -990,6 +998,7 @@ fn growth_props(extra: &[(&str, Value)], amount: &str, faces: &str) -> Value {
     p["band"] = json!({"type": "array", "items": {"type": "integer"}, "description": "Only cells with z in [low, high], such as a waterline band. algae thins from its bottom to its top and uses the box's height without one."});
     p["only"] = json!({"type": "array", "items": {"type": "integer"}, "description": "Grow only on cells of these palette indices (the stone slots). Omit for every slot."});
     p["layer"] = json!({"type": "string", "enum": ["grow", "paint"], "description": "grow adds cells on the empty side of each face; paint recolours the surface. Defaults to grow, paint for algae. vines always grow."});
+    p["exclude"] = exclude_prop();
     p["seed"] = int_prop("Seed. Defaults to 0.");
     for (key, value) in extra {
         p[*key] = value.clone();

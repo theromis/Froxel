@@ -159,12 +159,12 @@ tracer. A file with no scene graph still loads its first model.
 | `sweep` | `points`, `profile` or `width` and `height`, `palette` or `palettes` | Fill a 2D cross-section along 2..=1024 **local** points, kept perpendicular to the path, for curved walls, banks, and ledges. Each point may carry `twist` and `scale`. Optional `radius`, `curve` (`polyline`, `smooth`), `pattern` (`bands`, `rings`, `random`), `period`, `seed`, `mode`. Replies with `cells` and `length`. At most 2000000 cells, one undo step |
 | `carve` | `shape` | Remove the solid cells inside a `box`, `ellipsoid`, `rounded_box`, or `tube`, given as for the fill tools. Replies with `removed`. One undo step |
 | `break_end` | `point`, `normal` | Break the active object across a plane: a jagged face, bark on its rim, sapwood inside, and tapered splinters out along the normal. Optional `depth`, `splinters` or `density`, `length`, `thickness`, `taper`, `rimBias`, `bark`, `sapwood`, `tips`, `seed`. One undo step |
-| `scatter` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Drop small pieces (shard, chip, pebble, chunk) that settle on what is below into a heap. Optional `count`, `kinds`, `size`, `seed`, `floor`, `clump`. One undo step |
-| `joints` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `pattern` | Cut real joint gaps into the solid cells of the box: `columns`, `courses` (running bond), or `cracks`. Optional `spacing`, `course`, `width`, `depth`, `dirt`, `only`, `density`, `seed`. Replies with `removed` and `dirtied`. One undo step |
-| `weather` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Chip edges and corners, dent pits into flat faces, and add subtle colour noise on the exposed cells of the box. Optional `chip`, `chipSize`, `pits`, `pitDepth`, `broken`, `noise`, `noiseDensity`, `noiseScale`, `only`, `seed`. Replies with `chips`, `pits`, `removed`, `broken`, `recoloured`. One undo step |
-| `moss` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Moss cushions on tops and curtains with a ragged end down the side faces below them. Optional `amount`, `noise`, `faces`, `facing`, `band`, `only`, `layer`, `curtains`, `length`, `thickness`, `seed`. Replies with `added`, `painted`, `curtains`. One undo step |
-| `algae` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | An algae band, dense at the bottom of `band` and thinning upward in clumps. Optional `band`, `amount`, `noise`, `faces`, `facing`, `only`, `layer`, `seed`. Replies with `added`, `painted`. One undo step |
-| `vines` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Vine strands hanging from top edges, graded through `palettes` to the tip, with optional `blooms`. Optional `amount`, `length`, `bloomChance`, `noise`, `faces`, `facing`, `band`, `only`, `seed`. Replies with `added`, `strands`, `blooms`. One undo step |
+| `scatter` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Drop small pieces (shard, chip, pebble, chunk) that settle on what is below into a heap. Optional `count`, `kinds`, `size`, `seed`, `floor`, `clump`, `exclude`. One undo step |
+| `joints` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `pattern` | Cut real joint gaps into the solid cells of the box: `columns`, `courses` (running bond), or `cracks`. Optional `spacing`, `course`, `width`, `depth`, `dirt`, `only`, `exclude`, `density`, `seed`. Replies with `removed` and `dirtied`. One undo step |
+| `weather` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Chip edges and corners, dent pits into flat faces, and add subtle colour noise on the exposed cells of the box. Optional `chip`, `chipSize`, `pits`, `pitDepth`, `broken`, `noise`, `noiseDensity`, `noiseScale`, `only`, `exclude`, `seed`. Replies with `chips`, `pits`, `removed`, `broken`, `recoloured`. One undo step |
+| `moss` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Moss cushions on tops and curtains with a ragged end down the side faces below them. Optional `amount`, `noise`, `faces`, `facing`, `band`, `only`, `exclude`, `layer`, `curtains`, `length`, `thickness`, `seed`. Replies with `added`, `painted`, `curtains`. One undo step |
+| `algae` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | An algae band, dense at the bottom of `band` and thinning upward in clumps. Optional `band`, `amount`, `noise`, `faces`, `facing`, `only`, `exclude`, `layer`, `seed`. Replies with `added`, `painted`. One undo step |
+| `vines` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Vine strands hanging from top edges, graded through `palettes` to the tip, with optional `blooms`. Optional `amount`, `length`, `bloomChance`, `noise`, `faces`, `facing`, `band`, `only`, `exclude`, `seed`. Replies with `added`, `strands`, `blooms`. One undo step |
 | `smooth` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Majority filter in an inclusive box of at most 2000000 cells that keeps colours. Optional `iterations` (1..=8), `fillAt`, `removeAt`. Replies with `filled`, `removed`, `iterations`. One undo step |
 | `get_voxels` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Non-empty **local** cells inside an inclusive box, at most 100000 |
 | `set_palette` | `index`, `r`, `g`, `b` or `entries` | Replace one slot, or many via `entries`, as one undo step. `a` defaults to 255. Optional `motion` (`none`, `sway`, `bob`) and `motion_amount` (0..4) |
@@ -278,8 +278,19 @@ squashed ellipsoid), and `chunk` (a block with chipped corners), all four by
 default. `size` is [min, max] cells (1..=16, default [1, 3]). Each piece
 takes one of `palettes`. `clump` 0 spreads the points evenly over the box
 and 1 piles them in its middle (default 0.5). A piece that meets a solid
-cell at the top of the box is skipped and counted in `skipped`. Only empty
+cell at the top of the box, or would come to rest with a cell in an
+`exclude` box, is skipped and counted in `skipped`. Only empty
 cells are written, at most 200000; the same `seed` gives the same pile.
+
+`exclude` on `scatter`, `joints`, `weather`, `moss`, `algae`, and `vines`
+keeps walking surfaces whole: one inclusive box `[x0, y0, z0, x1, y1, z1]`
+or a list of up to 64, in the object's cells, of any size. No cell inside a
+box is removed, recoloured, or written, no plant grows from a cell inside
+one, and no debris comes to rest in one. Cover a ledge top, a cave floor,
+or a river bed with its solid top layer and the air above it, and the
+stone around it weathers and grows moss while the top stays flat, with no
+refill afterwards. The editor's Protect section holds the same boxes for
+the Scatter, Joints, Weather, and Growth sections.
 
 `sweep` moves a cross-section along a path, perpendicular to it. Points
 are `[x, y, z]`, `[x, y, z, twist]`, `[x, y, z, twist, scale]`, or
@@ -808,6 +819,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `sweep` | Sweep section: Points (one per line, Point at selection adds the selection's centre), Smooth, Rectangle (Width, Height, Radius) or Polygon, Palettes, Bands, Rings, or Random, Period, Mode, Seed |
 | `carve` | Remove mode with Box, Generator, or Tube |
 | `break_end` | Break section: Point (or Point at selection), Normal with ±X/Y/Z, Depth, Splinters, Length, Thickness, Taper, Rim bias, Bark, Sapwood, and Tip slots, Seed |
+| `exclude` (on the stone tools) | Protect section: one box per line, Add selection, Clear; Scatter, Joints, Weather, and Growth use it |
 | `scatter` | Scatter section: Pieces, Kinds, Size, Palettes, Clump, Seed, over the selection's box or above the whole object |
 | `joints` | Joints section: Columns, Courses, or Cracks, Spacing, Course (or Density), Width, Depth, Dirt, Only, Seed, over the selection's box or the whole object |
 | `weather` | Weather section: Chip, Chip size, Pits, Pit depth, Broken, Noise, Density, Patch, Only, Seed, over the selection's box or the whole object |

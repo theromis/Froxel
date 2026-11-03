@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use super::debris::hash01;
-use super::surface::{allowed, check_slot, depths_from, noise3, surface_normal, Region};
+use super::surface::{allowed, check_slot, depths_from, noise3, surface_normal, Exclude, Region};
 use crate::state::Cell;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -71,6 +71,8 @@ pub struct JointSpec {
     pub only: Vec<u8>,
     /// Cracks: the share of piece boundaries that crack, 0..=1.
     pub density: f64,
+    /// Boxes left alone: no gap or dirt inside them.
+    pub exclude: Exclude,
     pub seed: u64,
 }
 
@@ -131,7 +133,7 @@ pub fn joints(cells: &HashMap<Cell, u8>, spec: &JointSpec) -> Result<Jointed, St
         let Some(&(d, surface)) = depth.get(&cell) else {
             continue;
         };
-        if !allowed(&spec.only, slot) || !on_joint(surface) {
+        if !allowed(&spec.only, slot) || spec.exclude.contains(cell) || !on_joint(surface) {
             continue;
         }
         // The cut runs straight in from the surface cell, so every gap is

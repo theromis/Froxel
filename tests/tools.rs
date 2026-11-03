@@ -400,7 +400,36 @@ fn scatter_spec() -> ScatterSpec {
         seed: 9,
         floor: None,
         clump: 0.5,
+        exclude: Exclude::default(),
     }
+}
+
+#[test]
+fn scatter_skips_pieces_that_would_rest_in_an_excluded_box() {
+    let mut ground = HashMap::new();
+    for x in -5..15 {
+        for y in -5..15 {
+            ground.insert((x, y, 0), 1u8);
+        }
+    }
+    let free = scatter(&ground, &scatter_spec()).unwrap();
+    let mut spec = scatter_spec();
+    spec.exclude = Exclude(vec![Region::spanning((0, 0, 1), (4, 9, 3))]);
+    let kept = scatter(&ground, &spec).unwrap();
+    assert!(
+        kept.skipped > free.skipped,
+        "{} vs {}",
+        kept.skipped,
+        free.skipped
+    );
+    assert!(kept.placed > 0);
+    for &(x, y, z, _) in &kept.writes {
+        assert!(
+            !spec.exclude.contains((x, y, z)),
+            "a piece landed in ({x}, {y}, {z})"
+        );
+    }
+    assert_eq!(kept, scatter(&ground, &spec).unwrap());
 }
 
 #[test]

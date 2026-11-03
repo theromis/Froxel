@@ -31,7 +31,7 @@ pub use shapes::{
     bresenham, circle, cube, extrude, flood_empty, flood_face, rounded_inside, rounded_radius,
     square,
 };
-pub use surface::Region;
+pub use surface::{Exclude, Region, MAX_EXCLUDE};
 pub use sweep::{sweep, Profile, SweepPoint};
 pub use weather::{weather, WeatherSpec};
 
