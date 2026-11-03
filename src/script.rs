@@ -19,6 +19,9 @@ use rhai::{Array, Dynamic, Engine, EvalAltResult, OptimizationLevel, Position, I
 
 use crate::state::{Cell, Motion, Session, Volume};
 
+mod math;
+mod shapes;
+
 const MAX_DEPTH: usize = 32;
 const MAX_ARRAY: usize = 4_096;
 const MAX_STRING: usize = 16_384;
@@ -267,11 +270,18 @@ pub(crate) fn execute(
     engine.set_max_expr_depths(64, 32);
     engine.set_strict_variables(true);
     engine.register_iterator::<std::ops::Range<INT>>();
-    // `for p in points` and `points.len()` read a list parameter; neither grows an array.
+    // `for p in points` and `points.len()` read a list; `push` and `insert`
+    // (in `math`) grow one up to the array limit.
     engine.register_iterator::<Array>();
     engine.register_fn("len", |array: &mut Array| array.len() as INT);
     register(&mut engine, &scratch);
-    engine.run(source).map_err(|err| explain(&err))?;
+    math::register(&mut engine);
+    shapes::register(&mut engine, &scratch);
+    let mut scope = rhai::Scope::new();
+    scope.push_constant("PI", std::f64::consts::PI);
+    engine
+        .run_with_scope(&mut scope, source)
+        .map_err(|err| explain(&err))?;
     let scratch = scratch.borrow();
     Ok(Outcome {
         params: scratch.params.clone(),

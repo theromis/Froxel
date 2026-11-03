@@ -15,9 +15,9 @@ pub use debris::{break_end, BreakSpec, Broken, Splinters};
 pub use generate::{foliage, generate, Gen, MAX_GENERATOR_CELLS};
 pub use scatter::{scatter, PieceKind, ScatterSpec, Scattered, MAX_PIECES};
 #[cfg(test)]
-pub use sculpt::tube;
+pub use sculpt::{smooth, tube};
 pub use sculpt::{
-    smooth, tube_shaped, Smoothed, TubeCell, TubePattern, TubePoint, TubeShape, MAX_SCULPT_CELLS,
+    smooth_checked, tube_shaped, Smoothed, TubeCell, TubePattern, TubePoint, TubeShape,
     MAX_SMOOTH_ITERATIONS,
 };
 pub use shapes::{

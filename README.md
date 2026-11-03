@@ -170,8 +170,10 @@ set_slot(1, [18, 72, 28]);   // a palette colour
 set(ix, 0, iz, slot);
 ```
 
-The whole lily pad is [`examples/lily_pad.rhai`](examples/lily_pad.rhai). The
-API is in [docs/scripting.md](docs/scripting.md).
+The whole lily pad is [`examples/lily_pad.rhai`](examples/lily_pad.rhai).
+Scripts also have the hand-sculpting tools (tubes, carving, smoothing, breaks,
+and debris); [`examples/hollow_log.rhai`](examples/hollow_log.rhai) uses all of
+them. The API is in [docs/scripting.md](docs/scripting.md).
 
 ## Godot and Blender
 

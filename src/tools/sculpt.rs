@@ -369,6 +369,27 @@ pub struct Smoothed {
     pub iterations: u32,
 }
 
+/// [`smooth`] after checking that the box holds at most
+/// [`MAX_SCULPT_CELLS`] cells.
+pub fn smooth_checked(
+    cells: &HashMap<Cell, u8>,
+    min: Cell,
+    max: Cell,
+    iterations: u32,
+    fill_at: i32,
+    remove_at: i32,
+) -> Result<Smoothed, String> {
+    let count = (i64::from(max.0 - min.0) + 1)
+        * (i64::from(max.1 - min.1) + 1)
+        * (i64::from(max.2 - min.2) + 1);
+    if count > MAX_SCULPT_CELLS {
+        return Err(format!(
+            "box is larger than {MAX_SCULPT_CELLS} cells; smooth a smaller region"
+        ));
+    }
+    Ok(smooth(cells, min, max, iterations, fill_at, remove_at))
+}
+
 /// Majority filter over the 26 neighbours of each cell in the inclusive box
 /// `min..=max`. An empty cell with at least `fill_at` solid neighbours is
 /// filled with the colour most of them hold (ties go to the colour more face

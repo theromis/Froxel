@@ -2,7 +2,7 @@
 //! control port. Screenshots are not applied here: only a live window can
 //! take one.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 
 use serde_json::{json, Map, Value};
@@ -599,29 +599,10 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
             let changed = session.write_cells(&writes)?;
             Ok(json!({"changed": changed, "voxels": session.voxel_count()}))
         }
-        "voxel.fill" => {
-            let (x0, y0, z0, x1, y1, z1) = box_corners(&params)?;
-            let palette = req_i32(&params, "palette")?;
-            let nx = i64::from(x1 - x0) + 1;
-            let ny = i64::from(y1 - y0) + 1;
-            let nz = i64::from(z1 - z0) + 1;
-            let count = nx * ny * nz;
-            if count > 2_000_000 {
-                return Err("box is larger than 2000000 cells".into());
-            }
-            let mut writes = Vec::with_capacity(count as usize);
-            for z in z0..=z1 {
-                for y in y0..=y1 {
-                    for x in x0..=x1 {
-                        writes.push((x, y, z, palette));
-                    }
-                }
-            }
-            fill_with_mode(session, &params, writes)
-        }
-        "voxel.ellipsoid" => shape_fill(session, &params, false),
-        "voxel.rounded" => shape_fill(session, &params, true),
-        "voxel.tube" => tube_fill(session, &params),
+        "voxel.fill" => sculpt_fill(session, &params, Sculpt::Box),
+        "voxel.ellipsoid" => sculpt_fill(session, &params, Sculpt::Ellipsoid),
+        "voxel.rounded" => sculpt_fill(session, &params, Sculpt::RoundedBox),
+        "voxel.tube" => sculpt_fill(session, &params, Sculpt::Tube),
         "voxel.carve" => carve(session, &params),
         "voxel.smooth" => smooth(session, &params),
         "voxel.break" => break_end(session, &params),
@@ -1525,13 +1506,70 @@ fn render_pose(params: &Value) -> Result<Option<crate::rig::Pose>, String> {
     }
 }
 
-fn shape_fill(session: &mut Session, params: &Value, rounded: bool) -> Result<Value, String> {
-    let palette = req_i32(params, "palette")?;
-    let writes = shape_cells(params, rounded)?
-        .into_iter()
-        .map(|(x, y, z)| (x, y, z, palette))
-        .collect();
-    fill_with_mode(session, params, writes)
+/// A shape of MCP `fill_box`, `fill_ellipsoid`, `fill_rounded_box`,
+/// `fill_tube`, and `carve`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Sculpt {
+    Box,
+    Ellipsoid,
+    RoundedBox,
+    Tube,
+}
+
+fn sculpt_fill(session: &mut Session, params: &Value, sculpt: Sculpt) -> Result<Value, String> {
+    let writes = fill_writes(&session.active().cells, params, sculpt)?;
+    let changed = session.write_cells(&writes)?;
+    Ok(json!({"changed": changed, "voxels": session.voxel_count()}))
+}
+
+/// The writes of a fill tool against `cells`, from its arguments: the
+/// shape's cells with `palette` (or a tube's `palettes` and `pattern`), kept
+/// as `mode` says. Rhai scripts call this with their options map.
+pub(crate) fn fill_writes(
+    cells: &HashMap<Cell, u8>,
+    params: &Value,
+    sculpt: Sculpt,
+) -> Result<Vec<(i32, i32, i32, i32)>, String> {
+    let mode = fill_mode(params)?;
+    let mut writes: Vec<(i32, i32, i32, i32)> = if sculpt == Sculpt::Tube {
+        tube_writes(params)?
+    } else {
+        let palette = req_i32(params, "palette")?;
+        sculpt_cells(params, sculpt)?
+            .into_iter()
+            .map(|(x, y, z)| (x, y, z, palette))
+            .collect()
+    };
+    if let Some((_, _, _, bad)) = writes.iter().find(|w| !(0..=255).contains(&w.3)) {
+        return Err(format!("palette must be 0..255, not {bad}"));
+    }
+    if mode != FillMode::Replace {
+        writes.retain(|&(x, y, z, _)| cells.contains_key(&(x, y, z)) == (mode == FillMode::Paint));
+    }
+    Ok(writes)
+}
+
+/// The cells of a shape from its arguments, solid or not.
+fn sculpt_cells(params: &Value, sculpt: Sculpt) -> Result<Vec<Cell>, String> {
+    match sculpt {
+        Sculpt::Box => {
+            let (x0, y0, z0, x1, y1, z1) = box_corners(params)?;
+            let count =
+                (i64::from(x1 - x0) + 1) * (i64::from(y1 - y0) + 1) * (i64::from(z1 - z0) + 1);
+            if count > 2_000_000 {
+                return Err("box is larger than 2000000 cells".into());
+            }
+            Ok((z0..=z1)
+                .flat_map(|z| (y0..=y1).flat_map(move |y| (x0..=x1).map(move |x| (x, y, z))))
+                .collect())
+        }
+        Sculpt::Ellipsoid => shape_cells(params, false),
+        Sculpt::RoundedBox => shape_cells(params, true),
+        Sculpt::Tube => Ok(tube_cells(params)?
+            .into_iter()
+            .map(|cell| cell.cell)
+            .collect()),
+    }
 }
 
 /// Cells whose centre lies inside the ellipsoid or rounded box of the
@@ -1599,25 +1637,6 @@ fn fill_mode(params: &Value) -> Result<FillMode, String> {
             "mode must be replace, empty, or paint, not `{other}`"
         )),
     }
-}
-
-/// Write a fill's cells as one undo step, keeping only the cells `mode`
-/// allows.
-fn fill_with_mode(
-    session: &mut Session,
-    params: &Value,
-    mut writes: Vec<(i32, i32, i32, i32)>,
-) -> Result<Value, String> {
-    let mode = fill_mode(params)?;
-    if let Some((_, _, _, bad)) = writes.iter().find(|w| !(0..=255).contains(&w.3)) {
-        return Err(format!("palette must be 0..255, not {bad}"));
-    }
-    if mode != FillMode::Replace {
-        let cells = &session.active().cells;
-        writes.retain(|&(x, y, z, _)| cells.contains_key(&(x, y, z)) == (mode == FillMode::Paint));
-    }
-    let changed = session.write_cells(&writes)?;
-    Ok(json!({"changed": changed, "voxels": session.voxel_count()}))
 }
 
 /// The tube in `params`: `points` of `[x, y, z]`, `[x, y, z, radius]`, or
@@ -1693,7 +1712,8 @@ fn tube_shape(params: &Value) -> Result<crate::tools::TubeShape, String> {
     })
 }
 
-fn tube_fill(session: &mut Session, params: &Value) -> Result<Value, String> {
+/// A tube's cells with `palette`, or `palettes` laid out by `pattern`.
+fn tube_writes(params: &Value) -> Result<Vec<(i32, i32, i32, i32)>, String> {
     let palettes = match (params.get("palette"), params.get("palettes")) {
         (Some(_), Some(_)) => return Err("pass palette or palettes, not both".into()),
         (Some(_), None) => vec![req_i32(params, "palette")?],
@@ -1740,51 +1760,47 @@ fn tube_fill(session: &mut Session, params: &Value) -> Result<Value, String> {
         },
         _ => crate::tools::TubePattern::Random { seed },
     };
-    let writes = tube_cells(params)?
+    Ok(tube_cells(params)?
         .into_iter()
         .map(|cell| {
             let (x, y, z) = cell.cell;
             (x, y, z, palettes[pattern.pick(&cell, palettes.len())])
         })
-        .collect();
-    fill_with_mode(session, params, writes)
+        .collect())
 }
 
 fn carve(session: &mut Session, params: &Value) -> Result<Value, String> {
-    let shape = opt_str(params, "shape")?
-        .ok_or("shape is required: box, ellipsoid, rounded_box, or tube")?;
-    let cells: Vec<Cell> = match shape.as_str() {
-        "box" => {
-            let (x0, y0, z0, x1, y1, z1) = box_corners(params)?;
-            let count =
-                (i64::from(x1 - x0) + 1) * (i64::from(y1 - y0) + 1) * (i64::from(z1 - z0) + 1);
-            if count > 2_000_000 {
-                return Err("box is larger than 2000000 cells".into());
-            }
-            (z0..=z1)
-                .flat_map(|z| (y0..=y1).flat_map(move |y| (x0..=x1).map(move |x| (x, y, z))))
-                .collect()
-        }
-        "ellipsoid" => shape_cells(params, false)?,
-        "rounded_box" => shape_cells(params, true)?,
-        "tube" => tube_cells(params)?
-            .into_iter()
-            .map(|cell| cell.cell)
-            .collect(),
-        other => {
-            return Err(format!(
-                "shape must be box, ellipsoid, rounded_box, or tube, not `{other}`"
-            ))
-        }
-    };
-    let solid = &session.active().cells;
-    let writes: Vec<_> = cells
-        .into_iter()
-        .filter(|cell| solid.contains_key(cell))
-        .map(|(x, y, z)| (x, y, z, 0))
-        .collect();
+    let writes = carve_writes(&session.active().cells, params)?;
     let removed = session.write_cells(&writes)?;
     Ok(json!({"removed": removed, "voxels": session.voxel_count()}))
+}
+
+/// The shape named by `shape` in MCP `carve` arguments.
+pub(crate) fn carve_shape(params: &Value) -> Result<Sculpt, String> {
+    let shape = opt_str(params, "shape")?
+        .ok_or("shape is required: box, ellipsoid, rounded_box, or tube")?;
+    match shape.as_str() {
+        "box" => Ok(Sculpt::Box),
+        "ellipsoid" => Ok(Sculpt::Ellipsoid),
+        "rounded_box" => Ok(Sculpt::RoundedBox),
+        "tube" => Ok(Sculpt::Tube),
+        other => Err(format!(
+            "shape must be box, ellipsoid, rounded_box, or tube, not `{other}`"
+        )),
+    }
+}
+
+/// The erasing writes of MCP `carve` against `cells`: the solid cells of
+/// the shape. Rhai scripts call this with their options map.
+pub(crate) fn carve_writes(
+    cells: &HashMap<Cell, u8>,
+    params: &Value,
+) -> Result<Vec<(i32, i32, i32, i32)>, String> {
+    Ok(sculpt_cells(params, carve_shape(params)?)?
+        .into_iter()
+        .filter(|cell| cells.contains_key(cell))
+        .map(|(x, y, z)| (x, y, z, 0))
+        .collect())
 }
 
 /// One palette index, or a list of them, under `key`.
@@ -1830,6 +1846,18 @@ fn range_pair(params: &Value, key: &str, default: (f64, f64)) -> Result<(f64, f6
 }
 
 fn break_end(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let broken = session.break_active(&break_spec(params)?)?;
+    Ok(json!({
+        "changed": broken.writes.len(),
+        "removed": broken.removed,
+        "recoloured": broken.recoloured,
+        "splinters": broken.splinters,
+        "voxels": session.voxel_count()
+    }))
+}
+
+/// MCP `break_end` arguments as a spec. Rhai scripts call this too.
+pub(crate) fn break_spec(params: &Value) -> Result<crate::tools::BreakSpec, String> {
     let vec = |key: &str| -> Result<[f64; 3], String> {
         let v = opt_vec3(params, key)?.ok_or_else(|| format!("{key} [x, y, z] is required"))?;
         Ok([f64::from(v[0]), f64::from(v[1]), f64::from(v[2])])
@@ -1874,17 +1902,21 @@ fn break_end(session: &mut Session, params: &Value) -> Result<Value, String> {
                 .ok_or("seed must be a whole number of at least 0")?,
         },
     };
-    let broken = session.break_active(&spec)?;
+    Ok(spec)
+}
+
+fn scatter(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let done = session.scatter_active(&scatter_spec(params)?)?;
     Ok(json!({
-        "changed": broken.writes.len(),
-        "removed": broken.removed,
-        "recoloured": broken.recoloured,
-        "splinters": broken.splinters,
+        "changed": done.writes.len(),
+        "pieces": done.placed,
+        "skipped": done.skipped,
         "voxels": session.voxel_count()
     }))
 }
 
-fn scatter(session: &mut Session, params: &Value) -> Result<Value, String> {
+/// MCP `scatter` arguments as a spec. Rhai scripts call this too.
+pub(crate) fn scatter_spec(params: &Value) -> Result<crate::tools::ScatterSpec, String> {
     let (x0, y0, z0, x1, y1, z1) = box_corners(params)?;
     let kinds = match params.get("kinds") {
         None | Some(Value::Null) => crate::tools::PieceKind::ALL.to_vec(),
@@ -1933,16 +1965,25 @@ fn scatter(session: &mut Session, params: &Value) -> Result<Value, String> {
         },
         clump: opt_f64(params, "clump")?.unwrap_or(0.5),
     };
-    let done = session.scatter_active(&spec)?;
+    Ok(spec)
+}
+
+fn smooth(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let (min, max, iterations, fill_at, remove_at) = smooth_args(params)?;
+    let report = session.smooth_region(min, max, iterations, fill_at, remove_at)?;
+    let changed = report.writes.len();
     Ok(json!({
-        "changed": done.writes.len(),
-        "pieces": done.placed,
-        "skipped": done.skipped,
+        "changed": changed,
+        "filled": report.filled,
+        "removed": report.removed,
+        "iterations": report.iterations,
         "voxels": session.voxel_count()
     }))
 }
 
-fn smooth(session: &mut Session, params: &Value) -> Result<Value, String> {
+/// MCP `smooth` arguments: the box, iterations, `fillAt`, and `removeAt`.
+/// Rhai scripts call this too.
+pub(crate) fn smooth_args(params: &Value) -> Result<(Cell, Cell, u32, i32, i32), String> {
     let (x0, y0, z0, x1, y1, z1) = box_corners(params)?;
     let whole = |key: &str, default: i32, range: std::ops::RangeInclusive<i32>| {
         let value = match params.get(key) {
@@ -1965,21 +2006,13 @@ fn smooth(session: &mut Session, params: &Value) -> Result<Value, String> {
     )?;
     let fill_at = whole("fillAt", 17, 1..=27)?;
     let remove_at = whole("removeAt", 9, -1..=25)?;
-    let report = session.smooth_region(
+    Ok((
         (x0, y0, z0),
         (x1, y1, z1),
         iterations as u32,
         fill_at,
         remove_at,
-    )?;
-    let changed = report.writes.len();
-    Ok(json!({
-        "changed": changed,
-        "filled": report.filled,
-        "removed": report.removed,
-        "iterations": report.iterations,
-        "voxels": session.voxel_count()
-    }))
+    ))
 }
 
 fn rounded_inside(

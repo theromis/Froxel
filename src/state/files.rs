@@ -305,7 +305,7 @@ impl Session {
     /// Write cells of the active object. Palette 0 erases. One undo step.
     /// Coordinates are local to that object and must lie in `[-1024, 1024)`.
     /// MCP `smooth` and the Smooth panel: the majority filter of
-    /// [`crate::tools::smooth`] over an inclusive box of the active object,
+    /// [`crate::tools::smooth_checked`] over an inclusive box of the active object,
     /// written as one undo step.
     pub(crate) fn smooth_region(
         &mut self,
@@ -315,23 +315,14 @@ impl Session {
         fill_at: i32,
         remove_at: i32,
     ) -> Result<crate::tools::Smoothed, String> {
-        let count = (i64::from(max.0 - min.0) + 1)
-            * (i64::from(max.1 - min.1) + 1)
-            * (i64::from(max.2 - min.2) + 1);
-        if count > crate::tools::MAX_SCULPT_CELLS {
-            return Err(format!(
-                "box is larger than {} cells; smooth a smaller region",
-                crate::tools::MAX_SCULPT_CELLS
-            ));
-        }
-        let report = crate::tools::smooth(
+        let report = crate::tools::smooth_checked(
             &self.active().cells,
             min,
             max,
             iterations,
             fill_at,
             remove_at,
-        );
+        )?;
         self.write_cells(&report.writes)?;
         Ok(report)
     }

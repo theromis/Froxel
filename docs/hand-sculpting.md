@@ -91,6 +91,36 @@ fill_tube            points=[[2, -3, 3, 2], [-2, -7, 0, 1], [-5, -9, -1, 0.5]] p
 preview              path="log.png"
 ```
 
+### In a script
+
+Every tool above is also a Rhai function (`docs/scripting.md`, "Shapes"),
+with the MCP options in a trailing map, so a family of organic pieces can
+be a script with parameters instead of a list of calls. This is the core of
+`examples/hollow_log.rhai`, the log above with parameters for its length,
+radius, wall, roots, and seed:
+
+```rhai
+let trunk = [];
+for i in 0..5 {
+    let t = to_float(i) / 4.0;
+    trunk.push([t * len, sin(t * PI) * 1.5, radius, radius * (1.0 - 0.25 * t)]);
+}
+fill_tube(trunk, [3, 4], #{curve: "smooth", pattern: "stripes", sectors: 10});
+smooth(-reach, -reach - 2, 0, length + reach, reach + 2, 2 * reach, #{iterations: 1});
+// ... roots: fill_tube(points, 4, #{curve: "smooth", mode: "empty"}) ...
+break_end([tip[0], tip[1], tip[2]], [1.0, 0.0, 0.15], #{
+    depth: 3, density: 0.2, length: [4, 12], bark: 4, sapwood: [5, 6], tips: 7, seed: seed
+});
+carve_tube([[-2.0, 0.0, radius], [mid[0], mid[1], mid[2]]], #{radius: max(radius - wall, 0.5)});
+fill_box(-reach - 6, -reach - 10, -1, length + 14, reach + 10, -1, 8);
+scatter(to_int(tip[0]) - 4, -reach - 6, 0, length + 10, reach + 6, 2 * reach + 6, [5, 6, 7, 3],
+    #{count: 40, size: [1, 3], seed: seed, floor: 0, clump: 0.6});
+```
+
+The order matters as it does for the tools: smooth while the trunk is
+solid, add the roots before carving so the hollow cuts them out of the
+opening, and add the ground after the break.
+
 ## Tips
 
 **One object per rig part, at world `[0, 0, 0]`.** Build the head, jaw, body

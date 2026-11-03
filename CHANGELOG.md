@@ -4,6 +4,15 @@
 
 ### Added
 
+- Script shape tools: Rhai scripts have `fill_ellipsoid`, `fill_rounded_box`,
+  `fill_tube`, `fill_box` with a mode, `carve_box`, `carve_ellipsoid`,
+  `carve_rounded_box`, `carve_tube`, `smooth`, `break_end`, and `scatter`.
+  They run the MCP tools' argument checks and shape code, with the MCP
+  options in a trailing map such as `#{mode: "empty", aspect: 0.5}`. Scripts
+  also gain `sqrt`, `pow`, `PI`, `min`, `max`, `clamp`, `ceil`, `round`,
+  `tan`, and `push`, `pop`, `insert`, and `remove` on arrays.
+  `examples/hollow_log.rhai` is a hollow log with roots and a snapped end.
+
 - Colour atlas mesh export: MCP `export_mesh` and `export_models` take
   `colorAtlas`, the Export panel has **Colour atlas**, and `froxel bridge`
   takes `--color-atlas`. Coplanar faces merge whatever their palette slot, and

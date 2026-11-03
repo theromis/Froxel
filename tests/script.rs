@@ -471,3 +471,219 @@ fn list_parameters_round_trip_through_the_chunk() {
     };
     assert!(err.contains("width"), "{err}");
 }
+
+/// Run `source` on one object and return its cells.
+fn run_cells(source: &str) -> Result<HashMap<Cell, u8>, String> {
+    let names = vec!["host".to_string()];
+    let outcome = execute(source, &[], 0, &names, &Stop::after(None))?;
+    Ok(outcome.built.into_iter().next().unwrap().1)
+}
+
+/// The cells MCP leaves after `calls` on an empty object.
+fn mcp_cells(calls: &[(&str, serde_json::Value)]) -> HashMap<Cell, u8> {
+    let mut session = Session::new();
+    session.replace_empty();
+    for (method, params) in calls {
+        crate::remote::apply(&mut session, method, params).unwrap();
+    }
+    cells_of(&session)
+}
+
+#[test]
+fn shape_fills_build_what_the_mcp_tools_build() {
+    use serde_json::json;
+    let script = run_cells(
+        r#"
+        fill_rounded_box(0, 0, 0, 11, 7, 5, 2, 1);
+        fill_ellipsoid(2, 2, 2, 9, 5, 9, 2, #{mode: "empty"});
+        fill_box(0, 0, 0, 11, 0, 9, 3, #{mode: "paint"});
+        let points = [[0, 3, 3, 2.5], [6, 3, 8], [12, 6, 12, 1.0]];
+        fill_tube(points, [4, 5], #{
+            radius: 1.5, curve: "smooth", aspect: 0.5, roll: 30,
+            pattern: "stripes", sectors: 2, mode: "empty"
+        });
+        fill_tube([[0, 0, 12], [8, 0, 12]], 6, #{radius: 2, profile: "blade"});
+        "#,
+    )
+    .unwrap();
+    let mcp = mcp_cells(&[
+        (
+            "voxel.rounded",
+            json!({"x0": 0, "y0": 0, "z0": 0, "x1": 11, "y1": 7, "z1": 5, "radius": 2, "palette": 1}),
+        ),
+        (
+            "voxel.ellipsoid",
+            json!({"x0": 2, "y0": 2, "z0": 2, "x1": 9, "y1": 5, "z1": 9, "palette": 2, "mode": "empty"}),
+        ),
+        (
+            "voxel.fill",
+            json!({"x0": 0, "y0": 0, "z0": 0, "x1": 11, "y1": 0, "z1": 9, "palette": 3, "mode": "paint"}),
+        ),
+        (
+            "voxel.tube",
+            json!({"points": [[0, 3, 3, 2.5], [6, 3, 8], [12, 6, 12, 1.0]], "palettes": [4, 5],
+                "radius": 1.5, "curve": "smooth", "aspect": 0.5, "roll": 30,
+                "pattern": "stripes", "sectors": 2, "mode": "empty"}),
+        ),
+        (
+            "voxel.tube",
+            json!({"points": [[0, 0, 12], [8, 0, 12]], "palette": 6, "radius": 2, "profile": "blade"}),
+        ),
+    ]);
+    assert_eq!(script, mcp);
+    for slot in 1..=6 {
+        assert!(
+            script.values().any(|&s| s == slot),
+            "slot {slot} is missing"
+        );
+    }
+}
+
+#[test]
+fn carve_smooth_break_and_scatter_match_the_mcp_tools() {
+    use serde_json::json;
+    let script = run_cells(
+        r#"
+        fill_box(0, 0, 0, 23, 9, 9, 1);
+        if carve_box(0, 0, 0, 1, 1, 1) != 8 { throw "carve_box count"; }
+        carve_ellipsoid(4, 2, 2, 9, 7, 7);
+        carve_rounded_box(12, 2, 2, 17, 7, 7, 1.5);
+        carve_tube([[0, 5, 5], [23, 5, 5]], #{radius: 1.5});
+        let soft = smooth(0, 0, 0, 23, 9, 9, #{iterations: 2, fillAt: 14, removeAt: 12});
+        if soft.iterations < 1 { throw "smooth ran no pass"; }
+        let broken = break_end([20, 5, 5], [1, 0, 0], #{
+            depth: 2, splinters: 6, length: [3, 6], bark: 2, sapwood: [3, 4], tips: 5, seed: 7
+        });
+        if broken.removed == 0 { throw "nothing broke off"; }
+        let heap = scatter(0, 0, 10, 23, 9, 20, [6, 7], #{count: 12, kinds: ["chip", "pebble"], seed: 3, floor: 10});
+        if heap.pieces == 0 { throw "no pieces landed"; }
+        "#,
+    )
+    .unwrap();
+    let mcp = mcp_cells(&[
+        (
+            "voxel.fill",
+            json!({"x0": 0, "y0": 0, "z0": 0, "x1": 23, "y1": 9, "z1": 9, "palette": 1}),
+        ),
+        (
+            "voxel.carve",
+            json!({"shape": "box", "x0": 0, "y0": 0, "z0": 0, "x1": 1, "y1": 1, "z1": 1}),
+        ),
+        (
+            "voxel.carve",
+            json!({"shape": "ellipsoid", "x0": 4, "y0": 2, "z0": 2, "x1": 9, "y1": 7, "z1": 7}),
+        ),
+        (
+            "voxel.carve",
+            json!({"shape": "rounded_box", "x0": 12, "y0": 2, "z0": 2, "x1": 17, "y1": 7, "z1": 7, "radius": 1.5}),
+        ),
+        (
+            "voxel.carve",
+            json!({"shape": "tube", "points": [[0, 5, 5], [23, 5, 5]], "radius": 1.5}),
+        ),
+        (
+            "voxel.smooth",
+            json!({"x0": 0, "y0": 0, "z0": 0, "x1": 23, "y1": 9, "z1": 9, "iterations": 2, "fillAt": 14, "removeAt": 12}),
+        ),
+        (
+            "voxel.break",
+            json!({"point": [20, 5, 5], "normal": [1, 0, 0], "depth": 2, "splinters": 6,
+                "length": [3, 6], "bark": 2, "sapwood": [3, 4], "tips": 5, "seed": 7}),
+        ),
+        (
+            "voxel.scatter",
+            json!({"x0": 0, "y0": 0, "z0": 10, "x1": 23, "y1": 9, "z1": 20, "palettes": [6, 7],
+                "count": 12, "kinds": ["chip", "pebble"], "seed": 3, "floor": 10}),
+        ),
+    ]);
+    assert_eq!(script, mcp);
+}
+
+#[test]
+fn shape_calls_refuse_bad_options_and_coordinates() {
+    let err = run_cells(r#"fill_ellipsoid(0, 0, 0, 4, 4, 4, 1, #{mod: "empty"});"#).unwrap_err();
+    assert!(err.contains("no option `mod`"), "{err}");
+    let err = run_cells(r#"fill_box(0, 0, 0, 4, 4, 4, 1, #{mode: "under"});"#).unwrap_err();
+    assert!(
+        err.contains("mode must be replace, empty, or paint"),
+        "{err}"
+    );
+    let err = run_cells(r#"carve_box(0, 0, 0, 600, 4, 4);"#).unwrap_err();
+    assert!(err.contains("coordinate is outside"), "{err}");
+    let err = run_cells(r#"fill_tube([[500, 0, 0], [530, 0, 0]], 1, #{radius: 1});"#).unwrap_err();
+    assert!(err.contains("coordinate is outside"), "{err}");
+    let err = run_cells(r#"fill_tube([[0, 0, 0], [5, 0, 0]], "red");"#).unwrap_err();
+    assert!(err.contains("palette must be an index"), "{err}");
+    let err = run_cells(r#"smooth(0, 0, 0, 4, 4, 4, #{iterations: 9});"#).unwrap_err();
+    assert!(err.contains("iterations must be 1..=8"), "{err}");
+    // A tube with no radius anywhere names the point.
+    let err = run_cells(r#"fill_tube([[0, 0, 0], [5, 0, 0]], 1);"#).unwrap_err();
+    assert!(err.contains("point 0 has no radius"), "{err}");
+}
+
+#[test]
+fn math_and_array_helpers() {
+    run_cells(
+        r#"
+        fn half_turn() { PI() }
+        if abs(PI - 3.141592653589793) > 1e-12 { throw "PI"; }
+        if half_turn() != PI { throw "PI()"; }
+        if sqrt(16) != 4.0 || sqrt(2.25) != 1.5 { throw "sqrt"; }
+        if pow(2, 10) != 1024 || type_of(pow(2, 10)) != "i64" { throw "pow int"; }
+        if pow(4.0, 0.5) != 2.0 || pow(2, -1) != 0.5 { throw "pow float"; }
+        if min(3, 5) != 3 || max(3, 5.5) != 5.5 || min(-1.5, 2) != -1.5 { throw "min max"; }
+        if clamp(12, 0, 10) != 10 || clamp(-0.5, 0.0, 1.0) != 0.0 { throw "clamp"; }
+        if ceil(1.2) != 2.0 || round(2.5) != 3.0 || round(-1.4) != -1.0 || ceil(3) != 3 { throw "ceil round"; }
+        if abs(tan(PI / 4.0) - 1.0) > 1e-12 { throw "tan"; }
+        if to_float(2.5) != 2.5 || to_int(7) != 7 || to_int(round(2.6)) != 3 { throw "to"; }
+        if sin(0) != 0.0 || floor(4) != 4 { throw "int forms"; }
+
+        let list = [];
+        list.push(1);
+        list.push([2, 3]);
+        list.insert(0, 0);
+        list.insert(-1, 9);
+        if list.len() != 4 || list[0] != 0 || list[2] != 9 { throw "push insert"; }
+        if list.pop()[1] != 3 { throw "pop"; }
+        if list.remove(1) != 1 || list.len() != 2 { throw "remove"; }
+        if list.remove(5) != () || [].pop() != () { throw "out of range"; }
+        set(0, 0, 0, 1);
+        "#,
+    )
+    .unwrap();
+    let err = run_cells(r#"sqrt(-1.0);"#).unwrap_err();
+    assert!(err.contains("negative"), "{err}");
+    let err = run_cells(r#"clamp(1, 5, 0);"#).unwrap_err();
+    assert!(err.contains("empty"), "{err}");
+    let err = run_cells(r#"let a = []; for i in 0..5000 { a.push(i); }"#).unwrap_err();
+    assert!(err.contains("at most 4096 entries"), "{err}");
+    // Arrays inside arrays count toward the same limit.
+    let err = run_cells(
+        r#"let b = []; for i in 0..4000 { b.push(i); } let a = []; for i in 0..10 { a.push(b); }"#,
+    )
+    .unwrap_err();
+    assert!(err.contains("too large"), "{err}");
+}
+
+#[test]
+fn the_hollow_log_is_hollow_snapped_and_rooted() {
+    let mut session = Session::new();
+    session.replace_empty();
+    session
+        .set_script(0, include_str!("../examples/hollow_log.rhai"))
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    let log = cells_of(&session);
+    session.regenerate_script(0).unwrap();
+    assert_eq!(cells_of(&session), log, "the same seed builds the same log");
+    // Hollow along the axis near the root end, solid wall above it.
+    assert!(!log.contains_key(&(6, 0, 5)));
+    assert!((8..=10).any(|z| log.contains_key(&(6, 0, z))));
+    // The break recolours the new face with sapwood and leaves splinter tips.
+    for slot in [3, 4, 5, 7] {
+        assert!(log.values().any(|&s| s == slot), "slot {slot} is missing");
+    }
+    // Roots reach behind the root end and down to the ground.
+    assert!(log.keys().any(|c| c.0 < -1 && (0..=1).contains(&c.2)));
+    assert!(log.values().any(|&s| s == 8), "the ground is missing");
+}
