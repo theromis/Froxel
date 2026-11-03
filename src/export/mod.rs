@@ -20,6 +20,7 @@ mod quads;
 
 use quads::build_with;
 
+#[derive(Clone, Debug)]
 pub struct MeshExport {
     /// `COLOR_0` on each vertex. Otherwise a palette texture and `TEXCOORD_0`.
     pub vertex_colors: bool,
@@ -122,7 +123,8 @@ struct Built {
     blend: bool,
 }
 
-fn encode(session: &Session, options: &MeshExport) -> Result<Vec<u8>, String> {
+/// The options `encode` refuses, before anything is built.
+fn check(session: &Session, options: &MeshExport) -> Result<(), String> {
     if options.color_atlas
         && (options.split_objects || options.vertex_colors || !session.skeleton.bones.is_empty())
     {
@@ -134,6 +136,94 @@ fn encode(session: &Session, options: &MeshExport) -> Result<Vec<u8>, String> {
     if options.ao_targets().1 && !options.color_atlas {
         return Err("aoTarget texture and both paint the colour atlas: set colorAtlas.".into());
     }
+    Ok(())
+}
+
+/// Triangles and quads of the mesh an export with `options` writes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Counts {
+    /// Every triangle in the glb's index buffers.
+    pub triangles: usize,
+    /// The `quads` that `export_mesh` replies: index count / 6 of the one
+    /// built mesh. With the colour atlas a face is an ear-clipped polygon,
+    /// so `triangles` is the exact figure.
+    pub quads: usize,
+}
+
+/// What [`export_with`] would write with `options`, counted without
+/// encoding it: the same meshes, so the same numbers as the glb.
+pub fn counts(session: &Session, options: &MeshExport) -> Result<Counts, String> {
+    check(session, options)?;
+    if !options.merge && !options.color_atlas {
+        // Unmerged, every exposed face is one quad of its own whatever the
+        // other options, so counting faces is enough and much faster.
+        let quads = quads::unmerged_faces(session, options.export_hidden);
+        if quads == 0 {
+            return Err("Nothing to export.".into());
+        }
+        return Ok(Counts {
+            triangles: quads * 2,
+            quads,
+        });
+    }
+    let built = build_with(session, options);
+    let quads = built.indices.len() / 6;
+    if quads == 0 {
+        return Err("Nothing to export.".into());
+    }
+    let triangles = if options.split_objects {
+        (0..session.objects.len())
+            .filter(|&index| {
+                let object = &session.objects[index];
+                object.cells.values().any(|slot| *slot != 0)
+                    && (!object.hidden || options.export_hidden)
+            })
+            .map(|index| quads::build_one(session, options, index).indices.len() / 3)
+            .sum()
+    } else {
+        built.indices.len() / 3
+    };
+    Ok(Counts { triangles, quads })
+}
+
+/// Triangles in a `.glb`: the index counts of every primitive, or its
+/// vertex count where a primitive has no indices.
+pub fn glb_triangles(bytes: &[u8]) -> Result<usize, String> {
+    let root = gltf_json(bytes)?;
+    let accessors = root.get("accessors").and_then(Value::as_array);
+    let count = |index: Option<u64>| {
+        index
+            .and_then(|index| accessors?.get(index as usize))
+            .and_then(|accessor| accessor.get("count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as usize
+    };
+    let mut triangles = 0;
+    for mesh in root
+        .get("meshes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        for primitive in mesh
+            .get("primitives")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let indices = primitive.get("indices").and_then(Value::as_u64);
+            let positions = primitive
+                .get("attributes")
+                .and_then(|attributes| attributes.get("POSITION"))
+                .and_then(Value::as_u64);
+            triangles += count(indices.or(positions)) / 3;
+        }
+    }
+    Ok(triangles)
+}
+
+fn encode(session: &Session, options: &MeshExport) -> Result<Vec<u8>, String> {
+    check(session, options)?;
     if options.split_objects {
         return encode_split(session, options);
     }

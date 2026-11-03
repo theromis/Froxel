@@ -113,9 +113,9 @@ pub fn preview(args: &[String]) -> i32 {
                             started.elapsed().as_millis()
                         ),
                         None => eprintln!(
-                            "wrote {path} ({} triangles, {} ms)",
-                            reply["triangles"],
-                            started.elapsed().as_millis()
+                            "wrote {path} ({} ms)\n{}",
+                            started.elapsed().as_millis(),
+                            counts_text(&reply)
                         ),
                     }
                     0
@@ -133,6 +133,24 @@ pub fn preview(args: &[String]) -> i32 {
     }
 }
 
+/// The two triangle counts of a preview reply, one per line.
+fn counts_text(reply: &serde_json::Value) -> String {
+    let mut text = format!(
+        "preview: {} triangles (the unmerged viewport mesh it draws)",
+        reply["previewTriangles"]
+    );
+    let export = &reply["export"];
+    if let Some(err) = export["error"].as_str() {
+        text += &format!("\nexport: {err}");
+    } else if !export.is_null() {
+        text += &format!(
+            "\nexport: {} triangles, {} quads (merge {}, colorAtlas {}, as froxel export writes it)",
+            export["triangles"], export["quads"], export["merge"], export["colorAtlas"]
+        );
+    }
+    text
+}
+
 const PREVIEW_USAGE: &str = "\
 usage: froxel preview --input <file.vox> [--input <file.vox> ...] --out <file.png>
                       [--width N] [--height N] [--yaw DEG] [--pitch DEG]
@@ -144,7 +162,10 @@ usage: froxel preview --input <file.vox> [--input <file.vox> ...] --out <file.pn
                       [--variants <sets.json>] [--reference <concept.png>]
                       [--reference-label TEXT] [--columns N] [--no-labels]
                       [--overlay all|markers|boxes|points|connectors]...
-                      [--no-overlay-labels]
+                      [--no-overlay-labels] [--counts-label] [--no-export-counts]
+                      [--merge] [--color-atlas] [--vertex-colors] [--export-hidden]
+                      [--split-objects] [--ao STRENGTH] [--ao-radius CELLS]
+                      [--ao-target vertex|texture|both]
 
 The editor viewport's mesh and light (sun plus ambient), rasterised on the
 CPU: no path tracer, no window, no GPU. The camera orbits at yaw and pitch
@@ -171,7 +192,16 @@ tile's name and parameters under it unless --no-labels. --width and
 --overlay draws the markers over the model: boxes (collision boxes as
 outlines), points, connectors (an arrow toward their direction), or all
 (markers is the same), each named unless --no-overlay-labels. What the
-model hides is drawn faded and dashed. Repeat it to combine kinds.";
+model hides is drawn faded and dashed. Repeat it to combine kinds.
+
+Two triangle counts are printed and they are not the same mesh. preview is
+the unmerged viewport mesh the image draws (every exposed cell face).
+export is what froxel export (MCP export_mesh, export_models) writes with
+the export flags given here, the same flags and defaults as froxel export:
+--merge and --color-atlas usually cut it several times. The counts are of
+the whole document, whatever --object frames. --counts-label also writes
+both in the image's bottom-left corner; --no-export-counts skips the export
+count.";
 
 #[allow(clippy::type_complexity)]
 fn preview_args(args: &[String]) -> Result<Option<(Option<PathBuf>, serde_json::Value)>, String> {
@@ -179,6 +209,8 @@ fn preview_args(args: &[String]) -> Result<Option<(Option<PathBuf>, serde_json::
     let mut inputs: Vec<PathBuf> = Vec::new();
     let mut params = json!({});
     let mut overlay: Vec<Value> = Vec::new();
+    let mut export = json!({});
+    let mut no_counts = false;
     let mut angles = false;
     let mut view = false;
     let mut index = 0;
@@ -262,6 +294,22 @@ fn preview_args(args: &[String]) -> Result<Option<(Option<PathBuf>, serde_json::
             "--no-labels" => params["labels"] = json!(false),
             "--overlay" => overlay.push(json!(value(&mut index)?)),
             "--no-overlay-labels" => params["overlayLabels"] = json!(false),
+            "--counts-label" => params["countsLabel"] = json!(true),
+            "--no-export-counts" => no_counts = true,
+            "--merge" => export["merge"] = json!(true),
+            "--color-atlas" => export["colorAtlas"] = json!(true),
+            "--vertex-colors" => export["vertexColors"] = json!(true),
+            "--export-hidden" => export["exportHidden"] = json!(true),
+            "--split-objects" => export["splitObjects"] = json!(true),
+            "--ao" => {
+                let text = value(&mut index)?;
+                export["aoStrength"] = json!(crate::bridge::parse_ao_strength(Some(&text))?);
+            }
+            "--ao-radius" => {
+                let text = value(&mut index)?;
+                export["aoRadius"] = json!(crate::bridge::parse_ao_radius(Some(&text))?);
+            }
+            "--ao-target" => export["aoTarget"] = json!(value(&mut index)?),
             other => return Err(format!("unknown argument `{other}`\n{PREVIEW_USAGE}")),
         }
         index += 1;
@@ -274,6 +322,15 @@ fn preview_args(args: &[String]) -> Result<Option<(Option<PathBuf>, serde_json::
     }
     if !overlay.is_empty() {
         params["overlay"] = json!(overlay);
+    }
+    if no_counts {
+        if export.as_object().is_some_and(|map| !map.is_empty()) {
+            return Err("--no-export-counts takes no export flags".into());
+        }
+        params["export"] = json!(false);
+    } else {
+        crate::remote::preview_export(&json!({"export": export}))?;
+        params["export"] = export;
     }
     if let Some(label) = params
         .as_object_mut()

@@ -1060,3 +1060,77 @@ fn ao_target_picks_vertex_colours_the_atlas_or_both() {
     }
     assert!(AoTarget::parse("texel").is_none());
 }
+
+/// A stepped two-colour slab, a second object, and a hidden one, so merge,
+/// the colour atlas, T-junctions, and hidden objects all change the count.
+fn counted_scene() -> Session {
+    let mut session = Session::new();
+    let cells = &mut session.objects[0].cells;
+    cells.clear();
+    for x in 0..9 {
+        for y in 0..5 {
+            for z in 0..=(x / 3) {
+                cells.insert((x, y, z), if (x + y) % 4 == 0 { 2 } else { 1 });
+            }
+        }
+    }
+    let other = session
+        .add_object(Some("post"), [12, 0, 0], None, false)
+        .unwrap();
+    for z in 0..4 {
+        session.objects[other].cells.insert((0, 0, z), 3);
+    }
+    let hidden = session
+        .add_object(Some("hidden"), [0, 9, 0], None, false)
+        .unwrap();
+    session.objects[hidden].cells.insert((0, 0, 0), 1);
+    session.objects[hidden].hidden = true;
+    session
+}
+
+#[test]
+fn counts_are_the_triangles_and_quads_the_glb_has() {
+    let session = counted_scene();
+    let options = |merge, color_atlas, split_objects, export_hidden, ao_strength: f32| MeshExport {
+        vertex_colors: false,
+        merge,
+        export_hidden,
+        split_objects,
+        color_atlas,
+        ao_strength,
+        ao_radius: 2,
+        ao_target: AoTarget::Auto,
+    };
+    let mut seen = Vec::new();
+    for (merge, atlas, split, hidden, ao) in [
+        (false, false, false, false, 0.0),
+        (false, false, false, true, 0.0),
+        (true, false, false, false, 0.0),
+        (true, false, true, false, 0.0),
+        (false, true, false, false, 0.0),
+        (true, false, false, false, 0.6),
+        (false, true, false, false, 0.6),
+        (false, false, true, true, 0.6),
+    ] {
+        let options = options(merge, atlas, split, hidden, ao);
+        let found = counts(&session, &options).unwrap();
+        let bytes = super::encode(&session, &options).unwrap();
+        assert_eq!(
+            found.triangles,
+            glb_triangles(&bytes).unwrap(),
+            "{options:?}"
+        );
+        let built = super::build_with(&session, &options);
+        assert_eq!(found.quads, built.indices.len() / 6, "{options:?}");
+        seen.push(found.triangles);
+    }
+    // Unmerged is every exposed face; merging and the atlas cut it.
+    assert!(seen[2] < seen[0] && seen[4] < seen[2], "{seen:?}");
+    assert_eq!(seen[1], seen[0] + 12, "the hidden cube's six faces");
+    // The same refusals as the export.
+    let bad = MeshExport {
+        ao_target: AoTarget::Texture,
+        ..options(false, false, false, false, 0.5)
+    };
+    assert!(counts(&session, &bad).unwrap_err().contains("colorAtlas"));
+}

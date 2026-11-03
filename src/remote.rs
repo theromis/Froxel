@@ -437,6 +437,8 @@ fn preview(session: &mut Session, params: &Value) -> Result<Value, String> {
         preview.fov = fov as f32;
     }
     preview.overlay = overlay_arg(params)?;
+    preview.export = preview_export(params)?;
+    preview.counts_label = opt_bool(params, "countsLabel")?.unwrap_or(false);
     if sheet {
         let object = match params.get("object") {
             None | Some(Value::Null) => None,
@@ -506,9 +508,12 @@ fn preview(session: &mut Session, params: &Value) -> Result<Value, String> {
         "yaw": preview.yaw,
         "pitch": preview.pitch,
         "orthographic": preview.orthographic,
-        "triangles": frame.triangles,
+        "previewTriangles": frame.preview_triangles,
         "milliseconds": started.elapsed().as_millis() as u64
     });
+    if let Some(export) = export_counts_json(&preview, &frame) {
+        reply["export"] = export;
+    }
     if let Some(index) = preview.object {
         reply["object"] = json!({"index": index, "name": session.objects[index].name});
     }
@@ -519,6 +524,53 @@ fn preview(session: &mut Session, params: &Value) -> Result<Value, String> {
         reply["overlay"] = overlay_json(&frame.overlay);
     }
     Ok(reply)
+}
+
+/// MCP `preview` `export`: the export options its counts use, as
+/// `export_mesh` takes them (all off when absent), or false for no counts.
+pub(crate) fn preview_export(params: &Value) -> Result<Option<crate::export::MeshExport>, String> {
+    match params.get("export") {
+        None | Some(Value::Null) | Some(Value::Bool(true)) => Ok(Some(mesh_options(&json!({}))?)),
+        Some(Value::Bool(false)) => Ok(None),
+        Some(options @ Value::Object(map)) => {
+            const KEYS: [&str; 8] = [
+                "merge",
+                "vertexColors",
+                "exportHidden",
+                "splitObjects",
+                "colorAtlas",
+                "aoStrength",
+                "aoRadius",
+                "aoTarget",
+            ];
+            if let Some(key) = map.keys().find(|key| !KEYS.contains(&key.as_str())) {
+                return Err(format!(
+                    "export takes the export_mesh options {}, not `{key}`",
+                    KEYS.join(", ")
+                ));
+            }
+            Ok(Some(mesh_options(options)?))
+        }
+        Some(_) => Err("export must be an object of export_mesh options, or false".into()),
+    }
+}
+
+/// The reply's `export`: the triangles and quads an export with the
+/// preview's options writes, and those options, or the export's error.
+pub(crate) fn export_counts_json(
+    preview: &crate::preview::Preview,
+    frame: &crate::preview::Frame,
+) -> Option<Value> {
+    let options = preview.export.as_ref()?;
+    let mut out = mesh_params(options);
+    match frame.export.as_ref()? {
+        Ok(counts) => {
+            out["triangles"] = json!(counts.triangles);
+            out["quads"] = json!(counts.quads);
+        }
+        Err(err) => out["error"] = json!(err),
+    }
+    Some(out)
 }
 
 /// MCP `preview` `overlay`: true or `"all"` for every marker kind, or one of
@@ -985,6 +1037,7 @@ fn export_mesh(session: &Session, params: &Value) -> Result<Value, String> {
     Ok(json!({
         "path": path,
         "quads": written["quads"],
+        "triangles": written["triangles"],
         "merge": options.merge,
         "vertexColors": options.vertex_colors,
         "colorAtlas": options.color_atlas,
@@ -1120,6 +1173,7 @@ fn finish_export(
         "ok": true,
         "path": path,
         "quads": written["quads"],
+        "triangles": written["triangles"],
         "bytes": written["bytes"],
         "structure": written["structure"],
         "markers": session.markers_json(),
@@ -1146,7 +1200,10 @@ fn write_mesh(
     let quads = crate::export::export_with(session, file, options)?;
     let bytes = std::fs::read(file).map_err(|err| format!("Could not read {path}: {err}"))?;
     let structure = crate::export::gltf_structure(&bytes)?;
-    Ok(json!({"quads": quads, "bytes": bytes.len(), "structure": structure}))
+    let triangles = crate::export::glb_triangles(&bytes)?;
+    Ok(
+        json!({"quads": quads, "triangles": triangles, "bytes": bytes.len(), "structure": structure}),
+    )
 }
 
 /// The export fields of [`mesh_options`] for `options`, so the editor's

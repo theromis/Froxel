@@ -218,6 +218,8 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
     });
     ui.checkbox(&mut session.preview_overlay, "Markers on preview")
         .on_hover_text("Draw collision boxes, points, and connectors with their names over Save preview and the contact sheets; what the model hides is faded and dashed (MCP preview overlay)");
+    ui.checkbox(&mut session.preview_counts_label, "Counts on preview")
+        .on_hover_text("Write two triangle counts in the corner of Save preview and each contact sheet tile: the unmerged mesh the preview draws, and what File > Export writes with the Export panel's options (merge, colour atlas). The status line gives both too (MCP preview countsLabel and export)");
     ui.horizontal(|ui| {
         if ui
             .button("Sheet of files…")

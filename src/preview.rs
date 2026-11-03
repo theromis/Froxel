@@ -3,6 +3,8 @@
 //! window, no GPU. MCP `preview` and `froxel preview` both call [`render`].
 //! An overlay draws the document's markers over the model: collision boxes
 //! as outlines, points as dots, connectors as arrows, with their names.
+//! The export counts are the triangles and quads the glb would have, apart
+//! from the preview's own unmerged triangles.
 
 use std::collections::HashMap;
 
@@ -41,6 +43,12 @@ pub struct Preview {
     /// 2×2 supersampling, up to 2048×2048 output pixels.
     pub antialias: bool,
     pub overlay: Overlay,
+    /// Count the mesh an export with these options writes. The preview
+    /// draws the unmerged viewport mesh, which can have ten times as many
+    /// triangles as a merged or colour-atlas glb.
+    pub export: Option<crate::export::MeshExport>,
+    /// Write the preview and export counts in the image's bottom-left corner.
+    pub counts_label: bool,
 }
 
 /// Which markers the preview draws over the model.
@@ -85,13 +93,19 @@ impl Default for Preview {
             background: VIEWPORT_BACKGROUND,
             antialias: true,
             overlay: Overlay::default(),
+            export: None,
+            counts_label: false,
         }
     }
 }
 
 pub struct Frame {
     pub rgba: Vec<u8>,
-    pub triangles: usize,
+    /// Triangles of the unmerged viewport mesh that touched the image. Not
+    /// what an export writes: that is `export`.
+    pub preview_triangles: usize,
+    /// The export's counts with `Preview::export`, or why it would fail.
+    pub export: Option<Result<crate::export::Counts, String>>,
     /// Output pixels per voxel edge, orthographic only.
     pub pixels_per_voxel: Option<f32>,
     /// The markers the overlay drew.
@@ -440,12 +454,106 @@ pub fn render(session: &Session, preview: &Preview) -> Result<Frame, String> {
         Camera::Ortho { scale, .. } => Some(scale / ss as f32),
         Camera::Persp { .. } => None,
     };
+    let export = preview
+        .export
+        .as_ref()
+        .map(|options| crate::export::counts(session, options));
+    if preview.counts_label {
+        draw_counts(&mut rgba, preview, triangles, export.as_ref());
+    }
     Ok(Frame {
         rgba,
-        triangles,
+        preview_triangles: triangles,
+        export,
         pixels_per_voxel,
         overlay,
     })
+}
+
+/// `12345678` as `12,345,678`.
+fn grouped(n: usize) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// The label lines of [`draw_counts`].
+pub fn counts_lines(
+    preview: &Preview,
+    preview_triangles: usize,
+    export: Option<&Result<crate::export::Counts, String>>,
+) -> Vec<String> {
+    let mut lines = vec![format!(
+        "preview {} tris (unmerged)",
+        grouped(preview_triangles)
+    )];
+    if let (Some(found), Some(options)) = (export, &preview.export) {
+        let mut kind = Vec::new();
+        if options.color_atlas {
+            kind.push("atlas");
+        } else if options.merge {
+            kind.push("merge");
+        } else {
+            kind.push("no merge");
+        }
+        if options.split_objects {
+            kind.push("split");
+        }
+        if options.ao_strength > 0.0 {
+            kind.push("ao");
+        }
+        lines.push(match found {
+            Ok(counts) => format!(
+                "export {} tris {} quads ({})",
+                grouped(counts.triangles),
+                grouped(counts.quads),
+                kind.join(", ")
+            ),
+            Err(err) => format!("export: {err}"),
+        });
+    }
+    lines
+}
+
+/// The counts on a dark plate in the bottom-left corner.
+fn draw_counts(
+    rgba: &mut [u8],
+    preview: &Preview,
+    preview_triangles: usize,
+    export: Option<&Result<crate::export::Counts, String>>,
+) {
+    let (w, h) = (preview.width, preview.height);
+    let scale = if w.min(h) >= 600 { 2 } else { 1 };
+    let lines = counts_lines(preview, preview_triangles, export);
+    let line = crate::sheet::line_height(scale) as i32;
+    let tw = lines
+        .iter()
+        .map(|text| crate::sheet::text_width(text, scale))
+        .max()
+        .unwrap_or(0) as i32;
+    let x = 4 * scale as i32;
+    let y0 = h as i32 - x - line * lines.len() as i32;
+    crate::sheet::fill_rect(
+        rgba,
+        w,
+        h,
+        [x - 3, y0 - 3, x + tw + 3, h as i32 - x + 1],
+        [12, 12, 14, 200],
+    );
+    for (i, text) in lines.iter().enumerate() {
+        let color = if i == 0 {
+            [200, 200, 205, 255]
+        } else {
+            [255, 220, 120, 255]
+        };
+        crate::sheet::draw_text(rgba, w, h, x, y0 + line * i as i32, text, scale, color);
+    }
 }
 
 const BOX_COLOR: [u8; 4] = [255, 150, 30, 255];

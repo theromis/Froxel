@@ -562,6 +562,34 @@ pub(super) fn merged_quads(
     merged_quads_shaded(cells, merge, None)
 }
 
+/// The quads an unmerged export has: the faces of each exported object's
+/// solid cells that no cell of that object covers, as
+/// [`merged_quads_shaded`] finds them.
+pub(super) fn unmerged_faces(session: &Session, export_hidden: bool) -> usize {
+    session
+        .objects
+        .iter()
+        .filter(|object| !object.hidden || export_hidden)
+        .map(|object| {
+            object
+                .cells
+                .iter()
+                .filter(|(_, slot)| **slot != 0)
+                .map(|(cell, _)| {
+                    OFFSETS
+                        .iter()
+                        .filter(|o| {
+                            !object
+                                .cells
+                                .contains_key(&(cell.0 + o.0, cell.1 + o.1, cell.2 + o.2))
+                        })
+                        .count()
+                })
+                .sum::<usize>()
+        })
+        .sum()
+}
+
 /// [`merged_quads`] with baked occlusion. `shade` gives a face's corner
 /// shades in `(u, v)` order (`00`, `10`, `01`, `11`). Two faces merge only
 /// when their shades match too, and a run grows along `u` only while the

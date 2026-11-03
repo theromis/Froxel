@@ -96,7 +96,10 @@ If the tools are missing, the server is not configured. Point the user to
    give `preview` `variants` (or `inputs`) and a `reference` concept: one
    labelled contact sheet instead of pasting images together. `overlay:
    true` draws collision boxes, points, and connectors over the model, so
-   check collision against the stone before exporting.
+   check collision against the stone before exporting. Its
+   `previewTriangles` is the unmerged mesh it draws, often ten times the
+   game's; quote `export.triangles`, with `export` set to the game's export
+   options (for example `{"colorAtlas": true}`), as the asset's count.
 4. **Soften** a blocky region with `smooth` (it keeps colours and removes
    anything one cell thick, so leave twigs out of its box), then **refine**
    with `set_voxels`: cut the snout, place the eyes, add the colour breaks.

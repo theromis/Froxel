@@ -227,6 +227,9 @@ rasterised on the CPU in a fraction of a second, fitted to the model (or
 flags; MCP `preview` is the same image. `--preset game` is the gameplay
 camera (orthographic, yaw −60, pitch 25), and several `--input` files,
 `--variants`, or a `--reference` concept make a labelled contact sheet.
+It prints two triangle counts: the unmerged mesh it draws, and what
+`froxel export` writes with the export flags given (`--merge`,
+`--color-atlas`).
 
 ```sh
 froxel preview --input model.vox --out preview.png --yaw -35 --pitch 30 --width 1600 --height 800

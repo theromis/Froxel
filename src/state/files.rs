@@ -845,10 +845,18 @@ impl Session {
             "pitch": self.pitch.to_degrees(),
             "orthographic": self.orthographic,
         });
-        if method == "render.preview" && self.preview_overlay {
-            params["overlay"] = serde_json::json!(true);
+        if method == "render.preview" {
+            if self.preview_overlay {
+                params["overlay"] = serde_json::json!(true);
+            }
+            // Counted with the Export panel's options, as File > Export writes.
+            params["export"] = crate::remote::mesh_params(&self.export);
+            params["countsLabel"] = serde_json::json!(self.preview_counts_label);
         }
         self.status = match crate::remote::apply(self, method, &params) {
+            Ok(reply) if method == "render.preview" => {
+                format!("Saved {}. {}", path.display(), counts_status(&reply))
+            }
             Ok(_) => format!("Saved {}.", path.display()),
             Err(err) => err,
         };
@@ -888,6 +896,8 @@ impl Session {
         if self.preview_overlay {
             params["overlay"] = serde_json::json!(true);
         }
+        params["export"] = crate::remote::mesh_params(&self.export);
+        params["countsLabel"] = serde_json::json!(self.preview_counts_label);
         if let Some(reference) = &self.sheet_reference {
             params["reference"] = serde_json::json!(reference.to_string_lossy());
         }
@@ -1343,4 +1353,18 @@ fn graph_differences(left: Option<&VoxGraph>, right: Option<&VoxGraph>) -> Vec<S
         ));
     }
     out
+}
+
+/// The two triangle counts of a preview reply for the status line.
+fn counts_status(reply: &serde_json::Value) -> String {
+    let preview = format!("Preview {} triangles (unmerged)", reply["previewTriangles"]);
+    let export = &reply["export"];
+    match export["error"].as_str() {
+        Some(err) => format!("{preview}; export: {err}"),
+        None if export.is_null() => format!("{preview}."),
+        None => format!(
+            "{preview}; export {} triangles, {} quads with the Export panel's options.",
+            export["triangles"], export["quads"]
+        ),
+    }
 }

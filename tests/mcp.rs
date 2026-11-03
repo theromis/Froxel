@@ -1181,7 +1181,11 @@ fn preview_writes_a_lit_framed_png_and_keeps_the_camera() {
     );
     assert_eq!(reply["orthographic"], true);
     assert_eq!(reply["object"]["index"], 0);
-    assert!(reply["triangles"].as_u64().unwrap() > 0);
+    assert!(reply["previewTriangles"].as_u64().unwrap() > 0);
+    assert!(
+        reply.get("triangles").is_none(),
+        "only named counts: {reply}"
+    );
     assert!(reply["pixelsPerVoxel"].as_f64().unwrap() > 10.0);
     assert!((head.session.yaw - yaw).abs() < 1e-6);
     let (w, h, rgba) = read_png(&path);
@@ -1830,6 +1834,71 @@ fn merge_manifest_fills_kept_options_from_an_old_manifest() {
     assert_eq!(manifest["variants"][0]["options"], json!({"merge": true}));
     assert_eq!(manifest["options"], json!({"merge": true}));
     assert_eq!(manifest["note"], "kept");
+}
+
+#[test]
+fn preview_counts_the_export_apart_from_its_own_unmerged_mesh() {
+    let mut head = Headless::new();
+    let cells = &mut head.session.objects[0].cells;
+    cells.clear();
+    for x in 0..12 {
+        for y in 0..6 {
+            for z in 0..3 {
+                cells.insert((x, y, z), 1);
+            }
+        }
+    }
+    head.session.mesh_epoch += 1;
+    let dir = std::env::temp_dir().join(format!("froxel-preview-counts-{}", std::process::id()));
+    let png = dir.join("slab.png");
+    let glb = dir.join("slab.glb");
+    let unmerged = head.ok("preview", json!({"path": png, "width": 64, "height": 64}));
+    // Twelve by six by three: every exposed face is two triangles.
+    let faces = 2 * (12 * 6 + 12 * 3 + 6 * 3);
+    assert_eq!(unmerged["export"]["triangles"], 2 * faces, "{unmerged}");
+    assert_eq!(unmerged["export"]["quads"], faces);
+    assert_eq!(unmerged["export"]["merge"], false);
+    let preview = unmerged["previewTriangles"].as_u64().unwrap();
+    assert!(preview > 0 && preview <= 2 * faces as u64);
+    for options in [json!({"merge": true}), json!({"colorAtlas": true})] {
+        let reply = head.ok(
+            "preview",
+            json!({"path": png, "width": 64, "height": 64, "export": options, "countsLabel": true}),
+        );
+        let written = head.ok(
+            "export_mesh",
+            json!({"path": glb, "merge": options["merge"], "colorAtlas": options["colorAtlas"]}),
+        );
+        assert_eq!(
+            reply["export"]["triangles"], written["triangles"],
+            "{options}"
+        );
+        assert_eq!(reply["export"]["quads"], written["quads"], "{options}");
+        assert_eq!(
+            reply["previewTriangles"], preview,
+            "the preview mesh is the same"
+        );
+        assert!(
+            written["triangles"].as_u64().unwrap() < preview,
+            "{written}"
+        );
+    }
+    let off = head.ok(
+        "preview",
+        json!({"path": png, "width": 64, "height": 64, "export": false}),
+    );
+    assert!(off.get("export").is_none());
+    let bad = head.call("preview", json!({"path": png, "export": {"merged": true}}));
+    assert!(error_text(&bad).contains("merged"), "{bad}");
+    let failing = head.ok(
+        "preview",
+        json!({"path": png, "width": 64, "height": 64, "export": {"aoStrength": 0.5, "aoTarget": "texture"}}),
+    );
+    assert!(failing["export"]["error"]
+        .as_str()
+        .unwrap()
+        .contains("colorAtlas"));
+    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]

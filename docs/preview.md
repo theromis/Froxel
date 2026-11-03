@@ -83,12 +83,55 @@ edges are blended into alpha.
 | `preset`, `presets` | — | named camera, see above |
 | `inputs`, `variants`, `reference`, `columns`, `labels` | — | contact sheet, below |
 | `overlay`, `overlayLabels` | off, true | markers over the model, below |
+| `export` | `export_mesh` defaults | export options the counts use, below |
+| `countsLabel` | false | write both triangle counts in the corner |
 
 The reply is `path`, `width`, `height`, `yaw`, `pitch`, `orthographic`,
-`triangles` (drawn), `milliseconds`, `object` (`index` and `name`) when one
-was framed, and `pixelsPerVoxel` when orthographic. It is not an edit and
+`previewTriangles`, `export`, `milliseconds`, `object` (`index` and
+`name`) when one was framed, and `pixelsPerVoxel` when orthographic. It is not an edit and
 does not move the editor camera. Connected to a window, the window process
 draws it.
+
+## Two triangle counts
+
+The preview draws the viewport mesh: every exposed cell face, unmerged.
+That is not what a game loads. A gorge crest drew about 256 000
+triangles in the preview, and its colour-atlas glb has about 32 000. So the reply names the
+two apart:
+
+- `previewTriangles` is the unmerged viewport mesh that touched the image.
+  It changes with the framing and with `object` and `isolate`.
+- `export` is what `export_mesh` or `export_models` writes with the options
+  in the `export` argument: `merge`, `colorAtlas`, `vertexColors`,
+  `exportHidden`, `splitObjects`, `aoStrength`, `aoRadius`, `aoTarget`,
+  with `export_mesh`'s defaults (all off) for what is not given. It replies
+  `triangles` (every triangle the glb's index buffers hold), `quads`
+  (`export_mesh`'s own `quads`: index count / 6; with the colour atlas a
+  face is an ear-clipped polygon, so `triangles` is the exact figure), and
+  the options used. It counts the whole document, whatever `object` frames,
+  because the export writes the whole document. If that export would fail
+  (the colour atlas with a skeleton, say), `export` has `error` instead.
+  `export: false` leaves it out.
+
+Unmerged counting only counts faces and adds little. `merge` builds the
+merged mesh with its junction cuts, so it costs what the export costs
+(about five seconds on the crest in a release build); the colour atlas is quicker.
+`export_mesh` and `export_models` reply `triangles` too, so the numbers
+can be checked against each other.
+
+```json
+{"name": "preview", "arguments": {"path": "out/crest.png", "preset": "game",
+  "export": {"colorAtlas": true}, "countsLabel": true}}
+```
+
+`countsLabel` writes the two in the bottom-left corner, as
+`preview 256,412 tris (unmerged)` over `export 32,236 tris 16,118 quads
+(atlas)`. Contact sheet tiles take it too, and each tile's reply has its
+own `previewTriangles` and `export`.
+
+The Render section's Counts on preview check box writes the label on Save
+preview and the contact sheets; they count with the Export panel's options
+(what File > Export writes), and the status line gives both numbers.
 
 ## Overlays
 
@@ -137,7 +180,8 @@ name (the file stem, the variant name, or `label`) and its parameters as
 models and a reference; the text is a fixed 5×7 bitmap font, so the sheet
 is the same bytes every time. The reply adds `columns`, `rows`, and
 `tiles`, each with `label`, `x`, `y`, `width`, `height`, `triangles`,
-`voxels`, and `input` or `params` when it has them.
+`voxels`, `previewTriangles`, `export`, and `input` or `params` when it
+has them.
 
 ```json
 {"name": "preview", "arguments": {
@@ -166,8 +210,18 @@ The flags mirror the MCP arguments: `--width`, `--height`, `--yaw`,
 `--pitch`, `--view`, `--ortho`, `--fov`, `--margin`, `--object NAME|INDEX`,
 `--isolate`, `--background`, `--no-antialias`, `--preset`, and `--presets
 FILE`. `--output` is an alias of `--out`, which must end in `.png`. It
-prints the triangle count and the time taken on stderr. `froxel preview
---help` lists them.
+prints the time taken and both triangle counts on stderr. The export
+counts take the `froxel export` flags: `--merge`, `--color-atlas`,
+`--vertex-colors`, `--export-hidden`, `--split-objects`, `--ao`,
+`--ao-radius`, and `--ao-target`; `--counts-label` writes them on the
+image and `--no-export-counts` skips them. `froxel preview --help` lists
+them.
+
+```sh
+froxel preview --input gorge_crest.vox --out crest.png --preset game --color-atlas
+# preview: 256412 triangles (the unmerged viewport mesh it draws)
+# export: 32236 triangles, 16118 quads (merge false, colorAtlas true, as froxel export writes it)
+```
 
 Several `--input` files make a contact sheet, as do `--variants
 sets.json` (baked from the one `--input`) and `--reference concept.png`

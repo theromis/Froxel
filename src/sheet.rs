@@ -311,7 +311,13 @@ pub fn contact_sheet(
             tile.object = Some(crate::preview::find_object(session, key)?);
         }
         let frame = crate::preview::render(session, &tile)?;
-        let mut info = json!({"triangles": frame.triangles, "voxels": session.voxel_count()});
+        let mut info = json!({
+            "previewTriangles": frame.preview_triangles,
+            "voxels": session.voxel_count()
+        });
+        if let Some(export) = crate::remote::export_counts_json(&tile, &frame) {
+            info["export"] = export;
+        }
         if tile.overlay.any() {
             info["overlay"] = crate::remote::overlay_json(&frame.overlay);
         }
