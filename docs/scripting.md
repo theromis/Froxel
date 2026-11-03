@@ -32,7 +32,8 @@ palette, and materials stay as they were, and the error names the line.
 The run writes a scratch copy that starts empty on the host object (the
 object whose script this is). On success that copy replaces the host, and
 any other object the script targeted, as one undo step. Objects the script
-did not target are left alone.
+did not target are left alone, unless a document call (object, rig, clip,
+or palette; see "Document calls") changes them in that same step.
 
 ## Parameters
 
@@ -90,6 +91,17 @@ set_motion(1, "sway", 1.5);          // "none", "sway", or "bob"; amount 0..4
 `set_motion` is the per-slot motion exported as `TEXCOORD_1`. `0` is not a
 paintable slot.
 
+`set_palette` is MCP `set_palette`: one entry, or a list of them, each
+`#{index, r, g, b, a, motion, motion_amount}` with `a`, `motion`, and
+`motion_amount` optional (`a` defaults to 255). It sets alpha, which
+`set_slot` leaves alone. It is a document call: it runs after the script
+(see "Document calls").
+
+```rhai
+set_palette(#{index: 9, r: 120, g: 200, b: 255, a: 96});   // a glassy slot
+set_palette([#{index: 5, r: 40, g: 160, b: 60, motion: "sway", motion_amount: 1.5}]);
+```
+
 ## Voxels
 
 Coordinates are integers from −512 to 512. The box is inclusive, and the two
@@ -101,6 +113,19 @@ fill_box(x0, y0, z0, x1, y1, z1, slot);
 let slot = get(x, y, z); // 0 when the cell is empty
 clear();                 // empty the object currently being written
 ```
+
+`get_voxels` and `set_voxels` are MCP `get_voxels` and `set_voxels` on the
+object being written:
+
+```rhai
+let cells = get_voxels(x0, y0, z0, x1, y1, z1); // [[x, y, z, slot], …], solid cells, sorted
+let changed = set_voxels([[0, 0, 0, 1], #{x: 1, y: 0, z: 0, palette: 2}]);
+```
+
+`get_voxels` returns the solid cells of the inclusive box, sorted by x, then
+y, then z; each is four numbers, so the array limit allows about 1 000.
+`set_voxels` takes `[x, y, z, slot]` or `#{x, y, z, palette}` entries (slot
+`0` erases) and returns the number of cells that changed.
 
 ## Shapes
 
@@ -277,6 +302,74 @@ object("legs");     // that name if it exists, otherwise a new object
 A new name becomes a new object beside the host. The same name on a later
 regenerate replaces that object's voxels instead of creating another copy.
 An index outside the document is an error.
+
+## Document calls
+
+These are the MCP object, rig, pose, clip, and palette tools. Each takes
+the MCP arguments, with the optional ones in a trailing map; an object is an
+index or a name.
+
+```rhai
+set_object(object, #{name: "arm_r", position: [0, 0, 4], hidden: false});
+remove_object(object);                       // not the script's own object
+mirror_object(object, "x", "arm_l");         // axis "x", "y", or "z"
+mirror_object(object, "x", "arm_l", #{position: [-6, 0, 0], mirrorBones: true});
+
+add_bone(name, pivot);                       // pivot [x, y, z], fractional world cells
+add_bone(name, pivot, #{parent: "hip", rotation: [0.0, 0.0, 0.0, 1.0]});
+set_bone(name, #{parent: (), pivot: [0, 0, 6], rotation: [0.0, 0.0, 0.0, 1.0], rename: "spine"});
+remove_bone(name);
+bind_object(object, "arm");                  // () unbinds
+let bones = list_bones();                    // [#{name, parent, pivot, rotation, objects}, …]
+
+set_pose(#{arm: [0.0, 0.0, 0.3826834, 0.9238795]});   // or #{arm: #{rotation, scale}}
+clear_pose();
+
+add_clip(name);
+set_clip_keys(name, bone, [#{time: 0.0, rotation: [0.0, 0.0, 0.0, 1.0]},
+                           #{time: 0.5, translation: [0.0, 0.0, 1.0], scale: [1.0, 1.0, 1.0]}]);
+let clips = list_clips();                    // [#{name, bones: [#{bone, keys}]}, …]
+remove_clip(name);
+
+has_bone(name); has_clip(name); has_object(name);   // true or false
+```
+
+They change the document, not the scratch objects, so the run records them
+and applies them after the script finishes: first the voxels, `set_slot`,
+and `set_motion`, then these calls in the order the script made them,
+through the MCP tools themselves, all in the same undo step. So
+`mirror_object` copies an object's final voxels, an object made with
+`object("name")` can be named in them, and an index means the object at
+that index when the call runs, after any earlier `remove_object`. A call
+that fails stops the regenerate: the error names the script line and the
+function, and the whole document is put back. A run makes at most 4 096 of
+these calls.
+
+`list_bones`, `list_clips`, and `has_bone`, `has_clip`, and `has_object`
+read the document as it was when the run started; a call recorded earlier
+in the same run is not visible to them. Regenerate replays the calls on the
+current document, and `add_bone`, `add_clip`, and `mirror_object` fail on a
+name that already exists, as the MCP tools do, so guard them for a rerun:
+
+```rhai
+object("arm");
+fill_box(4, 0, 0, 8, 1, 1, 2);
+if !has_bone("arm") {
+    add_bone("root", [0.0, 0.0, 0.0]);
+    add_bone("arm", [4.0, 0.5, 0.5], #{parent: "root"});
+}
+bind_object("arm", "arm");
+if !has_object("arm_l") {
+    mirror_object("arm", "x", "arm_l", #{mirrorBones: true});
+}
+if !has_clip("wave") {
+    add_clip("wave");
+}
+set_clip_keys("wave", "arm", [#{time: 0.0, rotation: [0.0, 0.0, 0.0, 1.0]},
+                              #{time: 1.0, rotation: [0.0, 0.0, 0.3826834, 0.9238795]}]);
+```
+
+A rerun that changes nothing adds no undo step.
 
 ## Random and noise
 

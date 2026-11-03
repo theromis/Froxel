@@ -585,17 +585,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
             Ok(json!({"x": x, "y": y, "z": z, "palette": palette, "changed": changed}))
         }
         "voxel.set_many" => {
-            let cells = params
-                .get("cells")
-                .and_then(Value::as_array)
-                .ok_or("missing array cells")?;
-            if cells.len() > 200_000 {
-                return Err("too many cells (limit 200000)".into());
-            }
-            let mut writes = Vec::with_capacity(cells.len());
-            for cell in cells {
-                writes.push(read_cell(cell)?);
-            }
+            let writes = cell_writes(&params)?;
             let changed = session.write_cells(&writes)?;
             Ok(json!({"changed": changed, "voxels": session.voxel_count()}))
         }
@@ -608,23 +598,10 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "voxel.break" => break_end(session, &params),
         "voxel.scatter" => scatter(session, &params),
         "voxel.get_box" => {
-            let (x0, y0, z0, x1, y1, z1) = box_corners(&params)?;
-            let mut cells = Vec::new();
-            for (&(x, y, z), &palette) in &session.active().cells {
-                if (x0..=x1).contains(&x) && (y0..=y1).contains(&y) && (z0..=z1).contains(&z) {
-                    cells.push(json!({"x": x, "y": y, "z": z, "palette": palette}));
-                }
-            }
-            if cells.len() > 100_000 {
-                return Err("too many cells (limit 100000)".into());
-            }
-            cells.sort_by_key(|cell| {
-                (
-                    cell["x"].as_i64().unwrap_or(0),
-                    cell["y"].as_i64().unwrap_or(0),
-                    cell["z"].as_i64().unwrap_or(0),
-                )
-            });
+            let cells: Vec<Value> = box_cells(&session.active().cells, &params)?
+                .into_iter()
+                .map(|(x, y, z, palette)| json!({"x": x, "y": y, "z": z, "palette": palette}))
+                .collect();
             Ok(json!({"cells": cells}))
         }
         "palette.set" => {
@@ -2061,7 +2038,7 @@ fn clip_keys(params: &Value) -> Result<Vec<crate::rig::ClipKey>, String> {
     Ok(out)
 }
 
-fn clips_json(session: &Session) -> Value {
+pub(crate) fn clips_json(session: &Session) -> Value {
     json!({
         "clips": session.clips.iter().map(|clip| json!({
             "name": clip.name,
@@ -2093,6 +2070,39 @@ fn box_corners(params: &Value) -> Result<(i32, i32, i32, i32, i32, i32), String>
         y0.max(y1),
         z0.max(z1),
     ))
+}
+
+/// The writes of MCP `set_voxels` from its `cells`. Rhai scripts call this.
+pub(crate) fn cell_writes(params: &Value) -> Result<Vec<(i32, i32, i32, i32)>, String> {
+    let cells = params
+        .get("cells")
+        .and_then(Value::as_array)
+        .ok_or("missing array cells")?;
+    if cells.len() > 200_000 {
+        return Err("too many cells (limit 200000)".into());
+    }
+    cells.iter().map(read_cell).collect()
+}
+
+/// The solid cells of MCP `get_voxels` in the box of `params`, sorted by
+/// x, then y, then z. Rhai scripts call this.
+pub(crate) fn box_cells(
+    cells: &HashMap<Cell, u8>,
+    params: &Value,
+) -> Result<Vec<(i32, i32, i32, u8)>, String> {
+    let (x0, y0, z0, x1, y1, z1) = box_corners(params)?;
+    let mut found: Vec<_> = cells
+        .iter()
+        .filter(|(&(x, y, z), _)| {
+            (x0..=x1).contains(&x) && (y0..=y1).contains(&y) && (z0..=z1).contains(&z)
+        })
+        .map(|(&(x, y, z), &palette)| (x, y, z, palette))
+        .collect();
+    if found.len() > 100_000 {
+        return Err("too many cells (limit 100000)".into());
+    }
+    found.sort_unstable();
+    Ok(found)
 }
 
 fn read_cell(value: &Value) -> Result<(i32, i32, i32, i32), String> {
@@ -2291,7 +2301,7 @@ fn opt_bool(value: &Value, key: &str) -> Result<Option<bool>, String> {
     }
 }
 
-fn bones_json(session: &Session) -> Value {
+pub(crate) fn bones_json(session: &Session) -> Value {
     json!({"bones": bone_rows(session)})
 }
 

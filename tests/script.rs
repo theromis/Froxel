@@ -474,8 +474,11 @@ fn list_parameters_round_trip_through_the_chunk() {
 
 /// Run `source` on one object and return its cells.
 fn run_cells(source: &str) -> Result<HashMap<Cell, u8>, String> {
-    let names = vec!["host".to_string()];
-    let outcome = execute(source, &[], 0, &names, &Stop::after(None))?;
+    let view = DocView {
+        names: vec!["host".to_string()],
+        ..DocView::default()
+    };
+    let outcome = execute(source, &[], 0, &view, &Stop::after(None))?;
     Ok(outcome.built.into_iter().next().unwrap().1)
 }
 
@@ -686,4 +689,168 @@ fn the_hollow_log_is_hollow_snapped_and_rooted() {
     // Roots reach behind the root end and down to the ground.
     assert!(log.keys().any(|c| c.0 < -1 && (0..=1).contains(&c.2)));
     assert!(log.values().any(|&s| s == 8), "the ground is missing");
+}
+
+const RIGGED: &str = r#"
+fill_box(0, 0, 0, 3, 3, 3, 1);
+object("arm");
+fill_box(4, 0, 0, 6, 1, 1, 2);
+set_palette(#{index: 2, r: 10, g: 20, b: 30, a: 128, motion: "sway", motion_amount: 2.0});
+set_palette([#{index: 3, r: 1, g: 2, b: 3}]);
+if !has_bone("root") {
+    add_bone("root", [0.0, 0.0, 0.0]);
+    add_bone("arm", [4.0, 0.5, 0.5], #{parent: "root"});
+    add_bone("spare", [1, 1, 1]);
+    remove_bone("spare");
+}
+set_bone("arm", #{rotation: [0.0, 0.0, 0.0, 1.0]});
+bind_object("arm", "arm");
+if !has_object("arm_l") {
+    mirror_object("arm", "x", "arm_l", #{mirrorBones: true});
+}
+set_object("arm_l", #{hidden: true, position: [0, 0, 2]});
+set_pose(#{arm: [0.0, 0.0, 0.3826834, 0.9238795]});
+if !has_clip("wave") {
+    add_clip("wave");
+    add_clip("spare");
+    remove_clip("spare");
+}
+set_clip_keys("wave", "arm", [
+    #{time: 0.0, rotation: [0.0, 0.0, 0.0, 1.0]},
+    #{time: 1.0, rotation: [0.0, 0.0, 0.3826834, 0.9238795]}
+]);
+"#;
+
+#[test]
+fn object_bone_clip_and_palette_calls_run_after_the_voxels_as_one_step() {
+    use serde_json::json;
+    let mut session = Session::new();
+    session.replace_empty();
+    session.set_script(0, RIGGED).unwrap();
+    let before = session.objects.len();
+    session.regenerate_script(0).unwrap();
+    let after = |session: &Session| {
+        (
+            session.objects.len(),
+            session.skeleton.bones.len(),
+            session.clips.len(),
+            session.pose.len(),
+        )
+    };
+    let first = after(&session);
+    assert_eq!(first, (before + 2, 3, 1, 1), "arm, arm_l, root/arm/mirror");
+    let arm_l = session
+        .objects
+        .iter()
+        .position(|o| o.name == "arm_l")
+        .unwrap();
+    assert!(session.objects[arm_l].hidden);
+    assert_eq!(session.objects[arm_l].translation, (0, 0, 2));
+    assert!(
+        !session.objects[arm_l].cells.is_empty(),
+        "mirrored after the voxels"
+    );
+    assert_eq!(session.palette[2], [10, 20, 30, 128]);
+    assert_eq!(session.palette[3][..3], [1, 2, 3]);
+    assert_eq!(session.clips[0].name, "wave");
+
+    // The same calls through MCP build the same rig.
+    let mut mcp = Session::new();
+    mcp.replace_empty();
+    let arm = mcp.add_object(Some("arm"), [0, 0, 0], None, false).unwrap();
+    let calls = [
+        ("rig.add", json!({"name": "root", "pivot": [0, 0, 0]})),
+        (
+            "rig.add",
+            json!({"name": "arm", "pivot": [4, 0.5, 0.5], "parent": "root"}),
+        ),
+        ("rig.bind", json!({"index": arm, "bone": "arm"})),
+        (
+            "object.mirror",
+            json!({"index": arm, "axis": "x", "name": "arm_l", "mirrorBones": true}),
+        ),
+    ];
+    for (method, params) in calls {
+        crate::remote::apply(&mut mcp, method, &params).unwrap();
+    }
+    let names = |s: &Session| -> Vec<(String, Option<String>)> {
+        s.skeleton
+            .bones
+            .iter()
+            .map(|b| (b.name.clone(), b.parent.clone()))
+            .collect()
+    };
+    assert_eq!(names(&session), names(&mcp));
+
+    // A rerun skips what exists and changes nothing, so it adds no undo
+    // step; one undo removes the whole first run.
+    session.regenerate_script(0).unwrap();
+    assert_eq!(after(&session), first);
+    session.undo();
+    assert_eq!(after(&session), (before, 0, 0, 0));
+}
+
+#[test]
+fn a_failing_document_call_names_its_line_and_leaves_the_document() {
+    let mut session = Session::new();
+    session.replace_empty();
+    session
+        .set_script(
+            0,
+            "fill_box(0, 0, 0, 2, 2, 2, 1);\nbind_object(0, \"none\");",
+        )
+        .unwrap();
+    let err = session.regenerate_script(0).unwrap_err();
+    assert!(err.starts_with("line 2: bind_object:"), "{err}");
+    assert!(
+        session.objects[0].cells.is_empty(),
+        "the voxels were put back"
+    );
+    assert_eq!(session.script_error, err);
+
+    let err = run_cells(r#"remove_object("host");"#).unwrap_err();
+    assert!(err.contains("cannot remove its own object"), "{err}");
+    let err = run_cells(r#"set_object(0, #{hiden: true});"#).unwrap_err();
+    assert!(err.contains("no option `hiden`"), "{err}");
+}
+
+#[test]
+fn voxel_lists_read_and_write_like_get_and_set_voxels() {
+    run_cells(
+        r#"
+        let n = set_voxels([[0, 0, 0, 1], [1, 0, 0, 2], #{x: 2, y: 0, z: 0, palette: 3}]);
+        if n != 3 { throw "set_voxels count"; }
+        set_voxels([[1, 0, 0, 0]]);
+        let found = get_voxels(0, 0, 0, 5, 5, 5);
+        if found.len() != 2 || found[1][0] != 2 || found[1][3] != 3 { throw "get_voxels"; }
+        "#,
+    )
+    .unwrap();
+    let err = run_cells(r#"set_voxels([[0, 0, 600, 1]]);"#).unwrap_err();
+    assert!(err.contains("coordinate is outside"), "{err}");
+}
+
+#[test]
+fn list_bones_and_clips_read_the_document_at_the_start() {
+    let mut session = Session::new();
+    session.replace_empty();
+    session
+        .add_bone("hip", None, [1.0, 2.0, 3.0], None)
+        .unwrap();
+    session.add_clip("walk").unwrap();
+    session
+        .set_script(
+            0,
+            r#"
+            let bones = list_bones();
+            if bones.len() != 1 || bones[0].name != "hip" || bones[0].pivot[2] != 3.0 { throw "bones"; }
+            if list_clips()[0].name != "walk" || !has_clip("walk") || has_bone("knee") { throw "clips"; }
+            add_bone("knee", [1.0, 2.0, 0.0], #{parent: "hip"});
+            if list_bones().len() != 1 { throw "a recorded call is not read back"; }
+            set(0, 0, 0, 1);
+            "#,
+        )
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    assert_eq!(session.skeleton.bones.len(), 2);
 }

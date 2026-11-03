@@ -4,6 +4,15 @@
 
 ### Added
 
+- Script document tools: `get_voxels`, `set_voxels`, `set_palette` (alpha
+  and motion), `set_object`, `remove_object`, `mirror_object`, `add_bone`,
+  `set_bone`, `remove_bone`, `bind_object`, `list_bones`, `set_pose`,
+  `clear_pose`, `add_clip`, `set_clip_keys`, `list_clips`, and
+  `remove_clip`, plus `has_bone`, `has_clip`, and `has_object`. Object, rig,
+  clip, and palette calls are recorded and replayed through the MCP tools
+  after the script, in order, in the regenerate's undo step; a failing call
+  names its line and puts the document back.
+
 - Script shape tools: Rhai scripts have `fill_ellipsoid`, `fill_rounded_box`,
   `fill_tube`, `fill_box` with a mode, `carve_box`, `carve_ellipsoid`,
   `carve_rounded_box`, `carve_tube`, `smooth`, `break_end`, and `scatter`.

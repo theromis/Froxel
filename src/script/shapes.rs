@@ -39,7 +39,7 @@ const BREAK: &[&str] = &[
 const SCATTER: &[&str] = &["count", "kinds", "size", "seed", "floor", "clump"];
 
 type Fallible<T> = Result<T, Box<EvalAltResult>>;
-type Args = serde_json::Map<String, Value>;
+pub(super) type Args = serde_json::Map<String, Value>;
 
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     let state = scratch.clone();
@@ -315,20 +315,20 @@ impl Scratch {
         ]))
     }
 
-    fn keep_going(&self) -> Result<(), String> {
+    pub(super) fn keep_going(&self) -> Result<(), String> {
         match self.stop.reason() {
             Some(reason) => Err(reason),
             None => Ok(()),
         }
     }
 
-    fn cells(&self) -> &std::collections::HashMap<crate::state::Cell, u8> {
+    pub(super) fn cells(&self) -> &std::collections::HashMap<crate::state::Cell, u8> {
         &self.built[self.current].cells
     }
 
     /// Write `(x, y, z, palette)` cells, 0 erasing, after checking every one
     /// is inside the coordinate range. Returns how many cells changed.
-    fn apply(&mut self, writes: &[(i32, i32, i32, i32)]) -> Result<INT, String> {
+    pub(super) fn apply(&mut self, writes: &[(i32, i32, i32, i32)]) -> Result<INT, String> {
         let mut checked = Vec::with_capacity(writes.len());
         for &(x, y, z, slot) in writes {
             checked.push((
@@ -353,7 +353,7 @@ impl Scratch {
 }
 
 /// The box corners, each inside the coordinate range, as `x0..z1`.
-fn box_args(corners: [INT; 6]) -> Fallible<Args> {
+pub(super) fn box_args(corners: [INT; 6]) -> Fallible<Args> {
     let mut args = Args::new();
     for (name, value) in ["x0", "y0", "z0", "x1", "y1", "z1"].iter().zip(corners) {
         axis(value).map_err(runtime)?;
@@ -378,7 +378,7 @@ fn corners(
 
 /// An options map as MCP arguments. A key the function does not take is an
 /// error, so a misspelt option does not pass unnoticed.
-fn options(opts: &Map, allowed: &[&str], function: &str) -> Fallible<Args> {
+pub(super) fn options(opts: &Map, allowed: &[&str], function: &str) -> Fallible<Args> {
     let mut args = Args::new();
     for (key, value) in opts {
         if !allowed.contains(&key.as_str()) {
@@ -401,7 +401,7 @@ fn number(value: &Dynamic, what: &str) -> Fallible<Value> {
 }
 
 /// A Rhai value as JSON: numbers, strings, bools, arrays, and maps.
-fn json(value: &Dynamic) -> Fallible<Value> {
+pub(super) fn json(value: &Dynamic) -> Fallible<Value> {
     if let Ok(int) = value.as_int() {
         return Ok(int.into());
     }

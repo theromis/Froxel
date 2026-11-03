@@ -640,7 +640,14 @@ or `vec3s`. Values outside the declared range, and a list with more than
 is written. `list_params` and `get_script` return each parameter as
 `{name, kind, value}` plus `min` and `max` for float, int, and the lists, and
 `maxLen` for the lists. `kind` is `float`, `int`, `bool`, `color`, `floats`,
-`vec2s`, or `vec3s`. The script calls are in `docs/scripting.md`.
+`vec2s`, or `vec3s`. The script calls are in `docs/scripting.md`. Scripts
+call the voxel, shape, object, rig, pose, clip, and palette tools by the
+same names (`set_voxels`, `fill_tube`, `mirror_object`, `add_bone`,
+`set_clip_keys`, `set_palette`, …) with the optional arguments in a trailing
+map; object, rig, clip, and palette calls apply after the script, in order,
+in the regenerate's undo step. Only the tools that write files (`render`,
+`model_view`, `preview`, `export_mesh`, `export_models`) and the session and
+UI tools have no script form.
 
 `regenerate` runs the stored script in the sandbox and, on success, replaces
 every object the script wrote. That is one undo step. There is no operation

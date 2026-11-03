@@ -19,8 +19,11 @@ use rhai::{Array, Dynamic, Engine, EvalAltResult, OptimizationLevel, Position, I
 
 use crate::state::{Cell, Motion, Session, Volume};
 
+mod document;
 mod math;
 mod shapes;
+
+pub(crate) use document::{DocOp, DocView};
 
 const MAX_DEPTH: usize = 32;
 const MAX_ARRAY: usize = 4_096;
@@ -197,6 +200,11 @@ struct Scratch {
     params: Vec<ScriptParam>,
     palette: Vec<(u8, [u8; 3])>,
     motion: Vec<(u8, Motion, f32)>,
+    /// Object, bone, clip, and palette calls, run after the voxels are
+    /// written (`Session::apply_outcome`).
+    ops: Vec<DocOp>,
+    /// The document when the run started, for `list_bones` and `list_clips`.
+    view: DocView,
     stop: Stop,
 }
 
@@ -205,6 +213,7 @@ pub(crate) struct Outcome {
     pub(crate) built: Vec<(BuiltKey, HashMap<Cell, u8>)>,
     pub(crate) palette: Vec<(u8, [u8; 3])>,
     pub(crate) motion: Vec<(u8, Motion, f32)>,
+    pub(crate) ops: Vec<DocOp>,
 }
 
 impl Scratch {
@@ -229,9 +238,10 @@ pub(crate) fn execute(
     source: &str,
     stored: &[ScriptParam],
     host: usize,
-    names: &[String],
+    view: &DocView,
     stop: &Stop,
 ) -> Result<Outcome, String> {
+    let names = &view.names;
     if source.len() > MAX_SOURCE {
         return Err(format!("script is longer than {MAX_SOURCE} bytes"));
     }
@@ -252,6 +262,8 @@ pub(crate) fn execute(
         params: Vec::new(),
         palette: Vec::new(),
         motion: Vec::new(),
+        ops: Vec::new(),
+        view: view.clone(),
         stop: stop.clone(),
     }));
     let mut engine = Engine::new_raw();
@@ -277,6 +289,7 @@ pub(crate) fn execute(
     register(&mut engine, &scratch);
     math::register(&mut engine);
     shapes::register(&mut engine, &scratch);
+    document::register(&mut engine, &scratch);
     let mut scope = rhai::Scope::new();
     scope.push_constant("PI", std::f64::consts::PI);
     engine
@@ -292,6 +305,7 @@ pub(crate) fn execute(
             .collect(),
         palette: scratch.palette.clone(),
         motion: scratch.motion.clone(),
+        ops: scratch.ops.clone(),
     })
 }
 
@@ -999,7 +1013,7 @@ impl Session {
         if source.len() > MAX_SOURCE {
             return Err(format!("script is longer than {MAX_SOURCE} bytes"));
         }
-        let names = self.object_names();
+        let view = DocView::of(self);
         let stored = self.objects[index].script.params.clone();
         let declared = if source.is_empty() {
             Vec::new()
@@ -1008,7 +1022,7 @@ impl Session {
                 source,
                 &stored,
                 index,
-                &names,
+                &view,
                 &Stop::after(Some(SCRIPT_TIMEOUT)),
             ) {
                 Ok(outcome) => outcome.params,
@@ -1134,21 +1148,20 @@ impl Session {
         if source.is_empty() {
             return Err("object has no script".into());
         }
-        let names = self.object_names();
+        let view = DocView::of(self);
         let stored = self.objects[index].script.params.clone();
-        let outcome = match execute(&source, &stored, index, &names, &Stop::after(timeout)) {
-            Ok(outcome) => outcome,
+        let applied = execute(&source, &stored, index, &view, &Stop::after(timeout))
+            .and_then(|outcome| self.apply_outcome(index, outcome));
+        match applied {
+            Ok(()) => {
+                self.script_error.clear();
+                Ok(())
+            }
             Err(err) => {
                 self.script_error = err.clone();
-                return Err(err);
+                Err(err)
             }
-        };
-        self.begin_edit();
-        self.apply_outcome(index, outcome);
-        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
-        self.end_edit();
-        self.script_error.clear();
-        Ok(())
+        }
     }
 
     /// Start the object's script on a worker thread. A run already in flight
@@ -1167,7 +1180,7 @@ impl Session {
             return Err("object has no script".into());
         }
         self.cancel_script();
-        let names = self.object_names();
+        let view = DocView::of(self);
         let stored = self.objects[index].script.params.clone();
         let stop = Stop::after(None);
         let (send, done) = mpsc::channel();
@@ -1177,7 +1190,7 @@ impl Session {
             .name("froxel-script".into())
             .stack_size(16 << 20)
             .spawn(move || {
-                let _ = send.send(execute(&run, &stored, index, &names, &worker));
+                let _ = send.send(execute(&run, &stored, index, &view, &worker));
             })
             .map_err(|err| format!("cannot start the script: {err}"))?;
         self.script_job = Some(ScriptJob {
@@ -1229,19 +1242,33 @@ impl Session {
                 self.objects[job.index].script.params = outcome.params;
                 self.script_error.clear();
             }
-            Ok(outcome) => {
-                self.begin_edit();
-                self.apply_outcome(job.index, outcome);
-                self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
-                self.end_edit();
-                self.script_error.clear();
-            }
+            Ok(outcome) => match self.apply_outcome(job.index, outcome) {
+                Ok(()) => self.script_error.clear(),
+                Err(err) => self.script_error = err,
+            },
             Err(err) => self.script_error = err,
         }
         true
     }
 
-    fn apply_outcome(&mut self, index: usize, outcome: Outcome) {
+    /// Write a finished run as one undo step: voxels, palette, and motion,
+    /// then the object, bone, clip, and palette calls in the order the
+    /// script made them. When a call fails the document is put back.
+    fn apply_outcome(&mut self, index: usize, outcome: Outcome) -> Result<(), String> {
+        let applied = self.transaction(|session| {
+            session.begin_edit();
+            let ops = session.write_outcome(index, outcome);
+            for op in &ops {
+                op.run(session)?;
+            }
+            session.end_edit();
+            Ok(())
+        });
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+        applied
+    }
+
+    fn write_outcome(&mut self, index: usize, outcome: Outcome) -> Vec<DocOp> {
         self.objects[index].script.params = outcome.params;
         for (key, cells) in outcome.built {
             match key {
@@ -1288,6 +1315,7 @@ impl Session {
             material.motion = motion;
             material.motion_amount = amount.clamp(0.0, 4.0);
         }
+        outcome.ops
     }
 
     fn param_slot(&mut self, index: usize, name: &str) -> Option<&mut ParamValue> {
@@ -1308,13 +1336,6 @@ impl Session {
             ));
         }
         Ok(())
-    }
-
-    fn object_names(&self) -> Vec<String> {
-        self.objects
-            .iter()
-            .map(|object| object.name.clone())
-            .collect()
     }
 }
 

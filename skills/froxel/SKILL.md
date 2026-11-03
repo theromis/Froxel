@@ -21,10 +21,16 @@ If the tools are missing, the server is not configured. Point the user to
   variants or large regular geometry: buildings, terrain, fences, rocks.
   A curve or polyline is one `param_vec2s` / `param_vec3s` list parameter,
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
-  Scripts have the sculpt tools too (`fill_tube`, `carve_*`, `smooth`,
-  `break_end`, `scatter`, with MCP options in a trailing map such as
-  `#{mode: "empty"}`), so a family of organic pieces can be a script; see
-  `docs/scripting.md` and `examples/hollow_log.rhai`.
+  Scripts have the MCP tools too, by the same names, with optional
+  arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
+  (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`),
+  `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
+  tools (`mirror_object`, `add_bone`, `bind_object`, `set_clip_keys`,
+  `set_palette`, …). The document tools apply after the script in order;
+  guard `add_bone`, `add_clip`, and `mirror_object` with `has_bone`,
+  `has_clip`, and `has_object` so a rerun does not fail. Only file-writing
+  tools have no script form. See `docs/scripting.md` and
+  `examples/hollow_log.rhai`.
 
 ## Coordinates and rules
 
