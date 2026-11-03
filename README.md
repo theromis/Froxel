@@ -239,6 +239,19 @@ triangle counts: the unmerged mesh it draws, and what
 froxel preview --input model.vox --out preview.png --yaw -35 --pitch 30 --width 1600 --height 800
 ```
 
+`froxel compare --input model.vox --concept sheet.png --crop 40,60,520,300
+--view front --ortho --out vs.png` scores the model's silhouette against a
+concept view: it prints IoU, the share of the concept missing, and the
+share of the model in excess, and writes an overlay with the concept's
+outline and both in colour. `froxel carve --views views.json --out
+model.vox` fills the visual hull of a turnaround sheet's front, side, and
+top views. MCP `compare_silhouette` and `carve_from_views` are the same;
+see [docs/mcp.md](docs/mcp.md#silhouettes).
+
+```sh
+froxel compare --input log.vox --concept log-sheet.png --crop 40,60,520,300 --view front --ortho --out log-vs-front.png
+```
+
 `froxel export --input model.vox --output model.glb` writes the glTF with
 the `export_mesh` options as flags: `--merge`, `--vertex-colors`,
 `--color-atlas`, `--export-hidden`, `--split-objects`, and `--ao STRENGTH`

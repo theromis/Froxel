@@ -22,6 +22,8 @@ pub struct ViewCache {
     /// Two or more fingers are down, or were since the last time none were:
     /// the touch moves the camera and edits nothing.
     touch_gesture: bool,
+    /// The Compare silhouette overlay, uploaded once per comparison.
+    silhouette: Option<(u64, egui::TextureHandle)>,
 }
 
 impl ViewCache {
@@ -34,6 +36,7 @@ impl ViewCache {
             trace_texture: None,
             trace_epoch: 0,
             touch_gesture: false,
+            silhouette: None,
         }
     }
 
@@ -228,6 +231,7 @@ pub fn show(
         paint_gizmo(ui.painter().with_clip_rect(rect), session, rect);
     }
     paint_bones(ui.painter().with_clip_rect(rect), session, rect);
+    paint_silhouette(ctx, ui.painter().with_clip_rect(rect), session, cache, rect);
 
     if session.active().cells.is_empty() {
         let color = egui::Color32::from_rgb(214, 220, 230);
@@ -976,6 +980,53 @@ pub(crate) fn ray_through(session: &Session, rect: egui::Rect, pos: egui::Pos2) 
     let a = unproject(0.0);
     let b = unproject(1.0);
     (a, b - a)
+}
+
+/// The last Compare silhouette overlay in the viewport's bottom-right corner,
+/// up to half its width and height, until the panel hides it.
+fn paint_silhouette(
+    ctx: &egui::Context,
+    painter: egui::Painter,
+    session: &Session,
+    cache: &mut ViewCache,
+    rect: egui::Rect,
+) {
+    let Some(overlay) = &session.silhouette.overlay else {
+        cache.silhouette = None;
+        return;
+    };
+    if cache.silhouette.as_ref().map(|(epoch, _)| *epoch) != Some(overlay.epoch) {
+        let image = egui::ColorImage::from_rgba_unmultiplied(
+            [overlay.width as usize, overlay.height as usize],
+            &overlay.rgba,
+        );
+        let handle = ctx.load_texture("froxel-silhouette", image, egui::TextureOptions::LINEAR);
+        cache.silhouette = Some((overlay.epoch, handle));
+    }
+    let Some((_, handle)) = &cache.silhouette else {
+        return;
+    };
+    let (w, h) = (overlay.width as f32, overlay.height as f32);
+    let fit = (rect.width() * 0.5 / w)
+        .min(rect.height() * 0.5 / h)
+        .min(1.0);
+    let size = egui::vec2(w * fit, h * fit);
+    let at = egui::Rect::from_min_size(
+        egui::pos2(rect.right() - size.x - 10.0, rect.bottom() - size.y - 10.0),
+        size,
+    );
+    painter.image(
+        handle.id(),
+        at,
+        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+        egui::Color32::WHITE,
+    );
+    painter.rect_stroke(
+        at,
+        2.0,
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(90, 225, 255)),
+        egui::StrokeKind::Outside,
+    );
 }
 
 #[cfg(test)]

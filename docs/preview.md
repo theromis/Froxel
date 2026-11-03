@@ -322,3 +322,4 @@ froxel preview --input examples/gorge_wall.vox --variants examples/gorge_wall_va
 | `preview` | Shape, silhouette, framing, quick looks after each edit | well under a second |
 | `model_view` | Palette-exact colours against a turnaround sheet | fast, flat, no light |
 | `render` | Lighting, materials, glass, final stills | seconds to minutes |
+| `compare_silhouette` | How closely the silhouette from one camera matches a concept view, as IoU, missing, and excess, with an overlay | a preview plus the fit |

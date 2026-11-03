@@ -25,12 +25,15 @@ const MAX_OPS: usize = 4_096;
 type Fallible<T> = Result<T, Box<EvalAltResult>>;
 
 /// What a run may read of the document: object names, bones, and clips as
-/// MCP `list_bones` and `list_clips` return them.
+/// MCP `list_bones` and `list_clips` return them, and the palette colours
+/// `carve_from_views` quantises to.
 #[derive(Clone, Default)]
 pub(crate) struct DocView {
     pub(crate) names: Vec<String>,
     pub(crate) bones: Value,
     pub(crate) clips: Value,
+    /// 256 colours; empty is the default palette.
+    pub(crate) palette: Vec<[u8; 3]>,
 }
 
 impl DocView {
@@ -43,6 +46,7 @@ impl DocView {
                 .collect(),
             bones: remote::bones_json(session),
             clips: remote::clips_json(session),
+            palette: remote::session_palette(session).to_vec(),
         }
     }
 }

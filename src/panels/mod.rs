@@ -143,6 +143,10 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
                     ui.separator();
                     organic::deform(ui, session);
                     ui.separator();
+                    silhouette::carve(ui, session);
+                    ui.separator();
+                    silhouette::compare(ui, session);
+                    ui.separator();
                     stone::markers(ui, session);
                 });
         },
@@ -570,5 +574,6 @@ mod outliner;
 mod palette;
 mod render;
 mod script;
+mod silhouette;
 mod stone;
 mod tools;

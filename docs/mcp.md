@@ -160,6 +160,7 @@ tracer. A file with no scene graph still loads its first model.
 | `loft` | `points`, `palette` or `palettes` | Fill a solid along 2..=1024 **local** points whose cross-section changes per point: an ellipse (`rx`, `ry`) turned by `roll`, cut flat by `flatTop`, with outline `noise` and `frequency`. Optional `radius` and the section fields as defaults, `curve` (`polyline`, `smooth`), `caps` (`flat`, `round`), `pattern` (`rings`, `stripes`, `random`), `period`, `sectors`, `seed`, `mode`. Replies with `cells` and `length`. At most 2000000 cells, one undo step |
 | `deform` | `op` | `bend`, `taper`, or `twist` the active object (or the cells of a box `x0`..`z1`) along `axis`, or `displace` its surface with 3D noise. Optional `axis`, `origin`, `length`, `center`, `angle`, `direction`, `start`, `end`, `amplitude`, `scale`, `octaves`, `seed`, `bias`. Slots are kept. Replies with `cells`, `result`, `added`, `removed`. One undo step |
 | `brush` | `op`, `points` | Sculpt brush dabs along **local** points: `inflate`, `deflate` (`dig`), `smooth`, `flatten`, or `grab` (`drag`). Optional `radius`, `strength`, `falloff` (`smooth`, `linear`, `constant`), `only`, `palette`, `vector` (grab), `spacing`. Replies with `dabs`, `added`, `removed`. One undo step |
+| `carve_from_views` | `views` | Fill the visual hull of 2 or 3 orthographic views (front, side, top) of a concept's turnaround sheet into the active object: each view's silhouette is extruded along its depth axis and the cells every view covers are kept. A view is a PNG `path` with `crop`, `background` (`auto`, `alpha`, or a key colour with `tolerance`), and `cellsPerPixel` or `size`, or `rows` with a `legend`. Optional `size`, `origin`, `cellsPerPixel`, `palette` or `slots`, `coverage`, `shell`, `smooth`, `mode`. Replies with `cells`, `bounds`, `size`, and each view's `grid` and `covered`. At most 4000000 cells in the box, one undo step. See [Silhouettes](#silhouettes) |
 | `carve` | `shape` | Remove the solid cells inside a `box`, `ellipsoid`, `rounded_box`, or `tube`, given as for the fill tools. Replies with `removed`. One undo step |
 | `break_end` | `point`, `normal` | Break the active object across a plane: a jagged face, bark on its rim, sapwood inside, and tapered splinters out along the normal. Optional `depth`, `splinters` or `density`, `length`, `thickness`, `taper`, `rimBias`, `bark`, `sapwood`, `tips`, `seed`. One undo step |
 | `scatter` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Drop small pieces (shard, chip, pebble, chunk) that settle on what is below into a heap. Optional `count`, `kinds`, `size`, `seed`, `floor`, `clump`, `exclude`. One undo step |
@@ -193,6 +194,7 @@ tracer. A file with no scene graph still loads its first model.
 | `render` | `path` | Path-trace the scene to a PNG. The camera fits the visible cells (or `target`) in the frame. `width` and `height` default to 256 (up to 4096, 4096 × 2048 pixels in all); one alone and the other follows the model. `samples` defaults to 16. `bounces` defaults to 4. `denoise` defaults to true. `yaw` defaults to 30°, `pitch` to 25°. Optional `zoom`, `margin`, `target`, `distance`, `orthographic`, `views`, `pose`, `showBones` |
 | `model_view` | `path` | Flat model view PNG: each pixel is the palette colour of the first cell hit, no light, no tonemap. Fitted like `render`. `width` and `height` default to 512 (up to 4096). Orthographic by default. Optional `view`, `yaw`, `pitch`, `zoom`, `margin`, `target`, `pixelsPerVoxel`, `distance`, `orthographic`, `background`, `views`, `pose`, `showBones` |
 | `preview` | `path` | Fast lit PNG: the viewport's mesh and light rasterised on the CPU in well under a second, fitted to the model or one object with a margin. `width` and `height` default to 1024 (up to 4096). Optional `view`, `yaw`, `pitch`, `preset` (`game`: orthographic, yaw −60, pitch 25), `presets`, `orthographic`, `fov`, `margin`, `object`, `isolate`, `background`, `antialias`, `pose`. `inputs`, `variants`, or `reference` (with `columns`, `labels`) make a labelled contact sheet of several models and a concept image. `overlay` (`true`, or `boxes`, `points`, `connectors`) draws the markers over the model with their names (`overlayLabels`). `lighting` (`old_pond`, or a name from `lightingPresets` or the user's `lighting_presets.json`, or fields: sun direction, colour, and energy, ambient colour and energy, exposure, background, a LUT) lights it as a game does. Replies `previewTriangles` (the unmerged mesh it draws) and `export` (`triangles` and `quads` that `export_mesh` writes with the options in `export`, such as `colorAtlas`); `countsLabel` writes both on the image. See [preview.md](preview.md) |
+| `compare_silhouette` | `path`, `concept` | Compare the model's `preview` silhouette from a camera (`preset`, `view`, `yaw`, `pitch`, `orthographic`, `fov`, `margin`, `object`, `isolate`, `pose`) with a mask cut from a concept PNG (`crop`, `background`, `tolerance`, `alphaThreshold`, `flip`). `align` `fit` (default), `height`, `width`, or `{scale, offset}` places the concept with one uniform scale. Replies with `iou`, `missing`, `excess`, `pixels`, `align`, `conceptBounds`, `modelBounds`, and `aspect`, and writes an overlay PNG. Optional `width`, `height`, `lighting`, `antialias`. See [Silhouettes](#silhouettes) |
 | `set_view` | — | Move the session camera; connected, the window's. Optional `view`, `yaw`, `pitch`, `preset`, `presets`, `frame`, `distance`, `orthographic`, `bones`. Not an edit |
 | `screenshot` | — | PNG of the whole editor window. Connected mode only |
 | `screenshot_viewport` | — | PNG of the 3D viewport, including its mode chips. Connected mode only |
@@ -854,8 +856,10 @@ same names (`set_voxels`, `fill_tube`, `mirror_object`, `add_bone`,
 `set_clip_keys`, `set_palette`, …) with the optional arguments in a trailing
 map; object, rig, clip, and palette calls apply after the script, in order,
 in the regenerate's undo step. Only the tools that write files (`render`,
-`model_view`, `preview`, `export_mesh`, `export_models`) and the session and
-UI tools have no script form.
+`model_view`, `preview`, `compare_silhouette`, `export_mesh`,
+`export_models`) and the session and UI tools have no script form. A
+script reads no files either, so its `carve_from_views` takes `rows`
+instead of PNG paths.
 
 `regenerate` runs the stored script in the sandbox and, on success, replaces
 every object the script wrote. That is one undo step. There is no operation
@@ -869,6 +873,79 @@ language and the `MVSC` chunk are described in `docs/scripting.md`.
 
 A creature or other one-off shape is modelled without a script: see
 [hand-sculpting.md](hand-sculpting.md).
+
+### Silhouettes
+
+Copying cells from flat sheet views gives blobs, and comparing heights
+says little about whether a model reads like its concept. Two tools work
+on silhouettes instead.
+
+`carve_from_views` turns a turnaround sheet into the rough form. Each of
+2 or 3 views is extruded through a box along its depth axis, and the cells
+every view covers are kept (a visual hull). Views are named as
+`model_view` names them, for a model facing −Y with +Z up:
+
+| `view` | Seen from | Image right | Image down | Extruded along |
+|---|---|---|---|---|
+| `front` | −Y | +X | −Z | Y |
+| `back` | +Y | −X | −Z | Y |
+| `left`, `side` | +X | +Y | −Z | X |
+| `right` | −X | −Y | −Z | X |
+| `top` | +Z | +X | −Y | Z |
+| `bottom` | −Z | −X | −Y | Z |
+
+So in a `side` view the model's front is on the image's left; `flip: true`
+mirrors a view drawn the other way. A view is a PNG `path` and a `crop`
+`[x, y, width, height]` in pixels (several views can be crops of one
+sheet), or `rows` and a `legend` as a script passes them. Its background
+rule is `background` `auto` (the default: transparent pixels if the crop
+has any, else the commonest colour of the whole image's border within
+`tolerance`, default 40), `alpha` (alpha below `alphaThreshold`, default
+128), or a key colour `#rrggbb` within `tolerance`. A view maps to cells
+by its `cellsPerPixel` or `size` `[across, down]`, the top-level
+`cellsPerPixel`, or the top-level `size` `[x, y, z]`, which also sets the
+box (`null` on an axis takes the largest view along it). A view
+smaller than the box is centred across and stands on its bottom. A cell is
+in a view when at least `coverage` (default 0.5) of its footprint is
+inked. Each cell takes the colour of the view whose visible surface is
+nearest it, quantised to the nearest of `slots` (default every slot), or
+`palette` fills one slot. `shell` keeps a hollow shell that many cells
+thick and `smooth` runs `smooth` passes over the hull. The box's minimum
+corner is `origin` (default `[0, 0, 0]`).
+
+```json
+{"views": [
+  {"view": "front", "path": "sheet.png", "crop": [40, 60, 520, 300]},
+  {"view": "side", "path": "sheet.png", "crop": [620, 60, 180, 300]},
+  {"view": "top", "path": "sheet.png", "crop": [40, 420, 520, 180]}
+ ],
+ "size": [96, 34, 56], "slots": [3, 4, 5, 6], "smooth": 1}
+```
+
+The hull is the outer limit of the form: a concave part (the gap between
+two legs seen from the side) stays filled until `carve` cuts it. Shape it
+from there with `carve`, `fill_tube`, `smooth`, and `set_voxels`.
+
+`compare_silhouette` scores the model against one concept view from a
+camera, as a number and a picture. The model is drawn with `preview` and
+its mask is every pixel it covers; the concept's mask is cut like a
+`carve_from_views` view. The concept is placed with one uniform scale and
+an offset, so its proportions are kept: `align` `fit` finds the placement
+with the most overlap (from equal areas and centroids), `height` and
+`width` match that extent with the bottoms and centres lined up, and
+`{scale, offset: [x, y]}` gives it (concept pixel `p` lands on output
+pixel `p * scale + offset`). Pass back a reply's `align` to hold the
+placement still between edits, so a change in size shows. The reply has
+`iou` (overlap over union), `missing` (the share of the concept the model
+does not cover), `excess` (the share of the model outside the concept),
+the pixel counts, the two bounds and their `aspect` (width over height),
+and the overlay at `path`: the preview with the concept's outline in cyan,
+the missing areas in magenta, the excess in orange, and the numbers in the
+corner. `width` and `height` default to 512 tall at the concept crop's
+aspect. Use an orthographic named `view` for a turnaround view and
+`preset: "game"` for the hero view at the gameplay angle. It writes a
+file, so scripts do not have it. `froxel compare` is the same from the
+command line, and `froxel carve` runs `carve_from_views` from a JSON file.
 
 ### Markers
 
@@ -940,6 +1017,8 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `fill_ellipsoid`, `fill_rounded_box` | Generator: Ellipsoid, Rounded box |
 | `fill_tube` | Tube tool: drag from the start radius to the end radius; Chain adds a point per drag and Smooth curves through them until Finish; Flatten, Roll, and Blade shape it; Solid, Rings, Stripes, or Random with a second slot |
 | `sweep` | Sweep section: Points (one per line, Point at selection adds the selection's centre), Smooth, Rectangle (Width, Height, Radius) or Polygon, Palettes, Bands, Rings, or Random, Period, Mode, Seed |
+| `carve_from_views` | Carve from views section: three view rows (on, side, Image…, crop, Flip), Cells / px, Size, Origin, Background (Auto, Alpha, Key with tolerance), Colour from views or the active slot, Shell, Smooth, Carve |
+| `compare_silhouette` | Compare silhouette section: Concept Image…, Crop, Background, Flip, Camera (Viewport, Game, Front, Left, Top), Align (Fit, Height, Width), Compare; the overlay shows in the viewport's bottom-right corner until Hide overlay; MCP `compare_silhouette` over the control port shows it there too |
 | `carve` | Remove mode with Box, Generator, or Tube |
 | `loft` | Loft section: Points (one per line, x y z then optional rx ry roll flatTop noise frequency; Point at selection adds the selection's centre), Smooth, Round ends, Radii, Roll, Flat top, Noise, Lumps, Palettes, Rings, Stripes, or Random, Period, Mode, Seed |
 | `deform` | Deform section: Bend, Taper, Twist, or Displace; Axis, Origin, Length; Angle and Toward, Start and End, or Amplitude, Scale, Octaves, Bias, Seed; over the selection's box or the whole object |

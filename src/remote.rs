@@ -9,9 +9,11 @@ use serde_json::{json, Map, Value};
 
 mod markers;
 mod organic;
+mod silhouette;
 mod stone;
 pub(crate) use markers::marker_kind;
 pub(crate) use organic::{organic_writes, Organic};
+pub(crate) use silhouette::{hull_writes, session_palette};
 pub(crate) use stone::{stone_writes, Stone};
 
 use crate::state::{Cell, GlassMode, Session};
@@ -417,27 +419,7 @@ fn preview(session: &mut Session, params: &Value) -> Result<Value, String> {
         height: opt_i32_range(params, "height", side, 1, max)? as u32,
         ..Default::default()
     };
-    let preset = match opt_str(params, "preset")? {
-        Some(name) => Some(crate::sheet::preset(&name, params.get("presets"))?),
-        None => None,
-    };
-    if let Some(preset) = preset {
-        preview.yaw = preset.yaw;
-        preview.pitch = preset.pitch;
-        preview.orthographic = preset.orthographic;
-        preview.fov = preset.fov.unwrap_or(preview.fov);
-        preview.margin = preset.margin.unwrap_or(preview.margin);
-    }
-    let (yaw, pitch) = view_angles(params)?;
-    preview.yaw = yaw.map_or(preview.yaw, |value| value as f32);
-    preview.pitch = pitch.map_or(preview.pitch, |value| value as f32);
-    preview.orthographic = opt_bool(params, "orthographic")?.unwrap_or(preview.orthographic);
-    if let Some(margin) = opt_f64(params, "margin")? {
-        preview.margin = margin as f32;
-    }
-    if let Some(fov) = opt_f64(params, "fov")? {
-        preview.fov = fov as f32;
-    }
+    preview_camera(params, &mut preview)?;
     preview.overlay = overlay_arg(params)?;
     preview.export = preview_export(params)?;
     preview.counts_label = opt_bool(params, "countsLabel")?.unwrap_or(false);
@@ -478,15 +460,7 @@ fn preview(session: &mut Session, params: &Value) -> Result<Value, String> {
             Path::new(&path),
         );
     }
-    preview.object = match params.get("object") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(name)) => Some(crate::preview::find_object(session, name)?),
-        Some(Value::Number(number)) => {
-            let index = number.as_u64().ok_or("object must be an index or a name")?;
-            Some(crate::preview::find_object(session, &index.to_string())?)
-        }
-        Some(_) => return Err("object must be an index or a name".into()),
-    };
+    preview.object = preview_object(session, params)?;
     preview.isolate = opt_bool(params, "isolate")?.unwrap_or(false);
     preview.antialias = opt_bool(params, "antialias")?.unwrap_or(true);
     if params
@@ -534,6 +508,47 @@ fn preview(session: &mut Session, params: &Value) -> Result<Value, String> {
         reply["overlay"] = overlay_json(&frame.overlay);
     }
     Ok(reply)
+}
+
+/// MCP `preview` `preset`, `presets`, `view`, `yaw`, `pitch`,
+/// `orthographic`, `margin`, and `fov` onto `preview`. Arguments win over
+/// the preset.
+fn preview_camera(params: &Value, preview: &mut crate::preview::Preview) -> Result<(), String> {
+    let preset = match opt_str(params, "preset")? {
+        Some(name) => Some(crate::sheet::preset(&name, params.get("presets"))?),
+        None => None,
+    };
+    if let Some(preset) = preset {
+        preview.yaw = preset.yaw;
+        preview.pitch = preset.pitch;
+        preview.orthographic = preset.orthographic;
+        preview.fov = preset.fov.unwrap_or(preview.fov);
+        preview.margin = preset.margin.unwrap_or(preview.margin);
+    }
+    let (yaw, pitch) = view_angles(params)?;
+    preview.yaw = yaw.map_or(preview.yaw, |value| value as f32);
+    preview.pitch = pitch.map_or(preview.pitch, |value| value as f32);
+    preview.orthographic = opt_bool(params, "orthographic")?.unwrap_or(preview.orthographic);
+    if let Some(margin) = opt_f64(params, "margin")? {
+        preview.margin = margin as f32;
+    }
+    if let Some(fov) = opt_f64(params, "fov")? {
+        preview.fov = fov as f32;
+    }
+    Ok(())
+}
+
+/// MCP `preview` `object`: an index or a name.
+fn preview_object(session: &Session, params: &Value) -> Result<Option<usize>, String> {
+    Ok(match params.get("object") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(name)) => Some(crate::preview::find_object(session, name)?),
+        Some(Value::Number(number)) => {
+            let index = number.as_u64().ok_or("object must be an index or a name")?;
+            Some(crate::preview::find_object(session, &index.to_string())?)
+        }
+        Some(_) => return Err("object must be an index or a name".into()),
+    })
 }
 
 /// MCP `preview` `lighting` (a preset name or an object of lighting
@@ -802,6 +817,8 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "voxel.deform" => organic::apply_organic(session, &params, Organic::Deform),
         "voxel.loft" => organic::apply_organic(session, &params, Organic::Loft),
         "voxel.brush" => organic::apply_organic(session, &params, Organic::Brush),
+        "voxel.carve_from_views" => silhouette::carve_from_views(session, &params),
+        "render.compare_silhouette" => silhouette::compare_silhouette(session, &params),
         "marker.set" => markers::set_marker(session, &params),
         "marker.remove" => markers::remove_marker(session, &params),
         "marker.list" => Ok(markers::list_markers(session)),
@@ -1319,6 +1336,8 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.deform", "op, x0..z1?, axis?, origin?, length?, center?, angle?, direction?, start?, end?, amplitude?, scale?, octaves?, seed?, bias?", "Bend, taper, or twist the object or a box along an axis, or displace its surface with noise; slots kept"),
     ("voxel.loft", "points, radius? | rx? + ry?, roll?, flatTop?, noise?, frequency?, curve?, caps?, palette | palettes, pattern?, period?, sectors?, seed?, mode?", "Fill a solid along a curve whose elliptical, flattened, noisy section changes per point"),
     ("voxel.brush", "op, points, radius?, strength?, falloff?, only?, palette?, vector?, spacing?", "Sculpt brush dabs along points: inflate, deflate, smooth, flatten, or grab"),
+    ("voxel.carve_from_views", "views, size?, origin?, cellsPerPixel?, palette? | slots?, coverage?, shell?, smooth?, mode?", "Fill the visual hull of 2 or 3 orthographic views (front, side, top): each a PNG path or rows, with crop, cellsPerPixel or size, and a background rule"),
+    ("render.compare_silhouette", "path, concept, crop?, background?, tolerance?, alphaThreshold?, flip?, align?, preset?, view?, yaw?, pitch?, orthographic?, fov?, margin?, object?, isolate?, width?, height?, lighting?, pose?", "Compare the model's preview silhouette with a concept mask: IoU, missing and excess shares, and an overlay PNG"),
     ("marker.set", "name, kind?, point | x0..z1 | min + max, direction?, object?", "Name a point, collision box, or connector on an object; replaces one of the same name"),
     ("marker.remove", "name | all", "Remove one marker, or all"),
     ("marker.list", "", "Markers with local, world, and glTF coordinates"),
@@ -2622,6 +2641,15 @@ fn opt_vec3(value: &Value, key: &str) -> Result<Option<[f32; 3]>, String> {
         Some(found) => as_vec(found, 3)
             .map(|v| Some([v[0], v[1], v[2]]))
             .ok_or_else(|| format!("{key} must be [x, y, z]")),
+    }
+}
+
+fn opt_vec2(value: &Value, key: &str) -> Result<Option<[f32; 2]>, String> {
+    match value.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(found) => as_vec(found, 2)
+            .map(|v| Some([v[0], v[1]]))
+            .ok_or_else(|| format!("{key} must be [x, y]")),
     }
 }
 

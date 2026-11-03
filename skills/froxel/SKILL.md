@@ -23,7 +23,7 @@ If the tools are missing, the server is not configured. Point the user to
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `moss`, `algae`, `vines`, `sweep`, `loft`, `deform`, `brush`, and `marker`,
+  (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `moss`, `algae`, `vines`, `sweep`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, and `marker`,
   `collision_box`, `connector`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -67,6 +67,12 @@ If the tools are missing, the server is not configured. Point the user to
 ## Hand sculpting loop
 
 1. `new_document`, then `set_palette` with the colours you need.
+   From a concept's turnaround sheet, start the form with
+   `carve_from_views`: the front, side, and top views as PNG crops of the
+   sheet (`crop`, `cellsPerPixel` or a box `size`, a background rule) fill
+   their visual hull, coloured from the nearest view. Do not copy cells from
+   the flat views by hand. The hull is the outer limit: carve the concave
+   parts (gaps between legs, under a log) afterwards.
 2. **Block out** the large forms with `fill_rounded_box` and
    `fill_ellipsoid`. Grow limbs, roots, branches, and twigs with `fill_tube`
    (a radius per point, so it tapers; `curve: "smooth"` bends it). Build
@@ -114,6 +120,12 @@ If the tools are missing, the server is not configured. Point the user to
    with `set_voxels`: cut the snout, place the eyes, add the colour breaks.
 5. Repeat steps 3 and 4. A first blockout is never the result. Look after
    every step and read the PNGs; do not report a model you have not viewed.
+   Measure it against the concept with `compare_silhouette` (the concept
+   PNG and its `crop`, a camera such as an orthographic `view` or `preset:
+   "game"`): `iou`, `missing`, and `excess` say whether it reads like the
+   concept, and the overlay shows where (magenta missing, orange excess).
+   Reuse the reply's `align` on later calls so a change in size shows.
+   Compare silhouettes, not heights.
 6. `save_file` with a `path`.
 
 Build each rig part (head, jaw, body segments, limbs, tail) as its own object

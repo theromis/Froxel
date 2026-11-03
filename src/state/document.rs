@@ -81,6 +81,7 @@ impl Session {
             organic: OrganicPanels::default(),
             sculpt: SculptBrush::default(),
             sculpt_stroke: None,
+            silhouette: SilhouettePanels::default(),
             smooth_iterations: 1,
             smooth_fill_at: 17,
             smooth_remove_at: 9,

@@ -24,6 +24,7 @@ mod markers;
 mod math;
 mod organic;
 mod shapes;
+mod silhouette;
 mod stone;
 
 pub(crate) use document::{DocOp, DocView};
@@ -299,6 +300,7 @@ pub(crate) fn execute(
     document::register(&mut engine, &scratch);
     stone::register(&mut engine, &scratch);
     organic::register(&mut engine, &scratch);
+    silhouette::register(&mut engine, &scratch);
     markers::register(&mut engine, &scratch);
     let mut scope = rhai::Scope::new();
     scope.push_constant("PI", std::f64::consts::PI);

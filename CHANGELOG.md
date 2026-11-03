@@ -4,6 +4,17 @@
 
 ### Added
 
+- Silhouette tools: MCP `carve_from_views`, Rhai `carve_from_views(views,
+  opts)`, `froxel carve`, and the Carve from views section fill the visual
+  hull of 2 or 3 orthographic views (PNG crops with a background rule, or
+  rows in a script) into the active object, coloured from the nearest
+  view, optionally hollow and smoothed. MCP `compare_silhouette`, `froxel
+  compare`, and the Compare silhouette section score the model's preview
+  silhouette from a camera against a concept view (IoU, missing, excess,
+  with a fitted or given uniform scale and offset) and write an overlay;
+  the editor shows it over the viewport. `examples/carved_stump.rhai`
+  carves a stump from three views.
+
 - Preview overlays: MCP `preview` `overlay` (and `froxel preview
   --overlay`) draws collision boxes, points, and connectors over the model
   with their names, faded and dashed where the model hides them, and

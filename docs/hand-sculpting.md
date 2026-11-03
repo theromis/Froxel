@@ -19,7 +19,9 @@ It is how agents should model living things through MCP.
    `carve`. Get the proportions and the silhouette right before any detail.
 2. **Render and compare.** `render` the document and put the PNG beside the
    reference (concept art, a photo of the real animal). Look at the
-   silhouette first, then the proportions, then the colour.
+   silhouette first, then the proportions, then the colour. With a concept
+   image, `compare_silhouette` puts a number on the silhouette (see
+   [From a concept sheet](#from-a-concept-sheet)).
 3. **Soften and refine.** `smooth` a blocky region to fill single-cell pits
    and knock off single-cell spikes. Then use `set_voxels` to cut, add, and
    recolour single cells: the
@@ -39,6 +41,40 @@ set_voxels           cells=[[11, 2, 3, 0], [11, 3, 3, 0], [10, 1, 3, 5]]   # cut
 render               path="step2.png" yaw=-90 pitch=10
 save_file            path="creature.vox"
 ```
+
+## From a concept sheet
+
+A unique asset with an approved turnaround sheet (a hero view plus front,
+side, and top views) starts from its silhouettes, not from cells copied
+off the flat views.
+
+1. **Carve the rough form.** `carve_from_views` takes the front, side, and
+   top views as crops of the sheet and fills their visual hull: the cells
+   every view covers. Give the cells per pixel, or the box `size` in cells
+   at the game's scale (0.08 m voxels: a 4 m log is 50 cells long). Each
+   cell takes the colour of the nearest view, quantised to `slots`.
+2. **Measure it.** `compare_silhouette` draws the model from a camera and
+   scores it against one concept view: `iou`, the share of the concept
+   `missing`, and the model's `excess`, with an overlay PNG that shows
+   where. Compare each turnaround view orthographically (`view` `front`,
+   `left`, `top`) and the hero view from `preset` `game`.
+3. **Shape it** with the steps below: the hull fills concave parts (the
+   space under an arch, between roots), so `carve` them, grow the thin
+   parts with `fill_tube`, and `smooth` it. Compare again after each step,
+   with the first reply's `align` passed back so the placement holds still.
+
+```
+carve_from_views     views=[{view: "front", path: "sheet.png", crop: [40, 60, 520, 300]},
+                            {view: "side",  path: "sheet.png", crop: [620, 60, 180, 300]},
+                            {view: "top",   path: "sheet.png", crop: [40, 420, 520, 180]}]
+                     size=[96, 34, 56] slots=[3, 4, 5, 6] smooth=1
+compare_silhouette   path="front-vs.png" concept="sheet.png" crop=[40, 60, 520, 300] view="front" orthographic=true
+compare_silhouette   path="hero-vs.png" concept="hero.png" preset="game"
+```
+
+`examples/carved_stump.rhai` does the same in a script, with the views as
+rows. In the editor, the Carve from views and Compare silhouette sections
+hold the same fields, and the comparison shows over the viewport.
 
 ## Organic shapes
 

@@ -1,4 +1,5 @@
-//! `froxel render`, `froxel preview`, `froxel export`, and `froxel voxrt`.
+//! `froxel render`, `froxel preview`, `froxel export`, `froxel carve`,
+//! `froxel compare`, and `froxel voxrt`.
 
 use std::path::{Path, PathBuf};
 
@@ -1007,4 +1008,248 @@ fn parse_f32(text: &str, name: &str) -> Result<f32, String> {
         return Err(format!("invalid {name}"));
     }
     Ok(value)
+}
+
+/// `froxel carve`: MCP `carve_from_views` from a JSON file of its
+/// arguments, written to a `.vox`.
+pub fn carve(args: &[String]) -> i32 {
+    match carve_args(args) {
+        Ok(None) => 0,
+        Ok(Some((input, output, params))) => {
+            let mut session = Session::new();
+            let done = match &input {
+                Some(input) => session.open_vox(input),
+                None => {
+                    session.replace_empty();
+                    Ok(())
+                }
+            }
+            .and_then(|()| crate::remote::apply(&mut session, "voxel.carve_from_views", &params))
+            .and_then(|reply| {
+                session.write_vox(&output)?;
+                Ok(reply)
+            });
+            match done {
+                Ok(reply) => {
+                    eprintln!(
+                        "wrote {} ({} cells, box {}, bounds {})",
+                        output.display(),
+                        reply["cells"],
+                        reply["size"],
+                        reply["bounds"]
+                    );
+                    0
+                }
+                Err(err) => {
+                    eprintln!("{err}");
+                    1
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            2
+        }
+    }
+}
+
+const CARVE_HELP: &str = "\
+usage: froxel carve --views <views.json> --out <file.vox> [--input <base.vox>]
+
+Fills the visual hull of 2 or 3 orthographic views (front, side, top) into
+the active object, as MCP carve_from_views does, and saves the .vox.
+views.json holds that tool's arguments: {views: [{view, path, crop,
+cellsPerPixel | size, background, tolerance, flip}, ...], size, origin,
+cellsPerPixel, palette | slots, coverage, shell, smooth, mode}. A relative
+view path is relative to views.json. --input carves into a copy of that
+.vox; without it the document is empty with the default palette.";
+
+fn carve_args(
+    args: &[String],
+) -> Result<Option<(Option<PathBuf>, PathBuf, serde_json::Value)>, String> {
+    let (mut views, mut output, mut input) = (None, None, None);
+    let mut index = 0;
+    while index < args.len() {
+        let value = |index: &mut usize| -> Result<String, String> {
+            *index += 1;
+            args.get(*index)
+                .cloned()
+                .ok_or_else(|| format!("{} needs a value", args[*index - 1]))
+        };
+        match args[index].as_str() {
+            "-h" | "--help" => {
+                eprintln!("{CARVE_HELP}");
+                return Ok(None);
+            }
+            "--views" => views = Some(PathBuf::from(value(&mut index)?)),
+            "--out" | "--output" => output = Some(PathBuf::from(value(&mut index)?)),
+            "--input" => input = Some(PathBuf::from(value(&mut index)?)),
+            other => return Err(format!("unknown argument `{other}`\n\n{CARVE_HELP}")),
+        }
+        index += 1;
+    }
+    let views = views.ok_or_else(|| format!("--views is required\n\n{CARVE_HELP}"))?;
+    let output = output.ok_or_else(|| format!("--out is required\n\n{CARVE_HELP}"))?;
+    let text = std::fs::read_to_string(&views)
+        .map_err(|err| format!("Could not read {}: {err}", views.display()))?;
+    let mut params: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|err| format!("{} is not JSON: {err}", views.display()))?;
+    let base = views.parent().unwrap_or(Path::new(""));
+    if let Some(list) = params.get_mut("views").and_then(|v| v.as_array_mut()) {
+        for view in list {
+            if let Some(path) = view.get("path").and_then(|p| p.as_str()) {
+                if Path::new(path).is_relative() {
+                    view["path"] = serde_json::json!(base.join(path).display().to_string());
+                }
+            }
+        }
+    }
+    Ok(Some((input, output, params)))
+}
+
+/// `froxel compare`: MCP `compare_silhouette` on a `.vox`.
+pub fn compare(args: &[String]) -> i32 {
+    match compare_args(args) {
+        Ok(None) => 0,
+        Ok(Some((input, params, as_json))) => {
+            let mut session = Session::new();
+            let done = session.open_vox(&input).and_then(|()| {
+                crate::remote::apply(&mut session, "render.compare_silhouette", &params)
+            });
+            match done {
+                Ok(reply) => {
+                    if as_json {
+                        println!("{reply:#}");
+                    } else {
+                        let pct = |key: &str| reply[key].as_f64().unwrap_or(0.0) * 100.0;
+                        println!(
+                            "IoU {:.3}  missing {:.1}%  excess {:.1}%  (align {}, scale {}, offset {})",
+                            reply["iou"].as_f64().unwrap_or(0.0),
+                            pct("missing"),
+                            pct("excess"),
+                            reply["align"]["mode"],
+                            reply["align"]["scale"],
+                            reply["align"]["offset"]
+                        );
+                    }
+                    eprintln!("wrote {}", reply["path"].as_str().unwrap_or(""));
+                    0
+                }
+                Err(err) => {
+                    eprintln!("{err}");
+                    1
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            2
+        }
+    }
+}
+
+const COMPARE_HELP: &str = "\
+usage: froxel compare --input <file.vox> --concept <concept.png> --out <overlay.png>
+                      [--crop X,Y,W,H] [--background auto|alpha|#rrggbb]
+                      [--tolerance N] [--flip] [--align fit|height|width]
+                      [--preset game|NAME] [--presets <presets.json>]
+                      [--view front|back|left|right|top|bottom]
+                      [--yaw DEG] [--pitch DEG] [--ortho] [--margin F]
+                      [--object INDEX|NAME] [--isolate]
+                      [--width PX] [--height PX] [--json]
+
+Compares the model's preview silhouette from a camera with a concept mask,
+as MCP compare_silhouette does, and writes an overlay PNG: the preview with
+the concept's outline in cyan, what the model misses in magenta, and what
+it has in excess in orange. Prints IoU, missing (share of the concept not
+covered), and excess (share of the model outside the concept); --json
+prints the whole reply. The concept keeps its proportions: --align fit
+(default) fits one scale and offset for the most overlap, height and width
+match that extent. --crop cuts one view out of a turnaround sheet.";
+
+fn compare_args(args: &[String]) -> Result<Option<(PathBuf, serde_json::Value, bool)>, String> {
+    use serde_json::json;
+    let mut input = None;
+    let mut params = json!({});
+    let mut as_json = false;
+    let mut index = 0;
+    while index < args.len() {
+        let value = |index: &mut usize| -> Result<String, String> {
+            *index += 1;
+            args.get(*index)
+                .cloned()
+                .ok_or_else(|| format!("{} needs a value", args[*index - 1]))
+        };
+        let number = |text: String, flag: &str| -> Result<f64, String> {
+            text.parse::<f64>()
+                .map_err(|_| format!("{flag} needs a number, not `{text}`"))
+        };
+        let flag = args[index].clone();
+        match flag.as_str() {
+            "-h" | "--help" => {
+                eprintln!("{COMPARE_HELP}");
+                return Ok(None);
+            }
+            "--input" => input = Some(PathBuf::from(value(&mut index)?)),
+            "--concept" => params["concept"] = json!(value(&mut index)?),
+            "--out" | "--output" => params["path"] = json!(value(&mut index)?),
+            "--crop" => {
+                let text = value(&mut index)?;
+                let crop: Vec<u64> = text
+                    .split(',')
+                    .map(|part| part.trim().parse::<u64>())
+                    .collect::<Result<_, _>>()
+                    .map_err(|_| format!("--crop needs X,Y,W,H, not `{text}`"))?;
+                if crop.len() != 4 {
+                    return Err(format!("--crop needs X,Y,W,H, not `{text}`"));
+                }
+                params["crop"] = json!(crop);
+            }
+            "--background" => params["background"] = json!(value(&mut index)?),
+            "--tolerance" => params["tolerance"] = json!(number(value(&mut index)?, &flag)?),
+            "--flip" => params["flip"] = json!(true),
+            "--align" => params["align"] = json!(value(&mut index)?),
+            "--preset" => params["preset"] = json!(value(&mut index)?),
+            "--presets" => {
+                let path = value(&mut index)?;
+                let text = std::fs::read_to_string(&path)
+                    .map_err(|err| format!("Could not read {path}: {err}"))?;
+                let found: serde_json::Value = serde_json::from_str(&text)
+                    .map_err(|err| format!("{path} is not JSON: {err}"))?;
+                params["presets"] = match found {
+                    serde_json::Value::Object(mut map)
+                        if map.get("presets").is_some_and(serde_json::Value::is_object) =>
+                    {
+                        map.remove("presets").expect("checked")
+                    }
+                    other => other,
+                };
+            }
+            "--view" => params["view"] = json!(value(&mut index)?),
+            "--yaw" => params["yaw"] = json!(number(value(&mut index)?, &flag)?),
+            "--pitch" => params["pitch"] = json!(number(value(&mut index)?, &flag)?),
+            "--ortho" => params["orthographic"] = json!(true),
+            "--margin" => params["margin"] = json!(number(value(&mut index)?, &flag)?),
+            "--object" => {
+                let text = value(&mut index)?;
+                params["object"] = match text.parse::<u64>() {
+                    Ok(number) => json!(number),
+                    Err(_) => json!(text),
+                };
+            }
+            "--isolate" => params["isolate"] = json!(true),
+            "--width" => params["width"] = json!(number(value(&mut index)?, &flag)? as i64),
+            "--height" => params["height"] = json!(number(value(&mut index)?, &flag)? as i64),
+            "--json" => as_json = true,
+            other => return Err(format!("unknown argument `{other}`\n\n{COMPARE_HELP}")),
+        }
+        index += 1;
+    }
+    let input = input.ok_or_else(|| format!("--input is required\n\n{COMPARE_HELP}"))?;
+    for (key, flag) in [("concept", "--concept"), ("path", "--out")] {
+        if params.get(key).is_none() {
+            return Err(format!("{flag} is required\n\n{COMPARE_HELP}"));
+        }
+    }
+    Ok(Some((input, params, as_json)))
 }

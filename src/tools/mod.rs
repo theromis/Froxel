@@ -17,6 +17,7 @@ mod relief;
 mod scatter;
 mod sculpt;
 mod shapes;
+mod silhouette;
 mod surface;
 mod sweep;
 mod weather;
@@ -39,6 +40,10 @@ pub use sculpt::{
 pub use shapes::{
     bresenham, circle, cube, extrude, flood_empty, flood_face, rounded_inside, rounded_radius,
     square,
+};
+pub use silhouette::{
+    carve_from_views, mask_from_rgba, mask_from_rows, Background, CarveSpec, Colour, Crop, Ink,
+    Mask, Scale, Side, View, MAX_CARVE_PASSES,
 };
 pub use surface::{Exclude, Region, MAX_EXCLUDE};
 pub use sweep::{sweep, Profile, SweepPoint};

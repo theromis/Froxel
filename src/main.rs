@@ -42,6 +42,7 @@ mod remote;
 mod rig;
 mod script;
 mod sheet;
+mod silhouette;
 mod state;
 mod still;
 mod tools;
@@ -232,6 +233,12 @@ fn main(
     }
     if args.first().is_some_and(|arg| arg == "preview") {
         std::process::exit(cli::preview(&args[1..]));
+    }
+    if args.first().is_some_and(|arg| arg == "carve") {
+        std::process::exit(cli::carve(&args[1..]));
+    }
+    if args.first().is_some_and(|arg| arg == "compare") {
+        std::process::exit(cli::compare(&args[1..]));
     }
     if args.first().is_some_and(|arg| arg == "export") {
         std::process::exit(cli::export(&args[1..]));
@@ -689,6 +696,8 @@ usage: froxel [--control PORT] [--bridge PORT] [file.vox]
        froxel render --input <file.vox> --output <file.png>
        froxel preview --input <file.vox> --out <file.png> (--help for its flags)
        froxel export --input <file.vox> --output <file.glb>
+       froxel carve --views <views.json> --out <file.vox> (--help for its flags)
+       froxel compare --input <file.vox> --concept <concept.png> --out <overlay.png> (--help for its flags)
        froxel variants --input <file.vox> --variants <sets.json> --out <dir>
        froxel voxrt --input <file.vox> [--dump]"
                 );

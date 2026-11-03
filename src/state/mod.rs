@@ -626,6 +626,7 @@ mod organic;
 mod pick;
 mod pointer;
 mod selection;
+mod silhouette;
 mod stone;
 mod vox;
 
@@ -763,6 +764,8 @@ pub struct Session {
     /// The Sculpt tool's brush (MCP `brush`) and the drag in progress.
     pub sculpt: SculptBrush,
     pub(crate) sculpt_stroke: Option<organic::SculptStroke>,
+    /// Carve from views and Compare silhouette, and the overlay.
+    pub silhouette: SilhouettePanels,
     /// Smooth: passes and the neighbour thresholds of MCP `smooth`.
     pub smooth_iterations: i32,
     pub smooth_fill_at: i32,
@@ -913,6 +916,7 @@ pub use markers::{
     cell_box, check_direction, check_marker_name, check_point, Marker, MarkerKind, MAX_MARKERS,
 };
 pub use organic::{OrganicPanels, SculptBrush, DEFORM_OPS, SCULPT_OPS};
+pub use silhouette::{BackgroundField, SilhouettePanels, CAMERAS, SIDES};
 pub use stone::{Plant, StonePanels, DIRECTIONS, FACINGS, RELIEF_FACINGS};
 pub(crate) use vox::rotation_codec_errors;
 

@@ -370,6 +370,51 @@ MCP `brush`: sculpt dabs along a list of points, each `[x, y, z]`,
 `palette` (slot of added cells), `vector` (grab), `spacing` (half the
 radius). It returns `#{changed, dabs, added, removed}`.
 
+### Carve from views
+
+```rhai
+let report = carve_from_views([
+    #{view: "front", rows: ["..bb..", ".bbbb.", "bbbbbb"], legend: #{b: 3}},
+    #{view: "side", rows: ["..b...", ".bbb..", "bbbbbb"], legend: #{b: 3}},
+]);
+let report = carve_from_views(views, #{cellsPerPixel: 1, origin: [0, 0, 0], shell: 2, smooth: 1});
+```
+
+MCP `carve_from_views`: the visual hull of 2 or 3 orthographic views. Each
+view's silhouette is extruded through a box along its depth axis, and the
+cells every view covers are kept: the rough form of a turnaround sheet in
+3D. A script reads no files, so each view is a map of `rows` (strings; `.`
+and space are empty, any other character is inked) and a `legend` from a
+character to a palette index or `"#rrggbb"`. A character missing from the
+legend needs the `palette` option. Over MCP a view is a PNG crop instead,
+on this same code path. `view` is `front` (seen from −Y, image right is
++X), `back`, `left` or `side` (from +X: image right is +Y, so the model's
+front is on the image's left), `right`, `top` (from +Z, image down is −Y),
+or `bottom`; `flip: true` mirrors one. A view may also carry its own
+`cellsPerPixel` or `size: [across, down]`. Options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `cellsPerPixel` | none | Cells per row character for every view without its own scale. |
+| `size` | the largest view | The box `[x, y, z]` in cells; a view without a scale is stretched to it; `()` in a slot takes the largest view along that axis. |
+| `origin` | `[0, 0, 0]` | Local cell of the box's minimum corner. |
+| `palette` | none | One slot for every cell instead of the views' colours. |
+| `slots` | 1..255 | Slots a `#rrggbb` legend colour quantises to. |
+| `coverage` | `0.5` | Share of a cell's footprint that must be inked. |
+| `shell` | solid | Keep only cells within this many cells of the outside, 1..64. |
+| `smooth` | `0` | Smooth passes over the hull, 0..64. |
+| `mode` | `"replace"` | `"empty"` adds only into empty cells; `"paint"` recolours solid ones. |
+
+A view smaller than the box is centred across and stands on the box's
+bottom. Each cell takes the colour of the view whose visible surface is
+nearest it, so the sides of a stump are bark and its top shows the rings.
+It returns `#{changed, cells, bounds: #{min, max}, size}`; `bounds` is `()`
+when nothing is carved. `examples/carved_stump.rhai` carves a stump with
+roots from front, side, and top rows.
+
+MCP `compare_silhouette` writes a file, so it has no script form; check a
+script's result with it over MCP.
+
 ### Column relief
 
 ```rhai
@@ -710,7 +755,7 @@ Any function that is not listed on this page is not registered.
 A script describes a family; MCP `export_variants` (or `froxel variants`,
 or the Export panel's **Export variants…**) bakes it once per parameter set
 and writes a `.vox`, a `.glb`, and a manifest with each set's parameters,
-markers, and bounds. Scripts themselves never write files.
+markers, and bounds. Scripts themselves never write files, and they read none: `carve_from_views` takes rows, not PNGs.
 
 ```json
 [
