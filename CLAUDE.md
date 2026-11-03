@@ -87,6 +87,16 @@ marquee. **T** **R** **G** select Add, Remove, and Paint, in Model mode only.
 **Tab** switches Model and Object mode. In Object mode **X** **Y** **Z** rotate
 and Shift flips.
 
+## MCP parity
+
+A capability added to MCP is added in the same change to Rhai scripting, on
+the same code path (no copy of the logic), and to the editor UI. The same
+change updates everything that describes it: UI tooltips and hints, the MCP
+server instructions and tool descriptions, `froxel --help` and command help,
+the docs (`docs/mcp.md`, `docs/scripting.md`, `docs/hand-sculpting.md`), the
+skill in `skills/froxel`, and the examples. MCP-only plumbing (screenshots,
+`ui_inspect`, `ui_click`, session handling) is exempt.
+
 ## Tests
 
 ```sh
