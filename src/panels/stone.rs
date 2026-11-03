@@ -1,4 +1,4 @@
-//! Inspector sections of the stone tools: Joints, Weather, and Growth. Each button runs the MCP
+//! Inspector sections of the stone tools: Joints, Weather, Growth, and Sweep. Each button runs the MCP
 //! tool over the selection's box, or the whole active object.
 
 use egui::{RichText, Ui};
@@ -284,5 +284,89 @@ pub(super) fn growth(ui: &mut Ui, session: &mut Session) {
         {
             session.growth_from_panel();
         }
+    });
+}
+
+/// MCP `sweep`: a profile along a path.
+pub(super) fn sweep(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Sweep");
+        let panel = &mut session.stone.sweep;
+        egui::Grid::new("sweep-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Points", "Path points in local cells, one per line: x y z, then optional twist (degrees) and scale.");
+                ui.add(
+                    egui::TextEdit::multiline(&mut panel.points)
+                        .desired_rows(3)
+                        .desired_width(150.0),
+                );
+                ui.end_row();
+                label(ui, "Curve", "Smooth passes a curve through the points; off joins them with straight runs.");
+                ui.checkbox(&mut panel.smooth, "Smooth");
+                ui.end_row();
+                label(ui, "Profile", "A rounded rectangle standing on the path, or a polygon of u v points (u to the left of the path, v up).");
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut panel.polygon, false, "Rectangle");
+                    ui.selectable_value(&mut panel.polygon, true, "Polygon");
+                });
+                ui.end_row();
+                if panel.polygon {
+                    label(ui, "Polygon", "u v pairs separated by semicolons.");
+                    slots_field(ui, &mut panel.profile, "-3 0; 3 0; 0 8");
+                    ui.end_row();
+                } else {
+                    label(ui, "Width", "Across the path, centred on it.");
+                    ui.add(egui::DragValue::new(&mut panel.width).range(0.5..=512.0).speed(0.1));
+                    ui.end_row();
+                    label(ui, "Height", "Up from the path.");
+                    ui.add(egui::DragValue::new(&mut panel.height).range(0.5..=512.0).speed(0.1));
+                    ui.end_row();
+                    label(ui, "Radius", "Corner rounding.");
+                    ui.add(egui::DragValue::new(&mut panel.radius).range(0.0..=256.0).speed(0.1));
+                    ui.end_row();
+                }
+                label(ui, "Palettes", "Slots laid out by the pattern; empty is the active slot.");
+                slots_field(ui, &mut panel.palettes, "active slot");
+                ui.end_row();
+                label(ui, "Pattern", "Bands by height in the profile (strata), rings along the path, or random cells.");
+                ui.horizontal(|ui| {
+                    for (index, name) in ["Bands", "Rings", "Random"].into_iter().enumerate() {
+                        ui.selectable_value(&mut panel.pattern, index, name);
+                    }
+                });
+                ui.end_row();
+                label(ui, "Period", "Band or ring size in cells.");
+                ui.add(egui::DragValue::new(&mut panel.period).range(0.5..=512.0).speed(0.1));
+                ui.end_row();
+                label(ui, "Mode", "Replace writes every cell; Empty adds only into empty cells; Paint recolours solid cells.");
+                ui.horizontal(|ui| {
+                    for (index, name) in ["Replace", "Empty", "Paint"].into_iter().enumerate() {
+                        ui.selectable_value(&mut panel.mode, index, name);
+                    }
+                });
+                ui.end_row();
+                label(ui, "Seed", "Seed of the random pattern.");
+                ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
+                ui.end_row();
+            });
+        ui.horizontal(|ui| {
+            if ui
+                .button("Point at selection")
+                .on_hover_text("Add the selection's centre as the next point.")
+                .clicked()
+            {
+                session.sweep_point_at_selection();
+            }
+            if ui
+                .button("Sweep")
+                .on_hover_text("MCP sweep along the points. One undo step.")
+                .clicked()
+            {
+                session.sweep_from_panel();
+            }
+        });
     });
 }

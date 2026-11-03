@@ -281,6 +281,30 @@ list. Options:
 It returns `#{changed, pieces, skipped}`; `skipped` counts pieces that met a
 solid cell at the top of the box. Other objects do not stop a falling piece.
 
+### Sweep
+
+```rhai
+let report = sweep(points, #{width: 6, height: 24, radius: 2}, slot_or_slots);
+let report = sweep(points, [[-6, 0], [6, 0], [4, 5], [0, 9], [-4, 5]], [1, 2], #{curve: "smooth", pattern: "bands", period: 3});
+```
+
+MCP `sweep`: a 2D profile filled along `points`, perpendicular to the path,
+for curved walls, banks, and ledges. Each point is `[x, y, z]`,
+`[x, y, z, twist]`, `[x, y, z, twist, scale]`, or a map with those keys.
+The profile is a list of `[u, v]` points (u to the left of the path, v up)
+or a map `#{width, height, radius}` for a rounded rectangle standing on the
+path. The third argument is one slot or a list. Options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `curve` | `"polyline"` | `"smooth"` passes a curve through the points. |
+| `pattern` | `"bands"` | With a list: `"bands"` by height in the profile, `"rings"` along the path, `"random"`. |
+| `period` | `2` | Band or ring size in cells. |
+| `seed` | `0` | Seed of the random pattern. |
+| `mode` | `"replace"` | `"empty"` adds only into empty cells; `"paint"` recolours solid ones. |
+
+It returns `#{changed, cells, length}`.
+
 ### Joints
 
 ```rhai

@@ -70,6 +70,12 @@ earlier piece, so they pile into a heap at a break or a stump. Sculpt the
 ground in the same object, or pass `floor`, since other objects do not stop
 a falling piece. `clump` 1 piles them in the middle of the box.
 
+`sweep` fills a cross-section along a curve: a wall, a bank, a ledge, or a
+kerb that bends with no corners. Give a rounded rectangle (`width`,
+`height`, `radius`) or a polygon, `curve: "smooth"`, and a twist or scale
+per point to lean or taper it. `palettes` with `pattern: "bands"` lays
+horizontal strata.
+
 `joints` cuts real gaps between stones, one cell wide and `depth` deep,
 with a `dirt` slot at the bottom of each gap: `columns` for fractured
 limestone, `courses` for masonry in a running bond, `cracks` for a crack

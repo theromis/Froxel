@@ -132,6 +132,8 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
                     stone::weather(ui, session);
                     ui.separator();
                     stone::growth(ui, session);
+                    ui.separator();
+                    stone::sweep(ui, session);
                 });
         },
     );

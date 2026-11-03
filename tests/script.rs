@@ -869,6 +869,10 @@ fn stone_tools_match_the_mcp_tools() {
         algae(-1, -1, -1, 24, 6, 16, [8, 9], #{band: [0, 5]});
         let hung = vines(-1, -1, -1, 24, 6, 16, [10, 11], #{amount: 0.3, blooms: [12], facing: [0, -1, 0]});
         if hung.strands == 0 { throw "no vines"; }
+        let wall = sweep([[0, 10, 0], [12, 16, 0, 20], [24, 12, 0, 0, 0.5]], #{width: 4, height: 8, radius: 1},
+            [1, 3], #{curve: "smooth", pattern: "bands", period: 2, mode: "empty"});
+        if wall.cells == 0 || wall.length < 20.0 { throw "no sweep"; }
+        sweep([[0, -6, 0], [10, -6, 0]], [[-2, 0], [2, 0], [0, 3]], 4);
         "#,
     )
     .unwrap();
@@ -901,6 +905,16 @@ fn stone_tools_match_the_mcp_tools() {
             "voxel.vines",
             json!({"x0": -1, "y0": -1, "z0": -1, "x1": 24, "y1": 6, "z1": 16, "palettes": [10, 11],
                 "amount": 0.3, "blooms": [12], "facing": [0, -1, 0]}),
+        ),
+        (
+            "voxel.sweep",
+            json!({"points": [[0, 10, 0], [12, 16, 0, 20], [24, 12, 0, 0, 0.5]], "width": 4,
+                "height": 8, "radius": 1, "palettes": [1, 3], "curve": "smooth",
+                "pattern": "bands", "period": 2, "mode": "empty"}),
+        ),
+        (
+            "voxel.sweep",
+            json!({"points": [[0, -6, 0], [10, -6, 0]], "profile": [[-2, 0], [2, 0], [0, 3]], "palette": 4}),
         ),
     ]);
     assert_eq!(script, mcp);

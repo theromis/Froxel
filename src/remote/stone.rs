@@ -1,5 +1,5 @@
-//! The stone tools: MCP `joints`, `weather`, `moss`, `algae`, and `vines`,
-//! their arguments, and their replies.
+//! The stone tools: MCP `joints`, `weather`, `moss`, `algae`, `vines`, and
+//! `sweep`, their arguments, and their replies.
 //!
 //! Each tool turns its MCP arguments into writes against a cell map and a
 //! reply. The MCP handler writes them to the active object as one undo step;
@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 use serde_json::{json, Map, Value};
 
-use super::{box_corners, opt_f64, opt_str, range_pair, slot_list};
+use super::{box_corners, fill_mode, opt_f64, opt_str, range_pair, req_i32, slot_list, FillMode};
 use crate::state::{Cell, Session};
 
 /// A stone tool, by its `voxel.*` method.
@@ -21,6 +21,7 @@ pub(crate) enum Stone {
     Moss,
     Algae,
     Vines,
+    Sweep,
 }
 
 pub(crate) type Writes = Vec<(i32, i32, i32, i32)>;
@@ -74,6 +75,12 @@ pub(crate) fn stone_writes(
                 _ => None,
             };
             done.writes
+        }
+        Stone::Sweep => {
+            let (writes, cells_in, length) = sweep_writes(cells, params)?;
+            reply.insert("cells".into(), json!(cells_in));
+            reply.insert("length".into(), json!((length * 100.0).round() / 100.0));
+            writes
         }
     };
     Ok((writes, reply))
@@ -250,4 +257,144 @@ pub(crate) fn growth_spec(params: &Value, tool: Stone) -> Result<crate::tools::G
         layer,
         seed: seed(params)?,
     })
+}
+
+/// The writes of MCP `sweep` against `cells`, how many cells the sweep
+/// covers, and the path length.
+fn sweep_writes(cells: &HashMap<Cell, u8>, params: &Value) -> Result<(Writes, usize, f64), String> {
+    let list = params.get("points").and_then(Value::as_array).ok_or(
+        "points must be a list of [x, y, z], [x, y, z, twist], or [x, y, z, twist, scale]",
+    )?;
+    let mut points = Vec::with_capacity(list.len());
+    for (index, point) in list.iter().enumerate() {
+        let number = |value: Option<&Value>, what: &str| -> Result<Option<f64>, String> {
+            match value {
+                None | Some(Value::Null) => Ok(None),
+                Some(found) => found
+                    .as_f64()
+                    .map(Some)
+                    .ok_or_else(|| format!("point {index} {what} must be a number")),
+            }
+        };
+        let names = ["x", "y", "z", "twist", "scale"];
+        let mut values = [None; 5];
+        if let Some(arr) = point.as_array() {
+            if !(3..=5).contains(&arr.len()) {
+                return Err(format!(
+                    "point {index} must be [x, y, z], [x, y, z, twist], or [x, y, z, twist, scale]"
+                ));
+            }
+            for (slot, name) in names.iter().enumerate() {
+                values[slot] = number(arr.get(slot), name)?;
+            }
+        } else if point.is_object() {
+            for (slot, name) in names.iter().enumerate() {
+                values[slot] = number(point.get(*name), name)?;
+            }
+        } else {
+            return Err(format!(
+                "point {index} must be [x, y, z, twist?, scale?] or {{x, y, z, twist?, scale?}}"
+            ));
+        }
+        let mut at = [0.0; 3];
+        for axis in 0..3 {
+            at[axis] =
+                values[axis].ok_or_else(|| format!("point {index} is missing {}", names[axis]))?;
+        }
+        points.push(crate::tools::SweepPoint {
+            at,
+            twist: values[3].unwrap_or(0.0),
+            scale: values[4].unwrap_or(1.0),
+        });
+    }
+    let curve = match opt_str(params, "curve")?.as_deref() {
+        None | Some("polyline") => false,
+        Some("smooth") => true,
+        Some(other) => return Err(format!("curve must be polyline or smooth, not `{other}`")),
+    };
+    let profile = match params.get("profile") {
+        None | Some(Value::Null) => {
+            let size = |key: &str| {
+                opt_f64(params, key)?.ok_or_else(|| {
+                    format!("{key} is required without a profile polygon (or pass profile)")
+                })
+            };
+            crate::tools::Profile::Rect {
+                width: size("width")?,
+                height: size("height")?,
+                radius: opt_f64(params, "radius")?.unwrap_or(0.0),
+            }
+        }
+        Some(Value::Array(list)) => crate::tools::Profile::Polygon(
+            list.iter()
+                .map(|p| match p.as_array().map(|a| a.as_slice()) {
+                    Some([u, v]) => match (u.as_f64(), v.as_f64()) {
+                        (Some(u), Some(v)) => Ok([u, v]),
+                        _ => Err("profile points must be [u, v] numbers".to_string()),
+                    },
+                    _ => Err("profile points must be [u, v]".to_string()),
+                })
+                .collect::<Result<_, _>>()?,
+        ),
+        Some(_) => return Err("profile must be a list of [u, v] points".into()),
+    };
+    let palettes = match (params.get("palette"), params.get("palettes")) {
+        (Some(_), Some(_)) => return Err("pass palette or palettes, not both".into()),
+        (Some(_), None) => {
+            let slot = req_i32(params, "palette")?;
+            if !(1..=255).contains(&slot) {
+                return Err(format!("palette must be 1..255, not {slot}"));
+            }
+            vec![slot as u8]
+        }
+        _ => slot_list(params, "palettes")?,
+    };
+    if palettes.is_empty() {
+        return Err("palette or palettes is required".into());
+    }
+    let period = opt_f64(params, "period")?.unwrap_or(2.0);
+    if !(0.5..=512.0).contains(&period) {
+        return Err("period must be 0.5..=512".into());
+    }
+    let pattern = opt_str(params, "pattern")?.unwrap_or_else(|| "bands".into());
+    if !["bands", "rings", "random"].contains(&pattern.as_str()) {
+        return Err(format!(
+            "pattern must be bands, rings, or random, not `{pattern}`"
+        ));
+    }
+    let seed = seed(params)?;
+    let mode = fill_mode(params)?;
+    let swept = crate::tools::sweep(&points, curve, &profile)?;
+    let length = swept.iter().map(|c| c.along).fold(0.0, f64::max);
+    let count = swept.len();
+    let writes = swept
+        .into_iter()
+        .filter(|c| match mode {
+            FillMode::Replace => true,
+            FillMode::Empty => !cells.contains_key(&c.cell),
+            FillMode::Paint => cells.contains_key(&c.cell),
+        })
+        .map(|c| {
+            let index = match pattern.as_str() {
+                "bands" => (c.v / period).floor() as i64,
+                "rings" => (c.along / period).floor() as i64,
+                _ => (cell_hash(c.cell, seed) >> 1) as i64,
+            };
+            let slot = palettes[index.rem_euclid(palettes.len() as i64) as usize];
+            let (x, y, z) = c.cell;
+            (x, y, z, i32::from(slot))
+        })
+        .collect();
+    Ok((writes, count, length))
+}
+
+/// A stable per-cell value for the `random` pattern.
+fn cell_hash(cell: Cell, seed: u64) -> u64 {
+    let mut h = seed ^ 0x9e37_79b9_7f4a_7c15;
+    for v in [cell.0, cell.1, cell.2] {
+        h ^= u64::from(v as u32);
+        h = h.wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        h ^= h >> 31;
+    }
+    h
 }

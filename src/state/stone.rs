@@ -1,5 +1,5 @@
 //! The stone panels: the fields of MCP `joints`, `weather`, `moss`, `algae`,
-//! and `vines`. Each panel's button builds
+//! `vines`, and `sweep`. Each panel's button builds
 //! the tool's MCP arguments over the selection's box (or the active object's
 //! box) and runs the MCP handler, so the editor and MCP share one path.
 
@@ -262,11 +262,114 @@ impl GrowthPanel {
     }
 }
 
+/// The Sweep panel.
+#[derive(Clone, PartialEq)]
+pub struct SweepPanel {
+    /// One point per line: `x y z`, optionally `twist` and `scale`.
+    pub points: String,
+    /// A polygon instead of the rounded rectangle.
+    pub polygon: bool,
+    /// `u v` pairs separated by semicolons or new lines.
+    pub profile: String,
+    pub width: f32,
+    pub height: f32,
+    pub radius: f32,
+    pub smooth: bool,
+    /// Palette indices; empty is the active slot.
+    pub palettes: String,
+    /// 0 bands, 1 rings, 2 random.
+    pub pattern: usize,
+    pub period: f32,
+    /// 0 replace, 1 empty, 2 paint.
+    pub mode: usize,
+    pub seed: i32,
+}
+
+impl Default for SweepPanel {
+    fn default() -> Self {
+        Self {
+            points: "0 0 0\n16 8 0\n32 4 0".into(),
+            polygon: false,
+            profile: "-3 0; 3 0; 2 10; -2 10".into(),
+            width: 6.0,
+            height: 12.0,
+            radius: 1.5,
+            smooth: true,
+            palettes: String::new(),
+            pattern: 0,
+            period: 2.0,
+            mode: 0,
+            seed: 0,
+        }
+    }
+}
+
+/// Numbers in `text` split by spaces, commas, semicolons, or new lines into
+/// rows of 2 to 5.
+fn rows(
+    text: &str,
+    what: &str,
+    sizes: std::ops::RangeInclusive<usize>,
+) -> Result<Vec<Vec<f64>>, String> {
+    text.split(|c| c == ';' || c == '\n')
+        .map(str::trim)
+        .filter(|row| !row.is_empty())
+        .map(|row| {
+            let numbers = row
+                .split(|c: char| c == ',' || c.is_whitespace())
+                .filter(|part| !part.is_empty())
+                .map(|part| {
+                    part.parse::<f64>()
+                        .map_err(|_| format!("{what}: `{part}` is not a number"))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            if sizes.contains(&numbers.len()) {
+                Ok(numbers)
+            } else {
+                Err(format!(
+                    "{what}: `{row}` needs {} to {} numbers",
+                    sizes.start(),
+                    sizes.end()
+                ))
+            }
+        })
+        .collect()
+}
+
+impl SweepPanel {
+    fn args(&self, active: u8) -> Result<Value, String> {
+        let mut palettes = parse_slots(&self.palettes).map_err(|err| format!("Palettes: {err}"))?;
+        if palettes.is_empty() {
+            palettes.push(active.max(1));
+        }
+        let pattern = ["bands", "rings", "random"][self.pattern.min(2)];
+        let mode = ["replace", "empty", "paint"][self.mode.min(2)];
+        let mut args = json!({
+            "points": rows(&self.points, "Points", 3..=5)?,
+            "curve": if self.smooth { "smooth" } else { "polyline" },
+            "palettes": palettes,
+            "pattern": pattern,
+            "period": self.period,
+            "mode": mode,
+            "seed": self.seed.max(0),
+        });
+        if self.polygon {
+            args["profile"] = json!(rows(&self.profile, "Profile", 2..=2)?);
+        } else {
+            args["width"] = json!(self.width);
+            args["height"] = json!(self.height);
+            args["radius"] = json!(self.radius.min(self.width.min(self.height) / 2.0));
+        }
+        Ok(args)
+    }
+}
+
 #[derive(Clone, Default, PartialEq)]
 pub struct StonePanels {
     pub joints: JointsPanel,
     pub weather: WeatherPanel,
     pub growth: GrowthPanel,
+    pub sweep: SweepPanel,
 }
 
 fn slots(what: &str, text: &str) -> Result<Value, String> {
@@ -316,6 +419,45 @@ impl Session {
             }
             text + "."
         });
+    }
+
+    /// The Sweep panel's button: MCP `sweep` along the panel's points.
+    pub fn sweep_from_panel(&mut self) {
+        let args = match self.stone.sweep.args(self.active_slot) {
+            Ok(args) => args,
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
+        self.status = match crate::remote::apply(self, "voxel.sweep", &args) {
+            Ok(reply) => format!(
+                "Swept {} cells along {} cells of path.",
+                reply["cells"], reply["length"]
+            ),
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// Add the selection's centre as the next Sweep point.
+    pub fn sweep_point_at_selection(&mut self) {
+        let Some((min, max)) = cell_bounds(self.picked.iter().copied()) else {
+            self.status = "Select cells to add their centre as a point.".into();
+            return;
+        };
+        let mid = |a: i32, b: i32| f64::from(a + b) / 2.0;
+        let line = format!(
+            "{} {} {}",
+            mid(min.0, max.0),
+            mid(min.1, max.1),
+            mid(min.2, max.2)
+        );
+        let points = &mut self.stone.sweep.points;
+        if !points.is_empty() && !points.ends_with('\n') {
+            points.push('\n');
+        }
+        points.push_str(&line);
     }
 
     /// Run a stone tool's MCP handler over the selection's box, or over the

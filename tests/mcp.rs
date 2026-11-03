@@ -1558,3 +1558,28 @@ fn moss_algae_and_vines_grow_as_one_undo_step_each() {
     let none = error_text(&head.call("vines", corners.clone()));
     assert!(none.contains("palettes"), "{none}");
 }
+
+#[test]
+fn sweep_fills_a_curved_wall_as_one_undo_step() {
+    let mut head = Headless::new();
+    let reply = head.ok(
+        "sweep",
+        json!({"points": [[0, 0, 0], [12, 8, 0], [24, 4, 0, 0, 0.5]], "curve": "smooth",
+            "width": 4, "height": 10, "radius": 1, "palettes": [2, 3], "pattern": "bands", "period": 2}),
+    );
+    assert!(reply["cells"].as_i64().unwrap() > 300, "{reply}");
+    let cells = &head.session.active().cells;
+    assert!(cells.values().any(|&s| s == 2) && cells.values().any(|&s| s == 3));
+    head.ok("undo", json!({}));
+    assert!(head.session.active().cells.is_empty());
+    let none = error_text(&head.call(
+        "sweep",
+        json!({"points": [[0, 0, 0], [5, 0, 0]], "palette": 2}),
+    ));
+    assert!(none.contains("width"), "{none}");
+    let both = error_text(&head.call(
+        "sweep",
+        json!({"points": [[0, 0, 0], [5, 0, 0]], "width": 2, "height": 2, "palette": 2, "palettes": [3]}),
+    ));
+    assert!(both.contains("not both"), "{both}");
+}

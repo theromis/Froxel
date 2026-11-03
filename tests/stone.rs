@@ -273,3 +273,85 @@ fn growth_refuses_bad_values() {
     spec.band = Some((5, 1));
     assert!(grow(&cells, &spec).unwrap_err().contains("band"));
 }
+
+fn point(x: f64, y: f64, z: f64) -> SweepPoint {
+    SweepPoint {
+        at: [x, y, z],
+        twist: 0.0,
+        scale: 1.0,
+    }
+}
+
+#[test]
+fn a_straight_sweep_is_the_profile_times_the_length() {
+    let rect = Profile::Rect {
+        width: 4.0,
+        height: 6.0,
+        radius: 0.0,
+    };
+    let cells = sweep(&[point(0.0, 0.0, 0.0), point(10.0, 0.0, 0.0)], false, &rect).unwrap();
+    // Centres within u -2..2 (4 or 5 columns) and v 0..6, x 0..10 with ends.
+    let mut ys: Vec<i32> = cells.iter().map(|c| c.cell.1).collect();
+    ys.sort_unstable();
+    ys.dedup();
+    assert!(ys.len() == 5, "{ys:?}");
+    assert!(cells.iter().all(|c| (0..=6).contains(&c.cell.2)));
+    assert!(cells.iter().all(|c| (0..=10).contains(&c.cell.0)));
+    assert_eq!(cells.len(), 11 * 5 * 7);
+}
+
+#[test]
+fn a_bent_sweep_has_no_holes_and_twist_turns_the_profile() {
+    let rect = Profile::Rect {
+        width: 6.0,
+        height: 3.0,
+        radius: 0.0,
+    };
+    // A right-angle bend: the outside corner is filled.
+    let path = [
+        point(0.0, 0.0, 0.0),
+        point(20.0, 0.0, 0.0),
+        point(20.0, 20.0, 0.0),
+    ];
+    let cells = sweep(&path, false, &rect).unwrap();
+    let set: std::collections::HashSet<Cell> = cells.iter().map(|c| c.cell).collect();
+    for z in 0..=3 {
+        assert!(set.contains(&(22, -2, z)), "outside corner at z {z}");
+        for x in 0..=20 {
+            for y in -2..=2 {
+                assert!(set.contains(&(x, y, z)), "hole at ({x}, {y}, {z})");
+            }
+        }
+    }
+    // Twist 90 stands the 6 x 3 profile on its side: 3 wide, 6 tall.
+    let mut twisted = path[..2].to_vec();
+    for p in &mut twisted {
+        p.twist = 90.0;
+    }
+    let cells = sweep(&twisted, true, &rect).unwrap();
+    let span = |axis: fn(&Cell) -> i32| {
+        let values: Vec<i32> = cells.iter().map(|c| axis(&c.cell)).collect();
+        values.iter().max().unwrap() - values.iter().min().unwrap()
+    };
+    assert!(
+        span(|c| c.2) >= 5 && span(|c| c.1) <= 3,
+        "turned the wrong way"
+    );
+}
+
+#[test]
+fn sweep_takes_a_polygon_and_refuses_bad_input() {
+    let wedge = Profile::Polygon(vec![[-3.0, 0.0], [3.0, 0.0], [0.0, 6.0]]);
+    let cells = sweep(&[point(0.0, 0.0, 0.0), point(8.0, 0.0, 0.0)], false, &wedge).unwrap();
+    assert!(cells.iter().any(|c| c.cell.2 == 5));
+    assert!(!cells.iter().any(|c| c.cell.2 == 5 && c.cell.1.abs() > 1));
+    assert!(sweep(&[point(0.0, 0.0, 0.0)], false, &wedge)
+        .unwrap_err()
+        .contains("2 points"));
+    let flat = Profile::Polygon(vec![[0.0, 0.0], [1.0, 1.0]]);
+    assert!(
+        sweep(&[point(0.0, 0.0, 0.0), point(4.0, 0.0, 0.0)], false, &flat)
+            .unwrap_err()
+            .contains("3 to 256")
+    );
+}

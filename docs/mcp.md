@@ -156,6 +156,7 @@ tracer. A file with no scene graph still loads its first model.
 | `fill_ellipsoid` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palette` | Fill the ellipsoid inscribed in that box. The box volume is checked first, even when the solid is smaller. One undo step |
 | `fill_rounded_box` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palette`, `radius` | Same box, with an edge bevel of `radius` voxels. `radius` 0 is the full box. The radius is clamped to half the shortest side |
 | `fill_tube` | `points`, `palette` or `palettes` | Fill a tube through 2..=1024 **local** points, each with its own radius. Optional `radius`, `curve` (`polyline`, `smooth`), `aspect`, `roll`, `profile` (`round`, `blade`), `pattern` (`rings`, `stripes`, `random`), `period`, `sectors`, `seed`, `mode`. At most 2000000 cells, one undo step |
+| `sweep` | `points`, `profile` or `width` and `height`, `palette` or `palettes` | Fill a 2D cross-section along 2..=1024 **local** points, kept perpendicular to the path, for curved walls, banks, and ledges. Each point may carry `twist` and `scale`. Optional `radius`, `curve` (`polyline`, `smooth`), `pattern` (`bands`, `rings`, `random`), `period`, `seed`, `mode`. Replies with `cells` and `length`. At most 2000000 cells, one undo step |
 | `carve` | `shape` | Remove the solid cells inside a `box`, `ellipsoid`, `rounded_box`, or `tube`, given as for the fill tools. Replies with `removed`. One undo step |
 | `break_end` | `point`, `normal` | Break the active object across a plane: a jagged face, bark on its rim, sapwood inside, and tapered splinters out along the normal. Optional `depth`, `splinters` or `density`, `length`, `thickness`, `taper`, `rimBias`, `bark`, `sapwood`, `tips`, `seed`. One undo step |
 | `scatter` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Drop small pieces (shard, chip, pebble, chunk) that settle on what is below into a heap. Optional `count`, `kinds`, `size`, `seed`, `floor`, `clump`. One undo step |
@@ -275,6 +276,22 @@ takes one of `palettes`. `clump` 0 spreads the points evenly over the box
 and 1 piles them in its middle (default 0.5). A piece that meets a solid
 cell at the top of the box is skipped and counted in `skipped`. Only empty
 cells are written, at most 200000; the same `seed` gives the same pile.
+
+`sweep` moves a cross-section along a path, perpendicular to it. Points
+are `[x, y, z]`, `[x, y, z, twist]`, `[x, y, z, twist, scale]`, or
+`{x, y, z, twist?, scale?}`; a whole number is a cell centre, `twist` turns
+the profile in degrees (counter-clockwise looking along the path, default
+0), and `scale` multiplies it (0.05..=16, default 1), both interpolated
+along the path. The profile's `u` runs to the left of the path, seen from
+above walking along it, and `v` up, so a wall stands on its path. `profile`
+is a closed polygon of 3..=256 `[u, v]` points; without it `width` (across,
+centred on the path), `height` (up from it), and `radius` (rounded corners)
+make a rounded rectangle. `curve` `smooth` passes a Catmull-Rom curve
+through the points; extra slabs turn about a sharp corner or a fast twist,
+so the outside of a bend is filled. A cell is in when its centre is inside
+the profile at some slab. With `palettes`, `pattern` `bands` (the default)
+lays them in layers `period` cells high by `v`, like strata; `rings` lays
+them along the path; `random` picks per cell from `seed`.
 
 `joints` splits the solid cells of the box into stones and removes the cells
 on the boundary between two stones, `width` cells wide (1..=3, default 1),
@@ -743,6 +760,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `fill_box` | Box tool with Fill |
 | `fill_ellipsoid`, `fill_rounded_box` | Generator: Ellipsoid, Rounded box |
 | `fill_tube` | Tube tool: drag from the start radius to the end radius; Chain adds a point per drag and Smooth curves through them until Finish; Flatten, Roll, and Blade shape it; Solid, Rings, Stripes, or Random with a second slot |
+| `sweep` | Sweep section: Points (one per line, Point at selection adds the selection's centre), Smooth, Rectangle (Width, Height, Radius) or Polygon, Palettes, Bands, Rings, or Random, Period, Mode, Seed |
 | `carve` | Remove mode with Box, Generator, or Tube |
 | `break_end` | Break section: Point (or Point at selection), Normal with ±X/Y/Z, Depth, Splinters, Length, Thickness, Taper, Rim bias, Bark, Sapwood, and Tip slots, Seed |
 | `scatter` | Scatter section: Pieces, Kinds, Size, Palettes, Clump, Seed, over the selection's box or above the whole object |

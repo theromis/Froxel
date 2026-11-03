@@ -4,6 +4,11 @@
 
 ### Added
 
+- Sweep: MCP `sweep`, Rhai `sweep(points, profile, slots, opts)`, and the
+  Sweep section fill a polygon or rounded-rectangle cross-section along a
+  polyline or smooth curve, perpendicular to it, with twist and scale per
+  point and strata bands, for curved walls, banks, and ledges.
+
 - Growth: MCP `moss`, `algae`, and `vines`, the Rhai functions of the same
   names, and the Growth section grow plants on exposed faces filtered by
   face, facing, and a height band: moss cushions and ragged curtains, an

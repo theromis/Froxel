@@ -605,6 +605,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "voxel.moss" => stone::apply_stone(session, &params, Stone::Moss),
         "voxel.algae" => stone::apply_stone(session, &params, Stone::Algae),
         "voxel.vines" => stone::apply_stone(session, &params, Stone::Vines),
+        "voxel.sweep" => stone::apply_stone(session, &params, Stone::Sweep),
         "voxel.get_box" => {
             let cells: Vec<Value> = box_cells(&session.active().cells, &params)?
                 .into_iter()
@@ -1106,6 +1107,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.moss", "x0, y0, z0, x1, y1, z1, palettes, amount?, noise?, faces?, facing?, band?, only?, layer?, curtains?, length?, thickness?, seed?", "Moss caps on tops and curtains down faces with a ragged end"),
     ("voxel.algae", "x0, y0, z0, x1, y1, z1, palettes, band?, amount?, noise?, faces?, facing?, only?, layer?, seed?", "Algae band at the waterline, dense low and thinning upward in clumps"),
     ("voxel.vines", "x0, y0, z0, x1, y1, z1, palettes, amount?, length?, blooms?, bloomChance?, noise?, faces?, facing?, band?, only?, seed?", "Vine strands hanging from top edges, with blooms"),
+    ("voxel.sweep", "points, profile | width + height + radius?, curve?, palette | palettes, pattern?, period?, seed?, mode?", "Fill a 2D profile along a polyline or smooth curve, with twist and scale per point"),
     ("voxel.smooth", "x0, y0, z0, x1, y1, z1, iterations?, fillAt?, removeAt?", "Majority filter in a box that keeps colours"),
     ("voxel.get_box", "x0, y0, z0, x1, y1, z1", "Non-empty cells inside an inclusive box, at most 100000"),
     ("palette.set", "index, r, g, b, a?, motion?, motion_amount? | entries", "Replace one slot, or many, as one undo step"),

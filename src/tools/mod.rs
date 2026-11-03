@@ -13,6 +13,7 @@ mod scatter;
 mod sculpt;
 mod shapes;
 mod surface;
+mod sweep;
 mod weather;
 
 pub use debris::{break_end, BreakSpec, Broken, Splinters};
@@ -31,6 +32,7 @@ pub use shapes::{
     square,
 };
 pub use surface::Region;
+pub use sweep::{sweep, Profile, SweepPoint};
 pub use weather::{weather, WeatherSpec};
 
 pub(crate) fn plane_axes(axis: i32) -> (usize, usize) {

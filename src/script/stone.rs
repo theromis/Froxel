@@ -1,5 +1,5 @@
-//! The MCP stone tools in Rhai: `joints`, `weather`, `moss`, `algae`, and
-//! `vines`.
+//! The MCP stone tools in Rhai: `joints`, `weather`, `moss`, `algae`,
+//! `vines`, and `sweep`.
 //!
 //! Each call turns its arguments into the MCP tool's arguments and runs
 //! `remote::stone_writes` on the object being written, as the MCP handler
@@ -8,7 +8,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use rhai::{Dynamic, Engine, Map, INT};
+use rhai::{Array, Dynamic, Engine, Map, INT};
 use serde_json::Value;
 
 use super::shapes::{box_args, json, options, Args, Fallible};
@@ -61,7 +61,64 @@ const VINES: &[&str] = &[
     "seed",
 ];
 
+const SWEEP: &[&str] = &["curve", "pattern", "period", "seed", "mode"];
+
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
+    for with_opts in [false, true] {
+        let state = scratch.clone();
+        let run =
+            move |points: Array, profile: Dynamic, palette: Dynamic, opts: &Map| -> Fallible<Map> {
+                let mut args = options(opts, SWEEP, "sweep")?;
+                args.insert("points".into(), json(&Dynamic::from_array(points))?);
+                if profile.is_array() {
+                    args.insert("profile".into(), json(&profile)?);
+                } else if profile.is_map() {
+                    let Value::Object(rect) = json(&profile)? else {
+                        unreachable!("a map is an object");
+                    };
+                    for (key, value) in rect {
+                        if !["width", "height", "radius"].contains(&key.as_str()) {
+                            return Err(runtime(format!(
+                                "sweep profile map takes width, height, and radius, not `{key}`"
+                            )));
+                        }
+                        args.insert(key, value);
+                    }
+                } else {
+                    return Err(runtime(
+                        "sweep profile must be a list of [u, v] points or #{width, height, radius}",
+                    ));
+                }
+                if palette.is_array() {
+                    args.insert("palettes".into(), json(&palette)?);
+                } else if palette.is_int() {
+                    args.insert("palette".into(), json(&palette)?);
+                } else {
+                    return Err(runtime(
+                        "sweep palette must be an index or a list of indices",
+                    ));
+                }
+                state
+                    .borrow_mut()
+                    .stone(args, Stone::Sweep)
+                    .map_err(runtime)
+            };
+        if with_opts {
+            engine.register_fn(
+                "sweep",
+                move |points: Array, profile: Dynamic, palette: Dynamic, opts: Map| {
+                    run(points, profile, palette, &opts)
+                },
+            );
+        } else {
+            engine.register_fn(
+                "sweep",
+                move |points: Array, profile: Dynamic, palette: Dynamic| {
+                    run(points, profile, palette, &Map::new())
+                },
+            );
+        }
+    }
     for (name, tool, allowed) in [
         ("moss", Stone::Moss, MOSS),
         ("algae", Stone::Algae, ALGAE),
@@ -174,7 +231,13 @@ impl Scratch {
         let changed = self.apply(&writes)?;
         let mut reply: Map = counts
             .into_iter()
-            .map(|(key, value)| (key.into(), Dynamic::from_int(value.as_i64().unwrap_or(0))))
+            .map(|(key, value)| {
+                let value = match value.as_i64() {
+                    Some(int) => Dynamic::from_int(int),
+                    None => Dynamic::from_float(value.as_f64().unwrap_or(0.0)),
+                };
+                (key.into(), value)
+            })
             .collect();
         reply.insert("changed".into(), Dynamic::from_int(changed));
         Ok(reply)
