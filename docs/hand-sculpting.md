@@ -76,6 +76,9 @@ kerb that bends with no corners. Give a rounded rectangle (`width`,
 per point to lean or taper it. `palettes` with `pattern: "bands"` lays
 horizontal strata.
 
+`examples/gorge_wall.rhai` puts the stone tools together in order: sweep,
+joints, weather, moss, algae, vines, then markers.
+
 `joints` cuts real gaps between stones, one cell wide and `depth` deep,
 with a `dirt` slot at the bottom of each gap: `columns` for fractured
 limestone, `courses` for masonry in a running bond, `cracks` for a crack

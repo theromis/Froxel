@@ -394,6 +394,13 @@ fallen hollow log with every shape call: a striped tube trunk, `smooth`,
 buttress roots built with `push`, `break_end` at the far end, a carved
 hollow, a ground slab, and `scatter` debris under the break.
 
+`examples/gorge_wall.rhai` (baked in `examples/gorge_wall.vox`) is a gorge
+cliff wall built with the stone tools: a profile with a ledge swept along a
+curve, `joints` columns, `weather`, `moss`, `algae` at the waterline,
+`vines` with blooms, and markers for the ledge, the top, collision boxes,
+and both ends. `examples/gorge_wall_variants.json` is a parameter set list
+for `export_variants` and `froxel variants`.
+
 ## Markers
 
 ```rhai

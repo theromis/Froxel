@@ -330,13 +330,14 @@ fn slabs(points: &[SweepPoint], curve: bool, reach: f64) -> Result<Vec<Slab>, St
 
 /// The cells around one slab: its profile bounds across, `half` along.
 fn slab_box(slab: &Slab, bounds: &[f64; 4]) -> ([i32; 3], [i32; 3]) {
-    let r = bounds.iter().map(|v| v.abs()).fold(0.0f64, f64::max)
-        * std::f64::consts::SQRT_2
-        * slab.scale;
+    // The profile's bounding rectangle, turned by the twist and scaled.
+    let (sin, cos) = slab.twist.to_radians().sin_cos();
     let mut min = [f64::MAX; 3];
     let mut max = [f64::MIN; 3];
-    for su in [-r, r] {
-        for sv in [-r, r] {
+    for pu in [bounds[0], bounds[1]] {
+        for pv in [bounds[2], bounds[3]] {
+            let su = slab.scale * (pu * cos - pv * sin);
+            let sv = slab.scale * (pu * sin + pv * cos);
             for sa in [-slab.half, slab.half] {
                 for i in 0..3 {
                     let p = slab.at[i] + slab.left[i] * su + slab.up[i] * sv + slab.tangent[i] * sa;

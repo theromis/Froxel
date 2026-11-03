@@ -1,0 +1,7 @@
+{
+  "variants": [
+    {"name": "gorge_wall_low", "params": {"height": 18, "length": 48, "water": 4, "seed": 3}},
+    {"name": "gorge_wall_mid", "params": {"height": 32, "length": 72, "water": 6, "seed": 5}},
+    {"name": "gorge_wall_tall", "params": {"height": 48, "length": 96, "water": 8, "seed": 11}}
+  ]
+}

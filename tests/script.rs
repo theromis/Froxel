@@ -985,3 +985,32 @@ fn script_markers_match_set_marker_and_rerun_replaces_them() {
     let err = run_cells(r#"connector("c", [0, 0, 0], [0, 0, 0]);"#).unwrap_err();
     assert!(err.contains("direction"), "{err}");
 }
+
+#[test]
+fn the_gorge_wall_is_jointed_overgrown_and_marked() {
+    let mut session = Session::new();
+    session.replace_empty();
+    session
+        .set_script(0, include_str!("../examples/gorge_wall.rhai"))
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    let wall = cells_of(&session);
+    // Joint dirt, broken stone, moss, algae, vines, and blooms are all there.
+    for slot in [2, 3, 10, 13, 16, 19] {
+        assert!(wall.values().any(|&s| s == slot), "slot {slot} is missing");
+    }
+    // Algae stays at the waterline (6).
+    assert!(wall
+        .iter()
+        .all(|(c, &s)| !(13..=15).contains(&s) || c.2 <= 7));
+    // Three points, four collision boxes, two connectors.
+    assert_eq!(session.markers.len(), 9);
+    assert!(session.markers.iter().all(|m| m.scripted));
+    session.regenerate_script(0).unwrap();
+    assert_eq!(
+        cells_of(&session),
+        wall,
+        "the same seed builds the same wall"
+    );
+    assert_eq!(session.markers.len(), 9);
+}

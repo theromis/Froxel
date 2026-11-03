@@ -4,6 +4,10 @@
 
 ### Added
 
+- `examples/gorge_wall.rhai`: a fractured, mossy gorge wall swept along a
+  curve, with algae, vines, and markers, and
+  `examples/gorge_wall_variants.json` for variant export.
+
 - Variant export: MCP `export_variants`, `froxel variants`, and the Export
   panel's Export variants… bake a scripted document once per parameter set
   and write a `.vox` and a `.glb` per set with the `export_models` mesh
