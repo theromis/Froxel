@@ -218,6 +218,41 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
     });
     ui.checkbox(&mut session.preview_overlay, "Markers on preview")
         .on_hover_text("Draw collision boxes, points, and connectors with their names over Save preview and the contact sheets; what the model hides is faded and dashed (MCP preview overlay)");
+    ui.horizontal(|ui| {
+        ui.label("Preview light");
+        egui::ComboBox::from_id_salt("preview_lighting")
+            .selected_text(session.preview_lighting.clone())
+            .show_ui(ui, |ui| match session.preview_lighting_names() {
+                Ok(names) => {
+                    for name in names {
+                        ui.selectable_value(&mut session.preview_lighting, name.clone(), name);
+                    }
+                }
+                Err(err) => {
+                    ui.label(RichText::new(err).small().color(DIM));
+                }
+            })
+            .response
+            .on_hover_text("Light Save preview and the contact sheets as a game does: a sun, a flat ambient, exposure, a background, and a LUT grade, with no shadows. old_pond is frog-world's Old Pond region; viewport is the editor's light (MCP preview lighting)");
+        if ui
+            .button("Light presets…")
+            .on_hover_text("A project's lighting presets JSON file, offered in Preview light beside the user's lighting_presets.json and the built-in ones (MCP preview lightingPresets)")
+            .clicked()
+        {
+            session.pick_preview_lighting_file();
+        }
+        if let Some(name) = session
+            .preview_lighting_file
+            .as_deref()
+            .and_then(|path| path.file_name())
+            .map(|name| name.to_string_lossy().into_owned())
+        {
+            ui.label(RichText::new(name).small().color(DIM));
+            if ui.small_button("✕").on_hover_text("No presets file").clicked() {
+                session.preview_lighting_file = None;
+            }
+        }
+    });
     ui.checkbox(&mut session.preview_counts_label, "Counts on preview")
         .on_hover_text("Write two triangle counts in the corner of Save preview and each contact sheet tile: the unmerged mesh the preview draws, and what File > Export writes with the Export panel's options (merge, colour atlas). The status line gives both too (MCP preview countsLabel and export)");
     ui.horizontal(|ui| {

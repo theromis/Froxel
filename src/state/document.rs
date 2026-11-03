@@ -74,6 +74,8 @@ impl Session {
             sheet_reference: None,
             preview_overlay: false,
             preview_counts_label: false,
+            preview_lighting: crate::lighting::VIEWPORT.into(),
+            preview_lighting_file: None,
             variants_replace: false,
             stone: StonePanels::default(),
             smooth_iterations: 1,

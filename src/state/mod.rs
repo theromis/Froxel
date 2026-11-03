@@ -745,6 +745,11 @@ pub struct Session {
     /// Save preview and the contact sheets write the preview and export
     /// triangle counts in the corner (MCP preview countsLabel).
     pub preview_counts_label: bool,
+    /// The lighting preset of Save preview and the contact sheets (MCP
+    /// preview lighting); `viewport` is the editor's light.
+    pub preview_lighting: String,
+    /// A project's lighting presets file (MCP preview lightingPresets).
+    pub preview_lighting_file: Option<PathBuf>,
     /// Export variants… writes a fresh manifest instead of merging into the
     /// one on disk (MCP `export_variants` `replace`).
     pub variants_replace: bool,

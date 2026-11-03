@@ -156,6 +156,7 @@ usage: froxel preview --input <file.vox> [--input <file.vox> ...] --out <file.pn
                       [--width N] [--height N] [--yaw DEG] [--pitch DEG]
                       [--view front|back|left|right|top|bottom]
                       [--preset game|default|NAME] [--presets <presets.json>]
+                      [--lighting viewport|old_pond|NAME] [--lighting-presets <lighting.json>]
                       [--ortho] [--fov DEG] [--margin F]
                       [--object NAME|INDEX] [--isolate]
                       [--background #rrggbb[aa]] [--no-antialias]
@@ -180,6 +181,16 @@ background, and 2x2 antialiasing up to 2048x2048. --output is an alias of
 --presets reads a JSON object of name: {yaw, pitch, orthographic, fov,
 margin} that defines presets or overrides the built-in ones; --yaw, --pitch,
 --ortho, --fov, and --margin still win over a preset.
+
+--lighting lights the model as a game does instead of with the viewport's
+light: a sun (direction, colour, energy), a flat ambient (colour, energy),
+exposure, an optional background, and an optional LUT grade, with no
+shadows. old_pond is frog-world's Old Pond region; viewport is the default.
+--lighting-presets reads a JSON object of name: {sunDirection or
+godotSunBasis, sunColor, sunEnergy, ambientColor, ambientEnergy, exposure,
+background, lut, preset}; the user's lighting_presets.json in Froxel's
+support folder (or FROXEL_LIGHTING_PRESETS) is read as well. --background
+still wins over a preset's.
 
 A contact sheet: several --input files, --variants (the parameter sets of
 froxel variants, baked from the one --input), or --reference (a PNG placed
@@ -260,6 +271,8 @@ fn preview_args(args: &[String]) -> Result<Option<(Option<PathBuf>, serde_json::
                     other => other,
                 };
             }
+            "--lighting" => params["lighting"] = json!(value(&mut index)?),
+            "--lighting-presets" => params["lightingPresets"] = json!(value(&mut index)?),
             "--ortho" | "--orthographic" => params["orthographic"] = json!(true),
             "--fov" => params["fov"] = json!(parse_f32(&value(&mut index)?, arg)?),
             "--margin" => params["margin"] = json!(parse_f32(&value(&mut index)?, arg)?),

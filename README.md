@@ -227,7 +227,9 @@ rasterised on the CPU in a fraction of a second, fitted to the model (or
 flags; MCP `preview` is the same image. `--preset game` is the gameplay
 camera (orthographic, yaw −60, pitch 25), and several `--input` files,
 `--variants`, or a `--reference` concept make a labelled contact sheet.
-It prints two triangle counts: the unmerged mesh it draws, and what
+`--lighting old_pond` (or a preset of your own) lights it with a game's
+sun, ambient, and grade instead of the viewport light. It prints two
+triangle counts: the unmerged mesh it draws, and what
 `froxel export` writes with the export flags given (`--merge`,
 `--color-atlas`).
 

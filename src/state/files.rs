@@ -852,6 +852,7 @@ impl Session {
             // Counted with the Export panel's options, as File > Export writes.
             params["export"] = crate::remote::mesh_params(&self.export);
             params["countsLabel"] = serde_json::json!(self.preview_counts_label);
+            self.add_preview_lighting(&mut params);
         }
         self.status = match crate::remote::apply(self, method, &params) {
             Ok(reply) if method == "render.preview" => {
@@ -898,6 +899,7 @@ impl Session {
         }
         params["export"] = crate::remote::mesh_params(&self.export);
         params["countsLabel"] = serde_json::json!(self.preview_counts_label);
+        self.add_preview_lighting(&mut params);
         if let Some(reference) = &self.sheet_reference {
             params["reference"] = serde_json::json!(reference.to_string_lossy());
         }
@@ -913,6 +915,41 @@ impl Session {
             ),
             Err(err) => err,
         };
+    }
+
+    /// The Render section's Preview light and Light presets…: MCP preview
+    /// lighting and lightingPresets.
+    fn add_preview_lighting(&self, params: &mut serde_json::Value) {
+        if self.preview_lighting != crate::lighting::VIEWPORT {
+            params["lighting"] = serde_json::json!(self.preview_lighting);
+            if let Some(file) = &self.preview_lighting_file {
+                params["lightingPresets"] = serde_json::json!(file.to_string_lossy());
+            }
+        }
+    }
+
+    /// The lighting presets the Preview light menu offers: the project
+    /// file's, the user's, and the built-in ones.
+    pub fn preview_lighting_names(&self) -> Result<Vec<String>, String> {
+        let file = self
+            .preview_lighting_file
+            .as_ref()
+            .map(|file| serde_json::json!(file.to_string_lossy()));
+        Ok(crate::lighting::Presets::load(file.as_ref())?.names())
+    }
+
+    /// Light presets…: a project's lighting presets JSON file.
+    pub fn pick_preview_lighting_file(&mut self) {
+        if let Some(path) = dialog::pick_open("Lighting presets", &["json"]) {
+            let file = serde_json::json!(path.to_string_lossy());
+            self.status = match crate::lighting::Presets::load(Some(&file)) {
+                Ok(presets) => {
+                    self.preview_lighting_file = Some(path.clone());
+                    format!("Lighting presets: {}.", presets.names().join(", "))
+                }
+                Err(err) => err,
+            };
+        }
     }
 
     /// The contact sheet's Reference… button: a concept PNG for the first

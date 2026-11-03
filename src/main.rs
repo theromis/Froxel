@@ -28,6 +28,7 @@ mod denoise;
 mod export;
 mod gpu;
 mod icons;
+mod lighting;
 mod mcp;
 mod menu;
 mod menu_bar;

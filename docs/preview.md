@@ -10,7 +10,8 @@ implementation is `src/preview.rs`; both entry points call it.
 - **Light.** The viewport shader: palette colour in linear light times
   `0.30 + key·max(n·sun, 0) + 0.08·n.z`, clamped to 0.12..1.35, where `key`
   grows with the document's sun intensity and `sun` is its sun direction.
-  No shadows, sky, bounces, materials, or tonemap.
+  No shadows, sky, bounces, materials, or tonemap. `lighting` replaces it
+  with a game's sun and ambient, below.
 - **Raster.** A CPU triangle rasteriser with a depth buffer. 2×2
   supersampling (resolved in linear light) is on by default up to
   2048×2048 output pixels. No GPU is needed, so it runs headless, in CI,
@@ -83,14 +84,94 @@ edges are blended into alpha.
 | `preset`, `presets` | — | named camera, see above |
 | `inputs`, `variants`, `reference`, `columns`, `labels` | — | contact sheet, below |
 | `overlay`, `overlayLabels` | off, true | markers over the model, below |
+| `lighting`, `lightingPresets` | `viewport` | a game's light, below |
 | `export` | `export_mesh` defaults | export options the counts use, below |
 | `countsLabel` | false | write both triangle counts in the corner |
 
 The reply is `path`, `width`, `height`, `yaw`, `pitch`, `orthographic`,
-`previewTriangles`, `export`, `milliseconds`, `object` (`index` and
-`name`) when one was framed, and `pixelsPerVoxel` when orthographic. It is not an edit and
+`previewTriangles`, `export`, `milliseconds`, `lighting` (the values
+used) when given, `object` (`index` and `name`) when one was framed, and
+`pixelsPerVoxel` when orthographic. It is not an edit and
 does not move the editor camera. Connected to a window, the window process
 draws it.
+
+## Lighting presets
+
+The viewport light is for modelling, not for judging colour: a stone that
+reads right under it can turn pale grey under a game's warm sun and blue
+ambient. `lighting` lights the preview the way Godot lights the exported
+glb instead:
+
+- **Sun.** One directional light: `sunDirection` `[x, y, z]` toward the
+  sun, Froxel Z up, or `godotSunBasis`, the numbers of a
+  `DirectionalLight3D`'s `Transform3D` as the `.tscn` writes them (9 basis
+  numbers, or all 12). A Godot light shines along its −Z, so the sun is
+  its +Z axis, the third basis column, and Godot `(X, Y, Z)` is Froxel
+  `(X, −Z, Y)` (the glb maps Froxel `(x, y, z)` to `(x, z, −y)`). With
+  neither, the document's sun direction. `sunColor` (`[r, g, b]` as
+  Godot stores it, sRGB 0..16, or `#rrggbb`) and `sunEnergy`.
+- **Ambient.** A flat colour ambient (Godot's ambient source Color):
+  `ambientColor` and `ambientEnergy`.
+- **Exposure**, then a clamp to 0..1 (Godot's linear tonemapper, its
+  default), then sRGB.
+- **lut**, optional: a 3D LUT PNG, as Godot's Environment colour
+  correction takes it, with the slices side by side (`N·N × N`, red across
+  a slice, green down, blue from slice to slice) or stacked (`N × N·N`).
+  It grades the finished sRGB image, the background too, trilinearly.
+- **background**, optional: the clear colour when the call gives none.
+
+A face is `albedo × (sunColor × sunEnergy × max(n·l, 0) + ambientColor ×
+ambientEnergy) × exposure` in linear light, with every colour converted
+from sRGB first. That is Godot's Lambert term on a rough non-metal (the
+glb's material: metallic 0, roughness 1) with a light of no specular, as
+frog-world's sun is. There are no shadows, so use it with an engine light
+that casts none on the asset.
+
+Presets are named sets of these fields. `lighting` takes a name, or an
+object of fields over the preset its `preset` names (or over a white sun
+of energy 1 and a white ambient of 0.3). The names come from, first match
+first:
+
+1. `lightingPresets` (MCP), `--lighting-presets` (command line), or the
+   Light presets… file in the Render section: a JSON object of name to
+   fields, or one with it under `lighting`, or the path of such a file. A
+   relative `lut` is relative to the file.
+2. The user's `lighting_presets.json` in Froxel's support folder
+   (`~/Library/Application Support/Froxel` on macOS, else
+   `$XDG_DATA_HOME/froxel` or `~/.local/share/froxel`), or the file
+   `FROXEL_LIGHTING_PRESETS` names.
+3. The built-in ones: `viewport` (the editor light, the default) and
+   `old_pond`.
+
+A preset with the name of one further down overrides it field by field;
+one with `preset` starts from that one instead.
+
+`old_pond` is frog-world's Old Pond region: the `SunNoShadow` light of
+`scenes/regions/old_pond/old_pond_region.tscn` (colour `(1, 0.76, 0.48)`,
+energy 1.45, about 40° up, toward Froxel `(−0.30, 0.70, 0.64)`) and the
+Environment of `themes/world/level_01_environment.tres`: ambient
+`(0.62, 0.72, 0.9)` at 1.1 (a cool blue, which is what greys a stone face
+the sun misses), exposure 1.05, background `#0a3f57`. The level's grade,
+`themes/world/level_grade_lut.png` (33 slices), is the game's file, so a
+frog-world presets file adds it:
+
+```json
+{"lighting": {"old_pond_graded": {"preset": "old_pond",
+  "lut": "../themes/world/level_grade_lut.png"}}}
+```
+
+```sh
+froxel preview --input gorge_crest.vox --out crest_pond.png --preset game \
+  --lighting old_pond_graded --lighting-presets froxel/lighting.json
+```
+
+What the preview leaves out, so what can still differ from the game: the
+direction is in the asset's own axes, so an instance rotated in the level
+sees the sun from elsewhere; Godot's default diffuse is Burley, which
+equals Lambert facing the light and camera and departs from it, by up to
+about a fifth, toward grazing angles; the ambient's faint specular, fog,
+glow, SSAO, shadows from other objects, and vertex AO the shader may
+multiply in are not drawn.
 
 ## Two triangle counts
 
@@ -208,8 +289,8 @@ froxel preview --input model.vox --out preview.png --yaw -35 --pitch 30 --width 
 
 The flags mirror the MCP arguments: `--width`, `--height`, `--yaw`,
 `--pitch`, `--view`, `--ortho`, `--fov`, `--margin`, `--object NAME|INDEX`,
-`--isolate`, `--background`, `--no-antialias`, `--preset`, and `--presets
-FILE`. `--output` is an alias of `--out`, which must end in `.png`. It
+`--isolate`, `--background`, `--no-antialias`, `--preset`, `--presets
+FILE`, `--lighting NAME`, and `--lighting-presets FILE`. `--output` is an alias of `--out`, which must end in `.png`. It
 prints the time taken and both triangle counts on stderr. The export
 counts take the `froxel export` flags: `--merge`, `--color-atlas`,
 `--vertex-colors`, `--export-hidden`, `--split-objects`, `--ao`,

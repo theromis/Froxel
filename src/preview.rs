@@ -49,6 +49,9 @@ pub struct Preview {
     pub export: Option<crate::export::MeshExport>,
     /// Write the preview and export counts in the image's bottom-left corner.
     pub counts_label: bool,
+    /// A game's light instead of the viewport's: sun, ambient, exposure,
+    /// and an optional grade.
+    pub lighting: Option<crate::lighting::Lighting>,
 }
 
 /// Which markers the preview draws over the model.
@@ -95,6 +98,7 @@ impl Default for Preview {
             overlay: Overlay::default(),
             export: None,
             counts_label: false,
+            lighting: None,
         }
     }
 }
@@ -160,13 +164,7 @@ fn shade(color: [f32; 3], normal: Vec3, sun: Vec3, sun_intensity: f32) -> [f32; 
     color.map(|c| to_linear(c) * light)
 }
 
-fn to_linear(c: f32) -> f32 {
-    if c <= 0.04045 {
-        c / 12.92
-    } else {
-        ((c + 0.055) / 1.055).powf(2.4)
-    }
-}
+use crate::lighting::to_linear;
 
 fn to_srgb(c: f32) -> u8 {
     let c = c.clamp(0.0, 1.0);
@@ -418,7 +416,11 @@ pub fn render(session: &Session, preview: &Preview) -> Result<Frame, String> {
     let (sw, sh) = (preview.width * ss, preview.height * ss);
     let camera = frame(&meshes, preview, sw as f32, sh as f32)
         .ok_or_else(|| "nothing to frame".to_string())?;
-    let sun = session.sun_dir();
+    let sun = preview
+        .lighting
+        .as_ref()
+        .and_then(|lighting| lighting.sun_direction)
+        .unwrap_or_else(|| session.sun_dir());
     let mut depth = vec![f32::NEG_INFINITY; (sw * sh) as usize];
     let mut color = vec![[0f32; 3]; (sw * sh) as usize];
     let mut triangles = 0;
@@ -433,12 +435,11 @@ pub fn render(session: &Session, preview: &Preview) -> Result<Frame, String> {
             let [Some(a), Some(b), Some(c)] = projected else {
                 continue;
             };
-            let lit = shade(
-                verts[0].color,
-                Vec3::from_array(verts[0].normal),
-                sun,
-                session.sun_intensity,
-            );
+            let normal = Vec3::from_array(verts[0].normal);
+            let lit = match &preview.lighting {
+                Some(lighting) => lighting.shade(verts[0].color, normal, sun),
+                None => shade(verts[0].color, normal, sun, session.sun_intensity),
+            };
             if raster(&mut depth, &mut color, sw, sh, a, b, c, lit) {
                 triangles += 1;
             }
@@ -802,6 +803,11 @@ fn resolve(depth: &[f32], color: &[[f32; 3]], preview: &Preview, ss: u32) -> Vec
     let bg_alpha = bg[3] as f32 / 255.0;
     let sw = (preview.width * ss) as usize;
     let count = (ss * ss) as f32;
+    // The grade is the last step, over the background too, as in Godot.
+    let lut = preview
+        .lighting
+        .as_ref()
+        .and_then(|lighting| lighting.lut.as_deref());
     let mut out = Vec::with_capacity((preview.width * preview.height * 4) as usize);
     for y in 0..preview.height as usize {
         for x in 0..preview.width as usize {
@@ -829,7 +835,11 @@ fn resolve(depth: &[f32], color: &[[f32; 3]], preview: &Preview, ss: u32) -> Vec
                 out.extend([0, 0, 0, 0]);
                 continue;
             }
-            out.extend(sum.map(|s| to_srgb(s / alpha)));
+            let mut rgb = sum.map(|s| to_srgb(s / alpha));
+            if let Some(lut) = lut {
+                rgb = lut.apply(rgb);
+            }
+            out.extend(rgb);
             out.push((a * 255.0 + 0.5) as u8);
         }
     }

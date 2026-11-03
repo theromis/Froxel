@@ -439,6 +439,10 @@ fn preview(session: &mut Session, params: &Value) -> Result<Value, String> {
     preview.overlay = overlay_arg(params)?;
     preview.export = preview_export(params)?;
     preview.counts_label = opt_bool(params, "countsLabel")?.unwrap_or(false);
+    preview.lighting = preview_lighting(params)?;
+    if let Some(background) = preview.lighting.as_ref().and_then(|l| l.background) {
+        preview.background = background;
+    }
     if sheet {
         let object = match params.get("object") {
             None | Some(Value::Null) => None,
@@ -514,6 +518,10 @@ fn preview(session: &mut Session, params: &Value) -> Result<Value, String> {
     if let Some(export) = export_counts_json(&preview, &frame) {
         reply["export"] = export;
     }
+    if let Some(lighting) = &preview.lighting {
+        let sun = lighting.sun_direction.unwrap_or_else(|| session.sun_dir());
+        reply["lighting"] = lighting.json(sun);
+    }
     if let Some(index) = preview.object {
         reply["object"] = json!({"index": index, "name": session.objects[index].name});
     }
@@ -524,6 +532,25 @@ fn preview(session: &mut Session, params: &Value) -> Result<Value, String> {
         reply["overlay"] = overlay_json(&frame.overlay);
     }
     Ok(reply)
+}
+
+/// MCP `preview` `lighting` (a preset name or an object of lighting
+/// fields) with `lightingPresets` (an object or a presets file). `None` is
+/// the viewport's light.
+pub(crate) fn preview_lighting(
+    params: &Value,
+) -> Result<Option<crate::lighting::Lighting>, String> {
+    let given = params.get("lighting").filter(|value| !value.is_null());
+    let presets = params
+        .get("lightingPresets")
+        .filter(|value| !value.is_null());
+    let Some(given) = given else {
+        if presets.is_some() {
+            return Err("lightingPresets needs lighting to name one".into());
+        }
+        return Ok(None);
+    };
+    crate::lighting::Presets::load(presets)?.resolve(given)
 }
 
 /// MCP `preview` `export`: the export options its counts use, as

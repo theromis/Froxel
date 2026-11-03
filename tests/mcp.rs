@@ -1902,6 +1902,68 @@ fn preview_counts_the_export_apart_from_its_own_unmerged_mesh() {
 }
 
 #[test]
+fn preview_lighting_takes_a_preset_or_fields_and_reports_what_it_used() {
+    let mut head = Headless::new();
+    marked_block(&mut head);
+    let dir = std::env::temp_dir().join(format!("froxel-preview-light-{}", std::process::id()));
+    let png = dir.join("pond.png");
+    let base = json!({"path": png, "width": 48, "height": 48, "antialias": false});
+    let with = |extra: Value| {
+        let mut args = base.clone();
+        for (key, value) in extra.as_object().unwrap() {
+            args[key] = value.clone();
+        }
+        args
+    };
+    let viewport = head.ok("preview", base.clone());
+    assert!(viewport.get("lighting").is_none());
+    let (_, _, plain) = read_png(&png);
+    let pond = head.ok("preview", with(json!({"lighting": "old_pond"})));
+    assert_eq!(pond["lighting"]["name"], "old_pond");
+    assert_eq!(pond["lighting"]["sunEnergy"], 1.45);
+    assert_eq!(pond["lighting"]["background"], "#0a3f57ff");
+    let sun = pond["lighting"]["sunDirection"].as_array().unwrap();
+    assert!((sun[1].as_f64().unwrap() - 0.7036).abs() < 1e-3, "{sun:?}");
+    let (_, _, lit) = read_png(&png);
+    assert_eq!(
+        &lit[..4],
+        &[0x0a, 0x3f, 0x57, 255],
+        "the preset's background"
+    );
+    assert_ne!(plain, lit);
+    // The call's background wins over the preset's.
+    head.ok(
+        "preview",
+        with(json!({"lighting": "old_pond", "background": "#000000"})),
+    );
+    assert_eq!(&read_png(&png).2[..4], &[0, 0, 0, 255]);
+    let custom = head.ok(
+        "preview",
+        with(json!({
+            "lighting": "noon",
+            "lightingPresets": {"noon": {"preset": "old_pond", "sunDirection": [0, 0, 1], "sunColor": "#ffffff"}}
+        })),
+    );
+    assert_eq!(custom["lighting"]["sunDirection"], json!([0.0, 0.0, 1.0]));
+    assert_eq!(custom["lighting"]["ambientEnergy"], 1.1);
+    let inline = head.ok(
+        "preview",
+        with(json!({"lighting": {"sunEnergy": 0.0, "ambientEnergy": 1.0, "ambientColor": [1, 1, 1]}})),
+    );
+    assert_eq!(inline["lighting"]["name"], "custom");
+    for bad in [
+        json!({"lighting": "dusk"}),
+        json!({"lighting": {"sunEnergy": "high"}}),
+        json!({"lightingPresets": {"a": {}}}),
+        json!({"lighting": "a", "lightingPresets": "/nonexistent/presets.json"}),
+    ] {
+        let reply = head.call("preview", with(bad.clone()));
+        assert_eq!(reply["result"]["isError"], true, "{bad} {reply}");
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn preview_lays_variants_files_and_a_reference_out_in_a_contact_sheet() {
     let mut head = Headless::new();
     head.ok(

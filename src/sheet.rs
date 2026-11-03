@@ -417,6 +417,7 @@ pub fn contact_sheet(
         "yaw": preview.yaw,
         "pitch": preview.pitch,
         "orthographic": preview.orthographic,
+        "lighting": preview.lighting.as_ref().map(|lighting| lighting.name.clone()),
         "milliseconds": started.elapsed().as_millis() as u64
     }))
 }
