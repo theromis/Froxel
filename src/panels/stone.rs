@@ -1,11 +1,13 @@
-//! Inspector sections of the stone tools: Joints, Weather, Growth, Sweep,
-//! and Markers. Each button runs the MCP
+//! Inspector sections of the stone tools: Joints, Weather, Bark, Cavity,
+//! Growth, Sweep, and Markers. Each button runs the MCP
 //! tool over the selection's box, or the whole active object.
 
 use egui::{RichText, Ui};
 
 use super::{section, DIM};
-use crate::state::{EditorMode, MarkerKind, Plant, Session, DIRECTIONS, FACINGS, RELIEF_FACINGS};
+use crate::state::{
+    EditorMode, MarkerKind, Plant, Session, BARK_ALONG, DIRECTIONS, FACINGS, RELIEF_FACINGS,
+};
 use crate::tools::JointPattern;
 
 fn label(ui: &mut Ui, text: &str, tip: &str) {
@@ -51,14 +53,14 @@ fn slots_field(ui: &mut Ui, text: &mut String, hint: &str) {
     );
 }
 
-/// MCP `exclude`: boxes Scatter, Relief, Joints, Weather, and Growth leave
-/// alone.
+/// MCP `exclude`: boxes Scatter, Relief, Joints, Weather, Bark, Cavity, and
+/// Growth leave alone.
 pub(super) fn protect(ui: &mut Ui, session: &mut Session) {
     let enabled = session.editor_mode == EditorMode::Model;
     ui.add_enabled_ui(enabled, |ui| {
         section(ui, "Protect");
         ui.label(
-            RichText::new("Boxes Scatter, Relief, Joints, Weather, and Growth leave alone: ledge tops, cave floors, river beds.")
+            RichText::new("Boxes Scatter, Relief, Joints, Weather, Bark, Cavity, and Growth leave alone: ledge tops, cave floors, river beds.")
                 .small()
                 .color(DIM),
         );
@@ -272,6 +274,128 @@ pub(super) fn weather(ui: &mut Ui, session: &mut Session) {
     });
 }
 
+/// MCP `bark`: plates along the grain split by fissures.
+pub(super) fn bark(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.voxel_count() > 0 && session.editor_mode == EditorMode::Model;
+    let mut from_sweep = false;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Bark");
+        let panel = &mut session.stone.bark;
+        egui::Grid::new("bark-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Along", "The way the grain runs: an axis through the middle of the wood, or the points of the tube or sweep that made it, so the plates follow its bend.");
+                ui.horizontal(|ui| {
+                    for (index, name) in BARK_ALONG.iter().enumerate() {
+                        ui.selectable_value(&mut panel.along, index, *name);
+                    }
+                });
+                ui.end_row();
+                if panel.along == BARK_ALONG.len() - 1 {
+                    label(ui, "Points", "The wood's path in local cells, one point per line: x y z (a tube's radius or a sweep's twist and scale after them are ignored).");
+                    ui.add(
+                        egui::TextEdit::multiline(&mut panel.points)
+                            .desired_rows(3)
+                            .desired_width(150.0),
+                    );
+                    ui.end_row();
+                    label(ui, "Curve", "Smooth follows a curve through the points, as a smooth tube does.");
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut panel.smooth, "Smooth");
+                        from_sweep = ui
+                            .small_button("From Sweep")
+                            .on_hover_text("Copy the Sweep panel's points and curve.")
+                            .clicked();
+                    });
+                    ui.end_row();
+                }
+                label(ui, "Palettes", "Plate slots, a few bark tones; each plate takes one, so the tone changes plate by plate, not in stripes. Empty is the active slot.");
+                slots_field(ui, &mut panel.palettes, "active slot");
+                ui.end_row();
+                label(ui, "Dirt", "Palette slot of the cell at the bottom of each fissure, a dark brown. 0 keeps its colour.");
+                ui.add(egui::DragValue::new(&mut panel.dirt).range(0..=255));
+                ui.end_row();
+                label(ui, "Width", "Plate width range in cells around the wood.");
+                range_f32(ui, &mut panel.width, 1.0..=64.0);
+                ui.end_row();
+                label(ui, "Length", "Plate length range in cells along the grain.");
+                range_f32(ui, &mut panel.length, 2.0..=256.0);
+                ui.end_row();
+                label(ui, "Depth", "Fissure depth range in cells; plate ends and cracks take the smaller.");
+                range_i32(ui, &mut panel.depth, 1..=4);
+                ui.end_row();
+                label(ui, "Cracks", "Share of plates with a crack part way across.");
+                ui.add(egui::Slider::new(&mut panel.cracks, 0.0..=1.0).max_decimals(2));
+                ui.end_row();
+                label(ui, "Only", "Act only on these palette slots, the wood; empty acts on every slot.");
+                slots_field(ui, &mut panel.only, "every slot");
+                ui.end_row();
+                label(ui, "Seed", "Same seed, same plates.");
+                ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
+                ui.end_row();
+            });
+        if ui
+            .button(scope(session, "Cut bark on"))
+            .on_hover_text("MCP bark over the selection's box, or the whole object, keeping the Protect boxes. End grain is left alone. One undo step.")
+            .clicked()
+        {
+            session.bark_from_panel();
+        }
+    });
+    if from_sweep {
+        session.bark_points_from_sweep();
+    }
+}
+
+/// MCP `cavity_tint`: darker crevices and lighter ridges.
+pub(super) fn cavity(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.voxel_count() > 0 && session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Cavity");
+        let panel = &mut session.stone.cavity;
+        egui::Grid::new("cavity-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Radius", "Radius of the ball of neighbours counted around each cell; larger finds broader hollows.");
+                ui.add(egui::Slider::new(&mut panel.radius, 1..=4));
+                ui.end_row();
+                label(ui, "Dark", "How concave a cell must be to darken: 0 a flat face, 1 a closed pocket.");
+                ui.add(egui::Slider::new(&mut panel.dark, 0.0..=1.0).max_decimals(2));
+                ui.end_row();
+                label(ui, "Lighten", "Also lighten exposed ridges and corners more convex than this: 0 a flat face, 1 a lone spike.");
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut panel.lighten, "");
+                    ui.add_enabled(
+                        panel.lighten,
+                        egui::Slider::new(&mut panel.light, 0.0..=1.0).max_decimals(2),
+                    );
+                });
+                ui.end_row();
+                label(ui, "Pairs", "slot darker [lighter] per slot, separated by semicolons; slots without a pair stay. Empty makes shades of each slot's own colour in free palette slots.");
+                slots_field(ui, &mut panel.pairs, "make shades");
+                ui.end_row();
+                label(ui, "Shades", "Without pairs: the darker and lighter shade as factors of the slot's colour.");
+                ui.horizontal(|ui| {
+                    ui.add(egui::DragValue::new(&mut panel.darken).range(0.05..=0.99).speed(0.01));
+                    ui.add(egui::DragValue::new(&mut panel.brighten).range(1.01..=4.0).speed(0.01));
+                });
+                ui.end_row();
+                label(ui, "Only", "Act only on these palette slots; empty acts on every slot.");
+                slots_field(ui, &mut panel.only, "every slot");
+                ui.end_row();
+            });
+        if ui
+            .button(scope(session, "Shade cavities on"))
+            .on_hover_text("MCP cavity_tint over the selection's box, or the whole object, keeping the Protect boxes. New shades and the cells are one undo step.")
+            .clicked()
+        {
+            session.cavity_from_panel();
+        }
+    });
+}
+
 /// MCP `moss`, `algae`, and `vines`: plants on exposed faces.
 pub(super) fn growth(ui: &mut Ui, session: &mut Session) {
     let enabled = session.voxel_count() > 0 && session.editor_mode == EditorMode::Model;
@@ -282,7 +406,7 @@ pub(super) fn growth(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Plant", "Moss: cushions on tops and curtains down faces. Algae: a waterline band, dense low and thinning up. Vines: strands hanging from top edges.");
+                label(ui, "Plant", "Moss: caps on tops and curtains down faces, or separate cushions. Algae: a waterline band, dense low and thinning up. Vines: strands hanging from top edges.");
                 ui.horizontal(|ui| {
                     for (plant, name) in [
                         (Plant::Moss, "Moss"),
@@ -295,6 +419,17 @@ pub(super) fn growth(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
+                if panel.plant == Plant::Moss {
+                    label(ui, "Style", "Caps: caps on tops and curtains down the sides. Cushions: separate cushions where the surface faces up, never one band, with drapes over the edges.");
+                    ui.horizontal(|ui| {
+                        for (on, name) in [(false, "Caps"), (true, "Cushions")] {
+                            if ui.selectable_label(panel.cushions == on, name).clicked() {
+                                panel.set_cushions(on);
+                            }
+                        }
+                    });
+                    ui.end_row();
+                }
                 let tip = match panel.plant {
                     Plant::Moss => "Moss slots, picked in patches. Empty is the active slot.",
                     Plant::Algae => "Algae slots from the bottom of the band to its top. Empty is the active slot.",
@@ -347,7 +482,23 @@ pub(super) fn growth(ui: &mut Ui, session: &mut Session) {
                     ui.checkbox(&mut panel.paint, "");
                     ui.end_row();
                 }
-                if panel.plant == Plant::Moss {
+                if panel.plant == Plant::Moss && panel.cushions {
+                    label(ui, "Size", "Cushion radius range in cells.");
+                    range_i32(ui, &mut panel.size, 1..=16);
+                    ui.end_row();
+                    label(ui, "Gap", "Fewest cells between two cushions.");
+                    ui.add(egui::Slider::new(&mut panel.gap, 1..=8));
+                    ui.end_row();
+                    label(ui, "Exposure", "How far a cell must face up (or Facing) to take moss: 0 the upper half of a log, 0.7 only its crown.");
+                    ui.add(egui::Slider::new(&mut panel.exposure, -1.0..=1.0).max_decimals(2));
+                    ui.end_row();
+                    label(ui, "Drapes", "Share of cushion edges over a drop that a drape hangs from.");
+                    ui.add(egui::Slider::new(&mut panel.drapes, 0.0..=1.0).max_decimals(2));
+                    ui.end_row();
+                    label(ui, "Thickness", "Thickness at a cushion's middle.");
+                    ui.add(egui::Slider::new(&mut panel.thickness, 1..=4));
+                    ui.end_row();
+                } else if panel.plant == Plant::Moss {
                     label(ui, "Curtains", "Share of top edges a curtain runs down from.");
                     ui.add(egui::Slider::new(&mut panel.curtains, 0.0..=1.0).max_decimals(2));
                     ui.end_row();
@@ -356,7 +507,9 @@ pub(super) fn growth(ui: &mut Ui, session: &mut Session) {
                     ui.end_row();
                 }
                 if panel.plant != Plant::Algae {
-                    let tip = if panel.plant == Plant::Moss {
+                    let tip = if panel.plant == Plant::Moss && panel.cushions {
+                        "Drape length range in cells."
+                    } else if panel.plant == Plant::Moss {
                         "Curtain length range in cells."
                     } else {
                         "Strand length range in cells."

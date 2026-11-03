@@ -23,7 +23,7 @@ If the tools are missing, the server is not configured. Point the user to
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `moss`, `algae`, `vines`, `sweep`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, and `marker`,
+  (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `cavity_tint`, `moss`, `algae`, `vines`, `sweep`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, and `marker`,
   `collision_box`, `connector`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -33,8 +33,8 @@ If the tools are missing, the server is not configured. Point the user to
   tools have no script form, and `import_mesh` (scripts read no files):
   `voxelize(#{positions, triangles, colors}, opts)` voxelizes a mesh the
   script builds (`examples/faceted_boulder.rhai`). Name things in loops with `"ledge_" + i` or
-  `` `ledge_${i}` ``. See `docs/scripting.md` and
-  `examples/hollow_log.rhai`.
+  `` `ledge_${i}` ``. See `docs/scripting.md`,
+  `examples/hollow_log.rhai`, and `examples/barked_trunk.rhai`.
 
 - **Markers** for game data: `set_marker` names a ledge point, a collision
   `box`, or a `connector` (a joining end) on an object; scripts call
@@ -100,9 +100,16 @@ If the tools are missing, the server is not configured. Point the user to
    into stone with `joints` (columns,
    running bond courses, or cracks, with dirt at the bottom) instead of
    painting dark lines, then `weather` for chipped edges, pits, and
-   subtle colour noise, then `moss` (caps and curtains), `algae` (a
+   subtle colour noise, then `moss` (caps and curtains, or `style:
+   "cushions"`: separate cushions where the surface faces up, with drapes
+   from overhangs, never one band), `algae` (a
    waterline band), and `vines` (hanging strands with blooms) with your own
-   slots and `set_palette` motion. Pass `exclude` boxes (a ledge top, a
+   slots and `set_palette` motion. Dress wood by its form, never with
+   painted stripes: build it in one slot, `bark` it along the same
+   `points` as its `fill_tube` (plates and fissures with dirt at the
+   bottom), then `cavity_tint` to darken fissures, crevices, and root
+   crooks (it makes the shades itself) before moss. `cavity_tint` gives
+   rock depth the same way. Pass `exclude` boxes (a ledge top, a
    cave floor, a river bed, with the air above) to these tools and
    `scatter` so walking surfaces stay flat instead of refilling them. Do not compute tubes or carves in
    an outside script. Get the silhouette and proportions right first.

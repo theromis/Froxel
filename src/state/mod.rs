@@ -921,7 +921,7 @@ pub use markers::{
 };
 pub use organic::{OrganicPanels, SculptBrush, DEFORM_OPS, SCULPT_OPS};
 pub use silhouette::{BackgroundField, SilhouettePanels, CAMERAS, SIDES};
-pub use stone::{Plant, StonePanels, DIRECTIONS, FACINGS, RELIEF_FACINGS};
+pub use stone::{Plant, StonePanels, BARK_ALONG, DIRECTIONS, FACINGS, RELIEF_FACINGS};
 pub(crate) use vox::rotation_codec_errors;
 
 #[cfg(test)]

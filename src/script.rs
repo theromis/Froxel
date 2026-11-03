@@ -212,6 +212,8 @@ struct Scratch {
     view: DocView,
     /// Markers the run named, on the objects it built.
     markers: Vec<crate::state::Marker>,
+    /// Palette slots `cavity_tint` made shades in.
+    shades: Vec<crate::tools::Shade>,
     stop: Stop,
 }
 
@@ -222,6 +224,7 @@ pub(crate) struct Outcome {
     pub(crate) motion: Vec<(u8, Motion, f32)>,
     pub(crate) ops: Vec<DocOp>,
     pub(crate) markers: Vec<crate::state::Marker>,
+    pub(crate) shades: Vec<crate::tools::Shade>,
 }
 
 impl Scratch {
@@ -273,6 +276,7 @@ pub(crate) fn execute(
         ops: Vec::new(),
         view: view.clone(),
         markers: Vec::new(),
+        shades: Vec::new(),
         stop: stop.clone(),
     }));
     let mut engine = Engine::new_raw();
@@ -321,6 +325,7 @@ pub(crate) fn execute(
         motion: scratch.motion.clone(),
         ops: scratch.ops.clone(),
         markers: scratch.markers.clone(),
+        shades: scratch.shades.clone(),
     })
 }
 
@@ -1341,6 +1346,11 @@ impl Session {
             let material = &mut self.materials[slot as usize];
             material.motion = motion;
             material.motion_amount = amount.clamp(0.0, 4.0);
+        }
+        // `cavity_tint` shades take their slot's colour and material.
+        for shade in outcome.shades {
+            self.palette[shade.slot as usize] = shade.rgba;
+            self.materials[shade.slot as usize] = self.materials[shade.from as usize];
         }
         outcome.ops
     }

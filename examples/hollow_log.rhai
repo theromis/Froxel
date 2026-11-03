@@ -1,4 +1,4 @@
-// A fallen hollow log: a tapering trunk with bark grooves, hollow from the
+// A fallen hollow log: a tapering trunk with bark plates, hollow from the
 // root end, buttress roots, a snapped far end with splinters, and debris
 // heaped under the break. Z is up; the log lies along +X on the ground.
 //
@@ -18,6 +18,7 @@ let ground = param_bool("ground", true);
 let seed = param_int("seed", 3, 0, 9999);
 
 set_slot(3, [92, 64, 40]); // bark
+set_slot(9, [82, 60, 38]); // bark, a darker plate
 set_slot(4, [60, 40, 26]); // dark bark
 set_slot(5, [196, 160, 104]); // sapwood
 set_slot(6, [214, 184, 128]); // light sapwood
@@ -36,10 +37,11 @@ let trunk = [];
 for i in 0..5 {
     trunk.push(axis_at(to_float(i) / 4.0, len, radius));
 }
-fill_tube(trunk, [3, 4], #{curve: "smooth", pattern: "stripes", sectors: 10});
+fill_tube(trunk, 3, #{curve: "smooth"});
 
 // Smooth while the trunk is still solid: smooth removes thin walls.
 smooth(-reach, -reach - 2, 0, length + reach, reach + 2, 2 * reach, #{iterations: 1});
+
 
 // Buttress roots: smooth tubes that spread from the root end and dig down.
 let roll = rng(seed);
@@ -66,6 +68,12 @@ break_end([tip[0], tip[1], tip[2]], [1.0, 0.0, 0.15], #{
 let mid = axis_at(0.6, len, radius);
 carve_tube([[-2.0, 0.0, radius], [mid[0], mid[1], mid[2]]], #{
     radius: max(radius - wall, 0.5), curve: "polyline"
+});
+
+// Bark plates along the trunk's own curve, with dark bark in the fissures.
+// After the hollow, so the wall next to it is never cut through.
+bark(-reach, -reach - 2, 0, length + reach, reach + 2, 2 * reach, [3, 9], #{
+    points: trunk, curve: "smooth", dirt: 4, width: [3, 5], length: [6, 14], depth: 1, only: [3], seed: seed
 });
 
 // The ground goes in after the break, which acts on the whole object, so

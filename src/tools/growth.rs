@@ -2,7 +2,9 @@
 //! exposed faces of a region that pass a face filter (which faces, facing a
 //! direction, inside a height band).
 //!
-//! Moss caps tops and runs down side faces in curtains with a ragged end.
+//! Moss caps tops and runs down side faces in curtains with a ragged end,
+//! or (cushions) grows in separate domed cushions where the surface faces
+//! up or out, with drapes hanging from the edges over an overhang.
 //! Algae is a band at the waterline, dense low and thinning upward in
 //! clumps. Vines hang in strands from top edges, graded through their slots
 //! from the anchor to the tip, with an occasional bloom.
@@ -11,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::debris::Rng;
 use super::surface::{
-    allowed, cell01, check_slots, check_unit, noise3, step, Exclude, Region, FACES,
+    allowed, cell01, check_slots, check_unit, noise3, step, surface_normal, Exclude, Region, FACES,
 };
 use crate::state::Cell;
 
@@ -62,6 +64,22 @@ pub enum GrowthKind {
         /// Cushion thickness on tops, 1..=3 (grow only).
         thickness: i32,
     },
+    /// Moss in separate cushions on exposed cells, never one band.
+    Cushions {
+        /// Cushion radius range in cells, 1..=16.
+        size: (i32, i32),
+        /// Fewest empty cells between two cushions, 1..=8.
+        gap: i32,
+        /// How far the surface must face up (or `facing`) to take moss:
+        /// the cosine of its normal with that direction, -1..=1.
+        exposure: f64,
+        /// Share of cushion edges over a drop that a drape hangs from, 0..=1.
+        drapes: f64,
+        /// Drape length range in cells, 1..=32.
+        length: (i32, i32),
+        /// Thickness at a cushion's middle, 1..=4 (grow only).
+        thickness: i32,
+    },
     Algae,
     Vines {
         /// Strand length range in cells, 1..=128.
@@ -105,8 +123,10 @@ pub struct Grown {
     pub writes: Vec<(i32, i32, i32, i32)>,
     pub added: usize,
     pub painted: usize,
-    /// Moss curtains or vine strands.
+    /// Moss curtains or drapes, or vine strands.
     pub strands: usize,
+    /// Moss cushions.
+    pub cushions: usize,
     pub blooms: usize,
 }
 
@@ -145,6 +165,30 @@ pub fn grow(cells: &HashMap<Cell, u8>, spec: &GrowthSpec) -> Result<Grown, Strin
             }
             moss(&mut out, spec, *curtains, *length, *thickness)?;
         }
+        GrowthKind::Cushions {
+            size,
+            gap,
+            exposure,
+            drapes,
+            length,
+            thickness,
+        } => {
+            check_range(*size, 1, 16, "size")?;
+            if !(1..=8).contains(gap) {
+                return Err("gap must be 1..=8".into());
+            }
+            if !(-1.0..=1.0).contains(exposure) {
+                return Err("exposure must be -1..=1".into());
+            }
+            check_unit(*drapes, "drapes")?;
+            check_range(*length, 1, 32, "length")?;
+            if !(1..=4).contains(thickness) {
+                return Err("thickness must be 1..=4".into());
+            }
+            cushions(
+                &mut out, spec, *size, *gap, *exposure, *drapes, *length, *thickness,
+            )?;
+        }
         GrowthKind::Algae => algae(&mut out, spec)?,
         GrowthKind::Vines {
             length,
@@ -178,6 +222,7 @@ struct Out<'a> {
     painted: HashMap<Cell, u8>,
     order: Vec<Cell>,
     strands: usize,
+    cushions: usize,
     blooms: usize,
 }
 
@@ -190,6 +235,7 @@ impl<'a> Out<'a> {
             painted: HashMap::new(),
             order: Vec::new(),
             strands: 0,
+            cushions: 0,
             blooms: 0,
         }
     }
@@ -254,6 +300,7 @@ impl<'a> Out<'a> {
             added: self.added.len(),
             painted: self.painted.len(),
             strands: self.strands,
+            cushions: self.cushions,
             blooms: self.blooms,
         }
     }
@@ -387,6 +434,204 @@ fn moss(
         }
     }
     Ok(())
+}
+
+/// Moss in cushions: seeds on the exposed cells in a stable random order,
+/// each grown over the neighbouring exposed cells out to a ragged radius
+/// and kept `gap` cells from every other cushion, until `amount` of the
+/// exposed cells is covered. In grow layer a cushion is domed, thickest in
+/// the middle, and drapes run from its edge down the side and hang free
+/// below an overhang.
+#[allow(clippy::too_many_arguments)]
+fn cushions(
+    out: &mut Out,
+    spec: &GrowthSpec,
+    size: (i32, i32),
+    gap: i32,
+    exposure: f64,
+    drapes: f64,
+    length: (i32, i32),
+    thickness: i32,
+) -> Result<(), String> {
+    let up = match spec.facing {
+        Some(f) => {
+            let len = (f[0] * f[0] + f[1] * f[1] + f[2] * f[2]).sqrt();
+            [f[0] / len, f[1] / len, f[2] / len]
+        }
+        None => [0.0, 0.0, 1.0],
+    };
+    // Exposed cells and the face the moss covers on each: the open face
+    // nearest the surface normal.
+    let mut spots: HashMap<Cell, Cell> = HashMap::new();
+    for cell in spec.hosts(out.cells) {
+        let Some(n) = surface_normal(out.cells, cell) else {
+            continue;
+        };
+        if n[0] * up[0] + n[1] * up[1] + n[2] * up[2] < exposure {
+            continue;
+        }
+        let face = FACES
+            .iter()
+            .copied()
+            .filter(|d| !out.cells.contains_key(&step(cell, *d)) && spec.passes(*d, cell.2))
+            .max_by(|a, b| {
+                let along = |d: &Cell| {
+                    f64::from(d.0) * n[0] + f64::from(d.1) * n[1] + f64::from(d.2) * n[2]
+                };
+                along(a).total_cmp(&along(b))
+            });
+        if let Some(face) = face {
+            spots.insert(cell, face);
+        }
+    }
+    let mut order: Vec<Cell> = spots.keys().copied().collect();
+    order.sort_unstable_by(|a, b| {
+        cell01(*a, spec.seed, 40)
+            .total_cmp(&cell01(*b, spec.seed, 40))
+            .then((a.2, a.1, a.0).cmp(&(b.2, b.1, b.0)))
+    });
+    let target = (spec.amount * spots.len() as f64).round() as usize;
+    let mut rng = Rng::new(spec.seed ^ 0x6375_7368);
+    let mut claimed: HashSet<Cell> = HashSet::new();
+    let mut blocked: HashSet<Cell> = HashSet::new();
+    let mut found: Vec<(Cell, f64, Vec<Cell>)> = Vec::new();
+    for &seed in &order {
+        if claimed.len() >= target {
+            break;
+        }
+        if claimed.contains(&seed) || blocked.contains(&seed) {
+            continue;
+        }
+        let (lo, hi) = size;
+        let radius = f64::from(lo) + f64::from(hi - lo) * rng.unit();
+        let mut members = vec![seed];
+        claimed.insert(seed);
+        let mut queue = std::collections::VecDeque::from([seed]);
+        while let Some(at) = queue.pop_front() {
+            for dz in -1..=1 {
+                for dy in -1..=1 {
+                    for dx in -1..=1 {
+                        let n = (at.0 + dx, at.1 + dy, at.2 + dz);
+                        if !spots.contains_key(&n) || claimed.contains(&n) || blocked.contains(&n) {
+                            continue;
+                        }
+                        let p = [f64::from(n.0), f64::from(n.1), f64::from(n.2)];
+                        let ragged = radius * (0.7 + 0.6 * noise3(p, 2.5, spec.seed ^ 41));
+                        if distance(n, seed) > ragged {
+                            continue;
+                        }
+                        claimed.insert(n);
+                        members.push(n);
+                        queue.push_back(n);
+                    }
+                }
+            }
+        }
+        // Keep the next cushions `gap` cells away.
+        for m in &members {
+            for dz in -gap..=gap {
+                for dy in -gap..=gap {
+                    for dx in -gap..=gap {
+                        let n = (m.0 + dx, m.1 + dy, m.2 + dz);
+                        if spots.contains_key(&n) && !claimed.contains(&n) {
+                            blocked.insert(n);
+                        }
+                    }
+                }
+            }
+        }
+        found.push((seed, radius.max(1.0), members));
+    }
+    let n = spec.palettes.len();
+    for (seed, radius, members) in &found {
+        let base = (cell01(*seed, spec.seed, 44) * n as f64) as usize;
+        let tone = |c: Cell| {
+            let p = [f64::from(c.0), f64::from(c.1), f64::from(c.2)];
+            let v = noise3(p, 2.0, spec.seed ^ 42);
+            let shift = if v > 0.65 {
+                1
+            } else if v < 0.3 {
+                -1
+            } else {
+                0
+            };
+            spec.palettes[(base as i64 + shift).clamp(0, n as i64 - 1) as usize]
+        };
+        for &c in members {
+            let face = spots[&c];
+            let slot = tone(c);
+            match spec.layer {
+                Layer::Paint => {
+                    out.paint(c, slot)?;
+                }
+                Layer::Grow => {
+                    let t = (distance(c, *seed) / radius).min(1.0);
+                    // A low dome: only the middle of a cushion is thick.
+                    let jitter = (cell01(c, spec.seed, 43) - 0.5) * 0.5;
+                    let extra = (f64::from(thickness - 1) * (1.0 - 1.6 * t).max(0.0) + jitter)
+                        .round()
+                        .clamp(0.0, f64::from(thickness - 1))
+                        as i32;
+                    for k in 1..=1 + extra {
+                        let at = (c.0 + face.0 * k, c.1 + face.1 * k, c.2 + face.2 * k);
+                        if !out.add(at, slot)? {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if spec.layer == Layer::Grow && drapes > 0.0 {
+            for &c in members {
+                for d in SIDES {
+                    let beside = step(c, d);
+                    if out.solid(&beside) || out.exclude.contains(beside) {
+                        continue;
+                    }
+                    if spec.coverage(c, 3.0, 50 + side_index(d)) >= drapes {
+                        continue;
+                    }
+                    let (lo, hi) = length;
+                    let len = lo + (rng.next() % (hi - lo + 1) as u64) as i32;
+                    let slot = tone(c);
+                    let mut at = beside;
+                    if !out.add(at, slot)? {
+                        continue;
+                    }
+                    // Down the side, stepping out where the wood bulges,
+                    // then free below the overhang.
+                    for _ in 1..len {
+                        let below = step(at, DOWN);
+                        let next = if !out.solid(&below) {
+                            below
+                        } else {
+                            let outward = step(at, d);
+                            if out.solid(&outward) {
+                                break;
+                            }
+                            outward
+                        };
+                        if !out.add(next, slot)? {
+                            break;
+                        }
+                        at = next;
+                    }
+                    out.strands += 1;
+                }
+            }
+        }
+        out.cushions += 1;
+    }
+    Ok(())
+}
+
+fn distance(a: Cell, b: Cell) -> f64 {
+    let d = [
+        f64::from(a.0 - b.0),
+        f64::from(a.1 - b.1),
+        f64::from(a.2 - b.2),
+    ];
+    (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
 }
 
 fn algae(out: &mut Out, spec: &GrowthSpec) -> Result<(), String> {

@@ -1305,3 +1305,97 @@ fn the_faceted_boulder_example_voxelizes_and_weathers() {
             .unwrap();
     }
 }
+
+#[test]
+fn surface_tools_match_the_mcp_tools() {
+    use serde_json::json;
+    const TOOLS: &str = r#"
+        let trunk = [[0, 0, 6, 5], [30, 2, 6, 4]];
+        fill_tube(trunk, 1, #{curve: "smooth"});
+        let cut = bark(-6, -8, 0, 36, 8, 12, [1, 2, 3], #{points: trunk, curve: "smooth", dirt: 4, seed: 2});
+        if cut.plates == 0 || cut.removed == 0 { throw "no bark"; }
+        let tint = cavity_tint(-6, -8, 0, 36, 8, 12, #{lighten: true});
+        if tint.darkened == 0 || tint.shades.len() == 0 { throw "no shades"; }
+        cavity_tint(-6, -8, 0, 36, 8, 12, #{pairs: [[2, 5]], dark: 0.2});
+        let grown = moss(-6, -8, 0, 36, 8, 14, [6, 7], #{style: "cushions", amount: 0.6, seed: 3});
+        if grown.cushions == 0 { throw "no cushions"; }
+    "#;
+    let mut script = Session::new();
+    script.replace_empty();
+    script.set_script(0, TOOLS).unwrap();
+    script.regenerate_script(0).unwrap();
+
+    let mut mcp = Session::new();
+    mcp.replace_empty();
+    let area = json!({"x0": -6, "y0": -8, "z0": 0, "x1": 36, "y1": 8, "z1": 12});
+    let with = |extra: serde_json::Value| {
+        let mut args = area.clone();
+        args.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        args
+    };
+    let trunk = json!([[0, 0, 6, 5], [30, 2, 6, 4]]);
+    for (method, params) in [
+        (
+            "voxel.tube",
+            json!({"points": trunk, "palette": 1, "curve": "smooth"}),
+        ),
+        (
+            "voxel.bark",
+            with(
+                json!({"points": trunk, "curve": "smooth", "palettes": [1, 2, 3], "dirt": 4, "seed": 2}),
+            ),
+        ),
+        ("voxel.cavity_tint", with(json!({"lighten": true}))),
+        (
+            "voxel.cavity_tint",
+            with(json!({"pairs": [[2, 5]], "dark": 0.2})),
+        ),
+        (
+            "voxel.moss",
+            with(
+                json!({"z1": 14, "palettes": [6, 7], "style": "cushions", "amount": 0.6, "seed": 3}),
+            ),
+        ),
+    ] {
+        crate::remote::apply(&mut mcp, method, &params).unwrap();
+    }
+    assert_eq!(cells_of(&script), cells_of(&mcp));
+    assert_eq!(
+        script.palette, mcp.palette,
+        "the same shades in the same slots"
+    );
+    assert_ne!(script.palette, Session::new().palette, "shades were made");
+    let err = run_cells(
+        r#"fill_box(0, 0, 0, 4, 4, 4, 1); bark(0, 0, 0, 4, 4, 4, [1], #{axis: "x", plate: 2});"#,
+    )
+    .unwrap_err();
+    assert!(err.contains("no option `plate`"), "{err}");
+    let err =
+        run_cells(r#"fill_box(0, 0, 0, 4, 4, 4, 1); bark(0, 0, 0, 4, 4, 4, [1]);"#).unwrap_err();
+    assert!(err.contains("axis or points"), "{err}");
+}
+
+#[test]
+fn the_barked_trunk_has_plates_shaded_fissures_and_moss_cushions() {
+    let mut session = Session::new();
+    session.replace_empty();
+    session
+        .set_script(0, include_str!("../examples/barked_trunk.rhai"))
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    let trunk = cells_of(&session);
+    // Plate tones, fissure dirt, and moss are all there.
+    for slot in [3, 4, 5, 6, 7] {
+        assert!(trunk.values().any(|&s| s == slot), "slot {slot} is missing");
+    }
+    // cavity_tint made darker shades in free slots above the script's own.
+    assert!(trunk.values().any(|&s| s > 9), "no shaded cells");
+    session.regenerate_script(0).unwrap();
+    assert_eq!(
+        cells_of(&session),
+        trunk,
+        "the same seed builds the same trunk"
+    );
+}

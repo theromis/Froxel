@@ -190,7 +190,26 @@ through their slots to the tip, with occasional blooms. Give the vine slots
 moss and algae still. Pass `only` with the stone slots so plants do not
 grow on plants.
 
-Pass `exclude` boxes to `joints`, `weather`, the plants, and `scatter` to
+Wood is dressed by its form, never with painted stripes, which read as a
+pipe with a stripe. Build the trunk, branch, or root with one slot, then:
+
+- `bark` cuts long plates along the grain, the same `points` and `curve`
+  as the `fill_tube` (or `axis` for a straight one), split by fissures 1 to
+  2 cells deep with a `dirt` slot at their bottom, plate ends offset from
+  the next column's and an occasional crack across. `palettes` are a few
+  bark tones; each plate takes one.
+- `cavity_tint` darkens the cells in concave spots, the fissures, the
+  crook of a root, a branch join, and with `lighten` lightens the plate
+  ridges, by how many of their neighbours are solid. Without `pairs` it
+  makes the shades in free palette slots. It works on rock and roots too.
+- `moss` with `style: "cushions"` grows separate cushions where the
+  surface faces up, `gap` cells apart so it never forms a band, with drapes
+  hanging over the edge.
+
+`examples/barked_trunk.rhai` puts them together on a fallen trunk.
+
+Pass `exclude` boxes to `joints`, `weather`, `bark`, `cavity_tint`, the
+plants, and `scatter` to
 keep walking surfaces whole: a ledge top, a cave floor, or a river bed (its
 top layer and the air above it) stays flat while the stone around it is
 cut, chipped, and grown on, so it needs no refill. The editor's Protect
@@ -216,13 +235,16 @@ anything one cell thick, so smooth before the twigs, thin carved walls, and
 fine detail, or keep them outside the box.
 
 ```
-set_palette          entries=[{index: 3, r: 92, g: 64, b: 40}, {index: 4, r: 60, g: 40, b: 26}, {index: 5, r: 196, g: 160, b: 104}, {index: 6, r: 214, g: 184, b: 128}, {index: 7, r: 238, g: 218, b: 170}]
-fill_tube            points=[[0, 0, 4, 4], [14, 2, 5, 3.5], [30, 3, 4, 3]] palettes=[3, 4] pattern="stripes" sectors=10   # fallen trunk with bark grooves
+set_palette          entries=[{index: 3, r: 92, g: 64, b: 40}, {index: 4, r: 60, g: 40, b: 26}, {index: 5, r: 196, g: 160, b: 104}, {index: 6, r: 214, g: 184, b: 128}, {index: 7, r: 238, g: 218, b: 170}, {index: 8, r: 70, g: 92, b: 44}, {index: 9, r: 82, g: 60, b: 38}, {index: 10, r: 40, g: 28, b: 20}]
+fill_tube            points=[[0, 0, 4, 4], [14, 2, 5, 3.5], [30, 3, 4, 3]] palette=3   # fallen trunk, one slot
 smooth               x0=-5 y0=-5 z0=-1 x1=34 y1=8 z1=9                    # before thin walls and twigs exist
+bark                 x0=-5 y0=-5 z0=-1 x1=34 y1=8 z1=9 points=[[0, 0, 4, 4], [14, 2, 5, 3.5], [30, 3, 4, 3]] palettes=[3, 9] dirt=10 width=[3, 5] length=[6, 14] only=[3] seed=3   # plates along the grain, not stripes
 break_end            point=[25, 3, 4] normal=[1, 0, 0.15] depth=4 density=0.2 length=[4, 14] bark=4 sapwood=[5, 6] tips=7 seed=3   # snapped end
 fill_box             x0=-8 y0=-12 z0=-1 x1=40 y1=14 z1=-1 palette=4       # ground, after the break so it stays whole
 scatter              x0=24 y0=-6 z0=0 x1=38 y1=12 z1=16 palettes=[5, 6, 7, 3] count=60 size=[1, 3] seed=5   # debris under the break
 carve                shape="tube" points=[[-1, 0, 4], [12, 1, 4]] radius=2.5      # hollow end
+cavity_tint          x0=-5 y0=-5 z0=0 x1=34 y1=8 z1=9 only=[3, 9, 10] lighten=true   # darker fissures, lighter plate ridges
+moss                 x0=-5 y0=-5 z0=0 x1=34 y1=8 z1=12 palettes=[8] style="cushions" only=[3, 9] seed=3   # cushions on the upper side
 fill_tube            points=[[14, 4, 7, 2], [17, 8, 11, 1.2], [18, 9, 16, 0.5]] curve="smooth" palette=3 mode="empty"   # side branch
 fill_tube            points=[[2, -3, 3, 2], [-2, -7, 0, 1], [-5, -9, -1, 0.5]] palette=4 mode="empty"   # buttress root
 preview              path="log.png"
@@ -242,8 +264,11 @@ for i in 0..5 {
     let t = to_float(i) / 4.0;
     trunk.push([t * len, sin(t * PI) * 1.5, radius, radius * (1.0 - 0.25 * t)]);
 }
-fill_tube(trunk, [3, 4], #{curve: "smooth", pattern: "stripes", sectors: 10});
+fill_tube(trunk, 3, #{curve: "smooth"});
 smooth(-reach, -reach - 2, 0, length + reach, reach + 2, 2 * reach, #{iterations: 1});
+bark(-reach, -reach - 2, 0, length + reach, reach + 2, 2 * reach, [3, 9], #{
+    points: trunk, curve: "smooth", dirt: 4, width: [3, 5], length: [6, 14], depth: 1, only: [3], seed: seed
+});
 // ... roots: fill_tube(points, 4, #{curve: "smooth", mode: "empty"}) ...
 break_end([tip[0], tip[1], tip[2]], [1.0, 0.0, 0.15], #{
     depth: 3, density: 0.2, length: [4, 12], bark: 4, sapwood: [5, 6], tips: 7, seed: seed

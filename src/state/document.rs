@@ -298,6 +298,37 @@ impl Session {
         [c[0], c[1], c[2]]
     }
 
+    /// The palette as MCP `cavity_tint` makes shades in it: every slot a
+    /// cell of any object uses is taken.
+    pub(crate) fn shades(&self) -> crate::tools::Shades {
+        let mut used = [false; 256];
+        used[0] = true;
+        for object in &self.objects {
+            for slot in object.cells.values() {
+                used[*slot as usize] = true;
+            }
+        }
+        crate::tools::Shades {
+            colors: self.palette,
+            materials: self.materials,
+            used,
+            created: Vec::new(),
+        }
+    }
+
+    /// [`Session::shades`] of a new document: the default palette, no
+    /// slot used.
+    pub(crate) fn blank_shades() -> crate::tools::Shades {
+        let mut used = [false; 256];
+        used[0] = true;
+        crate::tools::Shades {
+            colors: default_palette(),
+            materials: [Material::default(); 256],
+            used,
+            created: Vec::new(),
+        }
+    }
+
     /// A slot's colour and alpha, as MCP `set_palette`'s `a`.
     pub fn set_rgba(&mut self, slot: u8, next: [u8; 4]) {
         if slot == 0 {

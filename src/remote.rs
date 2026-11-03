@@ -18,7 +18,7 @@ pub(crate) use import::{
 pub(crate) use markers::marker_kind;
 pub(crate) use organic::{organic_writes, Organic};
 pub(crate) use silhouette::{hull_writes, session_palette};
-pub(crate) use stone::{stone_writes, Stone};
+pub(crate) use stone::{cavity_writes, stone_writes, Stone};
 
 use crate::state::{Cell, GlassMode, Session};
 
@@ -824,6 +824,8 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "voxel.carve_from_views" => silhouette::carve_from_views(session, &params),
         "render.compare_silhouette" => silhouette::compare_silhouette(session, &params),
         "mesh.import" => import::apply_import(session, &params),
+        "voxel.bark" => stone::apply_stone(session, &params, Stone::Bark),
+        "voxel.cavity_tint" => stone::apply_cavity(session, &params),
         "marker.set" => markers::set_marker(session, &params),
         "marker.remove" => markers::remove_marker(session, &params),
         "marker.list" => Ok(markers::list_markers(session)),
@@ -1334,9 +1336,11 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.joints", "x0, y0, z0, x1, y1, z1, pattern, spacing?, course?, width?, depth?, dirt?, only?, exclude?, density?, seed?", "Cut joint gaps: columns, running bond courses, or cracks"),
     ("voxel.column_relief", "x0, y0, z0, x1, y1, z1, facing, palette, width?, out?, crown?, top?, lower?, depth?, exclude?, seed?", "Columns of random width standing out of a cliff face, ending at uneven heights"),
     ("voxel.weather", "x0, y0, z0, x1, y1, z1, chip?, chipSize?, pits?, pitDepth?, broken?, noise?, noiseDensity?, noiseScale?, only?, exclude?, seed?", "Chip edges and corners, dent pits, and add colour noise on exposed cells"),
-    ("voxel.moss", "x0, y0, z0, x1, y1, z1, palettes, amount?, noise?, faces?, facing?, band?, only?, exclude?, layer?, curtains?, length?, thickness?, seed?", "Moss caps on tops and curtains down faces with a ragged end"),
+    ("voxel.moss", "x0, y0, z0, x1, y1, z1, palettes, style?, amount?, noise?, faces?, facing?, band?, only?, exclude?, layer?, curtains?, length?, thickness?, size?, gap?, exposure?, drapes?, seed?", "Moss caps on tops and curtains down faces with a ragged end, or (style cushions) separate cushions where the surface faces up, with drapes from overhangs"),
     ("voxel.algae", "x0, y0, z0, x1, y1, z1, palettes, band?, amount?, noise?, faces?, facing?, only?, exclude?, layer?, seed?", "Algae band at the waterline, dense low and thinning upward in clumps"),
     ("voxel.vines", "x0, y0, z0, x1, y1, z1, palettes, amount?, length?, blooms?, bloomChance?, noise?, faces?, facing?, band?, only?, exclude?, seed?", "Vine strands hanging from top edges, with blooms"),
+    ("voxel.bark", "x0, y0, z0, x1, y1, z1, axis | points, curve?, palettes, dirt?, width?, length?, depth?, cracks?, only?, exclude?, seed?", "Bark plates along an axis or a tube's curve, split by fissures cut 1 to 2 cells deep with dirt at the bottom"),
+    ("voxel.cavity_tint", "x0, y0, z0, x1, y1, z1, radius?, dark?, lighten?, light?, pairs?, darken?, brighten?, only?, exclude?", "Darken crevices and concave cells (and lighten ridges) by neighbour occupancy, to given or created shades"),
     ("voxel.sweep", "points, profile | width + height + radius?, curve?, palette | palettes, pattern?, period?, seed?, mode?", "Fill a 2D profile along a polyline or smooth curve, with twist and scale per point"),
     ("voxel.deform", "op, x0..z1?, axis?, origin?, length?, center?, angle?, direction?, start?, end?, amplitude?, scale?, octaves?, seed?, bias?", "Bend, taper, or twist the object or a box along an axis, or displace its surface with noise; slots kept"),
     ("voxel.loft", "points, radius? | rx? + ry?, roll?, flatTop?, noise?, frequency?, curve?, caps?, palette | palettes, pattern?, period?, sectors?, seed?, mode?", "Fill a solid along a curve whose elliptical, flattened, noisy section changes per point"),

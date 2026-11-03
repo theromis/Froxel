@@ -1,5 +1,5 @@
-//! The MCP stone tools in Rhai: `joints`, `column_relief`, `weather`,
-//! `moss`, `algae`, `vines`, and `sweep`.
+//! The MCP stone and surface tools in Rhai: `joints`, `column_relief`,
+//! `weather`, `moss`, `algae`, `vines`, `sweep`, `bark`, and `cavity_tint`.
 //!
 //! Each call turns its arguments into the MCP tool's arguments and runs
 //! `remote::stone_writes` on the object being written, as the MCP handler
@@ -49,6 +49,11 @@ const MOSS: &[&str] = &[
     "curtains",
     "length",
     "thickness",
+    "style",
+    "size",
+    "gap",
+    "exposure",
+    "drapes",
     "seed",
 ];
 const ALGAE: &[&str] = &[
@@ -69,6 +74,15 @@ const VINES: &[&str] = &[
 ];
 
 const SWEEP: &[&str] = &["curve", "pattern", "period", "seed", "mode"];
+
+const BARK: &[&str] = &[
+    "axis", "points", "curve", "dirt", "width", "length", "depth", "cracks", "only", "exclude",
+    "seed",
+];
+
+const CAVITY: &[&str] = &[
+    "radius", "dark", "lighten", "light", "pairs", "darken", "brighten", "only", "exclude",
+];
 
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
@@ -130,6 +144,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
         ("moss", Stone::Moss, MOSS),
         ("algae", Stone::Algae, ALGAE),
         ("vines", Stone::Vines, VINES),
+        ("bark", Stone::Bark, BARK),
     ] {
         for with_opts in [false, true] {
             let state = scratch.clone();
@@ -216,6 +231,29 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |corners: [INT; 6], opts: &Map| -> Fallible<Map> {
+            let mut args = options(opts, CAVITY, "cavity_tint")?;
+            args.extend(box_args(corners)?);
+            state.borrow_mut().cavity(args).map_err(runtime)
+        };
+        if with_opts {
+            engine.register_fn(
+                "cavity_tint",
+                move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT, opts: Map| {
+                    run([x0, y0, z0, x1, y1, z1], &opts)
+                },
+            );
+        } else {
+            engine.register_fn(
+                "cavity_tint",
+                move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT| {
+                    run([x0, y0, z0, x1, y1, z1], &Map::new())
+                },
+            );
+        }
+    }
+    for with_opts in [false, true] {
+        let state = scratch.clone();
+        let run = move |corners: [INT; 6], opts: &Map| -> Fallible<Map> {
             let mut args = options(opts, WEATHER, "weather")?;
             args.extend(box_args(corners)?);
             state
@@ -274,6 +312,45 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
 }
 
 impl Scratch {
+    /// MCP `cavity_tint` on the object being written. Shades it makes go
+    /// into free slots of the palette as the run leaves it: not one a cell
+    /// of the document or of this run uses, nor one `set_palette` named.
+    fn cavity(&mut self, args: Args) -> Result<Map, String> {
+        self.keep_going()?;
+        let mut shades = match &self.view.shades {
+            Some(shades) => (**shades).clone(),
+            None => crate::state::Session::blank_shades(),
+        };
+        for (slot, rgb) in &self.palette {
+            let color = &mut shades.colors[*slot as usize];
+            color[..3].copy_from_slice(rgb);
+            if color[3] == 0 {
+                color[3] = 255;
+            }
+            shades.used[*slot as usize] = true;
+        }
+        for built in &self.built {
+            for slot in built.cells.values() {
+                shades.used[*slot as usize] = true;
+            }
+        }
+        for shade in &self.shades {
+            shades.colors[shade.slot as usize] = shade.rgba;
+            shades.materials[shade.slot as usize] = shades.materials[shade.from as usize];
+            shades.used[shade.slot as usize] = true;
+        }
+        let (writes, counts) =
+            remote::cavity_writes(self.cells(), &Value::Object(args), &mut shades)?;
+        self.shades.extend(shades.created.iter().copied());
+        let changed = self.apply(&writes)?;
+        let mut reply: Map = counts
+            .iter()
+            .map(|(key, value)| (key.as_str().into(), super::document::dynamic(value)))
+            .collect();
+        reply.insert("changed".into(), Dynamic::from_int(changed));
+        Ok(reply)
+    }
+
     /// Run a stone tool on the object being written. The reply holds
     /// `changed` and the tool's own counts.
     fn stone(&mut self, args: Args, tool: Stone) -> Result<Map, String> {

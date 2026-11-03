@@ -135,6 +135,10 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
                     ui.separator();
                     stone::weather(ui, session);
                     ui.separator();
+                    stone::bark(ui, session);
+                    ui.separator();
+                    stone::cavity(ui, session);
+                    ui.separator();
                     stone::growth(ui, session);
                     ui.separator();
                     stone::sweep(ui, session);

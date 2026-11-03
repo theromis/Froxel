@@ -1,5 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
+use super::surface::FACES;
 use super::*;
 use crate::state::Cell;
 
@@ -563,4 +564,365 @@ fn a_flat_topped_profile_on_a_smooth_wavy_path_has_one_flat_top() {
         .filter(|((x, y), &z)| (1..=95).contains(x) && (2..=17).contains(y) && z != 36)
         .collect();
     assert!(ribs.is_empty(), "columns whose top is not 36: {ribs:?}");
+}
+
+/// A log of `slot` along x: cells within `radius` of the line y = 0, z = 0.
+fn log(length: i32, radius: f64, slot: u8) -> HashMap<Cell, u8> {
+    let r = radius.ceil() as i32;
+    let mut cells = HashMap::new();
+    for x in 0..length {
+        for z in -r..=r {
+            for y in -r..=r {
+                if f64::from(y * y + z * z) <= radius * radius {
+                    cells.insert((x, y, z), slot);
+                }
+            }
+        }
+    }
+    cells
+}
+
+fn bark_spec(direction: BarkDirection) -> BarkSpec {
+    BarkSpec {
+        region: Region::new((-1, -9, -9), (48, 9, 9), "bark").unwrap(),
+        direction,
+        palettes: vec![2, 3, 4],
+        dirt: Some(9),
+        width: (3.0, 6.0),
+        length: (8.0, 16.0),
+        depth: (1, 2),
+        cracks: 0.3,
+        only: Vec::new(),
+        exclude: Exclude::default(),
+        seed: 1,
+    }
+}
+
+/// Removed cells with a removed neighbour one step along `along`, and one
+/// step along either of `across`.
+fn runs(removed: &HashSet<Cell>, along: Cell, across: [Cell; 2]) -> (usize, usize) {
+    let mut a = 0;
+    let mut b = 0;
+    for c in removed {
+        a += usize::from(removed.contains(&add(*c, along)));
+        b += across
+            .iter()
+            .filter(|d| removed.contains(&add(*c, **d)))
+            .count();
+    }
+    (a, b)
+}
+
+#[test]
+fn bark_cuts_offset_plates_with_dirt_in_the_fissures() {
+    let cells = log(48, 7.0, 1);
+    let done = bark(&cells, &bark_spec(BarkDirection::Axis([1.0, 0.0, 0.0]))).unwrap();
+    assert!(done.removed > 0 && done.dirtied > 0, "{done:?}");
+    assert!(done.plates >= 12 && done.cracks > 0, "{done:?}");
+    let removed: HashSet<Cell> = done
+        .writes
+        .iter()
+        .filter(|w| w.3 == 0)
+        .map(|w| (w.0, w.1, w.2))
+        .collect();
+    for &(x, y, z, slot) in &done.writes {
+        assert!(cells.contains_key(&(x, y, z)), "bark only changes the wood");
+        let r = f64::from(y * y + z * z).sqrt();
+        match slot {
+            // Fissures are at most 2 cells deep.
+            0 => assert!(r > 7.0 - 2.5, "cut at radius {r}"),
+            // Dirt lies at the bottom of a fissure.
+            9 => assert!(FACES.iter().any(|d| removed.contains(&add((x, y, z), *d)))),
+            _ => assert!([2, 3, 4].contains(&(slot as u8))),
+        }
+        // The end grain stays.
+        assert!(
+            !(x == 0 || x == 47) || r > 5.0,
+            "end grain changed at {x} {y} {z}"
+        );
+    }
+    // Fissures run along the grain, not around it.
+    let (along, across) = runs(&removed, (1, 0, 0), [(0, 1, 0), (0, 0, 1)]);
+    assert!(along > across, "{along} along, {across} across");
+    // Not stripes: almost every line along the log crosses plates of
+    // more than one tone.
+    let mut after = cells.clone();
+    for &(x, y, z, slot) in &done.writes {
+        if slot == 0 {
+            after.remove(&(x, y, z));
+        } else {
+            after.insert((x, y, z), slot as u8);
+        }
+    }
+    let mut lines: HashMap<(i32, i32), HashSet<u8>> = HashMap::new();
+    for (&(x, y, z), &slot) in &after {
+        let outer = FACES
+            .iter()
+            .any(|d| !after.contains_key(&add((x, y, z), *d)));
+        if (2..=45).contains(&x) && outer && [2, 3, 4].contains(&slot) {
+            lines.entry((y, z)).or_default().insert(slot);
+        }
+    }
+    let one_tone = lines.values().filter(|tones| tones.len() == 1).count();
+    assert!(
+        one_tone * 5 < lines.len(),
+        "{one_tone} of {} lines have one tone",
+        lines.len()
+    );
+    assert_eq!(
+        done,
+        bark(&cells, &bark_spec(BarkDirection::Axis([1.0, 0.0, 0.0]))).unwrap()
+    );
+}
+
+#[test]
+fn bark_follows_the_curve_of_its_points() {
+    // A trunk rising along z that bends over toward +x.
+    let points = [
+        TubePoint {
+            at: [0.0, 0.0, 0.0],
+            radius: 5.0,
+        },
+        TubePoint {
+            at: [0.0, 0.0, 24.0],
+            radius: 5.0,
+        },
+        TubePoint {
+            at: [16.0, 0.0, 34.0],
+            radius: 5.0,
+        },
+    ];
+    let cells: HashMap<Cell, u8> = tube(&points, true)
+        .unwrap()
+        .into_iter()
+        .map(|c| (c.cell, 1))
+        .collect();
+    let mut spec = bark_spec(BarkDirection::Path {
+        points: points.iter().map(|p| p.at).collect(),
+        curve: true,
+    });
+    spec.region = Region::new((-8, -8, -8), (24, 8, 42), "bark").unwrap();
+    spec.depth = (1, 1);
+    let done = bark(&cells, &spec).unwrap();
+    let removed: HashSet<Cell> = done
+        .writes
+        .iter()
+        .filter(|w| w.3 == 0)
+        .map(|w| (w.0, w.1, w.2))
+        .collect();
+    // In the upright part the fissures run up the trunk.
+    let low: HashSet<Cell> = removed
+        .iter()
+        .copied()
+        .filter(|c| (2..=18).contains(&c.2))
+        .collect();
+    let (along, across) = runs(&low, (0, 0, 1), [(1, 0, 0), (0, 1, 0)]);
+    assert!(along > across, "{along} along, {across} across");
+    assert!(done.plates >= 8, "{done:?}");
+}
+
+#[test]
+fn bark_refuses_bad_values() {
+    let cells = log(16, 4.0, 1);
+    let mut spec = bark_spec(BarkDirection::Axis([0.0, 0.0, 0.0]));
+    assert!(bark(&cells, &spec).unwrap_err().contains("axis"));
+    spec.direction = BarkDirection::Axis([1.0, 0.0, 0.0]);
+    spec.palettes.clear();
+    assert!(bark(&cells, &spec).unwrap_err().contains("palettes"));
+    spec.palettes = vec![2];
+    spec.width = (8.0, 4.0);
+    assert!(bark(&cells, &spec).unwrap_err().contains("width"));
+    spec.width = (3.0, 6.0);
+    spec.depth = (1, 5);
+    assert!(bark(&cells, &spec).unwrap_err().contains("depth"));
+    // only: a log of another slot is left alone.
+    spec.depth = (1, 2);
+    spec.only = vec![7];
+    assert!(bark(&cells, &spec).unwrap().writes.is_empty());
+}
+
+fn cushions(length: (i32, i32)) -> GrowthKind {
+    GrowthKind::Cushions {
+        size: (2, 4),
+        gap: 2,
+        exposure: 0.35,
+        drapes: 0.5,
+        length,
+        thickness: 2,
+    }
+}
+
+/// Groups of 26-connected cells.
+fn clumps(cells: &HashSet<Cell>) -> Vec<Vec<Cell>> {
+    let mut seen: HashSet<Cell> = HashSet::new();
+    let mut out = Vec::new();
+    for &start in cells {
+        if !seen.insert(start) {
+            continue;
+        }
+        let mut group = vec![start];
+        let mut i = 0;
+        while i < group.len() {
+            let c = group[i];
+            i += 1;
+            for dz in -1..=1 {
+                for dy in -1..=1 {
+                    for dx in -1..=1 {
+                        let n = (c.0 + dx, c.1 + dy, c.2 + dz);
+                        if cells.contains(&n) && seen.insert(n) {
+                            group.push(n);
+                        }
+                    }
+                }
+            }
+        }
+        out.push(group);
+    }
+    out
+}
+
+#[test]
+fn moss_cushions_grow_apart_on_exposed_cells_and_drape_from_overhangs() {
+    let cells = log(48, 7.0, 1);
+    let mut spec = growth_spec(cushions((8, 12)), vec![4, 5, 6]);
+    spec.region = Region::new((-1, -9, -9), (48, 9, 9), "grow").unwrap();
+    spec.amount = 1.0;
+    let done = grow(&cells, &spec).unwrap();
+    assert!(done.cushions >= 6 && done.strands > 0, "{done:?}");
+    let moss: HashSet<Cell> = done.writes.iter().map(|w| (w.0, w.1, w.2)).collect();
+    assert!(moss.iter().all(|c| !cells.contains_key(c)));
+    // Separate cushions, none running the length of the log.
+    let top: HashSet<Cell> = moss.iter().copied().filter(|c| c.2 >= 4).collect();
+    let groups = clumps(&top);
+    assert!(groups.len() >= 4, "{} clumps", groups.len());
+    for group in &groups {
+        let xs = group.iter().map(|c| c.0);
+        let (lo, hi) = (xs.clone().min().unwrap(), xs.max().unwrap());
+        assert!(hi - lo < 24, "a cushion spans x {lo}..{hi}");
+    }
+    // Even at full coverage the crown of the log has bare cells along it.
+    let bare = (0..48)
+        .filter(|x| !(8..=10).any(|z| moss.contains(&(*x, 0, z))))
+        .count();
+    assert!(bare >= 3, "{bare} bare cells on the crown");
+    // Drapes hang below the widest part of the log.
+    assert!(moss.iter().any(|c| c.2 < 0), "no drape below the middle");
+    assert_eq!(done, grow(&cells, &spec).unwrap());
+
+    // Only the upper surface takes cushions; paint recolours it.
+    spec.layer = Layer::Paint;
+    spec.amount = 0.5;
+    let painted = grow(&cells, &spec).unwrap();
+    assert!(painted.added == 0 && painted.painted > 0, "{painted:?}");
+    assert!(painted
+        .writes
+        .iter()
+        .all(|w| w.2 > 0 && cells.contains_key(&(w.0, w.1, w.2))));
+    spec.kind = GrowthKind::Cushions {
+        size: (2, 4),
+        gap: 0,
+        exposure: 0.35,
+        drapes: 0.5,
+        length: (2, 6),
+        thickness: 2,
+    };
+    assert!(grow(&cells, &spec).unwrap_err().contains("gap"));
+}
+
+/// A block with a groove one cell wide and two deep along y in its top.
+fn grooved() -> HashMap<Cell, u8> {
+    let mut cells = slab((0, 0, 0), (19, 19, 9), 1);
+    for y in 0..20 {
+        for z in 8..=9 {
+            cells.remove(&(10, y, z));
+        }
+    }
+    cells
+}
+
+fn cavity_spec() -> CavitySpec {
+    CavitySpec {
+        region: Region::new((0, 0, 0), (19, 19, 9), "cavity").unwrap(),
+        radius: 2,
+        dark: 0.12,
+        light: Some(0.25),
+        only: Vec::new(),
+        exclude: Exclude::default(),
+    }
+}
+
+#[test]
+fn cavity_tint_darkens_the_groove_and_lightens_the_edges() {
+    let cells = grooved();
+    let found = cavities(&cells, &cavity_spec()).unwrap();
+    let at = |c: Cell| found.iter().find(|t| t.cell == c).map(|t| t.tint);
+    // The groove's floor and walls are concave.
+    assert_eq!(at((10, 10, 7)), Some(Tint::Dark));
+    assert_eq!(at((9, 10, 8)), Some(Tint::Dark));
+    // A flat top far from the groove is left alone.
+    assert_eq!(at((4, 10, 9)), None);
+    // The block's outer top edge and corner are convex.
+    assert_eq!(at((0, 10, 9)), Some(Tint::Light));
+    assert_eq!(at((0, 0, 9)), Some(Tint::Light));
+    // Cells inside the block are never tinted.
+    assert!(found.iter().all(|t| t.cell != (5, 5, 5)));
+    let mut spec = cavity_spec();
+    spec.light = None;
+    let dark = cavities(&cells, &spec).unwrap();
+    assert!(!dark.is_empty() && dark.iter().all(|t| t.tint == Tint::Dark));
+    spec.only = vec![2];
+    assert!(cavities(&cells, &spec).unwrap().is_empty());
+    spec.radius = 5;
+    assert!(cavities(&cells, &spec).unwrap_err().contains("radius"));
+}
+
+#[test]
+fn shades_take_free_slots_and_are_found_again() {
+    let mut colors = [[0u8; 4]; 256];
+    for (i, c) in colors.iter_mut().enumerate() {
+        *c = [i as u8, 100, 200, 255];
+    }
+    let mut used = [false; 256];
+    used[0] = true;
+    used[255] = true;
+    let mut shades = Shades {
+        colors,
+        materials: [crate::state::Material::default(); 256],
+        used,
+        created: Vec::new(),
+    };
+    let dark = shades.shade(40, 0.5).unwrap();
+    assert_eq!(dark, 254, "the highest free slot");
+    assert_eq!(shades.colors[254], [20, 50, 100, 255]);
+    assert_eq!(shades.shade(40, 0.5).unwrap(), 254);
+    assert_eq!(shades.created.len(), 1);
+    // A slot that already holds the shade is reused.
+    shades.colors[30] = [48, 120, 240, 255];
+    assert_eq!(shades.shade(40, 1.2).unwrap(), 30);
+}
+
+#[test]
+fn bark_leaves_the_inside_of_a_hollow_and_its_inner_wall() {
+    let mut cells = log(32, 6.0, 1);
+    let hollow: Vec<Cell> = cells
+        .keys()
+        .copied()
+        .filter(|c| c.1 * c.1 + c.2 * c.2 <= 16)
+        .collect();
+    for c in &hollow {
+        cells.remove(c);
+    }
+    let mut spec = bark_spec(BarkDirection::Axis([1.0, 0.0, 0.0]));
+    spec.region = Region::new((-1, -8, -8), (32, 8, 8), "bark").unwrap();
+    let done = bark(&cells, &spec).unwrap();
+    assert!(done.removed > 0, "{done:?}");
+    let hollow: HashSet<Cell> = hollow.into_iter().collect();
+    for &(x, y, z, slot) in &done.writes {
+        // Cells facing the hollow keep their slot and stay.
+        let beside = FACES.iter().any(|d| hollow.contains(&add((x, y, z), *d)));
+        assert!(
+            !beside,
+            "changed ({x}, {y}, {z}) to {slot} beside the hollow"
+        );
+    }
 }

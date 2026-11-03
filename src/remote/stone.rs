@@ -1,5 +1,6 @@
-//! The stone tools: MCP `joints`, `column_relief`, `weather`, `moss`,
-//! `algae`, `vines`, and `sweep`, their arguments, and their replies.
+//! The stone and surface tools: MCP `joints`, `column_relief`, `weather`,
+//! `moss`, `algae`, `vines`, `sweep`, `bark`, and `cavity_tint`, their
+//! arguments, and their replies.
 //!
 //! Each tool turns its MCP arguments into writes against a cell map and a
 //! reply. The MCP handler writes them to the active object as one undo step;
@@ -26,6 +27,7 @@ pub(crate) enum Stone {
     Algae,
     Vines,
     Sweep,
+    Bark,
 }
 
 pub(crate) type Writes = Vec<(i32, i32, i32, i32)>;
@@ -79,6 +81,10 @@ pub(crate) fn stone_writes(
             reply.insert("added".into(), json!(done.added));
             reply.insert("painted".into(), json!(done.painted));
             match tool {
+                Stone::Moss if is_cushions(params) => {
+                    reply.insert("cushions".into(), json!(done.cushions));
+                    reply.insert("drapes".into(), json!(done.strands))
+                }
                 Stone::Moss => reply.insert("curtains".into(), json!(done.strands)),
                 Stone::Vines => {
                     reply.insert("blooms".into(), json!(done.blooms));
@@ -86,6 +92,15 @@ pub(crate) fn stone_writes(
                 }
                 _ => None,
             };
+            done.writes
+        }
+        Stone::Bark => {
+            let done = crate::tools::bark(cells, &bark_spec(params)?)?;
+            reply.insert("plates".into(), json!(done.plates));
+            reply.insert("removed".into(), json!(done.removed));
+            reply.insert("dirtied".into(), json!(done.dirtied));
+            reply.insert("painted".into(), json!(done.painted));
+            reply.insert("cracks".into(), json!(done.cracks));
             done.writes
         }
         Stone::Sweep => {
@@ -230,6 +245,229 @@ pub(crate) fn weather_spec(params: &Value) -> Result<crate::tools::WeatherSpec, 
     })
 }
 
+/// Whether MCP `moss` grows cushions (`style` `cushions`) rather than
+/// caps and curtains (`caps`, the default).
+fn is_cushions(params: &Value) -> bool {
+    params.get("style").and_then(Value::as_str) == Some("cushions")
+}
+
+fn moss_style(params: &Value) -> Result<(), String> {
+    match opt_str(params, "style")?.as_deref() {
+        None | Some("caps") | Some("cushions") => Ok(()),
+        Some(other) => Err(format!("style must be caps or cushions, not `{other}`")),
+    }
+}
+
+/// Points along the wood: `[x, y, z]`, or the points of `fill_tube`
+/// (`[x, y, z, radius]`) or `sweep` (`[x, y, z, twist, scale]`), whose
+/// extra numbers are ignored, or `{x, y, z}`.
+fn path_points(list: &[Value]) -> Result<Vec<[f64; 3]>, String> {
+    list.iter()
+        .enumerate()
+        .map(|(index, point)| {
+            let bad = || format!("point {index} must be [x, y, z, ...] or {{x, y, z}}");
+            let mut at = [0.0; 3];
+            for (axis, name) in ["x", "y", "z"].into_iter().enumerate() {
+                let value = match point {
+                    Value::Array(arr) if (3..=5).contains(&arr.len()) => arr.get(axis),
+                    Value::Object(_) => point.get(name),
+                    _ => return Err(bad()),
+                };
+                at[axis] = value.and_then(Value::as_f64).ok_or_else(bad)?;
+            }
+            Ok(at)
+        })
+        .collect()
+}
+
+/// MCP `bark` arguments as a spec.
+pub(crate) fn bark_spec(params: &Value) -> Result<crate::tools::BarkSpec, String> {
+    use crate::tools::BarkDirection;
+    let direction = match (params.get("axis"), params.get("points")) {
+        (Some(_), Some(_)) => return Err("pass axis or points, not both".into()),
+        (Some(Value::String(name)), None) => BarkDirection::Axis(match name.as_str() {
+            "x" | "+x" | "-x" => [1.0, 0.0, 0.0],
+            "y" | "+y" | "-y" => [0.0, 1.0, 0.0],
+            "z" | "+z" | "-z" => [0.0, 0.0, 1.0],
+            _ => return Err(format!("axis must be x, y, z, or [x, y, z], not `{name}`")),
+        }),
+        (Some(_), None) => {
+            let v = super::opt_vec3(params, "axis")
+                .map_err(|_| "axis must be x, y, z, or [x, y, z]".to_string())?
+                .expect("present");
+            BarkDirection::Axis([f64::from(v[0]), f64::from(v[1]), f64::from(v[2])])
+        }
+        (None, Some(Value::Array(list))) => BarkDirection::Path {
+            points: path_points(list)?,
+            curve: match opt_str(params, "curve")?.as_deref() {
+                None | Some("polyline") => false,
+                Some("smooth") => true,
+                Some(other) => {
+                    return Err(format!("curve must be polyline or smooth, not `{other}`"))
+                }
+            },
+        },
+        (None, Some(_)) => return Err("points must be a list of [x, y, z]".into()),
+        (None, None) => {
+            return Err(
+                "axis or points is required: the way the grain runs (x, y, z, a vector, or the points of the tube)"
+                    .into(),
+            )
+        }
+    };
+    let palettes = slot_list(params, "palettes")?;
+    if palettes.is_empty() {
+        return Err("palettes is required: the plate slots, a few bark tones".into());
+    }
+    Ok(crate::tools::BarkSpec {
+        region: region(params, "bark")?,
+        direction,
+        palettes,
+        dirt: one_slot(params, "dirt")?,
+        width: range_pair(params, "width", (3.0, 6.0))?,
+        length: range_pair(params, "length", (8.0, 20.0))?,
+        depth: {
+            let (lo, hi) = whole_pair(params, "depth", (1, 2))?;
+            if lo < 1 || hi < lo || hi > 4 {
+                return Err(format!(
+                    "depth must be [min, max] with 1 <= min <= max <= 4, not [{lo}, {hi}]"
+                ));
+            }
+            (lo as u32, hi as u32)
+        },
+        cracks: opt_f64(params, "cracks")?.unwrap_or(0.25),
+        only: slot_list(params, "only")?,
+        exclude: exclude_boxes(params)?,
+        seed: seed(params)?,
+    })
+}
+
+/// MCP `cavity_tint`: the writes against `cells` and the counts of its
+/// reply. Shades it makes go into `shades.created`; the caller writes them
+/// to the palette in the same undo step.
+pub(crate) fn cavity_writes(
+    cells: &HashMap<Cell, u8>,
+    params: &Value,
+    shades: &mut crate::tools::Shades,
+) -> Result<(Writes, Map<String, Value>), String> {
+    use crate::tools::Tint;
+    let lighten = match params.get("lighten") {
+        None | Some(Value::Null) => false,
+        Some(found) => found.as_bool().ok_or("lighten must be true or false")?,
+    };
+    let spec = crate::tools::CavitySpec {
+        region: region(params, "cavity_tint")?,
+        radius: whole(
+            params,
+            "radius",
+            2,
+            1,
+            i64::from(crate::tools::MAX_CAVITY_RADIUS),
+        )? as i32,
+        dark: opt_f64(params, "dark")?.unwrap_or(0.12),
+        light: if lighten {
+            Some(opt_f64(params, "light")?.unwrap_or(0.25))
+        } else {
+            None
+        },
+        only: slot_list(params, "only")?,
+        exclude: exclude_boxes(params)?,
+    };
+    // `pairs`: [slot, darker] or [slot, darker, lighter] per slot.
+    let mut pairs: HashMap<u8, (Option<u8>, Option<u8>)> = HashMap::new();
+    let given = match params.get("pairs") {
+        None | Some(Value::Null) => false,
+        Some(Value::Array(list)) => {
+            let bad = "pairs must be a list of [slot, darker] or [slot, darker, lighter]";
+            for entry in list {
+                let row: Vec<i32> = entry
+                    .as_array()
+                    .filter(|row| (2..=3).contains(&row.len()))
+                    .and_then(|row| row.iter().map(super::as_i32).collect())
+                    .ok_or(bad)?;
+                if row.iter().any(|v| !(0..=255).contains(v)) || row[0] == 0 {
+                    return Err(format!(
+                        "{bad}, palette indices 1..=255 (0 leaves that tint out)"
+                    ));
+                }
+                let pick = |v: Option<&i32>| v.filter(|v| **v > 0).map(|v| *v as u8);
+                pairs.insert(row[0] as u8, (pick(row.get(1)), pick(row.get(2))));
+            }
+            true
+        }
+        Some(_) => return Err("pairs must be a list of [slot, darker, lighter?]".into()),
+    };
+    let darken = opt_f64(params, "darken")?.unwrap_or(0.72);
+    let brighten = opt_f64(params, "brighten")?.unwrap_or(1.18);
+    if !(0.05..1.0).contains(&darken) {
+        return Err("darken must be 0.05..1, the factor of a darker shade".into());
+    }
+    if !(1.0..=4.0).contains(&brighten) || brighten == 1.0 {
+        return Err("brighten must be above 1 and at most 4, the factor of a lighter shade".into());
+    }
+    let found = crate::tools::cavities(cells, &spec)?;
+    let mut made: HashMap<(u8, bool), u8> = HashMap::new();
+    let mut writes = Vec::new();
+    let (mut darkened, mut lightened) = (0, 0);
+    for spot in found {
+        let dark = spot.tint == Tint::Dark;
+        let target = if given {
+            pairs
+                .get(&spot.slot)
+                .and_then(|(d, l)| if dark { *d } else { *l })
+        } else if let Some(slot) = made.get(&(spot.slot, dark)) {
+            Some(*slot)
+        } else {
+            let slot = shades.shade(spot.slot, if dark { darken } else { brighten })?;
+            made.insert((spot.slot, dark), slot);
+            Some(slot)
+        };
+        let Some(target) = target.filter(|t| *t != spot.slot) else {
+            continue;
+        };
+        let (x, y, z) = spot.cell;
+        writes.push((x, y, z, i32::from(target)));
+        if dark {
+            darkened += 1;
+        } else {
+            lightened += 1;
+        }
+    }
+    let mut reply = Map::new();
+    reply.insert("darkened".into(), json!(darkened));
+    reply.insert("lightened".into(), json!(lightened));
+    reply.insert(
+        "shades".into(),
+        json!(shades
+            .created
+            .iter()
+            .map(|s| json!({"slot": s.slot, "from": s.from, "rgba": s.rgba}))
+            .collect::<Vec<_>>()),
+    );
+    Ok((writes, reply))
+}
+
+/// MCP handler of `cavity_tint`: the writes and any new shades on the
+/// active object and the palette, one undo step.
+pub(super) fn apply_cavity(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let mut shades = session.shades();
+    let (writes, mut reply) = cavity_writes(&session.active().cells, params, &mut shades)?;
+    let changed = session.transaction(|session| {
+        session.begin_edit();
+        for shade in &shades.created {
+            session.palette[shade.slot as usize] = shade.rgba;
+            session.materials[shade.slot as usize] = session.materials[shade.from as usize];
+        }
+        let changed = session.write_cells(&writes);
+        session.end_edit();
+        changed
+    })?;
+    session.mesh_epoch = session.mesh_epoch.wrapping_add(1);
+    reply.insert("changed".into(), json!(changed));
+    reply.insert("voxels".into(), json!(session.voxel_count()));
+    Ok(Value::Object(reply))
+}
+
 /// MCP `moss`, `algae`, or `vines` arguments as a spec.
 pub(crate) fn growth_spec(params: &Value, tool: Stone) -> Result<crate::tools::GrowthSpec, String> {
     use crate::tools::{Face, GrowthKind, Layer};
@@ -241,6 +479,9 @@ pub(crate) fn growth_spec(params: &Value, tool: Stone) -> Result<crate::tools::G
     let palettes = slot_list(params, "palettes")?;
     if palettes.is_empty() {
         return Err("palettes is required: a palette index or a list of them".into());
+    }
+    if tool == Stone::Moss {
+        moss_style(params)?;
     }
     let faces = match params.get("faces") {
         None | Some(Value::Null) => match tool {
@@ -287,7 +528,16 @@ pub(crate) fn growth_spec(params: &Value, tool: Stone) -> Result<crate::tools::G
         Some("paint") => Layer::Paint,
         Some(other) => return Err(format!("layer must be grow or paint, not `{other}`")),
     };
+    let cushions = tool == Stone::Moss && is_cushions(params);
     let kind = match tool {
+        Stone::Moss if cushions => GrowthKind::Cushions {
+            size: whole_pair(params, "size", (2, 5))?,
+            gap: whole(params, "gap", 2, 1, 8)? as i32,
+            exposure: opt_f64(params, "exposure")?.unwrap_or(0.35),
+            drapes: opt_f64(params, "drapes")?.unwrap_or(0.25),
+            length: whole_pair(params, "length", (2, 6))?,
+            thickness: whole(params, "thickness", 2, 1, 4)? as i32,
+        },
         Stone::Moss => GrowthKind::Moss {
             curtains: opt_f64(params, "curtains")?.unwrap_or(0.3),
             length: whole_pair(params, "length", (2, 8))?,
@@ -301,6 +551,7 @@ pub(crate) fn growth_spec(params: &Value, tool: Stone) -> Result<crate::tools::G
         },
     };
     let amount = match tool {
+        Stone::Moss if cushions => 0.45,
         Stone::Moss => 0.5,
         Stone::Algae => 0.9,
         _ => 0.08,

@@ -2242,3 +2242,79 @@ fn the_deform_and_loft_panels_run_the_mcp_tools() {
     session.loft_from_panel();
     assert!(session.status.contains("Points"), "{}", session.status);
 }
+
+/// A log of slot 3 along x, radius 5, lying on z 0.
+fn log_session() -> Session {
+    let mut session = Session::new();
+    session.replace_empty();
+    for x in 0..32 {
+        for y in -5i32..=5 {
+            for z in -5i32..=5 {
+                if y * y + z * z <= 25 {
+                    session.objects[0].cells.insert((x, y, z + 5), 3);
+                }
+            }
+        }
+    }
+    session.active_slot = 3;
+    session
+}
+
+#[test]
+fn bark_cavity_and_cushion_panels_run_their_mcp_tools() {
+    let mut session = log_session();
+    let before = session.active().cells.clone();
+    session.stone.bark.palettes = "3 4, x".into();
+    session.bark_from_panel();
+    assert!(session.status.contains("Palettes"), "{}", session.status);
+    assert_eq!(session.active().cells, before);
+    session.stone.bark.palettes = "3 4 5".into();
+    session.stone.bark.dirt = 6;
+    session.bark_from_panel();
+    assert!(session.status.starts_with("Bark:"), "{}", session.status);
+    assert!(session.active().cells.values().any(|slot| *slot == 6));
+    assert!(session.active().cells.len() < before.len());
+
+    // Shades without pairs: new slots darker than the bark, one undo step.
+    let barked = session.active().cells.clone();
+    let palette = session.palette;
+    session.cavity_from_panel();
+    assert!(session.status.contains("new shades"), "{}", session.status);
+    let shaded: Vec<u8> = session
+        .active()
+        .cells
+        .values()
+        .copied()
+        .filter(|slot| !barked.values().any(|s| s == slot))
+        .collect();
+    assert!(!shaded.is_empty(), "{}", session.status);
+    let made = shaded[0] as usize;
+    let sum = |slot: usize| {
+        session.palette[slot][..3]
+            .iter()
+            .map(|c| u32::from(*c))
+            .sum::<u32>()
+    };
+    assert!(
+        (3..=6).any(|from| sum(made) < sum(from)),
+        "a shade is darker than a slot it came from"
+    );
+    session.undo();
+    assert_eq!(session.active().cells, barked);
+    assert_eq!(session.palette, palette, "undo puts the palette back");
+
+    // Pairs name the darker slot.
+    session.stone.cavity.pairs = "3 9; 4 9; 5 9".into();
+    session.cavity_from_panel();
+    assert!(
+        session.active().cells.values().any(|slot| *slot == 9),
+        "{}",
+        session.status
+    );
+
+    session.stone.growth.set_cushions(true);
+    session.stone.growth.palettes = "7".into();
+    session.growth_from_panel();
+    assert!(session.status.contains("cushions"), "{}", session.status);
+    assert!(session.active().cells.values().any(|slot| *slot == 7));
+}

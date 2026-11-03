@@ -5,7 +5,9 @@
 
 use crate::state::Cell;
 
+mod bark;
 mod brush;
+mod cavity;
 mod debris;
 mod deform;
 mod field;
@@ -22,7 +24,9 @@ mod surface;
 mod sweep;
 mod weather;
 
+pub use bark::{bark, BarkDirection, BarkSpec};
 pub use brush::{brush, BrushOp, BrushSpec, Dab, Falloff};
+pub use cavity::{cavities, CavitySpec, Shade, Shades, Tint, MAX_CAVITY_RADIUS};
 pub use debris::{break_end, BreakSpec, Broken, Splinters};
 pub use deform::{deform, DeformOp, DeformSpec, Displace};
 pub use generate::{foliage, generate, Gen, MAX_GENERATOR_CELLS};

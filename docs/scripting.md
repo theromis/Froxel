@@ -535,6 +535,72 @@ take `broken`; then `noise` slots recolour soft patches. Options:
 
 It returns `#{changed, chips, pits, removed, broken, recoloured}`.
 
+### Bark
+
+```rhai
+let trunk = [[0, 0, 7, 7], [28, 1, 7, 6], [56, 0, 7, 5]];
+fill_tube(trunk, 3, #{curve: "smooth"});
+let report = bark(x0, y0, z0, x1, y1, z1, [3, 4, 5], #{points: trunk, curve: "smooth", dirt: 6, only: [3], seed: 5});
+let report = bark(x0, y0, z0, x1, y1, z1, [3, 4, 5], #{axis: "z", width: [4, 8], length: [10, 24]});
+```
+
+MCP `bark` on the wood in the box: long plates along the grain, split by
+fissures cut into the wood with `dirt` at their bottom, plate ends offset
+from the next column's, and an occasional crack across a plate. The plate
+slots come second; each plate takes one, so the tone changes plate by
+plate instead of in stripes. The grain is `axis` or `points`, one of them
+required: pass the tube's own points (radius and all) and `curve` so the
+plates follow its bend. End grain and the inside of a hollow are left
+alone; bark a hollow log after carving it. Options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `axis` | — | `"x"`, `"y"`, `"z"`, or `[x, y, z]`: a straight grain through the middle of the wood. |
+| `points` | — | The wood's path, `[x, y, z]` and any extra numbers (a tube's radius, a sweep's twist and scale). |
+| `curve` | `"polyline"` | With `points`: `"smooth"` follows the same curve as a smooth tube. |
+| `dirt` | keep | Slot of the cell at the bottom of each fissure. |
+| `width` | `[3, 6]` | Plate width range in cells around the wood, 1..=64. |
+| `length` | `[8, 20]` | Plate length range in cells along the grain, 2..=256. |
+| `depth` | `[1, 2]` | Fissure depth range in cells, 1..=4; plate ends and cracks take the smaller. |
+| `cracks` | `0.25` | Share of plates with a crack part way across. |
+| `only` | every slot | Act only on these slots, the wood. |
+| `exclude` | none | Boxes left alone (see [Protected boxes](#protected-boxes)). |
+| `seed` | `0` | A whole number of at least 0. |
+
+It returns `#{changed, plates, removed, dirtied, painted, cracks}`.
+
+### Cavity tint
+
+```rhai
+cavity_tint(x0, y0, z0, x1, y1, z1);
+cavity_tint(x0, y0, z0, x1, y1, z1, #{radius: 2, dark: 0.1, lighten: true, light: 0.3});
+cavity_tint(x0, y0, z0, x1, y1, z1, #{pairs: [[3, 13], [4, 14, 24]]});
+```
+
+MCP `cavity_tint` on the exposed cells of the box: cells in concave spots
+(fissures, crevices, the crook of a root) take a darker slot and, with
+`lighten`, cells on ridges and corners a lighter one, by how many of their
+neighbours in a ball of `radius` are solid. Without `pairs` it makes
+shades of each slot's own colour in free palette slots, from 255 down,
+never one a cell of the document or of this run uses or `set_palette`
+named; they are written to the palette with the voxels and found again on
+the next run. Options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `radius` | `2` | Radius of the ball counted around each cell, 1..=4. |
+| `dark` | `0.12` | How concave a cell must be to darken, 0 (a flat face) ..= 1 (a closed pocket). |
+| `lighten` | `false` | Also lighten convex cells. |
+| `light` | `0.25` | How convex a cell must be to lighten, 0 (a flat face) ..= 1 (a lone spike). |
+| `pairs` | make shades | `[slot, darker]` or `[slot, darker, lighter]` per slot; 0 leaves that tint out, and slots without a pair stay. |
+| `darken` | `0.72` | Without `pairs`: the darker shade as a factor of the colour, 0.05..1. |
+| `brighten` | `1.18` | Without `pairs`: the lighter shade as a factor, above 1 up to 4. |
+| `only` | every slot | Act only on these slots. |
+| `exclude` | none | Boxes left alone. |
+
+It returns `#{changed, darkened, lightened, shades}`, where `shades` lists
+`#{slot, from, rgba}` for the shades it made.
+
 ### Moss, algae, and vines
 
 ```rhai
@@ -561,10 +627,21 @@ three:
 | `seed` | `0` | A whole number of at least 0. |
 
 Moss also takes `curtains` (0.3, the share of capped top edges a curtain
-runs down from), `length` ([2, 8]), and `thickness` (1..=3). Vines take
-`length` ([4, 16]), `blooms` (slots), and `bloomChance` (0.06). Each returns
-`#{changed, added, painted}`, with `curtains` for moss and `strands` and
-`blooms` for vines.
+runs down from), `length` ([2, 8]), and `thickness` (1..=3). With
+`style: "cushions"` it grows separate cushions on exposed cells instead,
+never one band, and takes `size` ([2, 5], cushion radius), `gap` (2, cells
+between cushions), `exposure` (0.35, how far the surface must face up or
+`facing`, a cosine), `drapes` (0.25, the share of cushion edges over a drop
+that hang a drape), `length` ([2, 6], drape length), and `thickness` (2, at
+a cushion's middle, 1..=4); `amount` defaults to 0.45.
+
+```rhai
+moss(x0, y0, z0, x1, y1, z1, [7, 8, 9], #{style: "cushions", amount: 0.45, size: [2, 5], gap: 2, exposure: 0.35, seed: 5});
+```
+
+Vines take `length` ([4, 16]), `blooms` (slots), and `bloomChance` (0.06).
+Each returns `#{changed, added, painted}`, with `curtains` for moss
+(`cushions` and `drapes` for cushions) and `strands` and `blooms` for vines.
 
 ### Protected boxes
 
@@ -575,8 +652,8 @@ weather(x0, y0, z0, x1, y1, z1, #{chip: 0.16, pits: 0.02, broken: 2, exclude: to
 moss(x0, y0, z0, x1, y1, z1, [10, 11, 12], #{exclude: tops});
 ```
 
-`exclude` on `scatter`, `joints`, `weather`, `moss`, `algae`, and `vines`
-is one inclusive box `[x0, y0, z0, x1, y1, z1]` or a list of up to 64, of
+`exclude` on `scatter`, `joints`, `weather`, `bark`, `cavity_tint`, `moss`,
+`algae`, and `vines` is one inclusive box `[x0, y0, z0, x1, y1, z1]` or a list of up to 64, of
 any size. No cell inside a box is removed, recoloured, or written, no plant
 grows from a cell inside one, and no piece rests in one. Give a walking
 surface's solid top layer and the air above it, and the stone around it
@@ -585,7 +662,7 @@ weathers while the top stays flat: no refill after the dressing.
 ### Example
 
 `examples/hollow_log.rhai` (baked in `examples/hollow_log.vox`) builds a
-fallen hollow log with every shape call: a striped tube trunk, `smooth`,
+fallen hollow log with every shape call: a tube trunk with `bark` plates, `smooth`,
 buttress roots built with `push`, `break_end` at the far end, a carved
 hollow, a ground slab, and `scatter` debris under the break.
 
@@ -595,6 +672,13 @@ egg-shaped and flattened where it rests, flat `loft` roots in a flare at the
 torn root plate, a forked limb of three lofts, `deform` `displace` bark
 lumps, and `brush` calls that smooth the limb joint, raise a burl, dig a rot
 pocket, and grab the root plate back.
+
+`examples/barked_trunk.rhai` (baked in `examples/barked_trunk.vox`) is a
+fallen trunk dressed by its form instead of painted stripes: one tube
+slot, `bark` along the trunk's own points and along a branch stub,
+`cavity_tint` making darker shades in the fissures and the root flare and
+lighter ones on the plate ridges, and `moss` cushions on the upper side
+with drapes over the edge.
 
 `examples/gorge_wall.rhai` (baked in `examples/gorge_wall.vox`) is a gorge
 cliff wall built with the stone tools: a profile swept along a curve,

@@ -256,6 +256,42 @@ fn sample_curve(points: &[TubePoint]) -> Vec<TubePoint> {
     out
 }
 
+/// One straight run of a path with its rotation-minimising frame: the same
+/// runs a tube through these points is built from, for tools that follow a
+/// tube's curve (`bark`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct PathRun {
+    pub a: [f64; 3],
+    pub b: [f64; 3],
+    /// Distance along the path at `a`.
+    pub along: f64,
+    pub normal: [f64; 3],
+    pub binormal: [f64; 3],
+}
+
+/// The runs of a polyline, or of a Catmull-Rom curve through the points.
+pub(super) fn path_runs(points: &[[f64; 3]], curve: bool) -> Vec<PathRun> {
+    let path: Vec<TubePoint> = points
+        .iter()
+        .map(|&at| TubePoint { at, radius: 1.0 })
+        .collect();
+    let path = if curve && path.len() > 2 {
+        sample_curve(&path)
+    } else {
+        path
+    };
+    segments(&path)
+        .into_iter()
+        .map(|s| PathRun {
+            a: s.a,
+            b: s.b,
+            along: s.along,
+            normal: s.normal,
+            binormal: s.binormal,
+        })
+        .collect()
+}
+
 fn segments(path: &[TubePoint]) -> Vec<Segment> {
     let mut out = Vec::with_capacity(path.len() - 1);
     let mut along = 0.0;

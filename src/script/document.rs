@@ -26,8 +26,9 @@ type Fallible<T> = Result<T, Box<EvalAltResult>>;
 
 /// What a run may read of the document: object names, bones, and clips as
 /// MCP `list_bones` and `list_clips` return them, the palette colours
-/// `carve_from_views` quantises to, and the palette and used slots `voxelize`
-/// maps into.
+/// `carve_from_views` quantises to, the palette and used slots `voxelize`
+/// maps into, and the palette as `cavity_tint` makes shades in it (a new
+/// document's without one).
 #[derive(Clone, Default)]
 pub(crate) struct DocView {
     pub(crate) names: Vec<String>,
@@ -38,6 +39,7 @@ pub(crate) struct DocView {
     /// The palette with alpha and the slots a cell holds, for `voxelize`.
     pub(crate) palette_rgba: Vec<[u8; 4]>,
     pub(crate) used: Vec<bool>,
+    pub(crate) shades: Option<Box<crate::tools::Shades>>,
 }
 
 impl DocView {
@@ -53,6 +55,7 @@ impl DocView {
             palette: remote::session_palette(session).to_vec(),
             palette_rgba: session.palette.to_vec(),
             used: remote::used_slots(session).to_vec(),
+            shades: Some(Box::new(session.shades())),
         }
     }
 }

@@ -1,5 +1,5 @@
 //! The stone panels: the fields of MCP `joints`, `column_relief`, `weather`,
-//! `moss`, `algae`, `vines`, and `sweep`. Each panel's button builds
+//! `bark`, `cavity_tint`, `moss`, `algae`, `vines`, and `sweep`. Each panel's button builds
 //! the tool's MCP arguments over the selection's box (or the active object's
 //! box) and runs the MCP handler, so the editor and MCP share one path.
 
@@ -189,6 +189,131 @@ impl WeatherPanel {
     }
 }
 
+/// The Bark panel: MCP `bark`.
+#[derive(Clone, PartialEq)]
+pub struct BarkPanel {
+    /// Index into [`BARK_ALONG`]: an axis, or the panel's points.
+    pub along: usize,
+    /// The points of the wood, one per line: `x y z`, and the tube's radius
+    /// or the sweep's twist and scale, which are ignored.
+    pub points: String,
+    pub smooth: bool,
+    /// Plate slots; empty is the active slot.
+    pub palettes: String,
+    /// 0 keeps the fissure bottom's colour.
+    pub dirt: i32,
+    pub width: [f32; 2],
+    pub length: [f32; 2],
+    pub depth: [i32; 2],
+    pub cracks: f32,
+    pub only: String,
+    pub seed: i32,
+}
+
+/// The Bark panel's grain directions; the last follows the panel's points.
+pub const BARK_ALONG: [&str; 4] = ["X", "Y", "Z", "Points"];
+
+impl Default for BarkPanel {
+    fn default() -> Self {
+        Self {
+            along: 0,
+            points: "0 0 0\n32 0 0".into(),
+            smooth: true,
+            palettes: String::new(),
+            dirt: 0,
+            width: [3.0, 6.0],
+            length: [8.0, 20.0],
+            depth: [1, 2],
+            cracks: 0.25,
+            only: String::new(),
+            seed: 0,
+        }
+    }
+}
+
+impl BarkPanel {
+    fn args(&self, active: u8) -> Result<Value, String> {
+        let mut palettes = parse_slots(&self.palettes).map_err(|err| format!("Palettes: {err}"))?;
+        if palettes.is_empty() {
+            palettes.push(active.max(1));
+        }
+        let mut args = json!({
+            "palettes": palettes,
+            "width": [self.width[0], self.width[1].max(self.width[0])],
+            "length": [self.length[0], self.length[1].max(self.length[0])],
+            "depth": [self.depth[0], self.depth[1].max(self.depth[0])],
+            "cracks": self.cracks,
+            "only": slots("Only", &self.only)?,
+            "seed": self.seed.max(0),
+        });
+        match self.along {
+            0 => args["axis"] = json!("x"),
+            1 => args["axis"] = json!("y"),
+            2 => args["axis"] = json!("z"),
+            _ => {
+                args["points"] = json!(rows(&self.points, "Points", 3..=5)?);
+                args["curve"] = json!(if self.smooth { "smooth" } else { "polyline" });
+            }
+        }
+        if self.dirt > 0 {
+            args["dirt"] = json!(self.dirt);
+        }
+        Ok(args)
+    }
+}
+
+/// The Cavity panel: MCP `cavity_tint`.
+#[derive(Clone, PartialEq)]
+pub struct CavityPanel {
+    pub radius: i32,
+    pub dark: f32,
+    pub lighten: bool,
+    pub light: f32,
+    /// `slot darker [lighter]` separated by semicolons or new lines; empty
+    /// makes shades.
+    pub pairs: String,
+    pub darken: f32,
+    pub brighten: f32,
+    pub only: String,
+}
+
+impl Default for CavityPanel {
+    fn default() -> Self {
+        Self {
+            radius: 2,
+            dark: 0.12,
+            lighten: false,
+            light: 0.25,
+            pairs: String::new(),
+            darken: 0.72,
+            brighten: 1.18,
+            only: String::new(),
+        }
+    }
+}
+
+impl CavityPanel {
+    fn args(&self) -> Result<Value, String> {
+        let mut args = json!({
+            "radius": self.radius,
+            "dark": self.dark,
+            "lighten": self.lighten,
+            "light": self.light,
+            "darken": self.darken,
+            "brighten": self.brighten,
+            "only": slots("Only", &self.only)?,
+        });
+        let pairs = rows(&self.pairs, "Pairs", 2..=3)?;
+        if !pairs.is_empty() {
+            args["pairs"] = json!(pairs
+                .iter()
+                .map(|row| row.iter().map(|v| v.round() as i64).collect::<Vec<_>>())
+                .collect::<Vec<_>>());
+        }
+        Ok(args)
+    }
+}
+
 /// Which plant the Growth panel grows.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Plant {
@@ -216,6 +341,12 @@ pub struct GrowthPanel {
     pub curtains: f32,
     pub length: [i32; 2],
     pub thickness: i32,
+    /// Moss in separate cushions instead of caps and curtains.
+    pub cushions: bool,
+    pub size: [i32; 2],
+    pub gap: i32,
+    pub exposure: f32,
+    pub drapes: f32,
     pub blooms: String,
     pub bloom_chance: f32,
     pub seed: i32,
@@ -246,6 +377,11 @@ impl Default for GrowthPanel {
             curtains: 0.3,
             length: [2, 8],
             thickness: 1,
+            cushions: false,
+            size: [2, 5],
+            gap: 2,
+            exposure: 0.35,
+            drapes: 0.25,
             blooms: String::new(),
             bloom_chance: 0.06,
             seed: 0,
@@ -269,6 +405,14 @@ impl GrowthPanel {
         self.paint = paint;
         self.length = length;
         self.band_on = plant == Plant::Algae;
+    }
+
+    /// Moss cushions on or off, with their defaults.
+    pub fn set_cushions(&mut self, on: bool) {
+        self.cushions = on;
+        self.amount = if on { 0.45 } else { 0.5 };
+        self.length = if on { [2, 6] } else { [2, 8] };
+        self.thickness = if on { 2 } else { 1 };
     }
 
     fn method(&self) -> &'static str {
@@ -306,6 +450,16 @@ impl GrowthPanel {
         }
         let length = json!([self.length[0], self.length[1].max(self.length[0])]);
         match self.plant {
+            Plant::Moss if self.cushions => {
+                args["style"] = json!("cushions");
+                args["layer"] = json!(if self.paint { "paint" } else { "grow" });
+                args["size"] = json!([self.size[0], self.size[1].max(self.size[0])]);
+                args["gap"] = json!(self.gap);
+                args["exposure"] = json!(self.exposure);
+                args["drapes"] = json!(self.drapes);
+                args["length"] = length;
+                args["thickness"] = json!(self.thickness);
+            }
             Plant::Moss => {
                 args["layer"] = json!(if self.paint { "paint" } else { "grow" });
                 args["curtains"] = json!(self.curtains);
@@ -460,12 +614,14 @@ pub const DIRECTIONS: [(&str, [i32; 3]); 6] = [
 #[derive(Clone, Default, PartialEq)]
 pub struct StonePanels {
     /// The Protect section: MCP `exclude` boxes for Scatter, Relief,
-    /// Joints, Weather, and Growth, `x0 y0 z0 x1 y1 z1` separated by semicolons or
-    /// new lines.
+    /// Joints, Weather, Bark, Cavity, and Growth, `x0 y0 z0 x1 y1 z1`
+    /// separated by semicolons or new lines.
     pub exclude: String,
     pub joints: JointsPanel,
     pub relief: ReliefPanel,
     pub weather: WeatherPanel,
+    pub bark: BarkPanel,
+    pub cavity: CavityPanel,
     pub growth: GrowthPanel,
     pub sweep: SweepPanel,
     pub markers: MarkersPanel,
@@ -531,6 +687,36 @@ impl Session {
         });
     }
 
+    /// The Bark panel's button.
+    pub fn bark_from_panel(&mut self) {
+        let args = self.stone.bark.args(self.active_slot);
+        self.stone_from_panel("voxel.bark", args, |reply| {
+            format!(
+                "Bark: {} plates, {} cells cut, {} with dirt, {} cracks.",
+                reply["plates"], reply["removed"], reply["dirtied"], reply["cracks"]
+            )
+        });
+    }
+
+    /// The Bark panel's copy of the Sweep panel's points.
+    pub fn bark_points_from_sweep(&mut self) {
+        self.stone.bark.points = self.stone.sweep.points.clone();
+        self.stone.bark.smooth = self.stone.sweep.smooth;
+        self.stone.bark.along = BARK_ALONG.len() - 1;
+    }
+
+    /// The Cavity panel's button.
+    pub fn cavity_from_panel(&mut self) {
+        let args = self.stone.cavity.args();
+        self.stone_from_panel("voxel.cavity_tint", args, |reply| {
+            let made = reply["shades"].as_array().map_or(0, Vec::len);
+            format!(
+                "Darkened {} cells, lightened {}; {made} new shades.",
+                reply["darkened"], reply["lightened"]
+            )
+        });
+    }
+
     /// The Growth panel's button.
     pub fn growth_from_panel(&mut self) {
         let panel = &self.stone.growth;
@@ -543,6 +729,9 @@ impl Session {
             );
             if let Some(curtains) = reply.get("curtains") {
                 text += &format!(", {curtains} curtains");
+            }
+            if let Some(cushions) = reply.get("cushions") {
+                text += &format!(", {cushions} cushions, {} drapes", reply["drapes"]);
             }
             if let Some(strands) = reply.get("strands") {
                 text += &format!(", {strands} strands, {} blooms", reply["blooms"]);

@@ -168,7 +168,9 @@ tracer. A file with no scene graph still loads its first model.
 | `column_relief` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `facing`, `palette` | Break a cliff face into columns of random width that stand out of it and end at uneven heights around the crown. Optional `width`, `out`, `crown`, `top`, `lower`, `depth`, `exclude`, `seed`. Replies with `columns`, `added`, `removed`, `crown`. One undo step |
 | `joints` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `pattern` | Cut real joint gaps into the solid cells of the box: `columns`, `courses` (running bond), or `cracks`. Optional `spacing`, `course`, `width`, `depth`, `dirt`, `only`, `exclude`, `density`, `seed`. Replies with `removed` and `dirtied`. One undo step |
 | `weather` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Chip edges and corners, dent pits into flat faces, and add subtle colour noise on the exposed cells of the box. Optional `chip`, `chipSize`, `pits`, `pitDepth`, `broken`, `noise`, `noiseDensity`, `noiseScale`, `only`, `exclude`, `seed`. Replies with `chips`, `pits`, `removed`, `broken`, `recoloured`. One undo step |
-| `moss` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Moss cushions on tops and curtains with a ragged end down the side faces below them. Optional `amount`, `noise`, `faces`, `facing`, `band`, `only`, `exclude`, `layer`, `curtains`, `length`, `thickness`, `seed`. Replies with `added`, `painted`, `curtains`. One undo step |
+| `bark` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `axis` or `points`, `palettes` | Bark on wood along the grain: long plates of varied width, offset like real bark, split by fissures cut 1 to 2 cells deep with `dirt` at their bottom, and now and then a crack across a plate. Optional `curve`, `dirt`, `width`, `length`, `depth`, `cracks`, `only`, `exclude`, `seed`. Replies with `plates`, `removed`, `dirtied`, `painted`, `cracks`. One undo step |
+| `cavity_tint` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Darken exposed cells in concave spots and crevices, and with `lighten` lighten ridges, by neighbour occupancy, to the slots in `pairs` or to shades it makes in free slots. Optional `radius`, `dark`, `lighten`, `light`, `pairs`, `darken`, `brighten`, `only`, `exclude`. Replies with `darkened`, `lightened`, `shades`. One undo step with the palette |
+| `moss` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Moss caps on tops and curtains with a ragged end down the side faces below them, or with `style` `cushions` separate cushions on exposed cells with drapes from overhangs. Optional `style`, `amount`, `noise`, `faces`, `facing`, `band`, `only`, `exclude`, `layer`, `curtains`, `length`, `thickness`, `size`, `gap`, `exposure`, `drapes`, `seed`. Replies with `added`, `painted`, and `curtains`, or `cushions` and `drapes`. One undo step |
 | `algae` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | An algae band, dense at the bottom of `band` and thinning upward in clumps. Optional `band`, `amount`, `noise`, `faces`, `facing`, `only`, `exclude`, `layer`, `seed`. Replies with `added`, `painted`. One undo step |
 | `vines` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Vine strands hanging from top edges, graded through `palettes` to the tip, with optional `blooms`. Optional `amount`, `length`, `bloomChance`, `noise`, `faces`, `facing`, `band`, `only`, `exclude`, `seed`. Replies with `added`, `strands`, `blooms`. One undo step |
 | `smooth` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Majority filter in an inclusive box of at most 2000000 cells that keeps colours. Optional `iterations` (1..=8), `fillAt`, `removeAt`. Replies with `filled`, `removed`, `iterations`. One undo step |
@@ -289,15 +291,15 @@ cell at the top of the box, or would come to rest with a cell in an
 `exclude` box, is skipped and counted in `skipped`. Only empty
 cells are written, at most 200000; the same `seed` gives the same pile.
 
-`exclude` on `scatter`, `joints`, `weather`, `moss`, `algae`, and `vines`
-keeps walking surfaces whole: one inclusive box `[x0, y0, z0, x1, y1, z1]`
+`exclude` on `scatter`, `joints`, `weather`, `bark`, `cavity_tint`,
+`moss`, `algae`, and `vines` keeps walking surfaces whole: one inclusive box `[x0, y0, z0, x1, y1, z1]`
 or a list of up to 64, in the object's cells, of any size. No cell inside a
 box is removed, recoloured, or written, no plant grows from a cell inside
 one, and no debris comes to rest in one. Cover a ledge top, a cave floor,
 or a river bed with its solid top layer and the air above it, and the
 stone around it weathers and grows moss while the top stays flat, with no
 refill afterwards. The editor's Protect section holds the same boxes for
-the Scatter, Joints, Weather, and Growth sections.
+the Scatter, Joints, Weather, Bark, Cavity, and Growth sections.
 
 `sweep` moves a cross-section along a path, perpendicular to it. Points
 are `[x, y, z]`, `[x, y, z, twist]`, `[x, y, z, twist, scale]`, or
@@ -507,6 +509,43 @@ cells across (default 3) with a little speckle, `noiseDensity` of them
 not look blotchy. `only` limits it to some slots. The same `seed` gives the
 same result.
 
+`bark` cuts bark into wood along its grain, for trunks, branches, roots,
+and logs; use it instead of painted stripes, which read as a pipe with a
+stripe. The grain runs along `axis` (`x`, `y`, `z`, or a vector, through
+the middle of the box's solid cells) or along `points`: the same points as
+the `fill_tube` or `sweep` that made the wood (`[x, y, z]`, and a tube's
+radius or a sweep's twist and scale, which are ignored), with the same
+`curve`, so the plates follow its bend. The surface is unrolled around the
+grain. Columns of plates `width` cells wide ([3, 6], 1..=64) tile the way
+around and wander a little; each column is split into plates `length`
+cells long ([8, 20], 2..=256) whose ends sit at other heights than the next
+column's, as on a real trunk, and narrow toward their ends. The fissures
+between columns are cut `depth` cells into the wood ([1, 2], 1..=4), plate
+ends and cracks the smaller depth, and the cell at the bottom of each takes
+`dirt` when given. `cracks` (default 0.25) of the plates have a crack part
+way across. Each plate takes one of `palettes`, never the slot of the plate
+before it, so the tone changes plate by plate. End grain, faces looking
+along the grain such as a log's cut end, is left alone, and so is the
+inside of a hollow: a cell open toward the grain's axis is never cut, so
+bark a hollow log after carving it and a thin wall keeps its inner layer. `only` limits it to
+the wood's slots. The same `seed` gives the same plates.
+
+`cavity_tint` gives depth by shading. Each exposed cell of the box counts
+the solid cells in a ball of `radius` around it (1..=4, default 2), a
+curvature or ambient occlusion estimate: a flat face has about half the
+ball solid, a crevice, fissure, or the crook of a root more, a ridge or a
+corner less. A cell more concave than `dark` (0 a flat face, 1 a closed
+pocket; default 0.12) takes a darker slot; with `lighten`, a cell more
+convex than `light` (0 a flat face, 1 a lone spike; default 0.25) takes a
+lighter one. `pairs` names them per slot, `[slot, darker]` or
+`[slot, darker, lighter]` (0 leaves that tint out; slots without a pair
+stay). Without `pairs` each slot gets shades of its own colour, `darken`
+(default 0.72) and `brighten` (default 1.18) times it, with its material,
+in a slot that already holds exactly that shade or the highest free slot
+(one no cell of any object uses); the reply's `shades` lists the slots it
+made, and the palette changes are part of the same undo step. Run it after
+`bark`, `joints`, or `weather`, and before `moss`.
+
 `moss`, `algae`, and `vines` grow on the exposed faces of the solid cells
 in the box whose face passes the filter: `faces` (`top`, `side`, `bottom`,
 `all`, or a list), `facing` (only faces whose outward normal points within
@@ -526,6 +565,20 @@ leave moss and algae still. At most 400000 cells per call.
   a capped top edge: `curtains` (default 0.3) of the edges, `length` [2, 8]
   cells, neighbouring columns starting together and ending raggedly.
   `palettes` are picked in patches.
+- `moss` with `style` `cushions` (default `amount` 0.45) grows separate
+  cushions instead, so it never forms a continuous band. A cell takes moss
+  where its surface normal faces up (or `facing`) by at least `exposure`, a
+  cosine (-1..=1, default 0.35: the upper part of a log; 0 its upper half,
+  0.7 its crown). Seeds are picked in a stable random order; each cushion
+  grows over the neighbouring exposed cells out to a ragged radius from
+  `size` ([2, 5], 1..=16) and stays `gap` cells (1..=8, default 2) from
+  every other, until `amount` of the exposed cells is covered. In `layer`
+  grow a cushion is a low dome, `thickness` (1..=4, default 2) at its
+  middle, and `drapes` (default 0.25) of its edges over a drop hang a drape
+  `length` cells long ([2, 6], 1..=32) that runs down the side, stepping
+  out where the wood bulges, and hangs free below an overhang. Each cushion
+  takes one of `palettes`, a step lighter or darker in patches. The reply
+  has `cushions` and `drapes` instead of `curtains`.
 - `algae` (default `amount` 0.9, `layer` paint) covers the faces inside
   `band` (the box's height without one) densest at its bottom and thinning
   to nothing at its top in noisy clumps, stone peeking through.
@@ -1086,12 +1139,14 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `deform` | Deform section: Bend, Taper, Twist, or Displace; Axis, Origin, Length; Angle and Toward, Start and End, or Amplitude, Scale, Octaves, Bias, Seed; over the selection's box or the whole object |
 | `brush` | Sculpt tool (**S**): Inflate, Deflate, Smooth, Flatten, or Grab; Radius, Strength, Falloff, Only. A drag lays dabs on the surface; Grab pulls the pressed point along the drag in the view plane. One undo step per drag |
 | `break_end` | Break section: Point (or Point at selection), Normal with ±X/Y/Z, Depth, Splinters, Length, Thickness, Taper, Rim bias, Bark, Sapwood, and Tip slots, Seed |
-| `exclude` (on the stone tools) | Protect section: one box per line, Add selection, Clear; Scatter, Joints, Weather, and Growth use it |
+| `exclude` (on the stone tools) | Protect section: one box per line, Add selection, Clear; Scatter, Joints, Weather, Bark, Cavity, and Growth use it |
 | `scatter` | Scatter section: Pieces, Kinds, Size, Palettes, Clump, Seed, over the selection's box or above the whole object |
 | `column_relief` | Relief section: Facing ±X/±Y, Palette, Width, Out, Crown, Top, Lower, Depth, Seed, Raise columns on the selection's box or the whole object |
 | `joints` | Joints section: Columns, Courses, or Cracks, Spacing, Course (or Density), Width, Depth, Dirt, Only, Seed, over the selection's box or the whole object |
 | `weather` | Weather section: Chip, Chip size, Pits, Pit depth, Broken, Noise, Density, Patch, Only, Seed, over the selection's box or the whole object |
-| `moss`, `algae`, `vines` | Growth section: Moss, Algae, or Vines, Palettes, Amount, Noise, Faces, Facing, Band, Only, Paint, Curtains, Thickness, Length, Blooms, Bloom chance, Seed, over the selection's box or the whole object |
+| `bark` | Bark section: Along X, Y, Z, or Points (Smooth, From Sweep), Palettes, Dirt, Width, Length, Depth, Cracks, Only, Seed, over the selection's box or the whole object |
+| `cavity_tint` | Cavity section: Radius, Dark, Lighten, Pairs, Shades, Only, over the selection's box or the whole object |
+| `moss`, `algae`, `vines` | Growth section: Moss (Caps or Cushions), Algae, or Vines, Palettes, Amount, Noise, Faces, Facing, Band, Only, Paint, Curtains, Thickness, Size, Gap, Exposure, Drapes, Length, Blooms, Bloom chance, Seed, over the selection's box or the whole object |
 | `smooth` | Smooth section: Passes, Fill at, Remove at, over the selection or the whole object |
 | `set_palette` | Palette dock (colour and alpha) and the Material section (motion) |
 | `set_active_object`, `add_object`, `set_object`, `remove_object` | Objects tree and the Object inspector |
