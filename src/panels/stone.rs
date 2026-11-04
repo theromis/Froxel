@@ -420,7 +420,7 @@ pub(super) fn growth(ui: &mut Ui, session: &mut Session) {
                 });
                 ui.end_row();
                 if panel.plant == Plant::Moss {
-                    label(ui, "Style", "Caps: caps on tops and curtains down the sides. Cushions: separate cushions where the surface faces up, never one band, with drapes over the edges.");
+                    label(ui, "Style", "Caps: caps on tops (and undersides with Bottom) and curtains down the sides. Cushions: separate cushions where the surface faces up, or Facing, never one band, with drapes over the edges.");
                     ui.horizontal(|ui| {
                         for (on, name) in [(false, "Caps"), (true, "Cushions")] {
                             if ui.selectable_label(panel.cushions == on, name).clicked() {
@@ -449,18 +449,23 @@ pub(super) fn growth(ui: &mut Ui, session: &mut Session) {
                 label(ui, "Noise", "0 grows in smooth patches, 1 in ragged speckle.");
                 ui.add(egui::Slider::new(&mut panel.noise, 0.0..=1.0).max_decimals(2));
                 ui.end_row();
-                label(ui, "Faces", "Which faces it grows on.");
+                label(ui, "Faces", "Which faces it grows on. Bottom takes undersides, such as the dark underside of a tree crown.");
                 ui.horizontal(|ui| {
                     for (on, name) in panel.faces.iter_mut().zip(["Top", "Side", "Bottom"]) {
                         ui.toggle_value(on, name);
                     }
                 });
                 ui.end_row();
-                label(ui, "Facing", "Only faces pointing within 60 degrees of this direction.");
+                label(ui, "Facing", "Only faces pointing within 60 degrees of this direction. +Z turns on Top and −Z turns on Bottom, the only faces that point that way.");
                 ui.horizontal(|ui| {
-                    for (index, (name, _)) in FACINGS.iter().enumerate() {
+                    for (index, (name, dir)) in FACINGS.iter().enumerate() {
                         if ui.selectable_label(panel.facing == index, *name).clicked() {
                             panel.facing = index;
+                            match dir {
+                                Some([0, 0, 1]) => panel.faces[0] = true,
+                                Some([0, 0, -1]) => panel.faces[2] = true,
+                                _ => {}
+                            }
                         }
                     }
                 });

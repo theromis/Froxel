@@ -2,8 +2,8 @@
 //! exposed faces of a region that pass a face filter (which faces, facing a
 //! direction, inside a height band).
 //!
-//! Moss caps tops and runs down side faces in curtains with a ragged end,
-//! or (cushions) grows in separate domed cushions where the surface faces
+//! Moss caps tops (and undersides, when faces takes bottom) and runs down
+//! side faces in curtains with a ragged end, or (cushions) grows in separate domed cushions where the surface faces
 //! up or out, with drapes hanging from the edges over an overhang.
 //! Algae is a band at the waterline, dense low and thinning upward in
 //! clumps. Vines hang in strands from top edges, graded through their slots
@@ -128,6 +128,8 @@ pub struct Grown {
     /// Moss cushions.
     pub cushions: usize,
     pub blooms: usize,
+    /// Why nothing grew, when nothing did.
+    pub note: Option<String>,
 }
 
 pub fn grow(cells: &HashMap<Cell, u8>, spec: &GrowthSpec) -> Result<Grown, String> {
@@ -144,6 +146,20 @@ pub fn grow(cells: &HashMap<Cell, u8>, spec: &GrowthSpec) -> Result<Grown, Strin
         let len = (f[0] * f[0] + f[1] * f[1] + f[2] * f[2]).sqrt();
         if !len.is_finite() || len < 1e-6 {
             return Err("facing must be a non-zero direction".into());
+        }
+        let faces_any = FACES
+            .iter()
+            .any(|d| spec.faces.contains(&Face::of(*d)) && dot(*d, f) >= 0.5);
+        if !faces_any {
+            return Err(format!(
+                "facing [{}, {}, {}] is not within 60 degrees of any of faces ({}), so nothing \
+                 can grow: add the faces it points at (bottom for a downward facing), or leave \
+                 faces out, which with facing defaults to every face",
+                f[0],
+                f[1],
+                f[2],
+                face_names(&spec.faces)
+            ));
         }
     }
     if let Some((lo, hi)) = spec.band {
@@ -201,7 +217,74 @@ pub fn grow(cells: &HashMap<Cell, u8>, spec: &GrowthSpec) -> Result<Grown, Strin
             vines(&mut out, spec, *length, blooms, *bloom_chance)?;
         }
     }
-    Ok(out.finish())
+    let mut done = out.finish();
+    if done.writes.is_empty() {
+        done.note = Some(why_bare(cells, spec));
+    }
+    Ok(done)
+}
+
+/// The names of `faces` for a message.
+fn face_names(faces: &[Face]) -> String {
+    faces
+        .iter()
+        .map(|f| match f {
+            Face::Top => "top",
+            Face::Side => "side",
+            Face::Bottom => "bottom",
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The cosine of face `d` with direction `f`.
+fn dot(d: Cell, f: [f64; 3]) -> f64 {
+    let len = (f[0] * f[0] + f[1] * f[1] + f[2] * f[2]).sqrt();
+    (f64::from(d.0) * f[0] + f64::from(d.1) * f[1] + f64::from(d.2) * f[2]) / len
+}
+
+/// Why a growth call wrote nothing, for its reply.
+fn why_bare(cells: &HashMap<Cell, u8>, spec: &GrowthSpec) -> String {
+    let hosts = spec.hosts(cells);
+    if hosts.is_empty() {
+        return if spec.only.is_empty() {
+            "nothing grew: the box holds no solid cell outside exclude".into()
+        } else {
+            "nothing grew: the box holds no solid cell of only outside exclude".into()
+        };
+    }
+    let open = hosts.iter().any(|c| {
+        FACES
+            .iter()
+            .any(|d| !cells.contains_key(&step(*c, *d)) && spec.passes(*d, c.2))
+    });
+    if !open {
+        return format!(
+            "nothing grew: no exposed face of the host cells passes faces ({}), facing, and band",
+            face_names(&spec.faces)
+        );
+    }
+    if let GrowthKind::Cushions { exposure, .. } = spec.kind {
+        let up = spec.facing.unwrap_or([0.0, 0.0, 1.0]);
+        let len = (up[0] * up[0] + up[1] * up[1] + up[2] * up[2]).sqrt();
+        let best = hosts
+            .iter()
+            .filter_map(|c| surface_normal(cells, *c))
+            .map(|n| (n[0] * up[0] + n[1] * up[1] + n[2] * up[2]) / len)
+            .fold(f64::NEG_INFINITY, f64::max);
+        if best < exposure {
+            return format!(
+                "nothing grew: no host cell's surface normal is within exposure {exposure} of \
+                 {} (the best cosine is {best:.2}); lower exposure",
+                if spec.facing.is_some() {
+                    "facing"
+                } else {
+                    "up"
+                }
+            );
+        }
+    }
+    "nothing grew: the faces that pass are already covered, or amount is too low for them".into()
 }
 
 fn check_range(range: (i32, i32), min: i32, max: i32, what: &str) -> Result<(), String> {
@@ -302,6 +385,7 @@ impl<'a> Out<'a> {
             strands: self.strands,
             cushions: self.cushions,
             blooms: self.blooms,
+            note: None,
         }
     }
 }
@@ -327,9 +411,7 @@ impl GrowthSpec {
             }
         }
         if let Some(f) = self.facing {
-            let len = (f[0] * f[0] + f[1] * f[1] + f[2] * f[2]).sqrt();
-            let dot = (f64::from(d.0) * f[0] + f64::from(d.1) * f[1] + f64::from(d.2) * f[2]) / len;
-            if dot < 0.5 {
+            if dot(d, f) < 0.5 {
                 return false;
             }
         }
@@ -386,6 +468,28 @@ fn moss(
             for level in 2..=thickness {
                 if v < spec.amount * (0.55 / f64::from(level - 1)) {
                     out.add((cell.0, cell.1, cell.2 + level), spec.tone(step(cell, UP)))?;
+                }
+            }
+        }
+    }
+    // Undersides, when faces takes bottom: moss on the face over air,
+    // hanging down `thickness` cells where the cover is densest.
+    for &cell in &hosts {
+        if out.cells.contains_key(&step(cell, DOWN)) || !spec.passes(DOWN, cell.2) {
+            continue;
+        }
+        let v = spec.coverage(cell, 4.0, 2);
+        if v >= spec.amount {
+            continue;
+        }
+        out.cover(spec.layer, cell, DOWN, spec.tone(cell))?;
+        if spec.layer == Layer::Grow {
+            for level in 2..=thickness {
+                if v < spec.amount * (0.55 / f64::from(level - 1)) {
+                    out.add(
+                        (cell.0, cell.1, cell.2 - level),
+                        spec.tone(step(cell, DOWN)),
+                    )?;
                 }
             }
         }

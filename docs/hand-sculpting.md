@@ -186,8 +186,8 @@ slightly darker stone. Run it after `joints`, so the new block edges chip
 too, and before the plants.
 
 `moss`, `algae`, and `vines` grow plants on exposed faces filtered by
-`faces`, `facing`, and a height `band`. Moss caps tops and hangs curtains
-with a ragged end down the faces below; algae is a band at the waterline,
+`faces`, `facing`, and a height `band`. Moss caps tops (and undersides with
+`faces` `bottom`) and hangs curtains with a ragged end down the faces below; algae is a band at the waterline,
 dense low and thinning upward in clumps; vines hang from top edges, graded
 through their slots to the tip, with occasional blooms. Give the vine slots
 `set_palette` `motion` `sway` rising from the anchor to the tip and leave
@@ -207,8 +207,11 @@ pipe with a stripe. Build the trunk, branch, or root with one slot, then:
   ridges, by how many of their neighbours are solid. Without `pairs` it
   makes the shades in free palette slots. It works on rock and roots too.
 - `moss` with `style: "cushions"` grows separate cushions where the
-  surface faces up, `gap` cells apart so it never forms a band, with drapes
-  hanging over the edge.
+  surface faces up (or `facing`), `gap` cells apart so it never forms a
+  band, with drapes hanging over the edge. `facing: [0, 0, -1]` with
+  `layer: "paint"` shades the underside of a crown or overhang; with
+  `facing` and no `faces` every face is considered. A call that grows
+  nothing replies with a `warning` saying why.
 
 `examples/barked_trunk.rhai` puts them together on a fallen trunk.
 

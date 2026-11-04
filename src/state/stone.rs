@@ -353,12 +353,14 @@ pub struct GrowthPanel {
 }
 
 /// The Growth panel's facing choices.
-pub const FACINGS: [(&str, Option<[i32; 3]>); 5] = [
+pub const FACINGS: [(&str, Option<[i32; 3]>); 7] = [
     ("Any", None),
     ("−Y", Some([0, -1, 0])),
     ("+Y", Some([0, 1, 0])),
     ("−X", Some([-1, 0, 0])),
     ("+X", Some([1, 0, 0])),
+    ("+Z", Some([0, 0, 1])),
+    ("−Z", Some([0, 0, -1])),
 ];
 
 impl Default for GrowthPanel {
@@ -736,7 +738,10 @@ impl Session {
             if let Some(strands) = reply.get("strands") {
                 text += &format!(", {strands} strands, {} blooms", reply["blooms"]);
             }
-            text + "."
+            match reply.get("warning").and_then(Value::as_str) {
+                Some(warning) => format!("{text}. {warning}."),
+                None => text + ".",
+            }
         });
     }
 

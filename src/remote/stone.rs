@@ -92,6 +92,9 @@ pub(crate) fn stone_writes(
                 }
                 _ => None,
             };
+            if let Some(note) = done.note {
+                reply.insert("warning".into(), json!(note));
+            }
             done.writes
         }
         Stone::Bark => {
@@ -483,9 +486,12 @@ pub(crate) fn growth_spec(params: &Value, tool: Stone) -> Result<crate::tools::G
     if tool == Stone::Moss {
         moss_style(params)?;
     }
+    let has_facing = !matches!(params.get("facing"), None | Some(Value::Null));
     let faces = match params.get("faces") {
         None | Some(Value::Null) => match tool {
             Stone::Vines => vec![Face::Side],
+            // facing alone picks the faces: a downward one takes undersides.
+            _ if has_facing => vec![Face::Top, Face::Side, Face::Bottom],
             _ => vec![Face::Top, Face::Side],
         },
         Some(found) => {

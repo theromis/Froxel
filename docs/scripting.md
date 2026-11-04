@@ -618,8 +618,8 @@ three:
 | --- | --- | --- |
 | `amount` | 0.5, 0.9, 0.08 | Moss and algae coverage (algae at the bottom of its band); the share of top edge cells a vine starts from. |
 | `noise` | `0.5` | 0 grows in smooth patches, 1 in ragged speckle. |
-| `faces` | top and side; side for vines | `"top"`, `"side"`, `"bottom"`, `"all"`, or a list. |
-| `facing` | any | Only faces pointing within 60 degrees of `[x, y, z]`. |
+| `faces` | top and side (every face with `facing`); side for vines | `"top"`, `"side"`, `"bottom"`, `"all"`, or a list. Moss caps take undersides with `"bottom"`. |
+| `facing` | any | Only faces pointing within 60 degrees of `[x, y, z]`, such as `[0, 0, -1]` for undersides. A `facing` that no face in `faces` points along is an error. |
 | `band` | none | Only cells with z in `[low, high]`; algae thins from its bottom to its top. |
 | `only` | every slot | Grow only on cells of these slots. |
 | `exclude` | none | Boxes nothing grows from or into (see [Protected boxes](#protected-boxes)). |
@@ -641,7 +641,8 @@ moss(x0, y0, z0, x1, y1, z1, [7, 8, 9], #{style: "cushions", amount: 0.45, size:
 
 Vines take `length` ([4, 16]), `blooms` (slots), and `bloomChance` (0.06).
 Each returns `#{changed, added, painted}`, with `curtains` for moss
-(`cushions` and `drapes` for cushions) and `strands` and `blooms` for vines.
+(`cushions` and `drapes` for cushions) and `strands` and `blooms` for vines,
+and a `warning` saying why when nothing grew.
 
 ### Protected boxes
 

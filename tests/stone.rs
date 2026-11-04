@@ -926,3 +926,66 @@ fn bark_leaves_the_inside_of_a_hollow_and_its_inner_wall() {
         );
     }
 }
+
+/// A ball of radius `r` around (0, 0, 10), one slot.
+fn crown(r: i32, slot: u8) -> HashMap<Cell, u8> {
+    let mut out = HashMap::new();
+    for z in -r..=r {
+        for y in -r..=r {
+            for x in -r..=r {
+                if x * x + y * y + z * z <= r * r {
+                    out.insert((x, y, 10 + z), slot);
+                }
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn moss_facing_down_shades_the_underside_of_a_crown() {
+    let cells = crown(7, 6);
+    let call = |extra: serde_json::Value| {
+        let mut params = serde_json::json!({
+            "x0": -8, "y0": -8, "z0": 0, "x1": 8, "y1": 8, "z1": 20,
+            "palettes": [9], "style": "cushions", "layer": "paint",
+            "facing": [0, 0, -1], "exposure": 0.2, "only": [6, 7, 8], "amount": 1.0,
+        });
+        for (k, v) in extra.as_object().unwrap() {
+            params[k] = v.clone();
+        }
+        crate::remote::stone_writes(&cells, &params, crate::remote::Stone::Moss)
+    };
+    // facing alone takes every face, so the undersides are painted.
+    let (writes, reply) = call(serde_json::json!({})).unwrap();
+    assert!(reply["painted"].as_u64().unwrap() > 0, "{reply:?}");
+    assert!(reply["cushions"].as_u64().unwrap() > 0, "{reply:?}");
+    assert!(reply.get("warning").is_none(), "{reply:?}");
+    assert!(writes.iter().all(|w| w.2 < 10), "moss above the middle");
+    // Faces that facing cannot pass is an error, not a silent zero.
+    let err = call(serde_json::json!({"faces": ["top", "side"]})).unwrap_err();
+    assert!(err.contains("facing") && err.contains("bottom"), "{err}");
+    // Caps take undersides with faces bottom.
+    let (writes, reply) = call(serde_json::json!({"style": "caps", "faces": "bottom"})).unwrap();
+    assert!(reply["painted"].as_u64().unwrap() > 0, "{reply:?}");
+    assert!(writes.iter().all(|w| w.2 <= 10));
+    let (writes, _) =
+        call(serde_json::json!({"style": "caps", "faces": "bottom", "layer": "grow"})).unwrap();
+    assert!(!writes.is_empty() && writes.iter().all(|w| !cells.contains_key(&(w.0, w.1, w.2))));
+    // Nothing to grow on says why.
+    let (writes, reply) = call(serde_json::json!({"only": [12]})).unwrap();
+    assert!(writes.is_empty());
+    assert!(
+        reply["warning"].as_str().unwrap().contains("only"),
+        "{reply:?}"
+    );
+    // The left half has no cell whose surface faces +X.
+    let (writes, reply) =
+        call(serde_json::json!({"x1": 0, "facing": [1, 0, 0], "exposure": 0.95})).unwrap();
+    assert!(writes.is_empty(), "{reply:?}");
+    let warning = reply
+        .get("warning")
+        .and_then(|w| w.as_str())
+        .unwrap_or_default();
+    assert!(warning.contains("exposure"), "{reply:?}");
+}

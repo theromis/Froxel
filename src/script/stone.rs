@@ -366,9 +366,10 @@ pub(super) fn reply(counts: serde_json::Map<String, Value>, changed: INT) -> Map
     let mut reply: Map = counts
         .into_iter()
         .map(|(key, value)| {
-            let value = match value.as_i64() {
-                Some(int) => Dynamic::from_int(int),
-                None => Dynamic::from_float(value.as_f64().unwrap_or(0.0)),
+            let value = match (value.as_i64(), value.as_str()) {
+                (Some(int), _) => Dynamic::from_int(int),
+                (None, Some(text)) => Dynamic::from(text.to_string()),
+                (None, None) => Dynamic::from_float(value.as_f64().unwrap_or(0.0)),
             };
             (key.into(), value)
         })

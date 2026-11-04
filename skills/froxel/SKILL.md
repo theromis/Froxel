@@ -102,7 +102,8 @@ If the tools are missing, the server is not configured. Point the user to
    painting dark lines, then `weather` for chipped edges, pits, and
    subtle colour noise, then `moss` (caps and curtains, or `style:
    "cushions"`: separate cushions where the surface faces up, with drapes
-   from overhangs, never one band), `algae` (a
+   from overhangs, never one band; `facing: [0, 0, -1]` with `layer:
+   "paint"` shades undersides, and a reply `warning` says why nothing grew), `algae` (a
    waterline band), and `vines` (hanging strands with blooms) with your own
    slots and `set_palette` motion. Dress wood by its form, never with
    painted stripes: build it in one slot, `bark` it along the same
