@@ -853,10 +853,7 @@ pub fn write(
     path: &std::path::Path,
 ) -> Result<Frame, String> {
     let frame = render(session, preview)?;
-    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
-        std::fs::create_dir_all(parent)
-            .map_err(|err| format!("Could not create {}: {err}", parent.display()))?;
-    }
+    crate::state::create_parent(path)?;
     crate::trace::write_rgba_png(path, preview.width, preview.height, &frame.rgba)?;
     Ok(frame)
 }

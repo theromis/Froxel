@@ -125,6 +125,11 @@ index `0` is empty and erases a cell. Indices `1..255` are colors. A cell
 must lie in `[-1024, 1024)`. A write that would make the active object longer
 than 256 on any axis is refused and changes nothing.
 
+Every tool that writes a file (`save_file`, `render`, `model_view`,
+`preview`, `compare_silhouette`, `export_mesh`, `export_models`,
+`export_variants`, and the screenshots) creates the missing folders of its
+path before writing, so a save into a fresh folder does not fail.
+
 `save_file` writes every non-empty object. A new object is a normal model:
 its own `SIZE`/`XYZI`, an `nTRN`/`nSHP` pair under the scene group, `_name`
 on the transform, and the model centre in that transform, so MagicaVoxel
@@ -147,7 +152,7 @@ tracer. A file with no scene graph still loads its first model.
 |---|---|---|
 | `new_document` | — | Empty document, default palette, cleared path and undo stack |
 | `open_file` | `path` | Open a `.vox`, replacing the session. The reply is short: `path`, `objectCount`, `voxels`, `bounds`, `activeObject`, `canUndo`, `canRedo`, `bones` (a count), `paletteSlots` (used slots), `motionSlots`, the first 20 `objectNames`, and `moreObjects`. `detail` `full` replies with the `inspect_document` result instead (optional `fullPalette`) |
-| `save_file` | — | Write every non-empty object. `path` overwrites the open file when omitted. Replies with `voxels` and `objects` |
+| `save_file` | — | Write every non-empty object. `path` overwrites the open file when omitted; its folder is created. Replies with `voxels` and `objects` |
 | `inspect_document` | — | Path, counts, world bounds, objects (name and world position), the used palette slots, and the slots with motion. `fullPalette` lists all 256 slots |
 | `get_voxel` | `x`, `y`, `z` | Palette index of one **local** cell of the active object. `0` is empty |
 | `set_voxel` | `x`, `y`, `z`, `palette` | Write one **local** cell. One undo step |

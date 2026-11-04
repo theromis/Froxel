@@ -139,3 +139,43 @@ fn mesh_params_round_trip_through_the_export_options() {
     let back = mesh_options(&mesh_params(&options)).unwrap();
     assert_eq!(mesh_params(&back), mesh_params(&options));
 }
+
+#[test]
+fn file_writers_create_missing_folders() {
+    let mut session = Session::new();
+    session.replace_empty();
+    apply(
+        &mut session,
+        "voxel.set",
+        &json!({"x": 0, "y": 0, "z": 0, "palette": 4}),
+    )
+    .unwrap();
+    let root = std::env::temp_dir().join(format!("froxel-fresh-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let vox = root.join("trees/new/oak.vox");
+    let saved = apply(
+        &mut session,
+        "document.save",
+        &json!({"path": vox.display().to_string()}),
+    )
+    .unwrap();
+    assert_eq!(saved["voxels"], 1);
+    assert!(vox.is_file());
+    let png = root.join("views/flat/oak.png");
+    apply(
+        &mut session,
+        "render.flat",
+        &json!({"path": png.display().to_string(), "width": 32, "height": 32}),
+    )
+    .unwrap();
+    assert!(png.is_file());
+    let glb = root.join("meshes/oak.glb");
+    apply(
+        &mut session,
+        "mesh.export",
+        &json!({"path": glb.display().to_string()}),
+    )
+    .unwrap();
+    assert!(glb.is_file());
+    let _ = std::fs::remove_dir_all(&root);
+}

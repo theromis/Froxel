@@ -1246,13 +1246,7 @@ fn write_mesh(
     options: &crate::export::MeshExport,
 ) -> Result<Value, String> {
     let file = Path::new(path);
-    if let Some(parent) = file
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        std::fs::create_dir_all(parent)
-            .map_err(|err| format!("Could not create {}: {err}", parent.display()))?;
-    }
+    crate::state::create_parent(file)?;
     let quads = crate::export::export_with(session, file, options)?;
     let bytes = std::fs::read(file).map_err(|err| format!("Could not read {path}: {err}"))?;
     let structure = crate::export::gltf_structure(&bytes)?;

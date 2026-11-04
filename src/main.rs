@@ -645,6 +645,7 @@ fn finish_shot(shot: &InflightShot, image: &egui::ColorImage) -> Result<Value, S
     };
     let (png, w, h) = remote::png_region(&pixels, width, height, region)?;
     if let Some(path) = &shot.path {
+        state::create_parent(std::path::Path::new(path))?;
         std::fs::write(path, &png).map_err(|err| format!("{path}: {err}"))?;
     }
     Ok(serde_json::json!({

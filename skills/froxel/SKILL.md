@@ -141,7 +141,7 @@ If the tools are missing, the server is not configured. Point the user to
    concept, and the overlay shows where (magenta missing, orange excess).
    Reuse the reply's `align` on later calls so a change in size shows.
    Compare silhouettes, not heights.
-6. `save_file` with a `path`. World cells and markers survive reopening exactly,
+6. `save_file` with a `path` (a missing folder is created). World cells and markers survive reopening exactly,
    including negative coordinates; local cells may rebase to the model box, so
    inspect the object position again before making more local edits. Foreign
    files without Froxel scene-origin metadata still open centred and floored.

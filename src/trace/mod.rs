@@ -694,6 +694,7 @@ pub fn encode_png(image: &Image, session: &Session) -> Result<Vec<u8>, String> {
 
 pub fn write_png(path: &std::path::Path, image: &Image, session: &Session) -> Result<(), String> {
     let bytes = encode_png(image, session)?;
+    crate::state::create_parent(path)?;
     std::fs::write(path, bytes).map_err(|err| format!("Could not write {}: {err}", path.display()))
 }
 
@@ -704,6 +705,7 @@ pub fn write_rgba_png(
     rgba: &[u8],
 ) -> Result<(), String> {
     let bytes = encode_rgba(width, height, rgba)?;
+    crate::state::create_parent(path)?;
     std::fs::write(path, bytes).map_err(|err| format!("Could not write {}: {err}", path.display()))
 }
 

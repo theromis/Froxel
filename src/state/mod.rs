@@ -924,6 +924,19 @@ pub use silhouette::{BackgroundField, SilhouettePanels, CAMERAS, SIDES};
 pub use stone::{Plant, StonePanels, BARK_ALONG, DIRECTIONS, FACINGS, RELIEF_FACINGS};
 pub(crate) use vox::rotation_codec_errors;
 
+/// Create the folder a file is about to be written into, with every missing
+/// parent, so a tool that writes a file never fails on a fresh folder.
+pub fn create_parent(path: &std::path::Path) -> Result<(), String> {
+    match path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        Some(parent) => std::fs::create_dir_all(parent)
+            .map_err(|err| format!("Could not create {}: {err}", parent.display())),
+        None => Ok(()),
+    }
+}
+
 #[cfg(test)]
 #[path = "../../tests/state.rs"]
 mod tests;

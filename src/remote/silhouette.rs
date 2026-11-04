@@ -360,10 +360,7 @@ pub(super) fn compare_silhouette(session: &mut Session, params: &Value) -> Resul
     session.pose = saved_pose;
     let compared = compared?;
     let file = Path::new(&path);
-    if let Some(parent) = file.parent().filter(|p| !p.as_os_str().is_empty()) {
-        std::fs::create_dir_all(parent)
-            .map_err(|err| format!("Could not create {}: {err}", parent.display()))?;
-    }
+    crate::state::create_parent(file)?;
     crate::trace::write_rgba_png(file, preview.width, preview.height, &compared.rgba)?;
     let reply = compare_reply(&path, &preview, align, &compared);
     // A window shows the latest comparison over its viewport.

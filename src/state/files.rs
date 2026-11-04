@@ -652,10 +652,12 @@ impl Session {
                 return Err(e);
             }
         };
-        if let Err(e) = std::fs::write(path, bytes) {
-            let message = format!("Could not write {}: {e}", path.display());
-            self.status = message.clone();
-            return Err(message);
+        if let Err(e) = super::create_parent(path).and_then(|()| {
+            std::fs::write(path, bytes)
+                .map_err(|e| format!("Could not write {}: {e}", path.display()))
+        }) {
+            self.status = e.clone();
+            return Err(e);
         }
         self.path = Some(path.to_path_buf());
         self.name_hint = None;

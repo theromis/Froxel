@@ -104,6 +104,7 @@ pub fn export_variants(session: &mut Session, params: &Value) -> Result<Value, S
     let options = crate::remote::mesh_params(&options);
     let (mut manifest, changes) = merge_manifest(previous, variants, &options);
     let text = serde_json::to_string_pretty(&manifest).map_err(|err| err.to_string())?;
+    crate::state::create_parent(&manifest_path)?;
     std::fs::write(&manifest_path, text + "\n")
         .map_err(|err| format!("Could not write {}: {err}", manifest_path.display()))?;
     manifest["manifest"] = json!(manifest_path.display().to_string());
