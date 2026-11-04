@@ -504,7 +504,7 @@ fn tools() -> Vec<Value> {
             "detail": {"type": "string", "enum": ["summary", "full"], "description": "summary (default) is the short reply; full is the inspect_document result."},
             "fullPalette": {"type": "boolean", "description": "With detail full, list all 256 palette slots, not only the used ones. Defaults to false."}
         }), &["path"]),
-        tool("save_file", "Write every non-empty object as a .vox scene. Replies with voxels (solid cells in the file) and objects (models written).", json!({"path": str_prop("Where to write. Omit to overwrite the open file.")}), &[]),
+        tool("save_file", "Write every non-empty object as a .vox scene. World voxel and marker positions survive reopening, including negative coordinates; local cells may rebase to the model box. Replies with voxels (solid cells in the file) and objects (models written).", json!({"path": str_prop("Where to write. Omit to overwrite the open file.")}), &[]),
         tool("inspect_document", "Path, voxel count, world bounds, objects (name, world position, local bounds), palette colours keyed by index for the slots some voxel uses (fullPalette for all 256), and motion keyed by palette index for slots that are not still at amount 1.", json!({
             "fullPalette": {"type": "boolean", "description": "List all 256 palette slots, not only the used ones. Defaults to false."}
         }), &[]),

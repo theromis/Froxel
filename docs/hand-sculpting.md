@@ -31,7 +31,11 @@ It is how agents should model living things through MCP.
    cells and is one undo step.
 4. **Repeat** steps 2 and 3. Render after every step and compare again. A
    first blockout is never the result.
-5. **Save.** `save_file`.
+5. **Save.** `save_file`. Froxel saves retain world voxel and marker positions
+   when reopened, including negative cells and an off-centre chosen origin.
+   Local cells may rebase to the model box: read the object position again before
+   further local-cell edits. Foreign files without Froxel origin metadata still
+   open centred and floored.
 
 ```
 new_document

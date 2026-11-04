@@ -2267,3 +2267,62 @@ fn import_mesh_into_a_new_object_maps_slots_and_paints() {
     let missing = error_text(&head.call("import_mesh", json!({"path": mesh_fixture("nope.glb")})));
     assert!(missing.contains("Could not read"), "{missing}");
 }
+
+#[test]
+fn manual_negative_cells_and_markers_keep_world_origin_across_saves() {
+    let mut head = Headless::new();
+    head.ok(
+        "set_object",
+        json!({"index": 0, "name": "manual", "position": [13, -7, 5]}),
+    );
+    head.ok(
+        "fill_tube",
+        json!({"points": [[-4, -2, -3, 2], [1, 0, 8, 1]], "palette": 2}),
+    );
+    head.ok(
+        "fill_ellipsoid",
+        json!({"x0": -9, "y0": -6, "z0": 7, "x1": 7, "y1": 9, "z1": 16, "palette": 3}),
+    );
+    head.ok("set_marker", json!({"name": "ground", "point": [0, 0, 0]}));
+    head.ok("set_marker", json!({"name": "trunk", "kind": "box", "x0": -2, "y0": -1, "z0": -2, "x1": 2, "y1": 1, "z1": 8}));
+    head.ok(
+        "set_marker",
+        json!({"name": "join", "kind": "connector", "point": [-4, 2, 10], "direction": [1, 0, 0]}),
+    );
+    let world = |session: &Session| -> Vec<_> {
+        let mut result: Vec<_> = session
+            .objects
+            .iter()
+            .flat_map(|object| {
+                object.cells.iter().map(move |(cell, slot)| {
+                    (
+                        cell.0 + object.translation.0,
+                        cell.1 + object.translation.1,
+                        cell.2 + object.translation.2,
+                        *slot,
+                    )
+                })
+            })
+            .collect();
+        result.sort_unstable();
+        result
+    };
+    let placed = |list: Value| -> Vec<_> {
+        list["markers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|marker| (marker["world"].clone(), marker["gltf"].clone()))
+            .collect()
+    };
+    let before = world(&head.session);
+    let markers = placed(head.ok("list_markers", json!({})));
+    let path = std::env::temp_dir().join("froxel-manual-origin-roundtrip.vox");
+    for _ in 0..3 {
+        head.ok("save_file", json!({"path": path.to_string_lossy()}));
+        head.ok("open_file", json!({"path": path.to_string_lossy()}));
+        assert_eq!(world(&head.session), before);
+        assert_eq!(placed(head.ok("list_markers", json!({}))), markers);
+    }
+    let _ = std::fs::remove_file(path);
+}

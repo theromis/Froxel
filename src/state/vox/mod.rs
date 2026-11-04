@@ -51,8 +51,8 @@ pub(super) struct VoxGraph {
     pub(super) nodes: Vec<VoxNode>,
     pub(super) models: Vec<StoredModel>,
     pub(super) layers: Vec<VoxLayer>,
-    /// Editor position minus file position. Load recenters the scene; save
-    /// subtracts this so node translations stay in file space.
+    /// Editor position minus file position. Foreign imports are recentred;
+    /// Froxel saves persist this shift in MVOR and subtract it from nodes.
     pub(super) shift: [i32; 3],
 }
 

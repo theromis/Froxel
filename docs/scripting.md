@@ -917,3 +917,8 @@ loses focus, or when you press Regenerate). **Auto** reruns about a third of
 a second after a parameter change. The error line is shown under the button.
 A file that carries a script says so in the panel and in the status line
 after opening. Neither of those runs the script.
+
+Froxel saves also carry an `MVOR` version 1 scene-origin chunk. It preserves the
+chosen world frame for manual and scripted objects alike; it does not run or add
+a script. Foreign VOX imports without this chunk retain automatic centring and
+floor placement. See the saved scene coordinates section in `mcp.md`.

@@ -2318,3 +2318,81 @@ fn bark_cavity_and_cushion_panels_run_their_mcp_tools() {
     assert!(session.status.contains("cushions"), "{}", session.status);
     assert!(session.active().cells.values().any(|slot| *slot == 7));
 }
+
+#[test]
+fn saved_scene_origin_keeps_an_imported_frame_and_later_moves() {
+    // A foreign scene still opens centred and floored, as before. Once edited
+    // and saved by Froxel, that chosen editor frame must not be centred again.
+    let objects = vec![bare_volume(
+        "foreign",
+        HashMap::from([((0, 0, 0), 1), ((3, 5, 6), 2)]),
+        (40, -25, 12),
+    )];
+    let foreign = save_scene(
+        &objects,
+        &default_palette(),
+        &[Material::default(); 256],
+        &Skeleton::default(),
+        &[],
+    )
+    .unwrap();
+    let mut session = Session::new();
+    session.import_bytes(&foreign).unwrap();
+    assert_ne!(
+        world_cells_volume(&session.objects[0]),
+        world_cells_volume(&objects[0])
+    );
+    session.objects[0].translation.0 += 17;
+    session.objects[0].translation.2 -= 9;
+    let before = world_cells_volume(&session.objects[0]);
+    let first = session.export_bytes().unwrap();
+    session.import_bytes(&first).unwrap();
+    assert_eq!(world_cells_volume(&session.objects[0]), before);
+    let second = session.export_bytes().unwrap();
+    session.import_bytes(&second).unwrap();
+    assert_eq!(world_cells_volume(&session.objects[0]), before);
+    assert_eq!(session.export_bytes().unwrap(), second, "save fixpoint");
+}
+
+#[test]
+fn scene_origin_chunk_rejects_malformed_duplicate_and_overflow() {
+    let objects = vec![bare_volume(
+        "manual",
+        HashMap::from([((4, 3, 2), 1)]),
+        (0, 0, 0),
+    )];
+    let base = save_scene(
+        &objects,
+        &default_palette(),
+        &[Material::default(); 256],
+        &Skeleton::default(),
+        &[],
+    )
+    .unwrap();
+    let body = |version: u32, shift: [i32; 3]| {
+        let mut bytes = version.to_le_bytes().to_vec();
+        for axis in shift {
+            bytes.extend_from_slice(&axis.to_le_bytes());
+        }
+        bytes
+    };
+    let append = |file: &mut Vec<u8>, body: &[u8]| {
+        let child = chunk(b"MVOR", body);
+        let length = u32::from_le_bytes(file[16..20].try_into().unwrap()) + child.len() as u32;
+        file[16..20].copy_from_slice(&length.to_le_bytes());
+        file.extend(child);
+    };
+    for (chunk_body, expected) in [
+        (vec![0; 3], "wrong length"),
+        (body(2, [0; 3]), "unsupported MVOR version"),
+        (body(1, [i32::MAX; 3]), "origin overflow"),
+    ] {
+        let mut bytes = base.clone();
+        append(&mut bytes, &chunk_body);
+        assert!(load_vox(&bytes).err().unwrap().contains(expected));
+    }
+    let mut bytes = base;
+    append(&mut bytes, &body(1, [0; 3]));
+    append(&mut bytes, &body(1, [0; 3]));
+    assert!(load_vox(&bytes).err().unwrap().contains("duplicate MVOR"));
+}

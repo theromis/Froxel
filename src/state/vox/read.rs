@@ -30,6 +30,7 @@ pub(crate) fn load_vox(bytes: &[u8]) -> Result<Loaded, String> {
     let mut clips = None;
     let mut scripts = None;
     let mut markers = None;
+    let mut scene_shift = None;
 
     while p + 12 <= end {
         let id = read_id(bytes, &mut p)?;
@@ -123,6 +124,21 @@ pub(crate) fn load_vox(bytes: &[u8]) -> Result<Loaded, String> {
                 return Err("duplicate MVMK chunk".into());
             }
             markers = Some(body.to_vec());
+        } else if &id == b"MVOR" {
+            if scene_shift.is_some() {
+                return Err("duplicate MVOR chunk".into());
+            }
+            if body.len() != 16 {
+                return Err("MVOR chunk has the wrong length".into());
+            }
+            if body[..4] != 1u32.to_le_bytes() {
+                return Err("unsupported MVOR version".into());
+            }
+            scene_shift = Some([
+                i32::from_le_bytes(body[4..8].try_into().unwrap()),
+                i32::from_le_bytes(body[8..12].try_into().unwrap()),
+                i32::from_le_bytes(body[12..16].try_into().unwrap()),
+            ]);
         } else if &id == b"MVSC" {
             if scripts.is_some() {
                 return Err("duplicate MVSC chunk".into());
@@ -135,7 +151,7 @@ pub(crate) fn load_vox(bytes: &[u8]) -> Result<Loaded, String> {
     if models.is_empty() {
         return Err("file has no models".into());
     }
-    let (mut objects, shift) = place_models(&models, &nodes);
+    let (mut objects, shift) = place_models(&models, &nodes, scene_shift)?;
     let skeleton = if let Some((mut skeleton, binds)) = rig {
         // Pivots are world positions: they move with the objects.
         crate::rig::shift_pivots(&mut skeleton, shift);
@@ -366,7 +382,8 @@ pub(crate) fn parse_translation(text: &str) -> Option<[i32; 3]> {
 pub(crate) fn place_models(
     models: &[([i32; 3], Vec<(i32, i32, i32, u8)>)],
     nodes: &HashMap<i32, VoxNode>,
-) -> (Vec<LoadedObject>, [i32; 3]) {
+    saved_shift: Option<[i32; 3]>,
+) -> Result<(Vec<LoadedObject>, [i32; 3]), String> {
     let placements = if nodes.is_empty() {
         Vec::new()
     } else {
@@ -448,7 +465,7 @@ pub(crate) fn place_models(
         ));
     }
     if world.is_empty() {
-        return (
+        return Ok((
             vec![LoadedObject {
                 name: String::new(),
                 cells: HashMap::new(),
@@ -464,10 +481,10 @@ pub(crate) fn place_models(
                 script: Default::default(),
             }],
             [0, 0, 0],
-        );
+        ));
     }
-    // The first object is centred across, so a saved scene reopens in place;
-    // the lowest voxel of the whole scene goes on the floor.
+    // Foreign scenes open centred across and floored. A Froxel save records
+    // its chosen editor frame, which overrides that import convenience.
     let mut shift0 = world
         .iter()
         .find_map(|(_, cells, ..)| display_shift(cells.keys()))
@@ -475,6 +492,19 @@ pub(crate) fn place_models(
     if let Some(all) = display_shift(world.iter().flat_map(|(_, cells, ..)| cells.keys())) {
         shift0.2 = all.2;
     }
+    if let Some(saved) = saved_shift {
+        shift0 = (saved[0], saved[1], saved[2]);
+    }
+    let add_shift = |point: [i32; 3]| -> Result<Cell, String> {
+        match (
+            point[0].checked_add(shift0.0),
+            point[1].checked_add(shift0.1),
+            point[2].checked_add(shift0.2),
+        ) {
+            (Some(x), Some(y), Some(z)) => Ok((x, y, z)),
+            _ => Err("VOX scene origin overflow".into()),
+        }
+    };
     let objects = world
         .into_iter()
         .map(
@@ -503,13 +533,9 @@ pub(crate) fn place_models(
                     local.insert((spun[0], spun[1], spun[2]), color);
                 }
                 let link_name = name.clone();
-                let translation = (
-                    corner[0] + shift0.0,
-                    corner[1] + shift0.1,
-                    corner[2] + shift0.2,
-                );
+                let translation = add_shift(corner)?;
                 let (box_min, box_dims) = corner_box(file_dims, world_r);
-                LoadedObject {
+                Ok(LoadedObject {
                     name,
                     cells: local,
                     translation,
@@ -523,11 +549,7 @@ pub(crate) fn place_models(
                     pivot: if rot_is_identity(world_r) {
                         (0, 0, 0)
                     } else {
-                        (
-                            anchor[0] + shift0.0,
-                            anchor[1] + shift0.1,
-                            anchor[2] + shift0.2,
-                        )
+                        add_shift(anchor)?
                     },
                     model_dims: if rot_is_identity(world_r) {
                         (0, 0, 0)
@@ -544,11 +566,11 @@ pub(crate) fn place_models(
                     }),
                     bone: None,
                     script: Default::default(),
-                }
+                })
             },
         )
-        .collect();
-    (objects, [shift0.0, shift0.1, shift0.2])
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok((objects, [shift0.0, shift0.1, shift0.2]))
 }
 
 pub(crate) fn size_box_world(

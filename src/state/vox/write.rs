@@ -77,6 +77,13 @@ pub(crate) fn save_document(
     if let Some(body) = markers {
         append_chunk(&mut bytes, b"MVMK", &body);
     }
+    // Foreign VOX imports are centred for editing. Our own saves retain the
+    // chosen editor frame, including negative cells below the ground plane.
+    let mut origin = 1u32.to_le_bytes().to_vec();
+    for axis in graph.map(|graph| graph.shift).unwrap_or([0; 3]) {
+        origin.extend_from_slice(&axis.to_le_bytes());
+    }
+    append_chunk(&mut bytes, b"MVOR", &origin);
     Ok(bytes)
 }
 

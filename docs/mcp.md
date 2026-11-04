@@ -1181,3 +1181,13 @@ Batch export checks all destinations before writing. Names that resolve to the
 same path, including links, `..` aliases and case-only differences, are rejected
 as a malformed batch. Other per-model failures remain independent: a failed
 source does not prevent valid sources from exporting.
+
+## Saved scene coordinates
+
+Froxel-authored `.vox` saves keep world voxel positions and marker positions across
+reopening, including negative cells below the ground plane and a deliberately moved
+object. A small `MVOR` version 1 chunk stores the editor-to-file shift. Foreign files
+without it still open centred horizontally and resting on the lowest voxel. Local
+cells may be rebased to the model box on load; use the returned object position or
+world/glTF marker coordinates rather than assuming the old local origin. This is
+the shared file path for MCP, the editor and CLI saves; MagicaVoxel ignores MVOR.

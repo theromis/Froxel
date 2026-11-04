@@ -31,7 +31,10 @@ the module they cover.
 Index 0 is empty. Hand sculpting is described in
 `docs/hand-sculpting.md`. A loaded scene keeps its node graph (`VoxGraph` on the
 session): groups, layers, every animation frame, and `_hidden`. Save writes
-that graph back. Frame 0 is the edited pose. Objects created in the editor
+that graph back. Froxel saves also write `MVOR` v1 (the editor-to-file shift),
+so their world cells and markers do not recenter on reopening. Files without
+it retain import centring/floor placement; local cells may still rebase to
+the SIZE corner. Frame 0 is the edited pose. Objects created in the editor
 are appended. Hidden objects stay in the file and are omitted from the mesh,
 the tracer, and mesh export.
 
