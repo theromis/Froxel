@@ -1,5 +1,6 @@
 //! The MCP stone and surface tools in Rhai: `joints`, `column_relief`,
-//! `weather`, `moss`, `algae`, `vines`, `sweep`, `bark`, and `cavity_tint`.
+//! `weather`, `moss`, `algae`, `vines`, `sweep`, `bark`, `cavity_tint`, and
+//! `foliage`.
 //!
 //! Each call turns its arguments into the MCP tool's arguments and runs
 //! `remote::stone_writes` on the object being written, as the MCP handler
@@ -77,6 +78,25 @@ const SWEEP: &[&str] = &["curve", "pattern", "period", "seed", "mode"];
 
 const BARK: &[&str] = &[
     "axis", "points", "curve", "dirt", "width", "length", "depth", "cracks", "only", "exclude",
+    "seed",
+];
+
+const FOLIAGE: &[&str] = &[
+    "ellipsoids",
+    "boxes",
+    "from",
+    "core",
+    "size",
+    "gap",
+    "flatten",
+    "ragged",
+    "light",
+    "dark",
+    "sun",
+    "masses",
+    "groove",
+    "protect",
+    "exclude",
     "seed",
 ];
 
@@ -228,6 +248,36 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
             );
         }
     }
+    // `foliage(palettes, opts)` bounds itself by its volume;
+    // `foliage(x0, y0, z0, x1, y1, z1, palettes, opts)` keeps to a box. The
+    // options name the volume, so there is no form without them.
+    let state = scratch.clone();
+    let run = move |corners: Option<[INT; 6]>, palettes: Dynamic, opts: &Map| -> Fallible<Map> {
+        let mut args = options(opts, FOLIAGE, "foliage")?;
+        if let Some(corners) = corners {
+            args.extend(box_args(corners)?);
+        }
+        args.insert("palettes".into(), json(&palettes)?);
+        state
+            .borrow_mut()
+            .stone(args, Stone::Foliage)
+            .map_err(runtime)
+    };
+    let boxed = run.clone();
+    engine.register_fn("foliage", move |palettes: Dynamic, opts: Map| {
+        run(None, palettes, &opts)
+    });
+    engine.register_fn(
+        "foliage",
+        move |x0: INT,
+              y0: INT,
+              z0: INT,
+              x1: INT,
+              y1: INT,
+              z1: INT,
+              palettes: Dynamic,
+              opts: Map| { boxed(Some([x0, y0, z0, x1, y1, z1]), palettes, &opts) },
+    );
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |corners: [INT; 6], opts: &Map| -> Fallible<Map> {

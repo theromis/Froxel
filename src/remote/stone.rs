@@ -1,5 +1,5 @@
 //! The stone and surface tools: MCP `joints`, `column_relief`, `weather`,
-//! `moss`, `algae`, `vines`, `sweep`, `bark`, and `cavity_tint`, their
+//! `moss`, `algae`, `vines`, `sweep`, `bark`, `foliage`, and `cavity_tint`, their
 //! arguments, and their replies.
 //!
 //! Each tool turns its MCP arguments into writes against a cell map and a
@@ -28,6 +28,7 @@ pub(crate) enum Stone {
     Vines,
     Sweep,
     Bark,
+    Foliage,
 }
 
 pub(crate) type Writes = Vec<(i32, i32, i32, i32)>;
@@ -105,6 +106,11 @@ pub(crate) fn stone_writes(
             reply.insert("painted".into(), json!(done.painted));
             reply.insert("cracks".into(), json!(done.cracks));
             done.writes
+        }
+        Stone::Foliage => {
+            let (writes, counts) = super::foliage::foliage_writes(cells, params)?;
+            reply = counts;
+            writes
         }
         Stone::Sweep => {
             let (writes, cells_in, length) = sweep_writes(cells, params)?;

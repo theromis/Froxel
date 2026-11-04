@@ -601,6 +601,44 @@ the next run. Options:
 It returns `#{changed, darkened, lightened, shades}`, where `shades` lists
 `#{slot, from, rgba}` for the shades it made.
 
+### Foliage
+
+```rhai
+foliage([3, 4, 5, 6, 7], #{ellipsoids: [[0, 0, 30, 15, 14, 9]], core: 3, masses: 3, seed: 2});
+foliage([3, 4, 5], #{from: [3, 4, 5]});  // re-cluster a crown already sculpted
+foliage(x0, y0, z0, x1, y1, z1, [3, 4, 5, 6], #{boxes: [[-8, -8, 20, 8, 8, 30]]});
+```
+
+MCP `foliage`: a clustered broadleaf crown of separate leaf clumps with lit
+tops, dark undersides, and a dark core in the gaps, instead of one blob.
+`palettes` are the leaf slots from the darkest to the lightest. The options
+name the volume, so there is no form without them; the box form keeps the
+writes inside the box. Only empty cells and the crown's own slots are
+written, so the wood the script built first stays whole and shows through
+the gaps. Slots keep their motion: give the leaves and the core the same
+`set_motion` sway. Options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `ellipsoids` | none | Crown volume: `[x, y, z, radius]` or `[x, y, z, rx, ry, rz]` each. |
+| `boxes` | none | Crown volume: `[x0, y0, z0, x1, y1, z1]` each. |
+| `from` | none | Crown volume: the existing cells of these slots; those no clump keeps are removed. |
+| `core` | first of `palettes` | Slot of the dark inside seen in the gaps. |
+| `size` | `[3, 6]` | Clump radius range in cells, 1..=32. |
+| `gap` | `1` | Extra cells between neighbouring clumps, 0..=8. |
+| `flatten` | `0.7` | Clump height over width, 0.2..=1.5. |
+| `ragged` | `0.4` | Leafy outline noise, 0..=1. |
+| `light` | `1` | How far sunlit tops lighten toward the last slot, 0..=2. |
+| `dark` | `1` | How far undersides and seams darken toward the first slot, 0..=2. |
+| `sun` | `[-0.35, -0.45, 1]` | Toward the sun, Z up. |
+| `masses` | `0` | Lobes the clumps are grouped into, 0..=16, split by grooves. |
+| `groove` | `2` | How many cells deeper the grooves between masses go, 0..=8. |
+| `protect` | none | Slots never written even if they are crown slots. |
+| `exclude` | none | Boxes left alone, such as the space in front of the trunk. |
+| `seed` | `0` | A whole number of at least 0. |
+
+It returns `#{changed, clumps, masses, added, recoloured, removed, core}`.
+
 ### Moss, algae, and vines
 
 ```rhai
@@ -653,7 +691,7 @@ weather(x0, y0, z0, x1, y1, z1, #{chip: 0.16, pits: 0.02, broken: 2, exclude: to
 moss(x0, y0, z0, x1, y1, z1, [10, 11, 12], #{exclude: tops});
 ```
 
-`exclude` on `scatter`, `joints`, `weather`, `bark`, `cavity_tint`, `moss`,
+`exclude` on `scatter`, `joints`, `weather`, `bark`, `cavity_tint`, `foliage`, `moss`,
 `algae`, and `vines` is one inclusive box `[x0, y0, z0, x1, y1, z1]` or a list of up to 64, of
 any size. No cell inside a box is removed, recoloured, or written, no plant
 grows from a cell inside one, and no piece rests in one. Give a walking
@@ -680,6 +718,12 @@ slot, `bark` along the trunk's own points and along a branch stub,
 `cavity_tint` making darker shades in the fissures and the root flare and
 lighter ones on the plate ridges, and `moss` cushions on the upper side
 with drapes over the edge.
+
+`examples/clustered_tree.rhai` (baked in `examples/clustered_tree.vox`) is
+a broadleaf tree whose crown is separate leaf clumps: a tube trunk and
+branches, then `foliage` over three ellipsoids in four masses, with lit
+tops, dark undersides, a dark core in the gaps, and leaf slots that sway
+while the wood stays still.
 
 `examples/gorge_wall.rhai` (baked in `examples/gorge_wall.vox`) is a gorge
 cliff wall built with the stone tools: a profile swept along a curve,

@@ -23,7 +23,7 @@ If the tools are missing, the server is not configured. Point the user to
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `cavity_tint`, `moss`, `algae`, `vines`, `sweep`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, and `marker`,
+  (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, and `marker`,
   `collision_box`, `connector`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -110,7 +110,14 @@ If the tools are missing, the server is not configured. Point the user to
    `points` as its `fill_tube` (plates and fissures with dirt at the
    bottom), then `cavity_tint` to darken fissures, crevices, and root
    crooks (it makes the shades itself) before moss. `cavity_tint` gives
-   rock depth the same way. Pass `exclude` boxes (a ledge top, a
+   rock depth the same way. Build a broadleaf crown with `foliage`, never
+   a blob of `fill_ellipsoid` calls with noise or grooves: after the trunk
+   and branches, `foliage` over a few ellipsoids (or `from` an existing
+   crown's leaf slots) packs separate clumps with sunlit tops, dark
+   undersides, and a dark `core` in the gaps (`palettes` darkest first,
+   `size`, `gap`, `masses` for lobes; the wood stays whole;
+   `examples/clustered_tree.rhai`). Give the leaf slots and the core the
+   same sway. Pass `exclude` boxes (a ledge top, a
    cave floor, a river bed, with the air above) to these tools and
    `scatter` so walking surfaces stay flat instead of refilling them. Do not compute tubes or carves in
    an outside script. Get the silhouette and proportions right first.

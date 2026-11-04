@@ -175,6 +175,7 @@ tracer. A file with no scene graph still loads its first model.
 | `weather` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Chip edges and corners, dent pits into flat faces, and add subtle colour noise on the exposed cells of the box. Optional `chip`, `chipSize`, `pits`, `pitDepth`, `broken`, `noise`, `noiseDensity`, `noiseScale`, `only`, `exclude`, `seed`. Replies with `chips`, `pits`, `removed`, `broken`, `recoloured`. One undo step |
 | `bark` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `axis` or `points`, `palettes` | Bark on wood along the grain: long plates of varied width, offset like real bark, split by fissures cut 1 to 2 cells deep with `dirt` at their bottom, and now and then a crack across a plate. Optional `curve`, `dirt`, `width`, `length`, `depth`, `cracks`, `only`, `exclude`, `seed`. Replies with `plates`, `removed`, `dirtied`, `painted`, `cracks`. One undo step |
 | `cavity_tint` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Darken exposed cells in concave spots and crevices, and with `lighten` lighten ridges, by neighbour occupancy, to the slots in `pairs` or to shades it makes in free slots. Optional `radius`, `dark`, `lighten`, `light`, `pairs`, `darken`, `brighten`, `only`, `exclude`. Replies with `darkened`, `lightened`, `shades`. One undo step with the palette |
+| `foliage` | `palettes`, and `ellipsoids`, `boxes`, or `from` | A clustered broadleaf crown: separate leaf clumps packed over the volume's surface, each a flattened ragged ellipsoid shaded as one piece (sunlit top, dark underside, a darker seam where two meet), with a dark `core` inside that shows in the gaps; the wood is left alone. Optional box `x0`..`z1`, `core`, `size`, `gap`, `flatten`, `ragged`, `light`, `dark`, `sun`, `masses`, `groove`, `protect`, `exclude`, `seed`. Replies with `clumps`, `masses`, `added`, `recoloured`, `removed`, `core`. One undo step |
 | `moss` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Moss caps on tops and curtains with a ragged end down the side faces below them, or with `style` `cushions` separate cushions on exposed cells with drapes from overhangs. Optional `style`, `amount`, `noise`, `faces`, `facing`, `band`, `only`, `exclude`, `layer`, `curtains`, `length`, `thickness`, `size`, `gap`, `exposure`, `drapes`, `seed`. `faces` defaults to top and side, or every face when `facing` is set; caps take undersides with `bottom`, and a `facing` that no face in `faces` points along is an error. Replies with `added`, `painted`, and `curtains`, or `cushions` and `drapes`, plus `warning` (why) when nothing grew. One undo step |
 | `algae` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | An algae band, dense at the bottom of `band` and thinning upward in clumps. Optional `band`, `amount`, `noise`, `faces`, `facing`, `only`, `exclude`, `layer`, `seed`. Replies with `added`, `painted`. One undo step |
 | `vines` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Vine strands hanging from top edges, graded through `palettes` to the tip, with optional `blooms`. Optional `amount`, `length`, `bloomChance`, `noise`, `faces`, `facing`, `band`, `only`, `exclude`, `seed`. Replies with `added`, `strands`, `blooms`. One undo step |
@@ -297,7 +298,7 @@ cell at the top of the box, or would come to rest with a cell in an
 cells are written, at most 200000; the same `seed` gives the same pile.
 
 `exclude` on `scatter`, `joints`, `weather`, `bark`, `cavity_tint`,
-`moss`, `algae`, and `vines` keeps walking surfaces whole: one inclusive box `[x0, y0, z0, x1, y1, z1]`
+`foliage`, `moss`, `algae`, and `vines` keeps walking surfaces whole: one inclusive box `[x0, y0, z0, x1, y1, z1]`
 or a list of up to 64, in the object's cells, of any size. No cell inside a
 box is removed, recoloured, or written, no plant grows from a cell inside
 one, and no debris comes to rest in one. Cover a ledge top, a cave floor,
@@ -550,6 +551,55 @@ in a slot that already holds exactly that shade or the highest free slot
 (one no cell of any object uses); the reply's `shades` lists the slots it
 made, and the palette changes are part of the same undo step. Run it after
 `bark`, `joints`, or `weather`, and before `moss`.
+
+`foliage` builds a tree crown the way pixel-art broadleaf trees are drawn:
+many separate leaf clumps with sunlit tops, darker undersides, and dark gaps
+between them, instead of one smooth blob of `fill_ellipsoid` calls. The
+crown volume is `ellipsoids` (`[x, y, z, radius]` or
+`[x, y, z, rx, ry, rz]`), `boxes` (`[x0, y0, z0, x1, y1, z1]`), up to 64
+shapes, and `from`: the existing cells of those slots, so a crown already
+sculpted can be re-clustered (its cells that no clump or core keeps are
+removed). Clump centres are packed over the volume's surface with
+Poisson-like spacing: no two closer than 0.6 times the sum of their radii
+plus `gap` cells (default 1), height counted over `flatten`. Each clump is
+an ellipsoid of a radius from `size` ([3, 6] cells, 1..=32), `flatten`
+(default 0.7) as tall as it is wide and a little flatter underneath,
+turned at random about Z, sunk a third into the volume so it bulges out of
+it, with a leafy outline moved in and out by `ragged` (default 0.4). A cell
+belongs to the clump it lies deepest in. The volume one cell under its
+surface takes `core` (default the first of `palettes`), so the gaps show
+dark and nothing is see-through; cells inside the crown take it too.
+
+`palettes` are 1 to 8 leaf slots from the darkest to the lightest (shade,
+mid, light, sunlit tips). A clump is shaded as one piece: its own light
+comes from its height in the crown and how the crown faces `sun` there
+(default `[-0.35, -0.45, 1]`, high at the front left), varied a little per
+clump; inside it each cell's tone follows the way the clump's own surface
+faces the sun, so the top is light and the underside dark, and a cell
+beside another clump's is darker, a seam. `light` and `dark` (0..=2,
+default 1) set how far tones reach toward the last and the first slot.
+There is no per-cell colour noise. `masses` (0..=16, default 0) spreads
+that many lobe seeds over the surface; each clump joins the nearest, takes
+some of its tone, and near the border between two lobes sinks `groove`
+cells deeper (default 2), shrinks, and darkens, and the core under the
+border is cut back, so the lobes read as separate masses.
+
+Only empty cells and cells of the crown's own slots (`palettes`, `core`,
+`from`) are written, never a `protect` slot, so trunk and branches stay
+whole and show through the gaps; `exclude` boxes keep a space open, such
+as in front of the trunk. The box is optional: without it the writes stay
+inside the shapes and `from` cells grown by room for the clumps to bulge.
+Slots keep their motion: give the leaf slots and the core the same sway.
+The same `seed` gives the same crown; at most 4096 clumps.
+
+```json
+{"name": "foliage", "arguments": {
+  "palettes": [3, 4, 5, 6, 7], "core": 3,
+  "ellipsoids": [[1, 0, 30, 15, 13.5, 9], [-7, 4, 34, 9, 9, 7], [7, -4, 34, 9, 8, 7]],
+  "size": [3, 5], "gap": 1, "flatten": 0.7, "ragged": 0.4, "masses": 4, "seed": 3}}
+```
+
+![examples/clustered_tree.rhai in the fast preview: separate leaf clumps with sunlit tops, dark undersides, and the dark core in the gaps](images/clustered-tree.png)
 
 `moss`, `algae`, and `vines` grow on the exposed faces of the solid cells
 in the box whose face passes the filter: `faces` (`top`, `side`, `bottom`,
@@ -1144,13 +1194,14 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `deform` | Deform section: Bend, Taper, Twist, or Displace; Axis, Origin, Length; Angle and Toward, Start and End, or Amplitude, Scale, Octaves, Bias, Seed; over the selection's box or the whole object |
 | `brush` | Sculpt tool (**S**): Inflate, Deflate, Smooth, Flatten, or Grab; Radius, Strength, Falloff, Only. A drag lays dabs on the surface; Grab pulls the pressed point along the drag in the view plane. One undo step per drag |
 | `break_end` | Break section: Point (or Point at selection), Normal with ±X/Y/Z, Depth, Splinters, Length, Thickness, Taper, Rim bias, Bark, Sapwood, and Tip slots, Seed |
-| `exclude` (on the stone tools) | Protect section: one box per line, Add selection, Clear; Scatter, Joints, Weather, Bark, Cavity, and Growth use it |
+| `exclude` (on the stone tools) | Protect section: one box per line, Add selection, Clear; Scatter, Joints, Weather, Bark, Cavity, Foliage, and Growth use it |
 | `scatter` | Scatter section: Pieces, Kinds, Size, Palettes, Clump, Seed, over the selection's box or above the whole object |
 | `column_relief` | Relief section: Facing ±X/±Y, Palette, Width, Out, Crown, Top, Lower, Depth, Seed, Raise columns on the selection's box or the whole object |
 | `joints` | Joints section: Columns, Courses, or Cracks, Spacing, Course (or Density), Width, Depth, Dirt, Only, Seed, over the selection's box or the whole object |
 | `weather` | Weather section: Chip, Chip size, Pits, Pit depth, Broken, Noise, Density, Patch, Only, Seed, over the selection's box or the whole object |
 | `bark` | Bark section: Along X, Y, Z, or Points (Smooth, From Sweep), Palettes, Dirt, Width, Length, Depth, Cracks, Only, Seed, over the selection's box or the whole object |
 | `cavity_tint` | Cavity section: Radius, Dark, Lighten, Pairs, Shades, Only, over the selection's box or the whole object |
+| `foliage` | Foliage section: Volume (Ellipsoids, with Ellipsoid at selection, or From slots), Palettes, Core, Size, Gap, Flatten, Ragged, Light, Dark, Masses, Groove, Keep, Seed; Grow crown within the selection's box, or the whole crown with nothing selected |
 | `moss`, `algae`, `vines` | Growth section: Moss (Caps or Cushions), Algae, or Vines, Palettes, Amount, Noise, Faces, Facing, Band, Only, Paint, Curtains, Thickness, Size, Gap, Exposure, Drapes, Length, Blooms, Bloom chance, Seed, over the selection's box or the whole object |
 | `smooth` | Smooth section: Passes, Fill at, Remove at, over the selection or the whole object |
 | `set_palette` | Palette dock (colour and alpha) and the Material section (motion) |

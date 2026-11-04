@@ -616,7 +616,7 @@ pub const DIRECTIONS: [(&str, [i32; 3]); 6] = [
 #[derive(Clone, Default, PartialEq)]
 pub struct StonePanels {
     /// The Protect section: MCP `exclude` boxes for Scatter, Relief,
-    /// Joints, Weather, Bark, Cavity, and Growth, `x0 y0 z0 x1 y1 z1`
+    /// Joints, Weather, Bark, Cavity, Foliage, and Growth, `x0 y0 z0 x1 y1 z1`
     /// separated by semicolons or new lines.
     pub exclude: String,
     pub joints: JointsPanel,
@@ -624,6 +624,7 @@ pub struct StonePanels {
     pub weather: WeatherPanel,
     pub bark: BarkPanel,
     pub cavity: CavityPanel,
+    pub foliage: super::FoliagePanel,
     pub growth: GrowthPanel,
     pub sweep: SweepPanel,
     pub markers: MarkersPanel,

@@ -215,7 +215,25 @@ pipe with a stripe. Build the trunk, branch, or root with one slot, then:
 
 `examples/barked_trunk.rhai` puts them together on a fallen trunk.
 
-Pass `exclude` boxes to `joints`, `weather`, `bark`, `cavity_tint`, the
+A broadleaf crown is not a blob of `fill_ellipsoid` calls with noise or
+grooves on top: that reads as one uniform mass. Build the trunk and
+branches first, then `foliage` over a few ellipsoids (a broad middle and
+two or three lobes, wider than tall): it packs separate leaf clumps over
+the surface, each shaded as one piece with a sunlit top and a dark
+underside, and fills the inside with a dark `core` that shows in the gaps.
+`palettes` run from the darkest leaf slot to the sunlit tips; `size` is the
+clump radius, `gap` how much core shows between them, and `masses` groups
+the clumps into a few lobes split by deeper grooves. The wood is never
+written, so branches show through the gaps; an `exclude` box keeps the
+space in front of the trunk open. To re-cluster a crown that is already
+sculpted, pass its leaf slots as `from`. Give the leaf slots and the core
+the same sway. `examples/clustered_tree.rhai` is a whole tree.
+
+```
+foliage              palettes=[3, 4, 5, 6, 7] core=3 ellipsoids=[[1, 0, 30, 15, 13.5, 9], [-7, 4, 34, 9, 9, 7], [7, -4, 34, 9, 8, 7]] size=[3, 5] masses=4 seed=3   # clumps, not a blob
+```
+
+Pass `exclude` boxes to `joints`, `weather`, `bark`, `cavity_tint`, `foliage`, the
 plants, and `scatter` to
 keep walking surfaces whole: a ledge top, a cave floor, or a river bed (its
 top layer and the air above it) stays flat while the stone around it is

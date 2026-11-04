@@ -619,6 +619,7 @@ mod dialog;
 mod document;
 mod drag;
 mod files;
+mod foliage;
 mod geom;
 mod import;
 mod markers;
@@ -910,6 +911,7 @@ pub struct Session {
 
 pub(super) const IDLE: &str = "Right-drag orbits, scroll zooms, left-drag edits with the active tool. Render mode path-traces the scene.";
 
+pub use foliage::{FoliagePanel, FOLIAGE_SOURCES};
 pub use geom::palette_slot_at;
 #[allow(unused_imports)] // keeps `crate::state::raycast` after the move into geom
 pub use geom::raycast;

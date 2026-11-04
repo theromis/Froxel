@@ -7,6 +7,7 @@ use std::path::{Component, Path, PathBuf};
 
 use serde_json::{json, Map, Value};
 
+mod foliage;
 mod import;
 mod markers;
 mod organic;
@@ -826,6 +827,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "mesh.import" => import::apply_import(session, &params),
         "voxel.bark" => stone::apply_stone(session, &params, Stone::Bark),
         "voxel.cavity_tint" => stone::apply_cavity(session, &params),
+        "voxel.foliage" => stone::apply_stone(session, &params, Stone::Foliage),
         "marker.set" => markers::set_marker(session, &params),
         "marker.remove" => markers::remove_marker(session, &params),
         "marker.list" => Ok(markers::list_markers(session)),
@@ -1335,6 +1337,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.vines", "x0, y0, z0, x1, y1, z1, palettes, amount?, length?, blooms?, bloomChance?, noise?, faces?, facing?, band?, only?, exclude?, seed?", "Vine strands hanging from top edges, with blooms"),
     ("voxel.bark", "x0, y0, z0, x1, y1, z1, axis | points, curve?, palettes, dirt?, width?, length?, depth?, cracks?, only?, exclude?, seed?", "Bark plates along an axis or a tube's curve, split by fissures cut 1 to 2 cells deep with dirt at the bottom"),
     ("voxel.cavity_tint", "x0, y0, z0, x1, y1, z1, radius?, dark?, lighten?, light?, pairs?, darken?, brighten?, only?, exclude?", "Darken crevices and concave cells (and lighten ridges) by neighbour occupancy, to given or created shades"),
+    ("voxel.foliage", "palettes, ellipsoids? | boxes? | from?, x0..z1?, core?, size?, gap?, flatten?, ragged?, light?, dark?, sun?, masses?, groove?, protect?, exclude?, seed?", "A clustered tree crown: separate leaf clumps over a volume, lit tops, dark undersides, and a dark core in the gaps"),
     ("voxel.sweep", "points, profile | width + height + radius?, curve?, palette | palettes, pattern?, period?, seed?, mode?", "Fill a 2D profile along a polyline or smooth curve, with twist and scale per point"),
     ("voxel.deform", "op, x0..z1?, axis?, origin?, length?, center?, angle?, direction?, start?, end?, amplitude?, scale?, octaves?, seed?, bias?", "Bend, taper, or twist the object or a box along an axis, or displace its surface with noise; slots kept"),
     ("voxel.loft", "points, radius? | rx? + ry?, roll?, flatTop?, noise?, frequency?, curve?, caps?, palette | palettes, pattern?, period?, sectors?, seed?, mode?", "Fill a solid along a curve whose elliptical, flattened, noisy section changes per point"),

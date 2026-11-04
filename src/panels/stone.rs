@@ -53,14 +53,14 @@ fn slots_field(ui: &mut Ui, text: &mut String, hint: &str) {
     );
 }
 
-/// MCP `exclude`: boxes Scatter, Relief, Joints, Weather, Bark, Cavity, and
-/// Growth leave alone.
+/// MCP `exclude`: boxes Scatter, Relief, Joints, Weather, Bark, Cavity,
+/// Foliage, and Growth leave alone.
 pub(super) fn protect(ui: &mut Ui, session: &mut Session) {
     let enabled = session.editor_mode == EditorMode::Model;
     ui.add_enabled_ui(enabled, |ui| {
         section(ui, "Protect");
         ui.label(
-            RichText::new("Boxes Scatter, Relief, Joints, Weather, Bark, Cavity, and Growth leave alone: ledge tops, cave floors, river beds.")
+            RichText::new("Boxes Scatter, Relief, Joints, Weather, Bark, Cavity, Foliage, and Growth leave alone: ledge tops, cave floors, river beds.")
                 .small()
                 .color(DIM),
         );
