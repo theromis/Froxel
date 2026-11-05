@@ -115,6 +115,59 @@ pub fn cell_box(a: [i32; 3], b: [i32; 3]) -> MarkerKind {
     MarkerKind::Box { min, max }
 }
 
+/// Whether `marker` is a box MCP `collision_from_voxels` made on `object`
+/// under `prefix`: `<prefix>_<number>`.
+fn collision_owned(marker: &Marker, object: &str, prefix: &str) -> bool {
+    marker.object == object
+        && matches!(marker.kind, MarkerKind::Box { .. })
+        && marker
+            .name
+            .strip_prefix(prefix)
+            .and_then(|rest| rest.strip_prefix('_'))
+            .is_some_and(|number| !number.is_empty() && number.chars().all(|c| c.is_ascii_digit()))
+}
+
+/// Replace the boxes `prefix` made on `object` with `boxes`. Any other marker
+/// with one of the new names is an error, and `markers` stays as it was.
+/// Returns how many went.
+pub(crate) fn replace_collision_markers(
+    markers: &mut Vec<Marker>,
+    object: &str,
+    prefix: &str,
+    boxes: Vec<(String, MarkerKind)>,
+    scripted: bool,
+) -> Result<usize, String> {
+    let kept: Vec<&Marker> = markers
+        .iter()
+        .filter(|m| !collision_owned(m, object, prefix))
+        .collect();
+    for (name, _) in &boxes {
+        if let Some(other) = kept.iter().find(|m| m.name == *name) {
+            return Err(format!(
+                "a {} marker named `{name}` is already on `{}`: pass another prefix",
+                other.kind.name(),
+                other.object
+            ));
+        }
+    }
+    if kept.len() + boxes.len() > MAX_MARKERS {
+        return Err(format!(
+            "a document holds at most {MAX_MARKERS} markers: {} boxes do not fit beside {} others",
+            boxes.len(),
+            kept.len()
+        ));
+    }
+    let replaced = markers.len() - kept.len();
+    markers.retain(|m| !collision_owned(m, object, prefix));
+    markers.extend(boxes.into_iter().map(|(name, kind)| Marker {
+        name,
+        object: object.to_string(),
+        kind,
+        scripted,
+    }));
+    Ok(replaced)
+}
+
 /// glTF Y-up `(x, z, -y)`.
 fn y_up(p: [f32; 3]) -> [f32; 3] {
     [p[0], p[2], -p[1]]
@@ -191,6 +244,14 @@ impl Session {
         self.markers.retain(keep);
         self.commit();
         Ok(before - self.markers.len())
+    }
+
+    /// Replace the document's markers. One undo step.
+    pub(crate) fn set_markers_undoable(&mut self, markers: Vec<Marker>) {
+        self.commit();
+        self.checkpoint();
+        self.markers = markers;
+        self.commit();
     }
 
     /// Every marker as JSON: `local` in its object's cells, `world` in

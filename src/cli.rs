@@ -210,7 +210,8 @@ tile's name and parameters under it unless --no-labels. --width and
 --overlay draws the markers over the model: boxes (collision boxes as
 outlines), points, connectors (an arrow toward their direction), or all
 (markers is the same), each named unless --no-overlay-labels. What the
-model hides is drawn faded and dashed. Repeat it to combine kinds.
+model hides is drawn faded and dashed. Repeat it to combine kinds. MCP
+collision_from_voxels builds collision boxes from a model's cells to check.
 
 Two triangle counts are printed and they are not the same mesh. preview is
 the unmerged viewport mesh the image draws (every exposed cell face).

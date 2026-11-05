@@ -8,6 +8,7 @@ use std::path::{Component, Path, PathBuf};
 use serde_json::{json, Map, Value};
 
 mod batch;
+mod collision;
 mod foliage;
 mod import;
 mod markers;
@@ -15,6 +16,7 @@ mod organic;
 mod silhouette;
 mod stone;
 pub(crate) use batch::{batch_items, batch_tool_names, MAX_BATCH_ITEMS};
+pub(crate) use collision::{collision_build, finish_reply as collision_reply};
 pub(crate) use import::{
     import_plan, used_slots, DEFAULT_IMPORT_SIZE, DEFAULT_MAX_NEW_SLOTS, DEFAULT_TOLERANCE,
 };
@@ -847,6 +849,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "marker.set" => markers::set_marker(session, &params),
         "marker.remove" => markers::remove_marker(session, &params),
         "marker.list" => Ok(markers::list_markers(session)),
+        "marker.collision" => collision::collision_from_voxels(session, &params),
         "voxel.get_box" => {
             let cells: Vec<Value> = box_cells(&session.active().cells, &params)?
                 .into_iter()
@@ -1367,6 +1370,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("marker.set", "name, kind?, point | x0..z1 | min + max, direction?, object?", "Name a point, collision box, or connector on an object; replaces one of the same name"),
     ("marker.remove", "name | all", "Remove one marker, or all"),
     ("marker.list", "", "Markers with local, world, and glTF coordinates"),
+    ("marker.collision", "prefix?, layer? | zBands?, minFeature?, holeSize?, only?, exclude?, maxBoxes?, object?", "Collision box markers from an object's solid cells; replaces those of the same prefix on it"),
     ("voxel.smooth", "x0, y0, z0, x1, y1, z1, iterations?, fillAt?, removeAt?", "Majority filter in a box that keeps colours"),
     ("voxel.get_box", "x0, y0, z0, x1, y1, z1", "Non-empty cells inside an inclusive box, at most 100000"),
     ("palette.set", "index, r, g, b, a?, motion?, motion_amount? | entries", "Replace one slot, or many, as one undo step"),

@@ -734,6 +734,17 @@ pub struct MarkersPanel {
     pub kind: usize,
     /// Index into [`DIRECTIONS`].
     pub direction: usize,
+    /// MCP `collision_from_voxels`: empty is the object's default.
+    pub collision_prefix: String,
+    pub collision_layer: i32,
+    /// Z planes instead of the layer; empty uses the layer.
+    pub collision_bands: String,
+    pub collision_min_feature: i32,
+    pub collision_hole_size: i32,
+    pub collision_only: String,
+    pub collision_exclude: String,
+    /// 0 is no limit.
+    pub collision_max_boxes: i32,
 }
 
 impl Default for MarkersPanel {
@@ -742,7 +753,51 @@ impl Default for MarkersPanel {
             name: "marker".into(),
             kind: 0,
             direction: 3,
+            collision_prefix: String::new(),
+            collision_layer: 1,
+            collision_bands: String::new(),
+            collision_min_feature: 1,
+            collision_hole_size: 3,
+            collision_only: String::new(),
+            collision_exclude: String::new(),
+            collision_max_boxes: 0,
         }
+    }
+}
+
+impl MarkersPanel {
+    /// The panel's fields as MCP `collision_from_voxels` arguments.
+    fn collision_args(&self, object: usize) -> Result<Value, String> {
+        let only = parse_slots(&self.collision_only).map_err(|err| format!("Only: {err}"))?;
+        let exclude =
+            parse_slots(&self.collision_exclude).map_err(|err| format!("Leave out: {err}"))?;
+        let mut args = json!({
+            "object": object,
+            "minFeature": self.collision_min_feature,
+            "holeSize": self.collision_hole_size,
+            "only": only,
+            "exclude": exclude,
+        });
+        let prefix = self.collision_prefix.trim();
+        if !prefix.is_empty() {
+            args["prefix"] = json!(prefix);
+        }
+        let bands = self
+            .collision_bands
+            .split(|c: char| c == ',' || c.is_whitespace())
+            .filter(|part| !part.is_empty())
+            .map(|part| part.parse::<i32>())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| "Z bands: give whole numbers, such as 0 3 8 12".to_string())?;
+        if bands.is_empty() {
+            args["layer"] = json!(self.collision_layer);
+        } else {
+            args["zBands"] = json!(bands);
+        }
+        if self.collision_max_boxes > 0 {
+            args["maxBoxes"] = json!(self.collision_max_boxes);
+        }
+        Ok(args)
     }
 }
 
@@ -1090,6 +1145,26 @@ impl Session {
             Ok(reply) => format!("Marker {} set.", reply["marker"]["name"]),
             Err(err) => err,
         };
+    }
+
+    /// The Markers panel's Build collision button: MCP
+    /// `collision_from_voxels` on the active object.
+    pub fn collision_from_panel(&mut self) {
+        let args = self.stone.markers.collision_args(self.selected);
+        self.status =
+            match args.and_then(|args| crate::remote::apply(self, "marker.collision", &args)) {
+                Ok(reply) => {
+                    let mut status = format!(
+                        "Collision: {} boxes, {}% of the solid covered, {} empty cells filled.",
+                        reply["boxes"], reply["coveredPercent"], reply["emptyFilledCells"]
+                    );
+                    if let Some(warning) = reply["warning"].as_str() {
+                        status = format!("{status} {warning}");
+                    }
+                    status
+                }
+                Err(err) => err,
+            };
     }
 
     /// The Markers panel's remove button for one marker.

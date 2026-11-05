@@ -924,6 +924,7 @@ pub use geom::raycast;
 pub(crate) use geom::{occupied_bounds, resolved_box};
 pub use import::ImportPanel;
 pub(crate) use markers::append_gltf_markers;
+pub(crate) use markers::replace_collision_markers;
 pub use markers::{
     cell_box, check_direction, check_marker_name, check_point, Marker, MarkerKind, MAX_MARKERS,
 };

@@ -8,13 +8,26 @@ use crate::state::{cell_box, check_direction, check_point, MarkerKind, Session};
 
 pub(super) fn set_marker(session: &mut Session, params: &Value) -> Result<Value, String> {
     let name = req_str(params, "name")?;
-    let index = match params.get("object") {
-        None | Some(Value::Null) => session.selected,
+    let index = marker_object(session, params)?;
+    let kind = marker_kind(params)?;
+    session.set_marker(index, &name, kind)?;
+    let marker = session
+        .markers_json()
+        .as_array()
+        .and_then(|all| all.iter().find(|m| m["name"] == json!(name)).cloned())
+        .unwrap_or(Value::Null);
+    Ok(json!({"marker": marker, "markers": session.markers.len()}))
+}
+
+/// MCP `object`: an index or a name, or the active object when missing.
+pub(super) fn marker_object(session: &Session, params: &Value) -> Result<usize, String> {
+    match params.get("object") {
+        None | Some(Value::Null) => Ok(session.selected),
         Some(Value::String(name)) => session
             .objects
             .iter()
             .position(|object| object.name == *name)
-            .ok_or_else(|| format!("no object named `{name}`"))?,
+            .ok_or_else(|| format!("no object named `{name}`")),
         Some(found) => found
             .as_u64()
             .map(|index| index as usize)
@@ -24,16 +37,8 @@ pub(super) fn set_marker(session: &mut Session, params: &Value) -> Result<Value,
                     "object must be an index 0..{} or a name",
                     session.objects.len()
                 )
-            })?,
-    };
-    let kind = marker_kind(params)?;
-    session.set_marker(index, &name, kind)?;
-    let marker = session
-        .markers_json()
-        .as_array()
-        .and_then(|all| all.iter().find(|m| m["name"] == json!(name)).cloned())
-        .unwrap_or(Value::Null);
-    Ok(json!({"marker": marker, "markers": session.markers.len()}))
+            }),
+    }
 }
 
 pub(super) fn remove_marker(session: &mut Session, params: &Value) -> Result<Value, String> {

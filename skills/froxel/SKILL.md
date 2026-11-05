@@ -24,7 +24,7 @@ If the tools are missing, the server is not configured. Point the user to
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
   (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, and `marker`,
-  `collision_box`, `connector`),
+  `collision_box`, `connector`, `collision_from_voxels`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `add_bone`, `bind_object`, `set_clip_keys`,
   `set_palette`, …). The document tools apply after the script in order;
@@ -42,6 +42,15 @@ If the tools are missing, the server is not configured. Point the user to
   `marker`, `collision_box`, and `connector`. They are saved in the `.vox`,
   listed in export replies, and exported as glTF nodes with
   `extras.froxel`, so collision never drifts from the model.
+- **Collision from voxels**: `collision_from_voxels` (the same in scripts)
+  builds the `box` markers from an object's solid cells, instead of boxes
+  written by hand: a deck, a hold, a hatch, and a hole in a hull stay as they
+  are. `holeSize` is the smallest opening kept open, and larger means fewer
+  boxes; `layer` or `zBands` set where horizontal cuts lie; `minFeature`, `only`,
+  and `exclude` (slots) drop vines and rope; `maxBoxes` caps the count. A rerun
+  with the same `prefix` replaces its boxes. Read `coveredPercent`,
+  `emptyFilledPercent`, and `dropped` in the reply, and look at `preview` with
+  `overlay: "boxes"`. Call it last, once the cells are final.
 - **Variants**: `export_variants` bakes a scripted document once per
   parameter set and writes `<name>.vox`, `<name>.glb` (with the
   `export_mesh` options), and a manifest of parameters, markers, and bounds.

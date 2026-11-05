@@ -248,8 +248,8 @@ preview and the contact sheets; they count with the Export panel's options
 
 ## Overlays
 
-`overlay` draws the document's markers (`set_marker`, Rhai `marker`,
-`collision_box`, `connector`) over the model, so a collision box can be
+`overlay` draws the document's markers (`set_marker`,
+`collision_from_voxels`, Rhai `marker`, `collision_box`, `connector`) over the model, so a collision box can be
 checked against the stone before export: `true` or `"all"` (`"markers"`
 is the same) for every kind, or `"boxes"`, `"points"`, `"connectors"`, or
 a list of them. Collision boxes are orange outlines, points cyan dots, and

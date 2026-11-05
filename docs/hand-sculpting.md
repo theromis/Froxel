@@ -278,6 +278,20 @@ piece, so the game reads them from the exported glb (nodes with
 `overlay: true` draws them over the model, so check a collision box
 against the stone before export.
 
+Do not write collision boxes for a sculpted hull by hand. When the shape is
+final, `collision_from_voxels` builds them from the cells, and running it again
+after an edit replaces them. Keep vines and moss out with `exclude` slots or
+`minFeature`, and set `holeSize` a little under the smallest opening the player
+uses:
+
+```text
+collision_from_voxels prefix="hull" holeSize=12 minFeature=2 exclude=[14, 15, 16] maxBoxes=46
+preview               overlay="boxes" path=hull.png                 # hatch and hold still open?
+```
+
+Read `coveredPercent`, `emptyFilledPercent`, and `dropped` in the reply. With
+`dropped` above 0 the budget was too small for that `holeSize`: raise one.
+
 When a scripted piece needs several sizes, `export_variants` writes a
 `.vox` and `.glb` per parameter set with a manifest of the parameters,
 markers, and bounds. Exporting again into the same folder updates that

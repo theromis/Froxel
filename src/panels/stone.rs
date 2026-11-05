@@ -855,4 +855,49 @@ pub(super) fn markers(ui: &mut Ui, session: &mut Session) {
     {
         session.marker_from_panel();
     }
+    collision_section(ui, session);
+}
+
+/// MCP `collision_from_voxels` in the Markers section.
+fn collision_section(ui: &mut Ui, session: &mut Session) {
+    ui.add_space(4.0);
+    ui.label(RichText::new("Collision from voxels").small().color(DIM))
+        .on_hover_text("Box markers over the active object's solid cells, for a game's colliders. Hollows stay open: a hold under a deck, a hatch, a hole in a hull.");
+    let panel = &mut session.stone.markers;
+    egui::Grid::new("collision-panel")
+        .num_columns(2)
+        .spacing([8.0, 4.0])
+        .show(ui, |ui| {
+            label(ui, "Prefix", "Boxes are named prefix_1, prefix_2, and so on. Building again replaces this prefix's boxes on the object. Empty is the object's name plus _collider.");
+            ui.add(egui::TextEdit::singleline(&mut panel.collision_prefix).hint_text("object_collider").desired_width(120.0));
+            ui.end_row();
+            label(ui, "Layer", "Horizontal cuts between boxes lie on planes this many cells apart, unless only another height opens a hollow. 1 is any height. Z bands replace it.");
+            ui.add(egui::Slider::new(&mut panel.collision_layer, 1..=16));
+            ui.end_row();
+            label(ui, "Z bands", "Z planes for the horizontal cuts instead of Layer, ascending, such as 0 3 8 12. Put one on each deck and walking level.");
+            ui.add(egui::TextEdit::singleline(&mut panel.collision_bands).hint_text("use Layer").desired_width(120.0));
+            ui.end_row();
+            label(ui, "Min feature", "Ignore details thin on two axes, such as vines and rope: a cell needs a full square this wide in an axis plane. A deck or a wall thin on one axis stays. 1 keeps everything.");
+            ui.add(egui::Slider::new(&mut panel.collision_min_feature, 1..=8));
+            ui.end_row();
+            label(ui, "Hole size", "The tolerance: no box holds an empty block this wide on each axis, so a hold, a hatch, or a hole at least this wide stays open. Larger means fewer boxes and more empty volume filled; 1 fills nothing.");
+            ui.add(egui::Slider::new(&mut panel.collision_hole_size, 1..=16));
+            ui.end_row();
+            label(ui, "Only", "Cover only these slots. Empty is every slot.");
+            slots_field(ui, &mut panel.collision_only, "all slots");
+            ui.end_row();
+            label(ui, "Leave out", "Slots to ignore, such as moss, vines, and rope.");
+            slots_field(ui, &mut panel.collision_exclude, "none");
+            ui.end_row();
+            label(ui, "Max boxes", "Most boxes. Spare boxes split the emptiest further; too many merge, cheapest added volume first, and if Hole size stops that the boxes with the least solid are dropped and the status says so. 0 splits only until no box holds a hollow.");
+            ui.add(egui::DragValue::new(&mut panel.collision_max_boxes).range(0..=4096));
+            ui.end_row();
+        });
+    if ui
+        .button("Build collision")
+        .on_hover_text("MCP collision_from_voxels on the active object. The status gives the box count, the solid covered, and the empty cells filled. Check with Markers on preview. One undo step.")
+        .clicked()
+    {
+        session.collision_from_panel();
+    }
 }

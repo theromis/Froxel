@@ -216,6 +216,7 @@ tracer. A file with no scene graph still loads its first model.
 | `set_marker` | `name` | Name a point, a collision box, or a connector on an object: `kind` (`point`, `box`, `connector`), `point`, the box's inclusive cells `x0`..`z1`, `direction`, `object`. Saved in the `.vox` and exported as a glTF node. A marker of the same name is replaced. One undo step |
 | `remove_marker` | `name` or `all` | Remove one marker, or every marker. One undo step |
 | `list_markers` | — | Markers with `local`, `world`, and `gltf` coordinates |
+| `collision_from_voxels` | — | Collision box markers from an object's solid cells, keeping hollows open: `prefix` (default `<object>_collider`), `holeSize` (default 3), `layer` or `zBands`, `minFeature`, `only`, `exclude` (slots), `maxBoxes`, `object`. A rerun replaces that prefix's boxes on the object. One undo step. Replies with `boxes`, `coveredPercent`, `emptyFilledCells`, `emptyFilledPercent`, `dropped`, and the cell counts |
 | `export_mesh` | `path` | Write a glTF 2.0 `.glb` of every object. `merge` defaults to false. `vertexColors` defaults to false. `exportHidden` and `splitObjects` default to false. A slot with motion adds `TEXCOORD_1`. Clips become glTF animations. Markers become nodes. The reply includes `quads`, `triangles` (every triangle in the glb), `structure`, and `markers` |
 | `export_variants` | `variants`, `dir` | Bake the scripted document once per parameter set `{name?, params}` and write `<name>.vox` and `<name>.glb` into `dir` with the `export_mesh` options, then merge them by name into a manifest (default `dir/variants.json`) of each set's parameters, markers, and bounds; the reply names the entries `added`, `replaced`, and `kept`. Optional `manifest`, `replace` (a fresh manifest), `vox`, `timeoutSeconds`. The document and its undo history stay as they were |
 | `export_models` | `models` | Write 1 to 16 `.glb` files. Each item is `{path, source?, merge?, vertexColors?, exportHidden?, splitObjects?}`. `source` is a `.vox` opened in its own session, so the open document stays. Each file's reply has `quads`, `triangles`, and `structure`: nodes, meshes, skins, animations, and warnings |
@@ -1267,6 +1268,48 @@ node index. The export replies and `list_markers` give each marker in
 `collision_box`, and `connector` make the same markers on the objects it
 builds; a rerun replaces them and leaves markers placed by hand.
 
+### Collision from voxels
+
+`collision_from_voxels` writes the collision boxes instead of you, from the
+object's solid cells, and running it again after an edit replaces them. A
+walkable deck, a hold under it, and open holes need many boxes, not one hull.
+
+```json
+{"name": "collision_from_voxels", "arguments": {
+  "prefix": "hull", "holeSize": 12, "minFeature": 2, "exclude": [14, 15, 16], "maxBoxes": 46
+}}
+```
+
+The boxes are ordinary `box` markers named `hull_1`, `hull_2`, and so on, on
+the active object or `object`, in its local mesh units. Only boxes with that
+prefix and a number on that object are replaced; any other marker with one of
+the new names is an error, so pass another prefix.
+
+| Argument | Meaning |
+|---|---|
+| `holeSize` | The tolerance, default 3: the smallest empty block that stays open. No box holds an empty block this wide on each axis, clipped to the box's own size, so a hold counts, a hatch through a one-cell deck counts, and a dent in a thick wall does not. Set it a little under the smallest opening the player uses. 1 fills nothing, an exact cover |
+| `layer` | Horizontal cuts between boxes lie on planes this many cells apart, from the lowest cell, unless only another height opens a hollow. Box faces stay on the cells either way, so a walking surface stays exact |
+| `zBands` | Horizontal cuts by hand instead of `layer`: ascending z planes, one on each deck and walking level |
+| `minFeature` | Ignore details thin on two axes, such as vines and rope: a cell needs a full square this wide in an axis plane. A deck or a wall thin on one axis stays. A one-cell diagonal holds no such square, so it goes too |
+| `only`, `exclude` | Palette slots to cover or leave out. These are slots, not the boxes the stone tools take under `exclude` |
+| `maxBoxes` | Most boxes. Spare boxes split the emptiest further; too many merge, cheapest added volume first, as far as `holeSize` allows. Then the boxes with the least solid are dropped, and `dropped` and `warning` say so: hollows win over coverage |
+
+The reply is how to judge the result: `boxes`, `solidCells`, `ignoredBySlot`,
+`ignoredThin`, `targetCells` (what the boxes aim to cover), `coveredCells`,
+`missedCells`, `coveredPercent`, `boxCells`, `emptyFilledCells` and
+`emptyFilledPercent` (empty cells inside boxes, as a share of their volume),
+`merged`, `dropped`, `replaced`, and `markers`. Check the boxes with `preview`
+and `overlay: "boxes"`. On a 133,000-cell hand-sculpted boat the arguments
+above give 46 boxes that cover 98% of the solid with 71% of their volume empty,
+where 46 boxes written by hand covered 88% with 75% empty, and the hold, the
+hatch, and the hull's hole stay open.
+
+![examples/collision_hull.rhai in the fast preview with overlay boxes: the boxes follow the stepped hull, and the hatch and the hold stay open](images/collision-hull.png)
+
+A hollow is judged inside each box, so an opening that crosses a step of the
+hull counts only the height a box sees. Keep `holeSize` a little under the
+opening, and look at the overlay.
+
 ### Variants
 
 `export_variants` turns one scripted document into a family of files. Each
@@ -1348,6 +1391,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `set_view` | Orbit, pan, and zoom in the viewport; Camera section: Orthographic, Game view (with Camera presets… and Placement turn) |
 | `set_script`, `get_script`, `set_params`, `list_params`, `regenerate` | Script section |
 | `set_marker`, `remove_marker`, `list_markers` | Markers section: the list with ✕ to remove, Name, Point, Box, or Connector with Facing, Add at selection |
+| `collision_from_voxels` | Markers section, Collision from voxels: Prefix, Layer, Z bands, Min feature, Hole size, Only, Leave out, Max boxes, Build collision; the status gives the box count, the solid covered, and the empty cells filled |
 | `export_variants` | Export section: Export variants… picks a variants JSON file and a folder and uses the section's options; Replace manifest is `replace` |
 | `export_mesh` | Export section and File > Export Mesh, with Occlusion, AO radius, AO target |
 | `export_models` | File > Export Models and the Export section's Export models: pick `.vox` files and a folder |

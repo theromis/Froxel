@@ -838,6 +838,20 @@ replaces an earlier one. MCP `preview` with `overlay: true` (or `froxel
 preview --overlay all`) draws them over the model with their names, so a
 collision box can be checked against the stone before export.
 
+```rhai
+let cover = collision_from_voxels(#{prefix: "hull", holeSize: 4, exclude: [4]});
+print(`${cover.boxes} boxes, ${cover.coveredPercent}% covered`);
+collision_from_voxels();  // every slot, prefix <object>_collider
+```
+
+MCP `collision_from_voxels` from a script, with the same options (`prefix`,
+`holeSize`, `layer`, `zBands`, `minFeature`, `only`, `exclude`, `maxBoxes`) and
+the same reply as a map. It covers the cells of the object being written as
+they are at that point, so call it last. It builds collision box markers that
+keep a hold, a hatch, and a hole open, so the colliders follow the model on
+every rerun. `examples/collision_hull.rhai` is a hull with a deck, a hold, and
+vines the boxes leave out.
+
 ## Objects
 
 The script starts on its host object, already cleared. `object` switches the
