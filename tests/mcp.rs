@@ -2503,3 +2503,156 @@ fn trim_outline_cuts_outside_a_surface_as_one_undo_step() {
         assert!(err.contains(needle), "{needle}: {err}");
     }
 }
+
+fn batch_of(operations: Value) -> Value {
+    json!({"operations": operations})
+}
+
+#[test]
+fn batch_applies_its_items_in_order_as_one_undo_step() {
+    let mut head = Headless::new();
+    let reply = head.call(
+        "batch",
+        batch_of(json!([
+            {"tool": "set_palette", "arguments": {"index": 7, "r": 10, "g": 20, "b": 30}},
+            {"tool": "fill_box", "arguments": {"x0": 0, "y0": 0, "z0": 0, "x1": 3, "y1": 3, "z1": 3, "palette": 7}},
+            {"tool": "carve", "arguments": {"shape": "box", "x0": 0, "y0": 0, "z0": 3, "x1": 3, "y1": 3, "z1": 3}},
+            {"tool": "set_voxel", "arguments": {"x": 9, "y": 9, "z": 9, "palette": 7}}
+        ])),
+    );
+    assert_eq!(reply["result"]["isError"], false, "{reply}");
+    let text = reply["result"]["content"][0]["text"].as_str().unwrap();
+    let body: Value = serde_json::from_str(text).unwrap();
+    assert_eq!(body["items"], 4);
+    assert_eq!(body["voxels"], 49);
+    assert_eq!(body["changed"], 1 + 64 + 16 + 1);
+    // Short form: the tool and its counts, not the running total or the call.
+    assert_eq!(
+        body["results"][0],
+        json!({"tool": "set_palette", "changed": 1})
+    );
+    assert_eq!(
+        body["results"][1],
+        json!({"tool": "fill_box", "changed": 64})
+    );
+    assert_eq!(body["results"][2], json!({"tool": "carve", "removed": 16}));
+    assert_eq!(
+        body["results"][3],
+        json!({"tool": "set_voxel", "changed": 1})
+    );
+    assert_eq!(head.session.palette[7][..3], [10, 20, 30]);
+
+    // One undo takes back the whole batch, the palette too.
+    let reply = head.call("undo", json!({}));
+    assert_eq!(reply["result"]["isError"], false, "{reply}");
+    assert!(head.session.active().cells.is_empty());
+    assert_ne!(head.session.palette[7][..3], [10, 20, 30]);
+    assert!(!head.session.can_undo());
+}
+
+#[test]
+fn a_failing_batch_item_is_named_and_leaves_the_document_as_it_was() {
+    let mut head = Headless::new();
+    head.call(
+        "fill_box",
+        json!({"x0": 0, "y0": 0, "z0": 0, "x1": 1, "y1": 1, "z1": 1, "palette": 2}),
+    );
+    let cells = head.session.active().cells.clone();
+    let palette = head.session.palette;
+    let reply = head.call(
+        "batch",
+        batch_of(json!([
+            {"tool": "set_palette", "arguments": {"index": 7, "r": 10, "g": 20, "b": 30}},
+            {"tool": "fill_box", "arguments": {"x0": 5, "y0": 5, "z0": 5, "x1": 6, "y1": 6, "z1": 6, "palette": 7}},
+            {"tool": "carve", "arguments": {"shape": "star"}},
+            {"tool": "set_voxel", "arguments": {"x": 9, "y": 9, "z": 9, "palette": 7}}
+        ])),
+    );
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+    let text = reply["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("batch item 2 (carve)"), "{text}");
+    assert!(text.contains("shape must be"), "{text}");
+    assert_eq!(head.session.active().cells, cells);
+    assert_eq!(head.session.palette, palette);
+    // The batch that failed is not an undo step: one undo clears the fill.
+    head.call("undo", json!({}));
+    assert!(head.session.active().cells.is_empty());
+    assert!(!head.session.can_undo());
+}
+
+#[test]
+fn batch_refuses_what_cannot_run_before_anything_changes() {
+    let mut head = Headless::new();
+    let fill = json!({"tool": "fill_box", "arguments": {"x0": 0, "y0": 0, "z0": 0, "x1": 1, "y1": 1, "z1": 1, "palette": 2}});
+    let path = std::env::temp_dir().join("froxel-batch-refused.glb");
+    let path = path.to_string_lossy().to_string();
+    let _ = std::fs::remove_file(&path);
+    for (bad, expected) in [
+        (
+            json!({"tool": "export_mesh", "arguments": {"path": path}}),
+            "export_mesh",
+        ),
+        (json!({"tool": "save_file", "arguments": {}}), "save_file"),
+        (json!({"tool": "render", "arguments": {}}), "render"),
+        (
+            json!({"tool": "batch", "arguments": {"operations": []}}),
+            "batch",
+        ),
+        (
+            json!({"tool": "set_active_object", "arguments": {"index": 0}}),
+            "set_active_object",
+        ),
+        (
+            json!({"tool": "fill_box", "arguments": {"wrong": 1}}),
+            "wrong",
+        ),
+        (
+            json!({"tool": "fill_box", "arguments": 3}),
+            "arguments must be an object",
+        ),
+        (json!({"name": "fill_box"}), "no field `name`"),
+        (json!(5), "batch item 1"),
+    ] {
+        let reply = head.call("batch", batch_of(json!([fill, bad])));
+        assert_eq!(reply["result"]["isError"], true, "{reply}");
+        let text = reply["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("batch item 1"), "{text}");
+        assert!(text.contains(expected), "{text}");
+        assert!(head.session.active().cells.is_empty(), "{text}");
+    }
+    assert!(!std::path::Path::new(&path).exists());
+    for bad in [
+        json!({}),
+        json!({"operations": []}),
+        json!({"operations": 3}),
+    ] {
+        let reply = head.call("batch", bad);
+        assert_eq!(reply["result"]["isError"], true, "{reply}");
+    }
+    let many = vec![fill; remote::MAX_BATCH_ITEMS + 1];
+    let reply = head.call("batch", batch_of(json!(many)));
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+    assert!(head.session.active().cells.is_empty());
+}
+
+#[test]
+fn every_batch_tool_is_a_tool_that_writes_no_file() {
+    let schema = tools();
+    let listed: Vec<&str> = schema
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .collect();
+    for name in remote::batch_tool_names() {
+        assert!(listed.contains(&name), "{name}");
+        let method = map_tool(name, &json!({})).unwrap().0;
+        let args = json!({"operations": [{"tool": name}]});
+        let items = remote::batch_items(&args).unwrap();
+        assert_eq!(items[0].method, method, "{name}");
+        // Its schema takes no path of a file to write.
+        let tool = schema.iter().find(|tool| tool["name"] == name).unwrap();
+        assert!(
+            tool["inputSchema"]["properties"].get("path").is_none(),
+            "{name}"
+        );
+    }
+}

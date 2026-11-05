@@ -107,7 +107,11 @@ pub(super) fn script(ui: &mut Ui, session: &mut Session) {
                 session.cancel_script();
             }
         });
-    } else if ui.button("Regenerate").clicked() {
+    } else if ui
+        .button("Regenerate")
+        .on_hover_text("Run the script. Everything it writes is one undo step, as MCP batch is, and the document stays as it was if the script fails.")
+        .clicked()
+    {
         session.script_due = None;
         if let Err(err) = session.start_script(index, false) {
             session.script_error = err;

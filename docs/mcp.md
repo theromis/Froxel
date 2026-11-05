@@ -155,6 +155,7 @@ tracer. A file with no scene graph still loads its first model.
 | `save_file` | — | Write every non-empty object. `path` overwrites the open file when omitted; its folder is created. Replies with `voxels` and `objects` |
 | `inspect_document` | — | Path, counts, world bounds, objects (name and world position), the used palette slots, and the slots with motion. `fullPalette` lists all 256 slots |
 | `get_voxel` | `x`, `y`, `z` | Palette index of one **local** cell of the active object. `0` is empty |
+| `batch` | `operations` | Apply a list of editing tools in order as one undo step. Stops at the first error, names the item, and leaves the document as it was. Replies with `items`, `changed`, `voxels`, and each item's result in short form. Tools that write files are refused. See [Batch](#batch) |
 | `set_voxel` | `x`, `y`, `z`, `palette` | Write one **local** cell. One undo step |
 | `set_voxels` | `cells` | Write up to 200000 **local** cells as one undo step |
 | `fill_box` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palette` | Fill an inclusive box of **local** cells, at most 2000000, one undo step |
@@ -1070,6 +1071,9 @@ tools have no script form. A
 script reads no files either, so its `carve_from_views` takes `rows`
 instead of PNG paths.
 
+A script run is already one undo step that changes nothing when it fails, so
+`batch` has no script form: call the tools in order.
+
 `regenerate` runs the stored script in the sandbox and, on success, replaces
 every object the script wrote. That is one undo step. There is no operation
 or voxel cap; the run stops after `timeoutSeconds` (default 300, `0` for no
@@ -1082,6 +1086,50 @@ language and the `MVSC` chunk are described in `docs/scripting.md`.
 
 A creature or other one-off shape is modelled without a script: see
 [hand-sculpting.md](hand-sculpting.md).
+
+### Batch
+
+`batch` applies a list of editing tools in order as one undo step, so a deck
+of separate boards or a row of cuts is one call instead of fifty.
+
+```json
+{"name": "batch", "arguments": {"operations": [
+  {"tool": "set_palette", "arguments": {"index": 7, "r": 112, "g": 76, "b": 44}},
+  {"tool": "fill_box", "arguments": {"x0": 0, "y0": 0, "z0": 0, "x1": 23, "y1": 2, "z1": 0, "palette": 7}},
+  {"tool": "carve", "arguments": {"shape": "box", "x0": 11, "y0": 0, "z0": 0, "x1": 11, "y1": 2, "z1": 0}}
+]}}
+```
+
+Each item is `{tool, arguments}`, with the arguments the tool itself takes, at
+most 4096 items. The reply holds `items`, `changed` (the sum of the items'
+`changed` or `removed`), `voxels`, and `results`: one short entry per item
+with its `tool` and counts, a list as its length, without the running voxel
+total.
+
+```json
+{"items": 3, "changed": 76, "voxels": 69, "results": [
+  {"tool": "set_palette", "changed": 1},
+  {"tool": "fill_box", "changed": 72},
+  {"tool": "carve", "removed": 3}]}
+```
+
+The whole list is checked first: an unknown tool or misspelt option refuses
+the batch before anything changes. An item that fails while running stops it,
+the error says which (`batch item 2 (carve) failed, so nothing was changed:
+…`, counting from 0), the document and palette are put back as they were, and
+no undo step is added.
+
+It runs `set_voxel`, `set_voxels`, `set_palette`, `fill_box`, `fill_ellipsoid`,
+`fill_rounded_box`, `fill_tube`, `sweep`, `loft`, `carve`, `trim_outline`, `smooth`, `deform`,
+`brush`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`,
+`cavity_tint`, `foliage`, `moss`, `algae`, and `vines`, all on the active
+object. Tools that write files (`save_file`, `render`, `preview`, `model_view`,
+`export_mesh`, and the like) are refused, and so are the readers, `undo`,
+`batch` itself, and the tools that change the active object or the document:
+call `set_active_object` first, and save or preview afterwards.
+
+A Rhai script is the same grouping, so it has no `batch`: a run is one undo
+step and a failure anywhere leaves the document as it was (`scripting.md`).
 
 ### Silhouettes
 
@@ -1223,6 +1271,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 |---|---|
 | `new_document`, `open_file`, `save_file` | File menu |
 | `inspect_document`, `get_voxel`, `get_voxels` | Document section, the hovered cell |
+| `batch` | Script section: a script calls the same tools in order, and Regenerate is one undo step that changes nothing when the script fails |
 | `set_voxel`, `set_voxels` | Brush, Line, Circle, Square, Face, Mutator |
 | `fill_box` | Box tool with Fill |
 | `fill_ellipsoid`, `fill_rounded_box` | Generator: Ellipsoid, Rounded box |

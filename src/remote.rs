@@ -7,12 +7,14 @@ use std::path::{Component, Path, PathBuf};
 
 use serde_json::{json, Map, Value};
 
+mod batch;
 mod foliage;
 mod import;
 mod markers;
 mod organic;
 mod silhouette;
 mod stone;
+pub(crate) use batch::{batch_items, batch_tool_names, MAX_BATCH_ITEMS};
 pub(crate) use import::{
     import_plan, used_slots, DEFAULT_IMPORT_SIZE, DEFAULT_MAX_NEW_SLOTS, DEFAULT_TOLERANCE,
 };
@@ -799,6 +801,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
             Ok(json!({"path": path, "voxels": voxels, "objects": objects}))
         }
         "document.inspect" => inspect(session, &params),
+        "voxel.batch" => batch::apply_batch(session, &params),
         "voxel.get" => {
             let (x, y, z) = xyz(&params)?;
             let palette = session.active().cells.get(&(x, y, z)).copied().unwrap_or(0);
@@ -1331,6 +1334,7 @@ const METHODS: &[(&str, &str, &str)] = &[
         "fullPalette?",
         "Path, counts, bounds, objects, used palette slots, motion",
     ),
+    ("voxel.batch", "operations", "Apply a list of {tool, arguments} editing tools in order as one undo step. Stops at the first error, names the item, and leaves the document as it was. Tools that write files are refused"),
     ("voxel.get", "x, y, z", "Palette index of one local cell. 0 is empty"),
     ("voxel.set", "x, y, z, palette", "Write one cell. One undo step"),
     ("voxel.set_many", "cells", "Write up to 200000 cells as one undo step"),

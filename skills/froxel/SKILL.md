@@ -62,6 +62,13 @@ If the tools are missing, the server is not configured. Point the user to
   overwriting; `mode: "paint"` recolours only existing cells.
 - `set_voxels` takes `[x, y, z, palette]` rows, up to 200000 per call. Batch
   detail into few calls.
+- `batch` takes a list of `{tool, arguments}` editing calls (`fill_*`, `sweep`,
+  `carve`, `set_voxels`, `set_palette`, the surface tools) and applies them
+  in order as one undo step. Use it instead of many single calls: it is
+  faster and far shorter in context. The first failure stops it, names the
+  item, and leaves the document as it was. Tools that write files are
+  refused; `preview` and save after it. Scripts need no `batch`: a run is
+  already one undo step.
 - Call `inspect_document` when you do not know the objects, bounds, or
   palette. Do not guess indices. Its `palette` lists only the slots in use;
   pass `fullPalette: true` to see all 256.

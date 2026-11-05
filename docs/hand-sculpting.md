@@ -357,6 +357,17 @@ segments, limbs, and tail each as its own object (`add_object` with
 then the world cells, so `add_bone` pivots are read straight off the cells
 and `bind_object` needs no cell moves.
 
+**Send many small edits as one `batch`.** A run of `fill_box`, `carve`,
+`sweep`, `set_palette`, and surface tools goes in one call, one undo step:
+
+```
+batch operations=[{tool: "fill_box", arguments: {x0: 0, y0: 0, z0: 0, x1: 9, y1: 2, z1: 0, palette: 3}}, {tool: "carve", arguments: {shape: "box", x0: 4, y0: 0, z0: 0, x1: 4, y1: 2, z1: 0}}]
+```
+
+The first item that fails stops it, the error names the item, and the
+document stays as it was. Render and export outside it: tools that write
+files are refused.
+
 **A fill with a palette fills empty cells too.** `fill_box`,
 `fill_rounded_box`, `fill_ellipsoid`, and `fill_tube` write every cell
 inside the shape, whether or not it was solid. Pass `mode` `empty` to add

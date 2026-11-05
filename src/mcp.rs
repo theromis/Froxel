@@ -279,7 +279,7 @@ fn dispatch(
                 "protocolVersion": version,
                 "capabilities": {"tools": {"listChanged": false}},
                 "serverInfo": {"name": "Froxel", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "Edits apply to the active object, in that object's local cells. Every tool that writes a file (save_file, render, model_view, preview, compare_silhouette, export_mesh, export_models, export_variants, screenshots) creates the missing folders of its path first. render path-traces a PNG in this process. preview writes a fast lit PNG (the viewport mesh and light, rasterised, well under a second) framed on the model or one object; use it to look after every step. Its preset game is the gameplay camera (a project redefines it with presets, an object or a JSON file, or the user's camera_presets.json), placementYaw sees an asset turned that much about up in a level from that camera, lighting (old_pond, or a project's lightingPresets) shows colour under a game's sun and ambient instead of the viewport light, overlay draws collision boxes, points, and connectors over the model, and inputs, variants, and reference make one labelled contact sheet of several models beside a concept image. Its previewTriangles is the unmerged mesh it draws, not the game's: its export counts (with export set to the game's options, e.g. colorAtlas) are what export_mesh writes. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, grow limbs and roots with fill_tube, cut hollows with carve, soften with smooth, refine with set_voxels, and render after every step. For a unique organic asset with a mesh sculpted in Blender or made by an image-to-3D tool, import_mesh voxelizes the .glb, .gltf, or .obj (textures and vertex colours quantized into the palette) as the blockout, and the tools below finish it. Organic forms (trunks, roots, limbs, rocks) should not read as pipes or boxes: loft builds a trunk or limb whose elliptical, flattened, knobbly section changes along a curve; deform bends, tapers, twists, or displaces (lumps, burls) an object or a box; brush inflates, deflates, smooths, flattens, or grabs the surface along a path of points to refine the silhouette (examples/fallen_tree.rhai). Stone surfaces: column_relief breaks a cliff face into columns of uneven width, relief, and height, joints cuts real joint gaps (columns, courses, cracks), weather chips edges, dents pits, and adds colour noise, and moss, algae, and vines grow plants on exposed faces (the caller gives the slots and their motion); moss style cushions grows separate cushions where the surface faces up, with drapes from overhangs, never one band. Wood surfaces: build the wood in one slot, then bark cuts plates along its grain (the same points as its fill_tube, or an axis on a flat deck or plank) split by fissures with dirt at the bottom, instead of painted stripes, and cavity_tint darkens fissures, crevices, and root crooks (and lightens ridges) by neighbour occupancy, making the shades itself; it gives rock depth too. examples/barked_trunk.rhai uses them. Tree crowns: foliage packs many separate leaf clumps over ellipsoids (or re-clusters an existing crown's slots) with lit tops, dark undersides, and a dark core in the gaps, leaving the wood alone, instead of one blob of fill_ellipsoid calls (examples/clustered_tree.rhai). Their exclude boxes (and scatter's, bark's, and cavity_tint's) keep walking surfaces whole, with no refill afterwards. sweep fills a cross-section along a curve for curved walls, banks, and ledges, and with palette 0 erases one, for a slanted cut along a curved outline. trim_outline reshapes a finished form from outside: state a closed plan outline and [z, inset] pairs once, and every solid cell outside that surface goes, with a new skin along the cut if asked, so a hull narrows toward its keel with no tubes fitted by hand (examples/trimmed_hull.rhai). For a unique organic asset from a concept's turnaround sheet, carve_from_views fills the visual hull of its front, side, and top silhouettes (PNG crops) as the rough form, and compare_silhouette scores the model against a concept view from a preview camera (IoU, missing, excess) and writes an overlay PNG; check it after every step instead of comparing heights. set_marker names points, collision boxes, and connectors that the .vox keeps and the glb carries as nodes; export_variants writes a .vox and .glb per parameter set and merges them by name into a manifest of parameters, markers, and bounds (replace: true starts it fresh). examples/gorge_wall.rhai uses them all. A Rhai script (set_script) can call the same sculpt, voxel, object, rig, clip, and palette tools, with the MCP options in a trailing map, for a family of organic pieces (docs/scripting.md, examples/hollow_log.rhai)."
+                "instructions": "Edits apply to the active object, in that object's local cells. batch applies a list of editing tools in order as one undo step, stopping at the first error with the document as it was: use it instead of dozens of single fill_box and carve calls, and keep render and export calls outside it. Every tool that writes a file (save_file, render, model_view, preview, compare_silhouette, export_mesh, export_models, export_variants, screenshots) creates the missing folders of its path first. render path-traces a PNG in this process. preview writes a fast lit PNG (the viewport mesh and light, rasterised, well under a second) framed on the model or one object; use it to look after every step. Its preset game is the gameplay camera (a project redefines it with presets, an object or a JSON file, or the user's camera_presets.json), placementYaw sees an asset turned that much about up in a level from that camera, lighting (old_pond, or a project's lightingPresets) shows colour under a game's sun and ambient instead of the viewport light, overlay draws collision boxes, points, and connectors over the model, and inputs, variants, and reference make one labelled contact sheet of several models beside a concept image. Its previewTriangles is the unmerged mesh it draws, not the game's: its export counts (with export set to the game's options, e.g. colorAtlas) are what export_mesh writes. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, grow limbs and roots with fill_tube, cut hollows with carve, soften with smooth, refine with set_voxels, and render after every step. For a unique organic asset with a mesh sculpted in Blender or made by an image-to-3D tool, import_mesh voxelizes the .glb, .gltf, or .obj (textures and vertex colours quantized into the palette) as the blockout, and the tools below finish it. Organic forms (trunks, roots, limbs, rocks) should not read as pipes or boxes: loft builds a trunk or limb whose elliptical, flattened, knobbly section changes along a curve; deform bends, tapers, twists, or displaces (lumps, burls) an object or a box; brush inflates, deflates, smooths, flattens, or grabs the surface along a path of points to refine the silhouette (examples/fallen_tree.rhai). Stone surfaces: column_relief breaks a cliff face into columns of uneven width, relief, and height, joints cuts real joint gaps (columns, courses, cracks), weather chips edges, dents pits, and adds colour noise, and moss, algae, and vines grow plants on exposed faces (the caller gives the slots and their motion); moss style cushions grows separate cushions where the surface faces up, with drapes from overhangs, never one band. Wood surfaces: build the wood in one slot, then bark cuts plates along its grain (the same points as its fill_tube, or an axis on a flat deck or plank) split by fissures with dirt at the bottom, instead of painted stripes, and cavity_tint darkens fissures, crevices, and root crooks (and lightens ridges) by neighbour occupancy, making the shades itself; it gives rock depth too. examples/barked_trunk.rhai uses them. Tree crowns: foliage packs many separate leaf clumps over ellipsoids (or re-clusters an existing crown's slots) with lit tops, dark undersides, and a dark core in the gaps, leaving the wood alone, instead of one blob of fill_ellipsoid calls (examples/clustered_tree.rhai). Their exclude boxes (and scatter's, bark's, and cavity_tint's) keep walking surfaces whole, with no refill afterwards. sweep fills a cross-section along a curve for curved walls, banks, and ledges, and with palette 0 erases one, for a slanted cut along a curved outline. trim_outline reshapes a finished form from outside: state a closed plan outline and [z, inset] pairs once, and every solid cell outside that surface goes, with a new skin along the cut if asked, so a hull narrows toward its keel with no tubes fitted by hand (examples/trimmed_hull.rhai). For a unique organic asset from a concept's turnaround sheet, carve_from_views fills the visual hull of its front, side, and top silhouettes (PNG crops) as the rough form, and compare_silhouette scores the model against a concept view from a preview camera (IoU, missing, excess) and writes an overlay PNG; check it after every step instead of comparing heights. set_marker names points, collision boxes, and connectors that the .vox keeps and the glb carries as nodes; export_variants writes a .vox and .glb per parameter set and merges them by name into a manifest of parameters, markers, and bounds (replace: true starts it fresh). examples/gorge_wall.rhai uses them all. A Rhai script (set_script) can call the same sculpt, voxel, object, rig, clip, and palette tools, with the MCP options in a trailing map, for a family of organic pieces (docs/scripting.md, examples/hollow_log.rhai)."
             }),
         ));
     }
@@ -309,7 +309,7 @@ fn call_tool(session: &mut Session, remote: Option<&mut ControlClient>, params: 
     if !args.is_object() {
         return tool_error("arguments must be an object");
     }
-    if let Err(err) = known_arguments(name, &args) {
+    if let Err(err) = known_arguments(name, &args).and_then(|()| batch_arguments(name, &args)) {
         return tool_error(&err);
     }
     let mapped = match map_tool(name, &args) {
@@ -329,7 +329,24 @@ fn call_tool(session: &mut Session, remote: Option<&mut ControlClient>, params: 
 /// Refuse an argument the tool's schema does not list, so a misspelt or
 /// unsupported option is an error rather than silently ignored.
 fn known_arguments(name: &str, args: &Value) -> Result<(), String> {
+    known_arguments_in(&tools(), name, args)
+}
+
+/// Check every item of a `batch` the way a call of its own is checked, so a
+/// misspelt option in the last item refuses the batch before the first runs.
+fn batch_arguments(name: &str, args: &Value) -> Result<(), String> {
+    if name != "batch" {
+        return Ok(());
+    }
     let tools = tools();
+    for (index, item) in remote::batch_items(args)?.iter().enumerate() {
+        known_arguments_in(&tools, item.tool, item.arguments)
+            .map_err(|err| format!("batch item {index} ({}): {err}", item.tool))?;
+    }
+    Ok(())
+}
+
+fn known_arguments_in(tools: &[Value], name: &str, args: &Value) -> Result<(), String> {
     let Some(tool) = tools.iter().find(|tool| tool["name"] == name) else {
         return Ok(());
     };
@@ -367,6 +384,7 @@ fn known_arguments(name: &str, args: &Value) -> Result<(), String> {
 
 fn map_tool(name: &str, args: &Value) -> Result<(String, Value), String> {
     let method = match name {
+        "batch" => "voxel.batch",
         "new_document" => "document.new",
         "open_file" => "document.open",
         "save_file" => "document.save",
@@ -500,6 +518,12 @@ fn num(value: &Value, key: &str) -> Result<f32, String> {
 
 fn tools() -> Vec<Value> {
     vec![
+        tool("batch", &format!("Apply a list of editing tools to the active object and the palette in order, as one undo step, instead of one call per board or cut. Stops at the first error, says which item failed (items count from 0), and leaves the document as it was with no undo step added. The whole list is checked first: an unknown option or a tool that cannot run here refuses the batch before anything changes. At most {} items; each takes what its tool takes. Replies with items, changed (the sum over the items), voxels, and results, each item's tool and counts in short form. Tools that write files are refused, as are readers, undo, and anything that changes the active object or the document: call set_active_object first and save afterwards.", remote::MAX_BATCH_ITEMS), json!({
+            "operations": {"type": "array", "minItems": 1, "maxItems": remote::MAX_BATCH_ITEMS, "description": "The items in order. Each is {tool, arguments}, arguments as the tool itself takes them.", "items": {"type": "object", "properties": {
+                "tool": {"type": "string", "enum": remote::batch_tool_names(), "description": "The tool to run."},
+                "arguments": {"type": "object", "description": "The tool's arguments."}
+            }, "required": ["tool"], "additionalProperties": false}}
+        }), &["operations"]),
         tool("new_document", "Replace the session with an empty one-object document and the default palette.", json!({}), &[]),
         tool("open_file", "Open a .vox file, replacing the session document. By default replies with path, objectCount, voxels, world bounds, activeObject, canUndo, canRedo, bones (count), paletteSlots (used slots), motionSlots, the first 20 objectNames, and moreObjects (how many names were left out). detail full replies with the inspect_document result instead.", json!({
             "path": str_prop("Path of a .vox file"),
@@ -1174,7 +1198,7 @@ fn hints(name: &str) -> [bool; 3] {
         | "list_markers" | "get_script" | "list_params" | "ui_inspect" => [true, false, true],
         "set_active_object" | "set_view" => [false, false, true],
         "add_object" | "mirror_object" | "add_bone" | "add_clip" => [false, false, false],
-        "remove_object" | "undo" | "redo" | "ui_click" | "regenerate" | "import_mesh" => {
+        "remove_object" | "undo" | "redo" | "ui_click" | "regenerate" | "import_mesh" | "batch" => {
             [false, true, false]
         }
         "new_document"
@@ -1351,7 +1375,9 @@ Organic shaping: loft (a section that changes along a curve), deform (bend,
 taper, twist, displace), and brush (inflate, deflate, smooth, flatten, grab
 along points). trim_outline removes every solid cell outside a closed plan
 outline and an inset per height, with a new skin along the cut if asked. Tree
-crowns: foliage packs separate leaf clumps with lit tops and dark gaps. tools/list describes every tool; docs/mcp.md has examples."
+crowns: foliage packs separate leaf clumps with lit tops and dark gaps. batch applies a list of editing tools as one undo step and
+leaves the document as it was when one fails; tools that write files are
+refused in it. tools/list describes every tool; docs/mcp.md has examples."
     );
 }
 

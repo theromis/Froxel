@@ -37,6 +37,10 @@ any other object the script targeted, as one undo step. Objects the script
 did not target are left alone, unless a document call (object, rig, clip,
 or palette; see "Document calls") changes them in that same step.
 
+That is what MCP `batch` gives a list of calls, so scripts have no `batch`
+function: a run already groups all its calls into one undo step, and a failure
+anywhere leaves the document as it was. The parity rule does not apply to it.
+
 ## Parameters
 
 Call these before building voxels. The same name twice is an error. A stored
