@@ -23,6 +23,7 @@ mod shapes;
 mod silhouette;
 mod surface;
 mod sweep;
+mod trim;
 mod weather;
 
 pub use bark::{bark, BarkDirection, BarkSpec};
@@ -53,6 +54,7 @@ pub use silhouette::{
 };
 pub use surface::{Exclude, Region, MAX_EXCLUDE};
 pub use sweep::{sweep, Profile, SweepPoint};
+pub use trim::{trim_outline, TrimSkin, TrimSpec};
 pub use weather::{weather, WeatherSpec};
 
 pub(crate) fn plane_axes(axis: i32) -> (usize, usize) {

@@ -162,6 +162,7 @@ tracer. A file with no scene graph still loads its first model.
 | `fill_rounded_box` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palette`, `radius` | Same box, with an edge bevel of `radius` voxels. `radius` 0 is the full box. The radius is clamped to half the shortest side |
 | `fill_tube` | `points`, `palette` or `palettes` | Fill a tube through 2..=1024 **local** points, each with its own radius. Optional `radius`, `curve` (`polyline`, `smooth`), `aspect`, `roll`, `profile` (`round`, `blade`), `pattern` (`rings`, `stripes`, `random`), `period`, `sectors`, `seed`, `mode`. At most 2000000 cells, one undo step |
 | `sweep` | `points`, `profile` or `width` and `height`, `palette` or `palettes` | Fill a 2D cross-section along 2..=1024 **local** points, kept perpendicular to the path, for curved walls, banks, and ledges. Each point may carry `twist` and `scale`. Optional `radius`, `curve` (`polyline`, `smooth`), `pattern` (`bands`, `rings`, `random`), `period`, `seed`, `mode`. `palette` `0` erases the solid cells it covers instead, for a slanted cut along a closed or curved outline (`mode` `empty` is refused with it). Replies with `cells` and `length`, and `removed` when erasing. At most 2000000 cells, one undo step |
+| `trim_outline` | `outline` | Remove every solid cell outside a surface: a closed plan outline of `[x, y]` points moved inward by `inset`, one number or `[z, inset]` pairs per height. Optional `curve` (`polyline`, `smooth`), a box `x0`..`z1`, `only`, `skin` (a slot), `thickness`. Replies with `removed`, `painted`, `added`, and a `warning` when nothing was outside. One undo step |
 | `loft` | `points`, `palette` or `palettes` | Fill a solid along 2..=1024 **local** points whose cross-section changes per point: an ellipse (`rx`, `ry`) turned by `roll`, cut flat by `flatTop`, with outline `noise` and `frequency`. Optional `radius` and the section fields as defaults, `curve` (`polyline`, `smooth`), `caps` (`flat`, `round`), `pattern` (`rings`, `stripes`, `random`), `period`, `sectors`, `seed`, `mode`. `palette` `0` erases the solid cells it covers instead, for a slanted cut along a closed or curved outline (`mode` `empty` is refused with it). Replies with `cells` and `length`, and `removed` when erasing. At most 2000000 cells, one undo step |
 | `deform` | `op` | `bend`, `taper`, or `twist` the active object (or the cells of a box `x0`..`z1`) along `axis`, or `displace` its surface with 3D noise. Optional `axis`, `origin`, `length`, `center`, `angle`, `direction`, `start`, `end`, `amplitude`, `scale`, `octaves`, `seed`, `bias`. Slots are kept. Replies with `cells`, `result`, `added`, `removed`. One undo step |
 | `brush` | `op`, `points` | Sculpt brush dabs along **local** points: `inflate`, `deflate` (`dig`), `smooth`, `flatten`, or `grab` (`drag`). Optional `radius`, `strength`, `falloff` (`smooth`, `linear`, `constant`), `only`, `palette`, `vector` (grab), `spacing`. Replies with `dabs`, `added`, `removed`. One undo step |
@@ -261,6 +262,29 @@ With a taper in the radii this makes splinters, shards, and broken plank
 ends. A carved `tube` takes the same three. A tube over 2000000 cells, or
 with over 512000000 cells in the boxes around its segments, is refused before
 any cell is written; a closed path counts like an open one.
+
+`trim_outline` reshapes a finished form from outside. The surface at height
+`z` is the plan `outline` moved inward by `inset(z)`, and a cell stays when its
+centre is at least that far inside the outline. `inset` is linear between its
+`[z, inset]` pairs and holds the end value beyond them; a negative inset stands
+outside the outline. `sweep` with `palette` `0` cuts a band along a path;
+`trim_outline` removes everything outside a surface, however far out it lies.
+`skin` lays that slot along the new surface, `thickness` cells inward (default
+1), measured across a layer and into the layers above and below on a slope, and
+closed face to face. It acts only where the cut reached: an empty cell is filled
+when the way out from it crosses a removed cell of its own layer, so a hollow the
+cut opened is sealed while a rim stays at its height and a port stays open, and
+a solid cell is recoloured. `only` and the box limit both the cut and the skin,
+the skin never leaves the box of the cells tested, and at most 2000000 solid
+cells are tested.
+
+```json
+{"name": "trim_outline", "arguments": {
+  "outline": [[0, 11], [15, 0], [45, 0], [59, 11], [45, 23], [15, 23]],
+  "inset": [[0, 7], [9, 0]],
+  "curve": "smooth", "skin": 2
+}}
+```
 
 `carve` removes cells and never paints. `shape` `box`, `ellipsoid`, and
 `rounded_box` take the corners (and `radius`) of their fill tools; `tube`
@@ -1204,6 +1228,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `fill_ellipsoid`, `fill_rounded_box` | Generator: Ellipsoid, Rounded box |
 | `fill_tube` | Tube tool: drag from the start radius to the end radius; Chain adds a point per drag and Smooth curves through them until Finish; Flatten, Roll, and Blade shape it; Solid, Rings, Stripes, or Random with a second slot |
 | `sweep` | Sweep section: Points (one per line, Point at selection adds the selection's centre), Smooth, Rectangle (Width, Height, Radius) or Polygon, Palettes, Bands, Rings, or Random, Period, Mode, Seed |
+| `trim_outline` | Trim section: Outline (one point per line, Point at selection adds the selection's centre), Smooth, Inset, Only, New skin, Slot, Thickness; Trim inside the selection's box or on the whole object |
 | `carve_from_views` | Carve from views section: three view rows (on, side, Image…, crop, Flip), Cells / px, Size, Origin, Background (Auto, Alpha, Key with tolerance), Colour from views or the active slot, Shell, Smooth, Carve |
 | `compare_silhouette` | Compare silhouette section: Concept Image…, Crop, Background, Flip, Camera (Viewport, Game, Front, Left, Top), Align (Fit, Height, Width), Compare; the overlay shows in the viewport's bottom-right corner until Hide overlay; MCP `compare_silhouette` over the control port shows it there too |
 | `import_mesh` | File > Import Mesh… and the Import mesh section: File, Size, Voxel, or Scale, File is Z-up, Rotation, Position, Anchor, Solid or Shell, Texture or Vertex colour, Slots, New slots, Tolerance, Mode, New object |

@@ -23,7 +23,7 @@ If the tools are missing, the server is not configured. Point the user to
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, and `marker`,
+  (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, and `marker`,
   `collision_box`, `connector`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -91,7 +91,10 @@ If the tools are missing, the server is not configured. Point the user to
    (`inflate`, `deflate`, `smooth`, `flatten`, `grab` along points; see
    `examples/fallen_tree.rhai`). Cut
    hollows, tunnels, and pits with `carve`, and a slanted side along a
-   curved or closed outline with `sweep` and `palette` 0. Snap wood with `break_end` (a
+   curved or closed outline with `sweep` and `palette` 0. Narrow a finished
+   form from outside, such as a hull toward its keel, with `trim_outline`: a
+   closed plan `outline`, `[z, inset]` pairs, and `skin` to seal the cut
+   (`examples/trimmed_hull.rhai`), not tubes fitted to the surface. Snap wood with `break_end` (a
    ragged face with splinters) instead of cutting it clean, sweep curved
    walls, banks, and ledges with `sweep` (a profile along a smooth path),
    and pile debris

@@ -1,5 +1,5 @@
 //! Inspector sections of the stone tools: Joints, Weather, Bark, Cavity,
-//! Growth, Sweep, and Markers. Each button runs the MCP
+//! Growth, Sweep, Trim, and Markers. Each button runs the MCP
 //! tool over the selection's box, or the whole active object.
 
 use egui::{RichText, Ui};
@@ -633,6 +633,69 @@ pub(super) fn sweep(ui: &mut Ui, session: &mut Session) {
                 .clicked()
             {
                 session.sweep_from_panel();
+            }
+        });
+    });
+}
+
+/// MCP `trim_outline`: cut away everything outside an outline and an inset per
+/// height.
+pub(super) fn trim(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.voxel_count() > 0 && session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Trim");
+        let panel = &mut session.stone.trim;
+        egui::Grid::new("trim-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Outline", "The closed plan outline in local cells, one point per line: x y. Every solid cell outside the surface goes, such as a hull's sides narrowing toward its keel.");
+                ui.add(
+                    egui::TextEdit::multiline(&mut panel.outline)
+                        .desired_rows(3)
+                        .desired_width(150.0),
+                );
+                ui.end_row();
+                label(ui, "Curve", "Smooth passes a closed curve through the points; off joins them with straight runs.");
+                ui.checkbox(&mut panel.smooth, "Smooth");
+                ui.end_row();
+                label(ui, "Inset", "How far inward the surface stands at each height, one pair per line: z inset. Linear between pairs, the end value beyond them, and a negative inset is outside the outline. One number is the same at every height.");
+                ui.add(
+                    egui::TextEdit::multiline(&mut panel.inset)
+                        .desired_rows(2)
+                        .desired_width(150.0),
+                );
+                ui.end_row();
+                label(ui, "Only", "Palette slots the cut and the skin may touch; empty is every slot.");
+                slots_field(ui, &mut panel.only, "every slot");
+                ui.end_row();
+                label(ui, "Skin", "Lay a new skin along the surface where the cut reached: solid cells next to it are recoloured, and a hollow the cut opened is sealed.");
+                ui.checkbox(&mut panel.skin, "New skin");
+                ui.end_row();
+                if panel.skin {
+                    label(ui, "Slot", "The skin's palette slot; 0 is the active slot.");
+                    ui.add(egui::DragValue::new(&mut panel.slot).range(0..=255));
+                    ui.end_row();
+                    label(ui, "Thickness", "The skin's thickness inward from the surface, in cells.");
+                    ui.add(egui::DragValue::new(&mut panel.thickness).range(1.0..=64.0).speed(0.1));
+                    ui.end_row();
+                }
+            });
+        ui.horizontal(|ui| {
+            if ui
+                .button("Point at selection")
+                .on_hover_text("Add the selection's centre as the next outline point.")
+                .clicked()
+            {
+                session.trim_point_at_selection();
+            }
+            let name = scope(session, "Trim");
+            if ui
+                .button(name)
+                .on_hover_text("MCP trim_outline, inside the selection's box or on the whole object. One undo step.")
+                .clicked()
+            {
+                session.trim_from_panel();
             }
         });
     });

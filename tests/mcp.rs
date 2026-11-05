@@ -2446,3 +2446,60 @@ fn manual_negative_cells_and_markers_keep_world_origin_across_saves() {
     }
     let _ = std::fs::remove_file(path);
 }
+
+#[test]
+fn trim_outline_cuts_outside_a_surface_as_one_undo_step() {
+    let mut head = Headless::new();
+    head.ok(
+        "fill_box",
+        json!({"x0": 0, "y0": 0, "z0": 0, "x1": 20, "y1": 10, "z1": 6, "palette": 2}),
+    );
+    let solid = head.session.active().cells.len();
+    let outline = json!([[0, 0], [20, 0], [20, 10], [0, 10]]);
+    let reply = head.ok(
+        "trim_outline",
+        json!({"outline": outline, "inset": [[0, 3], [3, 0]], "skin": 5}),
+    );
+    let removed = reply["removed"].as_u64().unwrap() as usize;
+    assert!(removed > 100, "{reply}");
+    assert!(reply["painted"].as_u64().unwrap() > 0, "{reply}");
+    assert_eq!(reply["added"], 0, "{reply}");
+    let cells = &head.session.active().cells;
+    assert_eq!(cells.len(), solid - removed);
+    assert!(!cells.contains_key(&(2, 5, 0)));
+    assert_eq!(cells.get(&(3, 5, 0)), Some(&5));
+    assert_eq!(cells.get(&(10, 5, 0)), Some(&2));
+    head.ok("undo", json!({}));
+    assert_eq!(head.session.active().cells.len(), solid);
+    assert!(head.session.active().cells.values().all(|&slot| slot == 2));
+    // One number is every height; the box limits it; a miss is explained.
+    let boxed = head.ok(
+        "trim_outline",
+        json!({"outline": outline, "inset": 2, "x0": 0, "y0": 0, "z0": 0, "x1": 20, "y1": 10, "z1": 0}),
+    );
+    assert_eq!(boxed["removed"], 21 * 11 - 17 * 7, "{boxed}");
+    let miss = head.ok(
+        "trim_outline",
+        json!({"outline": [[-5, -5], [40, -5], [40, 40], [-5, 40]]}),
+    );
+    assert_eq!(miss["removed"], 0, "{miss}");
+    assert!(
+        miss["warning"].as_str().unwrap().contains("outside"),
+        "{miss}"
+    );
+    for (args, needle) in [
+        (json!({"inset": 2}), "outline"),
+        (
+            json!({"outline": [[0, 0, 0], [1, 0, 0], [0, 1, 0]]}),
+            "[x, y]",
+        ),
+        (json!({"outline": outline, "inset": "deep"}), "inset"),
+        (json!({"outline": outline, "curve": "spline"}), "curve"),
+        (json!({"outline": outline, "x0": 1}), "x0"),
+        (json!({"outline": outline, "thickness": 2}), "skin"),
+        (json!({"outline": outline, "skin": 0}), "skin"),
+    ] {
+        let err = error_text(&head.call("trim_outline", args));
+        assert!(err.contains(needle), "{needle}: {err}");
+    }
+}

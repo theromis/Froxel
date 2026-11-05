@@ -151,8 +151,9 @@ editor the Sculpt tool (**S**) is the same brush by drag.
 with a radius just under the trunk's makes a hollow log in one call.
 A tube has at most 2000000 cells and 512000000 cells in the boxes around
 its segments, and a closed path counts like an open one. For a slanted cut
-along a closed or curved outline, such as a boat's side, sweep a polygon with
-`palette` `0` rather than fitting round tubes to the surface.
+along a closed or curved outline, sweep a polygon with `palette` `0` rather
+than fitting round tubes to the surface. To remove everything outside a
+surface, such as a boat's side, call `trim_outline`.
 
 `break_end` snaps a trunk, branch, plank, or post across a plane: the part
 beyond goes, the new face is ragged with pits torn along the grain, its rim
@@ -174,6 +175,13 @@ per point to lean or taper it. `palettes` with `pattern: "bands"` lays
 horizontal strata.
 `palette` `0` erases the solid cells the same shape covers: the sweep is the
 cut, and `examples/swept_cut.rhai` slopes a block's side and cuts a channel.
+
+`trim_outline` reshapes a finished form from outside, and it is the way to
+narrow a boat hull toward the water: give the closed plan `outline` and `[z,
+inset]` pairs once, and every solid cell outside that surface goes. `skin` and
+`thickness` lay a new skin along the cut and seal a hollow it opened, leaving
+the rim and any port alone, so there is no second `sweep` to rebuild it.
+`examples/trimmed_hull.rhai` does this to a hollow block in one call.
 
 `examples/gorge_wall.rhai` puts the stone tools together in order: sweep,
 column relief, the ledge, joints, weather, moss, algae, vines, then markers.

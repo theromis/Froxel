@@ -1,5 +1,6 @@
 //! The stone and surface tools: MCP `joints`, `column_relief`, `weather`,
-//! `moss`, `algae`, `vines`, `sweep`, `bark`, `foliage`, and `cavity_tint`, their
+//! `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `bark`, `foliage`, and
+//! `cavity_tint`, their
 //! arguments, and their replies.
 //!
 //! Each tool turns its MCP arguments into writes against a cell map and a
@@ -27,6 +28,7 @@ pub(crate) enum Stone {
     Algae,
     Vines,
     Sweep,
+    Trim,
     Bark,
     Foliage,
 }
@@ -123,6 +125,16 @@ pub(crate) fn stone_writes(
                 reply.insert("removed".into(), json!(writes.len()));
             }
             writes
+        }
+        Stone::Trim => {
+            let done = crate::tools::trim_outline(cells, &trim_spec(params)?)?;
+            reply.insert("removed".into(), json!(done.removed));
+            reply.insert("painted".into(), json!(done.painted));
+            reply.insert("added".into(), json!(done.added));
+            if let Some(note) = done.note {
+                reply.insert("warning".into(), json!(note));
+            }
+            done.writes
         }
     };
     Ok((writes, reply))
@@ -587,6 +599,72 @@ pub(crate) fn growth_spec(params: &Value, tool: Stone) -> Result<crate::tools::G
         exclude: exclude_boxes(params)?,
         layer,
         seed: seed(params)?,
+    })
+}
+
+/// MCP `trim_outline` arguments as a spec.
+pub(crate) fn trim_spec(params: &Value) -> Result<crate::tools::TrimSpec, String> {
+    let bad_outline = "outline must be a closed list of [x, y] points";
+    let outline = params
+        .get("outline")
+        .and_then(Value::as_array)
+        .ok_or(bad_outline)?
+        .iter()
+        .map(|row| match row.as_array().map(Vec::as_slice) {
+            Some([x, y]) => x.as_f64().zip(y.as_f64()).map(|(x, y)| [x, y]),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or(bad_outline)?;
+    let bad_inset = "inset must be a number or a list of [z, inset] pairs";
+    let inset = match params.get("inset") {
+        None | Some(Value::Null) => vec![[0.0, 0.0]],
+        Some(Value::Array(list)) => list
+            .iter()
+            .map(|row| match row.as_array().map(Vec::as_slice) {
+                Some([z, inset]) => z.as_f64().zip(inset.as_f64()).map(|(z, i)| [z, i]),
+                _ => None,
+            })
+            .collect::<Option<Vec<_>>>()
+            .ok_or(bad_inset)?,
+        Some(found) => vec![[0.0, found.as_f64().ok_or(bad_inset)?]],
+    };
+    let smooth = match opt_str(params, "curve")?.as_deref() {
+        None | Some("polyline") => false,
+        Some("smooth") => true,
+        Some(other) => return Err(format!("curve must be polyline or smooth, not `{other}`")),
+    };
+    let corners = ["x0", "y0", "z0", "x1", "y1", "z1"];
+    let region = match corners.iter().filter(|k| params.get(**k).is_some()).count() {
+        0 => None,
+        6 => {
+            let (x0, y0, z0, x1, y1, z1) = box_corners(params)?;
+            Some(crate::tools::Region::spanning((x0, y0, z0), (x1, y1, z1)))
+        }
+        _ => {
+            return Err(
+                "pass all of x0, y0, z0, x1, y1, z1 for a box, or none for the whole object".into(),
+            )
+        }
+    };
+    let thickness = opt_f64(params, "thickness")?;
+    let skin = match one_slot(params, "skin")? {
+        Some(palette) => Some(crate::tools::TrimSkin {
+            palette,
+            thickness: thickness.unwrap_or(1.0),
+        }),
+        None if thickness.is_some() => {
+            return Err("thickness needs skin, the palette slot of the new skin".into())
+        }
+        None => None,
+    };
+    Ok(crate::tools::TrimSpec {
+        outline,
+        smooth,
+        inset,
+        region,
+        only: slot_list(params, "only")?,
+        skin,
     })
 }
 

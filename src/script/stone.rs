@@ -1,6 +1,6 @@
 //! The MCP stone and surface tools in Rhai: `joints`, `column_relief`,
-//! `weather`, `moss`, `algae`, `vines`, `sweep`, `bark`, `cavity_tint`, and
-//! `foliage`.
+//! `weather`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `bark`,
+//! `cavity_tint`, and `foliage`.
 //!
 //! Each call turns its arguments into the MCP tool's arguments and runs
 //! `remote::stone_writes` on the object being written, as the MCP handler
@@ -75,6 +75,8 @@ const VINES: &[&str] = &[
 ];
 
 const SWEEP: &[&str] = &["curve", "pattern", "period", "seed", "mode"];
+
+const TRIM: &[&str] = &["curve", "only", "skin", "thickness"];
 
 const BARK: &[&str] = &[
     "axis", "points", "curve", "dirt", "width", "length", "depth", "cracks", "only", "exclude",
@@ -156,6 +158,62 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
                 "sweep",
                 move |points: Array, profile: Dynamic, palette: Dynamic| {
                     run(points, profile, palette, &Map::new())
+                },
+            );
+        }
+    }
+    // `trim_outline(outline, inset, opts)` tests the whole object;
+    // `trim_outline(x0, y0, z0, x1, y1, z1, outline, inset, opts)` keeps to a box.
+    for with_opts in [false, true] {
+        let state = scratch.clone();
+        let run = move |corners: Option<[INT; 6]>,
+                        outline: Array,
+                        inset: Dynamic,
+                        opts: &Map|
+              -> Fallible<Map> {
+            let mut args = options(opts, TRIM, "trim_outline")?;
+            if let Some(corners) = corners {
+                args.extend(box_args(corners)?);
+            }
+            args.insert("outline".into(), json(&Dynamic::from_array(outline))?);
+            args.insert("inset".into(), json(&inset)?);
+            state.borrow_mut().stone(args, Stone::Trim).map_err(runtime)
+        };
+        let boxed = run.clone();
+        if with_opts {
+            engine.register_fn(
+                "trim_outline",
+                move |outline: Array, inset: Dynamic, opts: Map| run(None, outline, inset, &opts),
+            );
+            engine.register_fn(
+                "trim_outline",
+                move |x0: INT,
+                      y0: INT,
+                      z0: INT,
+                      x1: INT,
+                      y1: INT,
+                      z1: INT,
+                      outline: Array,
+                      inset: Dynamic,
+                      opts: Map| {
+                    boxed(Some([x0, y0, z0, x1, y1, z1]), outline, inset, &opts)
+                },
+            );
+        } else {
+            engine.register_fn("trim_outline", move |outline: Array, inset: Dynamic| {
+                run(None, outline, inset, &Map::new())
+            });
+            engine.register_fn(
+                "trim_outline",
+                move |x0: INT,
+                      y0: INT,
+                      z0: INT,
+                      x1: INT,
+                      y1: INT,
+                      z1: INT,
+                      outline: Array,
+                      inset: Dynamic| {
+                    boxed(Some([x0, y0, z0, x1, y1, z1]), outline, inset, &Map::new())
                 },
             );
         }

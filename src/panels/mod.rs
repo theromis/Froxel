@@ -145,6 +145,8 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
                     ui.separator();
                     stone::sweep(ui, session);
                     ui.separator();
+                    stone::trim(ui, session);
+                    ui.separator();
                     organic::loft(ui, session);
                     ui.separator();
                     organic::deform(ui, session);

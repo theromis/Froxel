@@ -1193,3 +1193,222 @@ fn moss_facing_down_shades_the_underside_of_a_crown() {
         .unwrap_or_default();
     assert!(warning.contains("exposure"), "{reply:?}");
 }
+
+fn trim_spec(outline: &[[f64; 2]], inset: &[[f64; 2]]) -> TrimSpec {
+    TrimSpec {
+        outline: outline.to_vec(),
+        smooth: false,
+        inset: inset.to_vec(),
+        region: None,
+        only: Vec::new(),
+        skin: None,
+    }
+}
+
+/// `cells` with a tool's writes applied.
+fn applied(cells: &HashMap<Cell, u8>, writes: &[(i32, i32, i32, i32)]) -> HashMap<Cell, u8> {
+    let mut out = cells.clone();
+    for &(x, y, z, slot) in writes {
+        if slot == 0 {
+            out.remove(&(x, y, z));
+        } else {
+            out.insert((x, y, z), slot as u8);
+        }
+    }
+    out
+}
+
+const TRIM_RECT: [[f64; 2]; 4] = [[2.0, 2.0], [18.0, 2.0], [18.0, 8.0], [2.0, 8.0]];
+
+#[test]
+fn trim_keeps_the_cells_on_and_inside_the_outline_in_either_winding() {
+    let cells = slab((0, 0, 0), (20, 10, 5), 1);
+    let done = trim_outline(&cells, &trim_spec(&TRIM_RECT, &[[0.0, 0.0]])).unwrap();
+    let left = applied(&cells, &done.writes);
+    assert_eq!(left.len(), 17 * 7 * 6);
+    assert_eq!(done.removed, cells.len() - left.len());
+    assert!(left.contains_key(&(2, 2, 0)) && left.contains_key(&(18, 8, 5)));
+    assert!(!left.contains_key(&(1, 2, 0)) && !left.contains_key(&(18, 9, 5)));
+    // The other winding, and a path that returns to its start, are the same.
+    let mut back = TRIM_RECT.to_vec();
+    back.reverse();
+    back.push(back[0]);
+    let reversed = trim_outline(&cells, &trim_spec(&back, &[[0.0, 0.0]])).unwrap();
+    assert_eq!(applied(&cells, &reversed.writes), left);
+}
+
+#[test]
+fn trim_inset_follows_height_and_holds_its_ends() {
+    let cells = slab((0, 0, -2), (20, 10, 8), 1);
+    let rows = [[0.0, 3.0], [3.0, 0.0]];
+    let left = applied(
+        &cells,
+        &trim_outline(&cells, &trim_spec(&TRIM_RECT, &rows))
+            .unwrap()
+            .writes,
+    );
+    let first = |z: i32| (0..=20).find(|&x| left.contains_key(&(x, 5, z))).unwrap();
+    for (z, x) in [(-2, 5), (0, 5), (1, 4), (2, 3), (3, 2), (8, 2)] {
+        assert_eq!(first(z), x, "z {z}");
+    }
+    // A negative inset stands outside the outline.
+    let out = applied(
+        &cells,
+        &trim_outline(&cells, &trim_spec(&TRIM_RECT, &[[0.0, -1.0]]))
+            .unwrap()
+            .writes,
+    );
+    assert!(out.contains_key(&(1, 5, 0)) && !out.contains_key(&(0, 5, 0)));
+}
+
+#[test]
+fn trim_stays_in_its_box_and_only_slots() {
+    let mut cells = slab((0, 0, 0), (20, 10, 5), 1);
+    cells.extend(slab((0, 0, 3), (20, 10, 5), 2));
+    let mut spec = trim_spec(&TRIM_RECT, &[[0.0, 0.0]]);
+    spec.only = vec![2];
+    let left = applied(&cells, &trim_outline(&cells, &spec).unwrap().writes);
+    assert!(left.contains_key(&(0, 0, 2)) && !left.contains_key(&(0, 0, 3)));
+    spec.only.clear();
+    spec.region = Some(Region::spanning((0, 0, 0), (20, 10, 1)));
+    let left = applied(&cells, &trim_outline(&cells, &spec).unwrap().writes);
+    assert!(!left.contains_key(&(0, 0, 1)) && left.contains_key(&(0, 0, 2)));
+}
+
+#[test]
+fn trim_says_why_it_removed_nothing_and_refuses_bad_input() {
+    let cells = slab((5, 4, 0), (6, 5, 2), 1);
+    let done = trim_outline(&cells, &trim_spec(&TRIM_RECT, &[[0.0, 0.0]])).unwrap();
+    assert!(done.writes.is_empty() && done.note.is_some(), "{done:?}");
+    let refused = |spec: TrimSpec| trim_outline(&cells, &spec).unwrap_err();
+    let two = [[0.0, 0.0], [4.0, 0.0], [0.0, 0.0]];
+    assert!(refused(trim_spec(&two, &[[0.0, 0.0]])).contains("3 different"));
+    let flat = [[0.0, 0.0], [4.0, 0.0], [8.0, 0.0]];
+    assert!(refused(trim_spec(&flat, &[[0.0, 0.0]])).contains("no area"));
+    let down = [[4.0, 1.0], [0.0, 2.0]];
+    assert!(refused(trim_spec(&TRIM_RECT, &down)).contains("go up in z"));
+    assert!(refused(trim_spec(&TRIM_RECT, &[])).contains("inset"));
+    let mut thin = trim_spec(&TRIM_RECT, &[[0.0, 0.0]]);
+    thin.skin = Some(TrimSkin {
+        palette: 2,
+        thickness: 0.5,
+    });
+    assert!(refused(thin).contains("thickness"));
+}
+
+#[test]
+fn a_smooth_trim_rounds_the_outline_through_its_points() {
+    let cells = slab((0, 0, 0), (20, 20, 0), 1);
+    let square = [[2.0, 2.0], [18.0, 2.0], [18.0, 18.0], [2.0, 18.0]];
+    let mut spec = trim_spec(&square, &[[0.0, 0.0]]);
+    spec.smooth = true;
+    let left = applied(&cells, &trim_outline(&cells, &spec).unwrap().writes);
+    // It bulges past the straight edge between points and passes through them.
+    assert!(left.contains_key(&(10, 1, 0)), "{}", left.len());
+    assert!(left.contains_key(&(10, 10, 0)));
+    assert!(!left.contains_key(&(0, 0, 0)));
+}
+
+/// A hollow box: walls two cells thick, a floor, and an open top.
+fn hollow_hull() -> HashMap<Cell, u8> {
+    let mut hull = slab((0, 0, 0), (30, 20, 12), 1);
+    hull.retain(|&(x, y, z), _| z < 2 || !(2..=28).contains(&x) || !(2..=18).contains(&y));
+    hull
+}
+
+const HULL_RIM: [[f64; 2]; 4] = [[0.0, 0.0], [30.0, 0.0], [30.0, 20.0], [0.0, 20.0]];
+
+/// The empty cells a flood from `start` reaches through faces, kept to the
+/// layers up to `top` and to the box around the hull.
+fn flooded(cells: &HashMap<Cell, u8>, start: Cell, top: i32) -> HashSet<Cell> {
+    let mut seen = HashSet::from([start]);
+    let mut stack = vec![start];
+    while let Some(c) = stack.pop() {
+        for d in FACES {
+            let n = (c.0 + d.0, c.1 + d.1, c.2 + d.2);
+            let inside =
+                (-2..=32).contains(&n.0) && (-2..=22).contains(&n.1) && (-2..=top).contains(&n.2);
+            if inside && !cells.contains_key(&n) && seen.insert(n) {
+                stack.push(n);
+            }
+        }
+    }
+    seen
+}
+
+#[test]
+fn a_skin_seals_the_hollow_the_cut_opened_and_stays_under_the_rim() {
+    let hull = hollow_hull();
+    // Steep: more than a cell across per layer, so a thin skin must close it.
+    let rows = [[0.0, 7.0], [6.0, 0.0]];
+    let mut spec = trim_spec(&HULL_RIM, &rows);
+    let bare = applied(&hull, &trim_outline(&hull, &spec).unwrap().writes);
+    let centre = (15, 10, 5);
+    assert!(
+        flooded(&bare, centre, 12).contains(&(-2, -2, 0)),
+        "without a skin the cut opens the hollow"
+    );
+    spec.skin = Some(TrimSkin {
+        palette: 2,
+        thickness: 1.0,
+    });
+    let done = trim_outline(&hull, &spec).unwrap();
+    assert!(done.added > 0 && done.painted > 0, "{done:?}");
+    let left = applied(&hull, &done.writes);
+    assert!(
+        !flooded(&left, centre, 12).contains(&(-2, -2, 0)),
+        "the skin leaves a leak"
+    );
+    // Nothing above the rim, nothing outside the old box, nothing cut twice.
+    assert!(left.keys().all(|c| c.2 <= 12 && (0..=30).contains(&c.0)));
+    assert_eq!(
+        left.values().filter(|&&slot| slot == 2).count(),
+        done.added + done.painted
+    );
+    // The skin stands on the surface: at mid height, one cell thick on the
+    // long side, with the old wall gone.
+    let across: Vec<i32> = (0..=10)
+        .filter(|&y| left.get(&(15, y, 3)) == Some(&2))
+        .collect();
+    assert_eq!(across, vec![4], "{across:?}");
+    assert_eq!(left.get(&(15, 3, 3)), None);
+    assert_eq!(left.get(&(15, 5, 3)), None);
+    let mut thick = spec.clone();
+    thick.skin = Some(TrimSkin {
+        palette: 2,
+        thickness: 3.0,
+    });
+    let left = applied(&hull, &trim_outline(&hull, &thick).unwrap().writes);
+    let across = (0..=10)
+        .filter(|&y| left.get(&(15, y, 3)) == Some(&2))
+        .count();
+    assert!(across >= 3, "{across}");
+}
+
+#[test]
+fn a_skin_leaves_an_opening_and_what_the_cut_missed() {
+    let mut hull = hollow_hull();
+    // A port through the wall on one long side, and a narrow end the cut
+    // never reaches: the outline is wider than the hull beyond x 30.
+    for y in 0..2 {
+        for x in 14..=16 {
+            for z in 5..=7 {
+                hull.remove(&(x, y, z));
+            }
+        }
+    }
+    let wide = [[0.0, 0.0], [40.0, 0.0], [40.0, 20.0], [0.0, 20.0]];
+    let mut spec = trim_spec(&wide, &[[0.0, 1.0]]);
+    spec.only = vec![1];
+    spec.skin = Some(TrimSkin {
+        palette: 2,
+        thickness: 1.0,
+    });
+    let left = applied(&hull, &trim_outline(&hull, &spec).unwrap().writes);
+    // Behind the port there was no wall to cut, so the skin stays open there.
+    assert_eq!(left.get(&(15, 1, 6)), None);
+    assert_eq!(left.get(&(10, 1, 6)), Some(&2));
+    // The far end is more than the inset inside, so it keeps its slot.
+    assert_eq!(left.get(&(30, 10, 6)), Some(&1));
+    assert_eq!(left.get(&(29, 10, 6)), Some(&1));
+}

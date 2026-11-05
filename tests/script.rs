@@ -912,6 +912,10 @@ fn stone_tools_match_the_mcp_tools() {
         if wall.cells == 0 || wall.length < 20.0 { throw "no sweep"; }
         sweep([[0, -6, 0], [10, -6, 0]], [[-2, 0], [2, 0], [0, 3]], 4);
         sweep([[2, -6, 1], [8, -6, 1]], #{width: 2, height: 1}, 0);
+        let cut = trim_outline([[1, -8], [22, -8], [22, 18], [1, 18]], [[0, 1], [4, 0]],
+            #{only: [1, 3], skin: 13, thickness: 2});
+        if cut.removed == 0 || cut.painted == 0 { throw "no trim"; }
+        trim_outline(0, 0, 0, 23, 5, 2, [[2, -9], [21, -9], [21, 19], [2, 19]], 1);
         "#,
     )
     .unwrap();
@@ -958,6 +962,16 @@ fn stone_tools_match_the_mcp_tools() {
         (
             "voxel.sweep",
             json!({"points": [[2, -6, 1], [8, -6, 1]], "width": 2, "height": 1, "palette": 0}),
+        ),
+        (
+            "voxel.trim_outline",
+            json!({"outline": [[1, -8], [22, -8], [22, 18], [1, 18]], "inset": [[0, 1], [4, 0]],
+                "only": [1, 3], "skin": 13, "thickness": 2}),
+        ),
+        (
+            "voxel.trim_outline",
+            json!({"outline": [[2, -9], [21, -9], [21, 19], [2, 19]], "inset": 1,
+                "x0": 0, "y0": 0, "z0": 0, "x1": 23, "y1": 5, "z1": 2}),
         ),
     ]);
     assert_eq!(script, mcp);
@@ -1437,6 +1451,29 @@ fn bark_on_a_flat_plate_matches_mcp_and_warns_on_one_cell() {
         "the back layer stays: {}",
         plate.len()
     );
+}
+
+#[test]
+fn the_trimmed_hull_narrows_toward_its_keel_under_a_new_skin() {
+    let mut session = Session::new();
+    session.replace_empty();
+    session
+        .set_script(0, include_str!("../examples/trimmed_hull.rhai"))
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    let hull = cells_of(&session);
+    let first_y = |z: i32| (0..24).find(|&y| hull.contains_key(&(30, y, z))).unwrap();
+    assert!(first_y(0) > first_y(9) + 4, "{} {}", first_y(0), first_y(9));
+    // The skin carries the slope, the rim is untouched, and the hollow is shut.
+    assert_eq!(hull.get(&(30, first_y(4), 4)), Some(&2));
+    assert_eq!(hull.get(&(30, first_y(14), 14)), Some(&1));
+    assert_eq!(hull.get(&(30, 12, 12)), Some(&3));
+    assert!(!hull.contains_key(&(30, 12, 5)));
+    let err = run_cells(
+        r#"fill_box(0, 0, 0, 4, 4, 4, 1); trim_outline([[0, 0], [4, 0], [4, 4]], 1, #{depth: 2});"#,
+    )
+    .unwrap_err();
+    assert!(err.contains("depth"), "{err}");
 }
 
 #[test]

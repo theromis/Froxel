@@ -1,5 +1,5 @@
 //! The stone panels: the fields of MCP `joints`, `column_relief`, `weather`,
-//! `bark`, `cavity_tint`, `moss`, `algae`, `vines`, and `sweep`. Each panel's button builds
+//! `bark`, `cavity_tint`, `moss`, `algae`, `vines`, `sweep`, and `trim_outline`. Each panel's button builds
 //! the tool's MCP arguments over the selection's box (or the active object's
 //! box) and runs the MCP handler, so the editor and MCP share one path.
 
@@ -593,6 +593,67 @@ impl SweepPanel {
     }
 }
 
+/// The Trim panel: MCP `trim_outline`.
+#[derive(Clone, PartialEq)]
+pub struct TrimPanel {
+    /// One `x y` point per line, or separated by semicolons.
+    pub outline: String,
+    pub smooth: bool,
+    /// One `z inset` pair per line, or separated by semicolons; one number is
+    /// the same inset at every height.
+    pub inset: String,
+    /// Palette indices; empty cuts every slot.
+    pub only: String,
+    /// Lay a new skin along the surface.
+    pub skin: bool,
+    /// The skin's slot; 0 is the active slot.
+    pub slot: i32,
+    pub thickness: f32,
+}
+
+impl Default for TrimPanel {
+    fn default() -> Self {
+        Self {
+            outline: "0 0\n40 0\n40 16\n0 16".into(),
+            smooth: false,
+            inset: "0 6\n12 0".into(),
+            only: String::new(),
+            skin: false,
+            slot: 0,
+            thickness: 1.0,
+        }
+    }
+}
+
+impl TrimPanel {
+    fn args(&self, active: u8) -> Result<Value, String> {
+        let inset = rows(&self.inset, "Inset", 1..=2)?;
+        let inset = match inset.as_slice() {
+            [one] if one.len() == 1 => json!(one[0]),
+            _ if inset.iter().any(|row| row.len() != 2) => {
+                return Err("Inset: one number, or z inset pairs".into())
+            }
+            _ => json!(inset),
+        };
+        let mut args = json!({
+            "outline": rows(&self.outline, "Outline", 2..=2)?,
+            "inset": inset,
+            "curve": if self.smooth { "smooth" } else { "polyline" },
+            "only": slots("Only", &self.only)?,
+        });
+        if self.skin {
+            let slot = if self.slot > 0 {
+                self.slot
+            } else {
+                i32::from(active.max(1))
+            };
+            args["skin"] = json!(slot);
+            args["thickness"] = json!(self.thickness);
+        }
+        Ok(args)
+    }
+}
+
 /// The Markers panel: a new marker's name, kind, and connector direction.
 #[derive(Clone, PartialEq)]
 pub struct MarkersPanel {
@@ -637,6 +698,7 @@ pub struct StonePanels {
     pub foliage: super::FoliagePanel,
     pub growth: GrowthPanel,
     pub sweep: SweepPanel,
+    pub trim: TrimPanel,
     pub markers: MarkersPanel,
 }
 
@@ -783,6 +845,55 @@ impl Session {
             Err(err) => err,
         };
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// The Trim panel's button: MCP `trim_outline` inside the selection's box,
+    /// or on the whole active object.
+    pub fn trim_from_panel(&mut self) {
+        let mut args = match self.stone.trim.args(self.active_slot) {
+            Ok(args) => args,
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
+        if let Some((min, max)) = cell_bounds(self.picked.iter().copied()) {
+            for (key, value) in ["x0", "y0", "z0", "x1", "y1", "z1"]
+                .into_iter()
+                .zip([min.0, min.1, min.2, max.0, max.1, max.2])
+            {
+                args[key] = json!(value);
+            }
+        }
+        self.status = match crate::remote::apply(self, "voxel.trim_outline", &args) {
+            Ok(reply) => {
+                let text = format!(
+                    "Trimmed {} cells; the skin painted {} and added {}.",
+                    reply["removed"], reply["painted"], reply["added"]
+                );
+                match reply.get("warning").and_then(Value::as_str) {
+                    Some(warning) => format!("{text} {warning}."),
+                    None => text,
+                }
+            }
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// Add the selection's centre as the next Trim outline point.
+    pub fn trim_point_at_selection(&mut self) {
+        let Some((min, max)) = cell_bounds(self.picked.iter().copied()) else {
+            self.status = "Select cells to add their centre as a point.".into();
+            return;
+        };
+        let mid = |a: i32, b: i32| f64::from(a + b) / 2.0;
+        let line = format!("{} {}", mid(min.0, max.0), mid(min.1, max.1));
+        let outline = &mut self.stone.trim.outline;
+        if !outline.is_empty() && !outline.ends_with('\n') {
+            outline.push('\n');
+        }
+        outline.push_str(&line);
     }
 
     /// Add the selection's box to the Protect boxes.

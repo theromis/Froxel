@@ -318,6 +318,31 @@ let report = sweep(outline, [[-2, 0], [10, 0], [10, 30], [4, 30]], 0, #{curve: "
 
 It returns `#{changed, cells, length}`.
 
+### Trim outline
+
+```rhai
+let report = trim_outline(outline, inset);
+let report = trim_outline(outline, [[0, 7], [9, 0]], #{curve: "smooth", only: [1], skin: 2, thickness: 1});
+let report = trim_outline(x0, y0, z0, x1, y1, z1, outline, inset, opts);
+```
+
+MCP `trim_outline`: remove every solid cell outside a surface, so a finished
+hull narrows toward its keel in one call. `outline` is a closed list of `[x, y]`
+points. `inset` says how far inward the surface stands: one number, or `[z, inset]`
+pairs going up in z, linear between them and the end value beyond them; a
+negative inset stands outside the outline. With the box, nothing outside it
+is removed or written. Options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `curve` | `"polyline"` | `"smooth"` passes a closed curve through the points. |
+| `only` | every slot | Slots to remove or recolour. |
+| `skin` | none | The slot of a new skin along the surface, where the cut reached: solid cells are recoloured and a hollow the cut opened is sealed. |
+| `thickness` | `1` | The skin's thickness inward, 1..=64 cells. Needs `skin`. |
+
+It returns `#{changed, removed, painted, added}`, with `warning` when nothing
+was outside.
+
 ### Loft
 
 ```rhai
@@ -740,6 +765,9 @@ while the wood stays still.
 `examples/swept_cut.rhai` (baked in `examples/swept_cut.vox`) cuts a block
 with `sweep` and slot `0`: a slanted side along a curved outline and a round
 channel over the top.
+
+`examples/trimmed_hull.rhai` (baked in `examples/trimmed_hull.vox`) narrows a
+hollow boat hull toward its keel with one `trim_outline` and seals it with a skin.
 
 `examples/gorge_wall.rhai` (baked in `examples/gorge_wall.vox`) is a gorge
 cliff wall built with the stone tools: a profile swept along a curve,

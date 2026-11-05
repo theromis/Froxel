@@ -84,7 +84,7 @@ impl Profile {
         }
     }
 
-    fn contains(&self, u: f64, v: f64) -> bool {
+    pub(super) fn contains(&self, u: f64, v: f64) -> bool {
         match self {
             Profile::Polygon(points) => {
                 let mut inside = false;
@@ -382,7 +382,13 @@ fn slab_box(slab: &Slab, bounds: &[f64; 4]) -> ([i32; 3], [i32; 3]) {
     (min.map(|v| v.floor() as i32), max.map(|v| v.ceil() as i32))
 }
 
-fn catmull(p0: [f64; 3], p1: [f64; 3], p2: [f64; 3], p3: [f64; 3], t: f64) -> ([f64; 3], [f64; 3]) {
+pub(super) fn catmull(
+    p0: [f64; 3],
+    p1: [f64; 3],
+    p2: [f64; 3],
+    p3: [f64; 3],
+    t: f64,
+) -> ([f64; 3], [f64; 3]) {
     let (t2, t3) = (t * t, t * t * t);
     let mut at = [0.0; 3];
     let mut d = [0.0; 3];
@@ -399,7 +405,7 @@ fn catmull(p0: [f64; 3], p1: [f64; 3], p2: [f64; 3], p3: [f64; 3], t: f64) -> ([
 
 /// Rounds away the error the frame leaves, so a centre on a profile edge
 /// (a whole-number `v` on a flat top) falls the same way at every slab.
-fn snap(value: f64) -> f64 {
+pub(super) fn snap(value: f64) -> f64 {
     let fine = (value * 1.0e6).round() / 1.0e6;
     if (value - fine).abs() < 1.0e-7 {
         fine

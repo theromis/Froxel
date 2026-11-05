@@ -2445,3 +2445,33 @@ fn the_sweep_panel_erases_what_it_would_fill() {
     assert!(!session.active().cells.contains_key(&(4, 0, 0)));
     assert!(session.active().cells.contains_key(&(0, 0, 0)));
 }
+
+#[test]
+fn the_trim_panel_cuts_and_skins_inside_the_selection() {
+    let mut session = Session::new();
+    session.replace_empty();
+    let _ = crate::remote::apply(
+        &mut session,
+        "voxel.fill",
+        &serde_json::json!({"x0": 0, "y0": 0, "z0": 0, "x1": 20, "y1": 10, "z1": 4, "palette": 1}),
+    )
+    .unwrap();
+    let solid = session.active().cells.len();
+    session.stone.trim.outline = "0 0; 20 0; 20 10; 0 10".into();
+    session.stone.trim.inset = "2".into();
+    session.stone.trim.skin = true;
+    session.stone.trim.slot = 3;
+    session.trim_from_panel();
+    assert!(session.status.starts_with("Trimmed"), "{}", session.status);
+    assert!(session.active().cells.len() < solid);
+    assert!(!session.active().cells.contains_key(&(1, 5, 2)));
+    assert_eq!(session.active().cells.get(&(2, 5, 2)), Some(&3));
+    session.stone.trim.inset = "0 1 2".into();
+    session.trim_from_panel();
+    assert!(session.status.starts_with("Inset"), "{}", session.status);
+    // The selection's centre goes in as an outline point.
+    session.stone.trim.outline.clear();
+    session.picked.insert((4, 6, 2));
+    session.trim_point_at_selection();
+    assert_eq!(session.stone.trim.outline, "4 6");
+}
