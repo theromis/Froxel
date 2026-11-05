@@ -911,6 +911,7 @@ fn stone_tools_match_the_mcp_tools() {
             [1, 3], #{curve: "smooth", pattern: "bands", period: 2, mode: "empty"});
         if wall.cells == 0 || wall.length < 20.0 { throw "no sweep"; }
         sweep([[0, -6, 0], [10, -6, 0]], [[-2, 0], [2, 0], [0, 3]], 4);
+        sweep([[2, -6, 1], [8, -6, 1]], #{width: 2, height: 1}, 0);
         "#,
     )
     .unwrap();
@@ -953,6 +954,10 @@ fn stone_tools_match_the_mcp_tools() {
         (
             "voxel.sweep",
             json!({"points": [[0, -6, 0], [10, -6, 0]], "profile": [[-2, 0], [2, 0], [0, 3]], "palette": 4}),
+        ),
+        (
+            "voxel.sweep",
+            json!({"points": [[2, -6, 1], [8, -6, 1]], "width": 2, "height": 1, "palette": 0}),
         ),
     ]);
     assert_eq!(script, mcp);
@@ -1375,6 +1380,29 @@ fn surface_tools_match_the_mcp_tools() {
     let err =
         run_cells(r#"fill_box(0, 0, 0, 4, 4, 4, 1); bark(0, 0, 0, 4, 4, 4, [1]);"#).unwrap_err();
     assert!(err.contains("axis or points"), "{err}");
+}
+
+#[test]
+fn the_swept_cut_removes_what_the_same_sweep_covers() {
+    let mut session = Session::new();
+    session.replace_empty();
+    session
+        .set_script(0, include_str!("../examples/swept_cut.rhai"))
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    let cut = cells_of(&session);
+    // The slanted side: the top row starts further in than the bottom row at
+    // the same place, and the channel opens the top at the middle.
+    let first_y = |z: i32| (0..24).find(|&y| cut.contains_key(&(20, y, z))).unwrap();
+    assert!(first_y(14) > first_y(1), "{} {}", first_y(14), first_y(1));
+    assert!(!cut.contains_key(&(20, 12, 15)));
+    assert!(cut.contains_key(&(20, 12, 8)));
+    assert!(cut.values().all(|&slot| slot == 1));
+    let err = run_cells(
+        r#"fill_box(0, 0, 0, 4, 4, 4, 1); sweep([[0, 0, 0], [4, 0, 0]], #{width: 2, height: 2}, 0, #{mode: "empty"});"#,
+    )
+    .unwrap_err();
+    assert!(err.contains("mode empty"), "{err}");
 }
 
 #[test]

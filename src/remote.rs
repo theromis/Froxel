@@ -1326,7 +1326,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.ellipsoid", "x0, y0, z0, x1, y1, z1, palette, mode?", "Fill an ellipsoid inside an inclusive box, at most 2000000 cells checked"),
     ("voxel.rounded", "x0, y0, z0, x1, y1, z1, palette, radius, mode?", "Fill a box with rounded edges. radius 0 is the full box"),
     ("voxel.tube", "points, radius?, curve?, palette | palettes, pattern?, period?, sectors?, seed?, mode?", "Fill a tapered tube through 2..=1024 points, at most 2000000 cells"),
-    ("voxel.carve", "shape, x0..z1 | points, radius?, curve?", "Remove the cells inside a box, ellipsoid, rounded_box, or tube"),
+    ("voxel.carve", "shape, x0..z1 | points, radius?, curve?", "Remove the cells inside a box, ellipsoid, rounded_box, or tube (sweep with palette 0 removes a cross-section along a path)"),
     ("voxel.break", "point, normal, depth?, splinters? | density?, length?, thickness?, taper?, rimBias?, bark?, sapwood?, tips?, seed?", "Jagged fracture across a plane with splinters"),
     ("voxel.scatter", "x0, y0, z0, x1, y1, z1, palettes, count?, kinds?, size?, seed?, floor?, clump?, exclude?", "Drop small pieces that settle into a heap"),
     ("voxel.joints", "x0, y0, z0, x1, y1, z1, pattern, spacing?, course?, width?, depth?, dirt?, only?, exclude?, density?, seed?", "Cut joint gaps: columns, running bond courses, or cracks"),
@@ -1338,7 +1338,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.bark", "x0, y0, z0, x1, y1, z1, axis | points, curve?, palettes, dirt?, width?, length?, depth?, cracks?, only?, exclude?, seed?", "Bark plates along an axis or a tube's curve, split by fissures cut 1 to 2 cells deep with dirt at the bottom"),
     ("voxel.cavity_tint", "x0, y0, z0, x1, y1, z1, radius?, dark?, lighten?, light?, pairs?, darken?, brighten?, only?, exclude?", "Darken crevices and concave cells (and lighten ridges) by neighbour occupancy, to given or created shades"),
     ("voxel.foliage", "palettes, ellipsoids? | boxes? | from?, x0..z1?, core?, size?, gap?, flatten?, ragged?, light?, dark?, sun?, masses?, groove?, protect?, exclude?, seed?", "A clustered tree crown: separate leaf clumps over a volume, lit tops, dark undersides, and a dark core in the gaps"),
-    ("voxel.sweep", "points, profile | width + height + radius?, curve?, palette | palettes, pattern?, period?, seed?, mode?", "Fill a 2D profile along a polyline or smooth curve, with twist and scale per point"),
+    ("voxel.sweep", "points, profile | width + height + radius?, curve?, palette | palettes, pattern?, period?, seed?, mode?", "Fill a 2D profile along a polyline or smooth curve, with twist and scale per point; palette 0 erases it"),
     ("voxel.deform", "op, x0..z1?, axis?, origin?, length?, center?, angle?, direction?, start?, end?, amplitude?, scale?, octaves?, seed?, bias?", "Bend, taper, or twist the object or a box along an axis, or displace its surface with noise; slots kept"),
     ("voxel.loft", "points, radius? | rx? + ry?, roll?, flatTop?, noise?, frequency?, curve?, caps?, palette | palettes, pattern?, period?, sectors?, seed?, mode?", "Fill a solid along a curve whose elliptical, flattened, noisy section changes per point"),
     ("voxel.brush", "op, points, radius?, strength?, falloff?, only?, palette?, vector?, spacing?", "Sculpt brush dabs along points: inflate, deflate, smooth, flatten, or grab"),
@@ -2017,6 +2017,10 @@ pub(crate) fn carve_shape(params: &Value) -> Result<Sculpt, String> {
         "ellipsoid" => Ok(Sculpt::Ellipsoid),
         "rounded_box" => Ok(Sculpt::RoundedBox),
         "tube" => Ok(Sculpt::Tube),
+        "sweep" => Err(
+            "carve has no sweep shape; to erase a cross-section along a path, call sweep with palette 0"
+                .into(),
+        ),
         other => Err(format!(
             "shape must be box, ellipsoid, rounded_box, or tube, not `{other}`"
         )),

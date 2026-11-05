@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 use std::f64::consts::TAU;
+use std::hash::{BuildHasherDefault, Hasher};
 
 use crate::state::Cell;
 
@@ -17,8 +18,10 @@ pub const MIN_TUBE_RADIUS: f64 = 0.5;
 pub const MAX_TUBE_RADIUS: f64 = 128.0;
 /// Most segments after a smooth curve is sampled.
 const MAX_TUBE_SEGMENTS: usize = 8192;
-/// Most cell tests summed over the segment boxes.
-const MAX_TUBE_WORK: i64 = 64_000_000;
+/// Most box cells summed over the segments, about 8 seconds of tests. A
+/// smooth tube's sum reaches this only near [`MAX_SCULPT_CELLS`] at the
+/// widest radius those cells allow, so the cells are what limits it.
+const MAX_TUBE_WORK: i64 = 512_000_000;
 /// Most smoothing passes in one call.
 pub const MAX_SMOOTH_ITERATIONS: u32 = 8;
 
@@ -99,6 +102,33 @@ impl TubePattern {
     }
 }
 
+/// The deepest depth, along, and around of each cell of a tube so far. A big
+/// tube looks each cell up once per segment around it, far more often than
+/// it has cells, and the default hash is most of that time.
+type TubeCells = HashMap<Cell, (f64, f64, f64), BuildHasherDefault<CellHasher>>;
+
+/// Multiply-and-rotate over the three coordinates. Tubes sort their cells
+/// afterwards, so the iteration order is never seen.
+#[derive(Default)]
+struct CellHasher(u64);
+
+impl Hasher for CellHasher {
+    fn write(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.write_i32(i32::from(byte));
+        }
+    }
+
+    fn write_i32(&mut self, value: i32) {
+        self.0 =
+            (self.0.rotate_left(5) ^ u64::from(value as u32)).wrapping_mul(0x517c_c1b7_2722_0a95);
+    }
+
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
 struct Segment {
     a: [f64; 3],
     b: [f64; 3],
@@ -160,15 +190,7 @@ pub fn tube_shaped(
             "the curve needs more than {MAX_TUBE_SEGMENTS} segments; split it into several calls"
         ));
     }
-    let mut segments = segments(&path);
-    if shape.roll != 0.0 {
-        let (sin, cos) = shape.roll.sin_cos();
-        for segment in &mut segments {
-            let (n, b) = (segment.normal, segment.binormal);
-            segment.normal = add(scale(n, cos), scale(b, sin));
-            segment.binormal = sub(scale(b, cos), scale(n, sin));
-        }
-    }
+    let segments = rolled_segments(&path, shape);
     let mut work = 0i64;
     for segment in &segments {
         let (min, max) = segment_box(segment);
@@ -178,15 +200,35 @@ pub fn tube_shaped(
     }
     if work > MAX_TUBE_WORK {
         return Err(format!(
-            "the tube is too large to test ({work} cells over its segments, limit {MAX_TUBE_WORK}); make it thinner or shorter, or split it"
+            "the tube is too large to test: its {count} segments have {work} cells in their boxes, limit {MAX_TUBE_WORK}. A box grows with the cube of the radius, and a closed path counts like an open one; make it thinner or shorter, split it, or cut an outline with sweep and palette 0",
+            count = segments.len(),
         ));
     }
-    let mut best: HashMap<Cell, (f64, f64, f64)> = HashMap::new();
+    let mut best: TubeCells = TubeCells::default();
     for segment in &segments {
         let (min, max) = segment_box(segment);
+        // Only the rows inside a sphere around the segment can hold its
+        // cells, which is about half of the box for a short segment.
+        let middle = scale(add(segment.a, segment.b), 0.5);
+        let corner = if shape.blade {
+            std::f64::consts::SQRT_2
+        } else {
+            1.0
+        };
+        let d = sub(segment.b, segment.a);
+        let reach = dot(d, d).sqrt() / 2.0 + segment.ra.max(segment.rb) * corner + 1.0e-6;
         for z in min[2]..=max[2] {
+            let dz = f64::from(z) - middle[2];
             for y in min[1]..=max[1] {
-                for x in min[0]..=max[0] {
+                let dy = f64::from(y) - middle[1];
+                let rest = reach * reach - dy * dy - dz * dz;
+                if rest < 0.0 {
+                    continue;
+                }
+                let half = rest.sqrt();
+                let first = ((middle[0] - half).floor() as i32).max(min[0]);
+                let last = ((middle[0] + half).ceil() as i32).min(max[0]);
+                for x in first..=last {
                     consider(&mut best, segment, shape, (x, y, z), false);
                 }
             }
@@ -206,7 +248,7 @@ pub fn tube_shaped(
         }
         if best.len() as i64 > MAX_SCULPT_CELLS {
             return Err(format!(
-                "the tube covers more than {MAX_SCULPT_CELLS} cells; make it thinner or shorter"
+                "the tube covers more than {MAX_SCULPT_CELLS} cells, and a closed path counts like an open one; make it thinner or shorter, split it, or cut an outline with sweep and palette 0"
             ));
         }
     }
@@ -220,6 +262,40 @@ pub fn tube_shaped(
         .collect();
     cells.sort_by_key(|cell| (cell.cell.2, cell.cell.1, cell.cell.0));
     Ok(cells)
+}
+
+/// The segments of `path` with `shape`'s roll applied to their frames.
+fn rolled_segments(path: &[TubePoint], shape: TubeShape) -> Vec<Segment> {
+    let mut segments = segments(path);
+    if shape.roll != 0.0 {
+        let (sin, cos) = shape.roll.sin_cos();
+        for segment in &mut segments {
+            let (n, b) = (segment.normal, segment.binormal);
+            segment.normal = add(scale(n, cos), scale(b, sin));
+            segment.binormal = sub(scale(b, cos), scale(n, sin));
+        }
+    }
+    segments
+}
+
+/// The cells of a polyline tube and their distance along it, testing every
+/// cell of every segment box, for checking what [`tube_shaped`] skips.
+#[cfg(test)]
+pub(super) fn tube_tested_everywhere(path: &[TubePoint], shape: TubeShape) -> HashMap<Cell, f64> {
+    let mut best = TubeCells::default();
+    for segment in &rolled_segments(path, shape) {
+        let (min, max) = segment_box(segment);
+        for z in min[2]..=max[2] {
+            for y in min[1]..=max[1] {
+                for x in min[0]..=max[0] {
+                    consider(&mut best, segment, shape, (x, y, z), false);
+                }
+            }
+        }
+    }
+    best.into_iter()
+        .map(|(cell, (_, along, _))| (cell, along))
+        .collect()
 }
 
 /// Catmull-Rom through every point, the ends repeated, sampled about once
@@ -334,13 +410,7 @@ fn segments(path: &[TubePoint]) -> Vec<Segment> {
 
 /// Keep `cell` when its centre is inside `segment` (or `force`), with the
 /// deepest segment's position on the tube.
-fn consider(
-    best: &mut HashMap<Cell, (f64, f64, f64)>,
-    segment: &Segment,
-    shape: TubeShape,
-    cell: Cell,
-    force: bool,
-) {
+fn consider(best: &mut TubeCells, segment: &Segment, shape: TubeShape, cell: Cell, force: bool) {
     let c = [f64::from(cell.0), f64::from(cell.1), f64::from(cell.2)];
     let d = sub(segment.b, segment.a);
     let len2 = dot(d, d);

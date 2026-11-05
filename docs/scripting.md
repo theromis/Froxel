@@ -308,6 +308,14 @@ slot or a list. Options:
 | `seed` | `0` | Seed of the random pattern. |
 | `mode` | `"replace"` | `"empty"` adds only into empty cells; `"paint"` recolours solid ones. |
 
+Slot `0` erases the solid cells the sweep covers, for a slanted cut along a
+closed or curved outline (`"empty"` is refused with it), and adds `removed` to
+the report:
+
+```rhai
+let report = sweep(outline, [[-2, 0], [10, 0], [10, 30], [4, 30]], 0, #{curve: "smooth"});
+```
+
 It returns `#{changed, cells, length}`.
 
 ### Loft
@@ -724,6 +732,10 @@ a broadleaf tree whose crown is separate leaf clumps: a tube trunk and
 branches, then `foliage` over three ellipsoids in four masses, with lit
 tops, dark undersides, a dark core in the gaps, and leaf slots that sway
 while the wood stays still.
+
+`examples/swept_cut.rhai` (baked in `examples/swept_cut.vox`) cuts a block
+with `sweep` and slot `0`: a slanted side along a curved outline and a round
+channel over the top.
 
 `examples/gorge_wall.rhai` (baked in `examples/gorge_wall.vox`) is a gorge
 cliff wall built with the stone tools: a profile swept along a curve,

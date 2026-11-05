@@ -494,6 +494,8 @@ pub struct SweepPanel {
     pub height: f32,
     pub radius: f32,
     pub smooth: bool,
+    /// Remove the solid cells the sweep covers: MCP `palette` 0.
+    pub erase: bool,
     /// Palette indices; empty is the active slot.
     pub palettes: String,
     /// 0 bands, 1 rings, 2 random.
@@ -514,6 +516,7 @@ impl Default for SweepPanel {
             height: 12.0,
             radius: 1.5,
             smooth: true,
+            erase: false,
             palettes: String::new(),
             pattern: 0,
             period: 2.0,
@@ -572,6 +575,13 @@ impl SweepPanel {
             "mode": mode,
             "seed": self.seed.max(0),
         });
+        if self.erase {
+            let map = args.as_object_mut().expect("the arguments are an object");
+            for key in ["palettes", "pattern", "period", "mode", "seed"] {
+                map.remove(key);
+            }
+            args["palette"] = json!(0);
+        }
         if self.polygon {
             args["profile"] = json!(rows(&self.profile, "Profile", 2..=2)?);
         } else {
@@ -756,10 +766,16 @@ impl Session {
             }
         };
         self.status = match crate::remote::apply(self, "voxel.sweep", &args) {
-            Ok(reply) => format!(
-                "Swept {} cells along {} cells of path.",
-                reply["cells"], reply["length"]
-            ),
+            Ok(reply) => match reply.get("removed") {
+                Some(removed) => format!(
+                    "Erased {removed} of the {} cells along {} cells of path.",
+                    reply["cells"], reply["length"]
+                ),
+                None => format!(
+                    "Swept {} cells along {} cells of path.",
+                    reply["cells"], reply["length"]
+                ),
+            },
             Err(err) => err,
         };
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);

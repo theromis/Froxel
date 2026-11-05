@@ -2396,3 +2396,23 @@ fn scene_origin_chunk_rejects_malformed_duplicate_and_overflow() {
     append(&mut bytes, &body(1, [0; 3]));
     assert!(load_vox(&bytes).err().unwrap().contains("duplicate MVOR"));
 }
+
+#[test]
+fn the_sweep_panel_erases_what_it_would_fill() {
+    let mut session = Session::new();
+    session.replace_empty();
+    session.stone.sweep.points = "0 0 0\n8 0 0".into();
+    session.stone.sweep.smooth = false;
+    session.sweep_from_panel();
+    let filled = session.active().cells.len();
+    assert!(filled > 0, "{}", session.status);
+    session.stone.sweep.points = "2 0 0\n6 0 0".into();
+    session.stone.sweep.erase = true;
+    // The fields a fill reads do not apply, so a bad one does not stop it.
+    session.stone.sweep.mode = 1;
+    session.sweep_from_panel();
+    assert!(session.status.starts_with("Erased"), "{}", session.status);
+    assert!(session.active().cells.len() < filled);
+    assert!(!session.active().cells.contains_key(&(4, 0, 0)));
+    assert!(session.active().cells.contains_key(&(0, 0, 0)));
+}

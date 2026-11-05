@@ -90,7 +90,8 @@ If the tools are missing, the server is not configured. Point the user to
    `displace` for burls and lumps), and refine the silhouette with `brush`
    (`inflate`, `deflate`, `smooth`, `flatten`, `grab` along points; see
    `examples/fallen_tree.rhai`). Cut
-   hollows, tunnels, and pits with `carve`. Snap wood with `break_end` (a
+   hollows, tunnels, and pits with `carve`, and a slanted side along a
+   curved or closed outline with `sweep` and `palette` 0. Snap wood with `break_end` (a
    ragged face with splinters) instead of cutting it clean, sweep curved
    walls, banks, and ledges with `sweep` (a profile along a smooth path),
    and pile debris

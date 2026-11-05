@@ -591,6 +591,9 @@ pub(super) fn sweep(ui: &mut Ui, session: &mut Session) {
                     ui.add(egui::DragValue::new(&mut panel.radius).range(0.0..=256.0).speed(0.1));
                     ui.end_row();
                 }
+                label(ui, "Erase", "Remove the solid cells the sweep covers instead of filling: a slanted cut along a closed or curved outline. Palettes, Pattern, Period, Mode, and Seed do not apply.");
+                ui.checkbox(&mut panel.erase, "Erase");
+                ui.end_row();
                 label(ui, "Palettes", "Slots laid out by the pattern; empty is the active slot.");
                 slots_field(ui, &mut panel.palettes, "active slot");
                 ui.end_row();
@@ -623,9 +626,10 @@ pub(super) fn sweep(ui: &mut Ui, session: &mut Session) {
             {
                 session.sweep_point_at_selection();
             }
+            let name = if session.stone.sweep.erase { "Erase" } else { "Sweep" };
             if ui
-                .button("Sweep")
-                .on_hover_text("MCP sweep along the points. One undo step.")
+                .button(name)
+                .on_hover_text("MCP sweep along the points; Erase is its palette 0. One undo step.")
                 .clicked()
             {
                 session.sweep_from_panel();

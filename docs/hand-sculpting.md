@@ -145,6 +145,10 @@ editor the Sculpt tool (**S**) is the same brush by drag.
 `carve` removes the cells inside a `box`, `ellipsoid`, `rounded_box`, or
 `tube`: a hollow trunk, a tunnel, a burrow, an eye socket. A carved tube
 with a radius just under the trunk's makes a hollow log in one call.
+A tube has at most 2000000 cells and 512000000 cells in the boxes around
+its segments, and a closed path counts like an open one. For a slanted cut
+along a closed or curved outline, such as a boat's side, sweep a polygon with
+`palette` `0` rather than fitting round tubes to the surface.
 
 `break_end` snaps a trunk, branch, plank, or post across a plane: the part
 beyond goes, the new face is ragged with pits torn along the grain, its rim
@@ -164,6 +168,8 @@ kerb that bends with no corners. Give a rounded rectangle (`width`,
 `height`, `radius`) or a polygon, `curve: "smooth"`, and a twist or scale
 per point to lean or taper it. `palettes` with `pattern: "bands"` lays
 horizontal strata.
+`palette` `0` erases the solid cells the same shape covers: the sweep is the
+cut, and `examples/swept_cut.rhai` slopes a block's side and cuts a channel.
 
 `examples/gorge_wall.rhai` puts the stone tools together in order: sweep,
 column relief, the ledge, joints, weather, moss, algae, vines, then markers.
@@ -341,8 +347,8 @@ and `bind_object` needs no cell moves.
 `fill_rounded_box`, `fill_ellipsoid`, and `fill_tube` write every cell
 inside the shape, whether or not it was solid. Pass `mode` `empty` to add
 around existing detail without overwriting it, and `mode` `paint` to
-recolour only cells that already exist. Palette `0` erases; `carve` erases
-a shape.
+recolour only cells that already exist. Palette `0` erases, in `sweep` too;
+`carve` erases a shape.
 
 **Keep the rest pose straight.** Sculpt the creature straight and
 symmetrical, as the bind pose. Show a curl, a bite, or a swim stroke with

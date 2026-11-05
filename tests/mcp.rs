@@ -1589,6 +1589,63 @@ fn sweep_fills_a_curved_wall_as_one_undo_step() {
 }
 
 #[test]
+fn sweep_with_palette_0_erases_what_a_fill_would_cover() {
+    let mut head = Headless::new();
+    head.ok(
+        "fill_box",
+        json!({"x0": 0, "y0": -6, "z0": 0, "x1": 19, "y1": 6, "z1": 9, "palette": 2}),
+    );
+    let solid = head.session.active().cells.len();
+    // A closed outline inside the block, with a slanted top.
+    let path = json!([[4, -3, 0], [15, -3, 0], [15, 3, 0], [4, 3, 0], [4, -3, 0]]);
+    let wedge = json!([[-1, 0], [1, 0], [1, 8], [-1, 4]]);
+    let mut filled = Headless::new();
+    let would = filled.ok(
+        "sweep",
+        json!({"points": path, "profile": wedge, "palette": 3}),
+    );
+    let reply = head.ok(
+        "sweep",
+        json!({"points": path, "profile": wedge, "palette": 0}),
+    );
+    assert_eq!(reply["cells"], would["cells"], "{reply}");
+    let removed = reply["removed"].as_u64().unwrap() as usize;
+    assert!(removed > 100, "{reply}");
+    let cells = &head.session.active().cells;
+    assert_eq!(cells.len(), solid - removed);
+    assert!(filled
+        .session
+        .active()
+        .cells
+        .keys()
+        .all(|cell| !cells.contains_key(cell)));
+    head.ok("undo", json!({}));
+    assert_eq!(head.session.active().cells.len(), solid);
+    // Nothing solid under it, so nothing is removed.
+    let air = head.ok(
+        "sweep",
+        json!({"points": [[0, 0, 40], [5, 0, 40]], "width": 2, "height": 2, "palette": 0}),
+    );
+    assert_eq!(air["removed"], 0, "{air}");
+    assert_eq!(head.session.active().cells.len(), solid);
+    let empty = error_text(&head.call(
+        "sweep",
+        json!({"points": path, "profile": wedge, "palette": 0, "mode": "empty"}),
+    ));
+    assert!(empty.contains("mode empty"), "{empty}");
+    let bad = error_text(&head.call(
+        "sweep",
+        json!({"points": path, "profile": wedge, "palette": 256}),
+    ));
+    assert!(bad.contains("0..255"), "{bad}");
+    let shape = error_text(&head.call(
+        "carve",
+        json!({"shape": "sweep", "points": path, "profile": wedge}),
+    ));
+    assert!(shape.contains("palette 0"), "{shape}");
+}
+
+#[test]
 fn markers_save_export_and_follow_their_object() {
     let mut head = Headless::new();
     head.ok("set_voxel", json!({"x": 0, "y": 0, "z": 0, "palette": 1}));

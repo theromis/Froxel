@@ -116,6 +116,9 @@ pub(crate) fn stone_writes(
             let (writes, cells_in, length) = sweep_writes(cells, params)?;
             reply.insert("cells".into(), json!(cells_in));
             reply.insert("length".into(), json!((length * 100.0).round() / 100.0));
+            if params.get("palette").and_then(super::as_i32) == Some(0) {
+                reply.insert("removed".into(), json!(writes.len()));
+            }
             writes
         }
     };
@@ -585,7 +588,7 @@ pub(crate) fn growth_spec(params: &Value, tool: Stone) -> Result<crate::tools::G
 }
 
 /// The writes of MCP `sweep` against `cells`, how many cells the sweep
-/// covers, and the path length.
+/// covers, and the path length. `palette` 0 erases the solid cells it covers.
 fn sweep_writes(cells: &HashMap<Cell, u8>, params: &Value) -> Result<(Writes, usize, f64), String> {
     let list = params.get("points").and_then(Value::as_array).ok_or(
         "points must be a list of [x, y, z], [x, y, z, twist], or [x, y, z, twist, scale]",
@@ -667,8 +670,8 @@ fn sweep_writes(cells: &HashMap<Cell, u8>, params: &Value) -> Result<(Writes, us
         (Some(_), Some(_)) => return Err("pass palette or palettes, not both".into()),
         (Some(_), None) => {
             let slot = req_i32(params, "palette")?;
-            if !(1..=255).contains(&slot) {
-                return Err(format!("palette must be 1..255, not {slot}"));
+            if !(0..=255).contains(&slot) {
+                return Err(format!("palette must be 0..255 (0 erases), not {slot}"));
             }
             vec![slot as u8]
         }
@@ -689,13 +692,17 @@ fn sweep_writes(cells: &HashMap<Cell, u8>, params: &Value) -> Result<(Writes, us
     }
     let seed = seed(params)?;
     let mode = fill_mode(params)?;
+    let erase = palettes == [0];
+    if erase && mode == FillMode::Empty {
+        return Err("palette 0 erases solid cells, so mode empty would change nothing".into());
+    }
     let swept = crate::tools::sweep(&points, curve, &profile)?;
     let length = swept.iter().map(|c| c.along).fold(0.0, f64::max);
     let count = swept.len();
     let writes = swept
         .into_iter()
         .filter(|c| match mode {
-            FillMode::Replace => true,
+            FillMode::Replace => !erase || cells.contains_key(&c.cell),
             FillMode::Empty => !cells.contains_key(&c.cell),
             FillMode::Paint => cells.contains_key(&c.cell),
         })

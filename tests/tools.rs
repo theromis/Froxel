@@ -159,6 +159,58 @@ fn tube_tapers_and_sloped_thin_tube_has_no_gaps() {
 }
 
 #[test]
+fn a_tube_finds_the_cells_of_testing_every_box_cell() {
+    let path = [
+        tube_point(0.0, 0.0, 0.0, 6.0),
+        tube_point(9.0, 4.0, 2.0, 3.0),
+        tube_point(9.0, 14.0, -3.0, 5.0),
+    ];
+    for shape in [
+        TubeShape::ROUND,
+        TubeShape {
+            aspect: 0.4,
+            roll: 0.7,
+            blade: false,
+        },
+        TubeShape {
+            aspect: 0.8,
+            roll: 0.3,
+            blade: true,
+        },
+    ] {
+        let found: HashMap<_, _> = tube_shaped(&path, false, shape)
+            .unwrap()
+            .into_iter()
+            .map(|c| (c.cell, c.along))
+            .collect();
+        for (cell, along) in sculpt::tube_tested_everywhere(&path, shape) {
+            assert_eq!(found.get(&cell), Some(&along), "{cell:?} of {shape:?}");
+        }
+    }
+}
+
+#[test]
+fn a_big_closed_tube_is_limited_by_its_cells_and_says_so() {
+    let ring = |radius: f64, across: f64| -> Vec<TubePoint> {
+        (0..=8)
+            .map(|step| {
+                let angle = f64::from(step) / 8.0 * std::f64::consts::TAU;
+                tube_point(across * angle.cos(), across * angle.sin(), 0.0, radius)
+            })
+            .collect()
+    };
+    // 165 million box cells, more than twice the old limit of 64 million.
+    let cells = tube(&ring(40.0, 48.0), true).unwrap();
+    assert!(cells.len() > 1_000_000, "{}", cells.len());
+    let huge = tube(&ring(60.0, 80.0), true).unwrap_err();
+    assert!(
+        huge.contains("2000000") && huge.contains("closed"),
+        "{huge}"
+    );
+    assert!(huge.contains("palette 0"), "{huge}");
+}
+
+#[test]
 fn smooth_tube_passes_through_its_points() {
     let points = [
         tube_point(0.0, 0.0, 0.0, 1.0),
