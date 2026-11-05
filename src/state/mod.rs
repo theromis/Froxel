@@ -756,6 +756,12 @@ pub struct Session {
     pub preview_lighting: String,
     /// A project's lighting presets file (MCP preview lightingPresets).
     pub preview_lighting_file: Option<PathBuf>,
+    /// A project's camera presets file (MCP preview, compare_silhouette, and
+    /// set_view presets): Game view and Compare's Game camera use it.
+    pub camera_presets_file: Option<PathBuf>,
+    /// Degrees: the asset's turn about up where it is placed in a level
+    /// (MCP placementYaw), for Game view and Compare's Game camera.
+    pub placement_yaw: f32,
     /// Export variants… writes a fresh manifest instead of merging into the
     /// one on disk (MCP `export_variants` `replace`).
     pub variants_replace: bool,

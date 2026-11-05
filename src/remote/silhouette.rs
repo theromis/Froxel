@@ -417,6 +417,7 @@ pub(crate) fn compare_reply(
         "width": preview.width,
         "height": preview.height,
         "yaw": preview.yaw,
+        "placementYaw": preview.placement_yaw,
         "pitch": preview.pitch,
         "orthographic": preview.orthographic,
         "iou": round(compared.iou, 4),

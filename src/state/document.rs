@@ -76,6 +76,8 @@ impl Session {
             preview_counts_label: false,
             preview_lighting: crate::lighting::VIEWPORT.into(),
             preview_lighting_file: None,
+            camera_presets_file: None,
+            placement_yaw: 0.0,
             variants_replace: false,
             stone: StonePanels::default(),
             organic: OrganicPanels::default(),

@@ -230,7 +230,8 @@ above is 48 such renders, one every 7.5° of `--yaw`.
 rasterised on the CPU in a fraction of a second, fitted to the model (or
 `--object`) with a margin. [docs/preview.md](docs/preview.md) has the
 flags; MCP `preview` is the same image. `--preset game` is the gameplay
-camera (orthographic, yaw −60, pitch 25), and several `--input` files,
+camera (orthographic, yaw −135, pitch 32; `--presets` redefines it for a
+project, `--placement-yaw` sees an asset placed turned), and several `--input` files,
 `--variants`, or a `--reference` concept make a labelled contact sheet.
 `--lighting old_pond` (or a preset of your own) lights it with a game's
 sun, ambient, and grade instead of the viewport light. It prints two

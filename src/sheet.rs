@@ -32,13 +32,16 @@ pub struct Preset {
     pub margin: Option<f32>,
 }
 
-/// The built-in presets. `game` is the frog-world gameplay angle.
+/// The built-in presets. `game` is frog-world's gameplay camera
+/// (`scripts/player/pond_camera.gd`: orthographic, Godot yaw -45, pitch 32).
+/// A Godot yaw about up is this yaw plus 90: this one is from +X in Z-up
+/// cells, as a `.glb` goes in at `(x, z, -y)`.
 pub const PRESETS: [(&str, Preset); 2] = [
     (
         "game",
         Preset {
-            yaw: -60.0,
-            pitch: 25.0,
+            yaw: -135.0,
+            pitch: 32.0,
             orthographic: true,
             fov: None,
             margin: None,
@@ -56,30 +59,105 @@ pub const PRESETS: [(&str, Preset); 2] = [
     ),
 ];
 
-/// The preset `name`, from `custom` (MCP `presets`: name to `{yaw, pitch,
-/// orthographic, fov, margin}`) over the built-in one of that name.
-pub fn preset(name: &str, custom: Option<&Value>) -> Result<Preset, String> {
-    let builtin = PRESETS.iter().find(|(n, _)| *n == name).map(|(_, p)| *p);
-    let given = match custom {
-        None | Some(Value::Null) => None,
-        Some(Value::Object(map)) => map.get(name),
-        Some(_) => return Err("presets must be an object of name: {yaw, pitch, ...}".into()),
+/// The user's camera presets file: `FROXEL_CAMERA_PRESETS`, or
+/// `camera_presets.json` in Froxel's support folder. Tests read none.
+fn user_file() -> Option<PathBuf> {
+    crate::lighting::support_file("FROXEL_CAMERA_PRESETS", "camera_presets.json")
+}
+
+/// A presets file is an object of name to preset, or one with that object
+/// under `presets`. One file can hold a project's camera and lighting presets
+/// (`presets` and `lighting`), so `lighting` is never a camera preset.
+fn read_file(path: &Path) -> Result<Map<String, Value>, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|err| format!("Could not read {}: {err}", path.display()))?;
+    let found: Value = serde_json::from_str(&text)
+        .map_err(|err| format!("{} is not JSON: {err}", path.display()))?;
+    let Value::Object(mut map) = found else {
+        return Err(format!(
+            "{} must be an object of name: {{yaw, pitch, ...}}",
+            path.display()
+        ));
     };
-    let Some(given) = given else {
-        return builtin.ok_or_else(|| {
-            let mut names: Vec<String> = PRESETS.iter().map(|(n, _)| n.to_string()).collect();
-            if let Some(Value::Object(map)) = custom {
-                names.extend(map.keys().cloned());
+    if let Some(Value::Object(inner)) = map.get("presets") {
+        return Ok(inner.clone());
+    }
+    map.remove("lighting");
+    Ok(map)
+}
+
+/// The presets over the built-in ones, in the order they apply: the user's
+/// file, then the call's `presets` (an object or the path of a file). A
+/// missing user file is no presets; a broken one is an error.
+fn layers(custom: Option<&Value>) -> Result<Vec<Map<String, Value>>, String> {
+    let mut layers = Vec::new();
+    if let Some(path) = user_file().filter(|path| path.is_file()) {
+        layers.push(read_file(&path)?);
+    }
+    match custom {
+        None | Some(Value::Null) => {}
+        Some(Value::String(path)) => layers.push(read_file(Path::new(path))?),
+        Some(Value::Object(map)) => layers.push(map.clone()),
+        Some(_) => {
+            return Err(
+                "presets must be an object of name: {yaw, pitch, ...} or a JSON file path".into(),
+            )
+        }
+    }
+    Ok(layers)
+}
+
+/// Every name `custom` and the user's file define, the built-in ones first.
+pub fn preset_names(custom: Option<&Value>) -> Result<Vec<String>, String> {
+    let mut names: Vec<String> = PRESETS.iter().map(|(n, _)| n.to_string()).collect();
+    for layer in layers(custom)? {
+        for name in layer.keys() {
+            if !names.contains(name) {
+                names.push(name.clone());
             }
-            format!("preset must be one of {}, not `{name}`", names.join(", "))
-        });
-    };
+        }
+    }
+    Ok(names)
+}
+
+/// The preset `name`: `custom` (MCP `presets`: name to `{yaw, pitch,
+/// orthographic, fov, margin}`, or the path of a JSON file of them) over the
+/// user's file over the built-in one of that name, field by field. A name
+/// with no built-in starts from `default`.
+pub fn preset(name: &str, custom: Option<&Value>) -> Result<Preset, String> {
+    let mut found = PRESETS.iter().find(|(n, _)| *n == name).map(|(_, p)| *p);
+    for layer in layers(custom)? {
+        if let Some(given) = layer.get(name) {
+            found = Some(overlay_preset(name, found.unwrap_or(PRESETS[1].1), given)?);
+        }
+    }
+    found.ok_or_else(|| {
+        let names = preset_names(custom).unwrap_or_default();
+        format!("preset must be one of {}, not `{name}`", names.join(", "))
+    })
+}
+
+/// A Godot camera's look direction (Y up) as Froxel's yaw and pitch of the
+/// camera around its target, in degrees. `None` for a zero vector.
+pub fn godot_look_angles(look: [f64; 3]) -> Option<(f32, f32)> {
+    // The eye is opposite the look; Godot (x, y, z) is Froxel (x, -z, y).
+    let eye = [-look[0], look[2], -look[1]];
+    let length = eye.iter().map(|c| c * c).sum::<f64>().sqrt();
+    if !(length > 1e-9) || !length.is_finite() {
+        return None;
+    }
+    let yaw = eye[1].atan2(eye[0]).to_degrees();
+    let pitch = (eye[2] / length).asin().to_degrees();
+    Some((yaw as f32, pitch as f32))
+}
+
+/// A preset's given fields over `base`.
+fn overlay_preset(name: &str, base: Preset, given: &Value) -> Result<Preset, String> {
     let Value::Object(fields) = given else {
         return Err(format!(
             "preset `{name}` must be {{yaw, pitch, orthographic, fov, margin}}"
         ));
     };
-    let base = builtin.unwrap_or(PRESETS[1].1);
     let number = |key: &str| -> Result<Option<f32>, String> {
         match fields.get(key) {
             None | Some(Value::Null) => Ok(None),
@@ -91,9 +169,9 @@ pub fn preset(name: &str, custom: Option<&Value>) -> Result<Preset, String> {
         }
     };
     for key in fields.keys() {
-        if !["yaw", "pitch", "orthographic", "fov", "margin"].contains(&key.as_str()) {
+        if !["yaw", "pitch", "godotLook", "orthographic", "fov", "margin"].contains(&key.as_str()) {
             return Err(format!(
-                "preset `{name}` takes yaw, pitch, orthographic, fov, and margin, not `{key}`"
+                "preset `{name}` takes yaw, pitch, godotLook, orthographic, fov, and margin, not `{key}`"
             ));
         }
     }
@@ -103,9 +181,28 @@ pub fn preset(name: &str, custom: Option<&Value>) -> Result<Preset, String> {
             .as_bool()
             .ok_or_else(|| format!("preset `{name}` orthographic must be true or false"))?,
     };
+    let (mut yaw, mut pitch) = (number("yaw")?, number("pitch")?);
+    if let Some(look) = fields.get("godotLook").filter(|look| !look.is_null()) {
+        if yaw.is_some() || pitch.is_some() {
+            return Err(format!(
+                "preset `{name}` takes godotLook or yaw and pitch, not both"
+            ));
+        }
+        let wrong = || format!("preset `{name}` godotLook must be [x, y, z], not zero");
+        let look: Vec<f64> = look
+            .as_array()
+            .ok_or_else(wrong)?
+            .iter()
+            .map(Value::as_f64)
+            .collect::<Option<_>>()
+            .ok_or_else(wrong)?;
+        let look: [f64; 3] = look.try_into().map_err(|_| wrong())?;
+        let (from_yaw, from_pitch) = godot_look_angles(look).ok_or_else(wrong)?;
+        (yaw, pitch) = (Some(from_yaw), Some(from_pitch));
+    }
     let preset = Preset {
-        yaw: number("yaw")?.unwrap_or(base.yaw),
-        pitch: number("pitch")?.unwrap_or(base.pitch),
+        yaw: yaw.unwrap_or(base.yaw),
+        pitch: pitch.unwrap_or(base.pitch),
         orthographic,
         fov: number("fov")?.or(base.fov),
         margin: number("margin")?.or(base.margin),
@@ -412,6 +509,7 @@ pub fn contact_sheet(
         "rows": rows,
         "tiles": placed,
         "yaw": preview.yaw,
+        "placementYaw": preview.placement_yaw,
         "pitch": preview.pitch,
         "orthographic": preview.orthographic,
         "lighting": preview.lighting.as_ref().map(|lighting| lighting.name.clone()),

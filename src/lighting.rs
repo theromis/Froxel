@@ -209,14 +209,19 @@ impl Lut {
 }
 
 /// The user's presets file: `FROXEL_LIGHTING_PRESETS`, or
-/// `lighting_presets.json` in Froxel's support folder (macOS
-/// `~/Library/Application Support/Froxel`, else `$XDG_DATA_HOME/froxel` or
-/// `~/.local/share/froxel`). Tests read none.
+/// `lighting_presets.json` in Froxel's support folder.
 pub fn user_file() -> Option<PathBuf> {
+    support_file("FROXEL_LIGHTING_PRESETS", "lighting_presets.json")
+}
+
+/// A user's file: the path in the environment variable `var`, or `name` in
+/// Froxel's support folder (macOS `~/Library/Application Support/Froxel`,
+/// else `$XDG_DATA_HOME/froxel` or `~/.local/share/froxel`). Tests read none.
+pub fn support_file(var: &str, name: &str) -> Option<PathBuf> {
     if cfg!(test) {
         return None;
     }
-    if let Some(path) = std::env::var_os("FROXEL_LIGHTING_PRESETS") {
+    if let Some(path) = std::env::var_os(var) {
         return Some(PathBuf::from(path));
     }
     let home = PathBuf::from(std::env::var_os("HOME")?);
@@ -227,7 +232,7 @@ pub fn user_file() -> Option<PathBuf> {
     } else {
         home.join(".local/share/froxel")
     };
-    Some(dir.join("lighting_presets.json"))
+    Some(dir.join(name))
 }
 
 /// Presets of one source, and the folder its `lut` paths are relative to.

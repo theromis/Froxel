@@ -128,7 +128,11 @@ If the tools are missing, the server is not configured. Point the user to
    is flat palette colour, orthographic, with no lighting. Use `view` (`front`,
    `back`, `left`, `right`, `top`, `bottom`) and its `views` list to write a
    whole turnaround in one call. Use `render` to judge lighting and material.
-   `preview` `preset: "game"` is the gameplay camera. To compare a family,
+   `preview` `preset: "game"` is the gameplay camera (a project redefines
+   it with `presets`, an object or a JSON file, or the user's
+   `camera_presets.json`). For an asset placed turned in a level, pass its
+   turn about up as `placementYaw` (a Godot `rotation_degrees.y`) instead
+   of working out yaw and pitch by hand. To compare a family,
    give `preview` `variants` (or `inputs`) and a `reference` concept: one
    labelled contact sheet instead of pasting images together. `overlay:
    true` draws collision boxes, points, and connectors over the model, so
@@ -146,7 +150,7 @@ If the tools are missing, the server is not configured. Point the user to
    every step and read the PNGs; do not report a model you have not viewed.
    Measure it against the concept with `compare_silhouette` (the concept
    PNG and its `crop`, a camera such as an orthographic `view` or `preset:
-   "game"`): `iou`, `missing`, and `excess` say whether it reads like the
+   "game"`, with `presets` and `placementYaw` as in `preview`): `iou`, `missing`, and `excess` say whether it reads like the
    concept, and the overlay shows where (magenta missing, orange excess).
    Reuse the reply's `align` on later calls so a change in size shows.
    Compare silhouettes, not heights.

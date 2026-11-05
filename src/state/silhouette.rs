@@ -219,7 +219,10 @@ impl ComparePanel {
         }
         self.background.write(&mut args);
         match self.camera {
-            1 => args["preset"] = json!("game"),
+            1 => {
+                args["preset"] = json!("game");
+                session.add_camera_presets(&mut args);
+            }
             2 => {
                 args["view"] = json!("front");
                 args["orthographic"] = json!(true);

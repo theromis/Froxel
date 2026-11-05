@@ -78,6 +78,10 @@ compare_silhouette   path="front-vs.png" concept="sheet.png" crop=[40, 60, 520, 
 compare_silhouette   path="hero-vs.png" concept="hero.png" preset="game"
 ```
 
+`preset="game"` is the gameplay camera; a project redefines it with `presets`
+(an object or a JSON file), and `placementYaw` checks an asset placed turned in
+a level from that same camera, in `preview` too ([preview.md](preview.md)).
+
 `examples/carved_stump.rhai` does the same in a script, with the views as
 rows. In the editor, the Carve from views and Compare silhouette sections
 hold the same fields, and the comparison shows over the viewport.

@@ -391,6 +391,33 @@ fn a_wider_concept_shows_what_is_missing() {
 }
 
 #[test]
+fn game_view_and_compare_use_the_camera_section() {
+    let mut session = front_box();
+    session.game_view();
+    assert_eq!(session.yaw.to_degrees().round(), -135.0);
+    let presets = temp("project-camera.json");
+    std::fs::write(&presets, r#"{"game": {"yaw": -100, "pitch": 40}}"#).unwrap();
+    session.camera_presets_file = Some(presets);
+    session.placement_yaw = 45.0;
+    session.game_view();
+    assert_eq!(
+        session.yaw.to_degrees().round(),
+        -145.0,
+        "{}",
+        session.status
+    );
+    assert_eq!(session.pitch.to_degrees().round(), 40.0);
+    assert!(session.status.contains("-145.0"), "{}", session.status);
+    let mut args = json!({"preset": "game"});
+    session.add_camera_presets(&mut args);
+    assert_eq!(args["placementYaw"], 45.0);
+    assert!(args["presets"]
+        .as_str()
+        .unwrap()
+        .ends_with("project-camera.json"));
+}
+
+#[test]
 fn a_given_alignment_is_kept_and_presets_work() {
     let mut session = front_box();
     let concept = png(
@@ -415,7 +442,8 @@ fn a_given_alignment_is_kept_and_presets_work() {
         reply["align"],
         json!({"mode": "given", "scale": 2.0, "offset": [3.0, 4.0]})
     );
-    assert_eq!(reply["yaw"], -60.0);
+    assert_eq!(reply["yaw"], -135.0);
+    assert_eq!(reply["placementYaw"], 0.0);
     assert_eq!(reply["orthographic"], true);
     assert_eq!(reply["pixels"]["concept"], 12 * 6 * 4);
     let blank = png("blank.png", 4, 4, [9, 9, 9, 255], [9, 9, 9, 255], |_, _| {

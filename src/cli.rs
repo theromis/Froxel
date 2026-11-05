@@ -157,6 +157,7 @@ usage: froxel preview --input <file.vox> [--input <file.vox> ...] --out <file.pn
                       [--width N] [--height N] [--yaw DEG] [--pitch DEG]
                       [--view front|back|left|right|top|bottom]
                       [--preset game|default|NAME] [--presets <presets.json>]
+                      [--placement-yaw DEG]
                       [--lighting viewport|old_pond|NAME] [--lighting-presets <lighting.json>]
                       [--ortho] [--fov DEG] [--margin F]
                       [--object NAME|INDEX] [--isolate]
@@ -178,10 +179,15 @@ viewport's 50 degree vertical --fov (10..120), the viewport grey
 background, and 2x2 antialiasing up to 2048x2048. --output is an alias of
 --out.
 
---preset game is the gameplay camera: orthographic, yaw -60, pitch 25.
---presets reads a JSON object of name: {yaw, pitch, orthographic, fov,
-margin} that defines presets or overrides the built-in ones; --yaw, --pitch,
---ortho, --fov, and --margin still win over a preset.
+--preset game is the gameplay camera: frog-world's, orthographic, yaw -135,
+pitch 32. --presets reads a JSON object of name: {yaw, pitch, godotLook,
+orthographic, fov, margin} (or one with it under presets) that defines
+presets or overrides the built-in ones, so a project's own game camera is
+one file; the user's camera_presets.json in Froxel's support folder (or
+FROXEL_CAMERA_PRESETS) is read under it. --yaw, --pitch, --ortho, --fov, and
+--margin still win over a preset. --placement-yaw shows the asset as it is
+when placed turned that many degrees about up (a Godot rotation_degrees.y),
+from the same camera: the camera and a --lighting sun turn the other way.
 
 --lighting lights the model as a game does instead of with the viewport's
 light: a sun (direction, colour, energy), a flat ambient (colour, energy),
@@ -259,18 +265,9 @@ fn preview_args(args: &[String]) -> Result<Option<(Option<PathBuf>, serde_json::
                 view = true;
             }
             "--preset" => params["preset"] = json!(value(&mut index)?),
-            "--presets" => {
-                let path = PathBuf::from(value(&mut index)?);
-                let text = std::fs::read_to_string(&path)
-                    .map_err(|err| format!("Could not read {}: {err}", path.display()))?;
-                let found: Value = serde_json::from_str(&text)
-                    .map_err(|err| format!("{} is not JSON: {err}", path.display()))?;
-                params["presets"] = match found {
-                    Value::Object(mut map) if map.get("presets").is_some_and(Value::is_object) => {
-                        map.remove("presets").expect("checked")
-                    }
-                    other => other,
-                };
+            "--presets" => params["presets"] = json!(value(&mut index)?),
+            "--placement-yaw" => {
+                params["placementYaw"] = json!(parse_f32(&value(&mut index)?, arg)?)
             }
             "--lighting" => params["lighting"] = json!(value(&mut index)?),
             "--lighting-presets" => params["lightingPresets"] = json!(value(&mut index)?),
@@ -1153,6 +1150,7 @@ usage: froxel compare --input <file.vox> --concept <concept.png> --out <overlay.
                       [--crop X,Y,W,H] [--background auto|alpha|#rrggbb]
                       [--tolerance N] [--flip] [--align fit|height|width]
                       [--preset game|NAME] [--presets <presets.json>]
+                      [--placement-yaw DEG]
                       [--view front|back|left|right|top|bottom]
                       [--yaw DEG] [--pitch DEG] [--ortho] [--margin F]
                       [--object INDEX|NAME] [--isolate]
@@ -1165,7 +1163,11 @@ it has in excess in orange. Prints IoU, missing (share of the concept not
 covered), and excess (share of the model outside the concept); --json
 prints the whole reply. The concept keeps its proportions: --align fit
 (default) fits one scale and offset for the most overlap, height and width
-match that extent. --crop cuts one view out of a turnaround sheet.";
+match that extent. --crop cuts one view out of a turnaround sheet.
+--preset game is the gameplay camera; --presets (with the user's
+camera_presets.json or FROXEL_CAMERA_PRESETS) redefines it for a project, and
+--placement-yaw checks an asset placed turned that many degrees about up, as
+froxel preview does.";
 
 fn compare_args(args: &[String]) -> Result<Option<(PathBuf, serde_json::Value, bool)>, String> {
     use serde_json::json;
@@ -1210,21 +1212,8 @@ fn compare_args(args: &[String]) -> Result<Option<(PathBuf, serde_json::Value, b
             "--flip" => params["flip"] = json!(true),
             "--align" => params["align"] = json!(value(&mut index)?),
             "--preset" => params["preset"] = json!(value(&mut index)?),
-            "--presets" => {
-                let path = value(&mut index)?;
-                let text = std::fs::read_to_string(&path)
-                    .map_err(|err| format!("Could not read {path}: {err}"))?;
-                let found: serde_json::Value = serde_json::from_str(&text)
-                    .map_err(|err| format!("{path} is not JSON: {err}"))?;
-                params["presets"] = match found {
-                    serde_json::Value::Object(mut map)
-                        if map.get("presets").is_some_and(serde_json::Value::is_object) =>
-                    {
-                        map.remove("presets").expect("checked")
-                    }
-                    other => other,
-                };
-            }
+            "--presets" => params["presets"] = json!(value(&mut index)?),
+            "--placement-yaw" => params["placementYaw"] = json!(number(value(&mut index)?, &flag)?),
             "--view" => params["view"] = json!(value(&mut index)?),
             "--yaw" => params["yaw"] = json!(number(value(&mut index)?, &flag)?),
             "--pitch" => params["pitch"] = json!(number(value(&mut index)?, &flag)?),

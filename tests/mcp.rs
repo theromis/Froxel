@@ -1958,6 +1958,69 @@ fn preview_counts_the_export_apart_from_its_own_unmerged_mesh() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// An asset placed turned by `placementYaw` from the game camera looks like
+/// the asset really built turned that way, sun included.
+#[test]
+fn placement_yaw_shows_the_asset_as_it_stands_in_the_level() {
+    let mut head = Headless::new();
+    // A long bar along +X with a stub toward +Y at its far end.
+    let shape: Vec<(i32, i32, i32)> = (0..12)
+        .flat_map(|x| [(x, 0, 0), (x, 1, 0), (x, 0, 1), (x, 1, 1)])
+        .chain([(11, 2, 0), (11, 3, 0), (11, 2, 1), (11, 3, 1)])
+        .collect();
+    let dir = std::env::temp_dir().join(format!("froxel-placement-{}", std::process::id()));
+    let png = dir.join("placed.png");
+    let base = json!({"path": png, "width": 128, "height": 128, "preset": "game",
+        "lighting": "old_pond", "antialias": false});
+    let build = |head: &mut Headless, turned: bool| {
+        let cells = &mut head.session.objects[0].cells;
+        cells.clear();
+        for &(x, y, z) in &shape {
+            // Counter-clockwise from above by 90 degrees: +X goes to +Y.
+            let cell = if turned { (3 - y, x, z) } else { (x, y, z) };
+            cells.insert(cell, 1);
+        }
+        head.session.mesh_epoch += 1;
+    };
+    build(&mut head, true);
+    let built = head.ok("preview", base.clone());
+    assert_eq!(built["placementYaw"], 0.0);
+    let (_, _, built) = read_png(&png);
+
+    build(&mut head, false);
+    let shown = |head: &mut Headless, turn: f64| {
+        let mut args = base.clone();
+        args["placementYaw"] = json!(turn);
+        let reply = head.ok("preview", args);
+        assert_eq!(reply["yaw"].as_f64(), Some(-135.0 - turn));
+        assert_eq!(reply["placementYaw"].as_f64(), Some(turn));
+        read_png(&png).2
+    };
+    let differing = |a: &[u8], b: &[u8]| {
+        a.chunks(4)
+            .zip(b.chunks(4))
+            .filter(|(p, q)| p.iter().zip(*q).any(|(u, v)| u.abs_diff(*v) > 6))
+            .count()
+    };
+    let placed = shown(&mut head, 90.0);
+    let wrong_way = shown(&mut head, -90.0);
+    let same = differing(&built, &placed);
+    let opposite = differing(&built, &wrong_way);
+    assert!(same < 300, "{same} pixels differ from the turned asset");
+    assert!(opposite > same * 5 + 300, "{opposite} against {same}");
+
+    // set_view takes it too, and refuses a turn with no angle to turn from.
+    let view = head.ok("set_view", json!({"preset": "game", "placementYaw": 45}));
+    assert!(
+        (view["yaw"].as_f64().unwrap() + 180.0).abs() < 1e-3,
+        "{view}"
+    );
+    let refused = head.call("set_view", json!({"placementYaw": 45}));
+    assert_eq!(refused["result"]["isError"], true, "{refused}");
+    assert!(error_text(&refused).contains("placementYaw"), "{refused}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 #[test]
 fn preview_lighting_takes_a_preset_or_fields_and_reports_what_it_used() {
     let mut head = Headless::new();
@@ -2054,7 +2117,7 @@ fn preview_lays_variants_files_and_a_reference_out_in_a_contact_sheet() {
     let reply = head.ok("preview", args.clone());
     assert_eq!(
         (reply["yaw"].as_f64(), reply["orthographic"].as_bool()),
-        (Some(-60.0), Some(true))
+        (Some(-135.0), Some(true))
     );
     let tiles = reply["tiles"].as_array().unwrap();
     assert_eq!(tiles.len(), 3);

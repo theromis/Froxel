@@ -166,7 +166,7 @@ pub(super) fn compare(ui: &mut Ui, session: &mut Session) {
             label(ui, "Flip", "Mirror the concept left to right.");
             ui.checkbox(&mut panel.flip, "");
             ui.end_row();
-            label(ui, "Camera", "Viewport is the window's camera now; Game is the gameplay preset; Front, Left, and Top are orthographic views like a turnaround sheet.");
+            label(ui, "Camera", "Viewport is the window's camera now; Game is the gameplay preset, with the Camera section's Camera presets… and Placement turn; Front, Left, and Top are orthographic views like a turnaround sheet.");
             egui::ComboBox::from_id_salt("compare-camera")
                 .selected_text(CAMERAS[panel.camera.min(CAMERAS.len() - 1)])
                 .show_ui(ui, |ui| {

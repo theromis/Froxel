@@ -165,11 +165,37 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
             .on_hover_text("Parallel projection in the viewport, the tracer, and saved images");
         if ui
             .button("Game view")
-            .on_hover_text("The gameplay camera: orthographic, yaw -60, pitch 25 (MCP set_view and preview preset game)")
+            .on_hover_text("The gameplay camera: frog-world's, orthographic, yaw -135, pitch 32, unless Camera presets… or the user's camera_presets.json redefines game; turned by Placement turn (MCP set_view and preview preset game)")
             .clicked()
         {
             session.game_view();
         }
+        if ui
+            .button("Camera presets…")
+            .on_hover_text("A project's camera presets JSON file: its game is the camera Game view and Compare's Game use, over the user's camera_presets.json and the built-in one (MCP preview, compare_silhouette, and set_view presets)")
+            .clicked()
+        {
+            session.pick_camera_presets_file();
+        }
+        if let Some(name) = session
+            .camera_presets_file
+            .as_deref()
+            .and_then(|path| path.file_name())
+            .map(|name| name.to_string_lossy().into_owned())
+        {
+            ui.label(RichText::new(name).small().color(DIM));
+            if ui.small_button("✕").on_hover_text("No presets file").clicked() {
+                session.camera_presets_file = None;
+            }
+        }
+    });
+    ui.horizontal(|ui| {
+        ui.label("Placement turn").on_hover_text("Degrees about up the asset is turned where it is placed in a level, as a Godot rotation_degrees.y. Game view, Compare's Game, and a game light's sun use it, so the asset looks as it does in the level (MCP placementYaw)");
+        ui.add(
+            egui::DragValue::new(&mut session.placement_yaw)
+                .speed(1.0)
+                .suffix("°"),
+        );
     });
     ui.checkbox(&mut session.aces, "ACES tonemap");
     ui.checkbox(&mut session.denoise, "Denoise")

@@ -42,18 +42,50 @@ still drawn, and may fall outside the image, unless `isolate` is set. An
 object named this way is drawn even when hidden. Without `object`, every
 visible object is drawn and framed.
 
-`preset` names a camera. `game` is the frog-world gameplay angle:
-orthographic, yaw −60, pitch 25. `default` is the perspective yaw 30, pitch
-25. `presets` (MCP) or `--presets presets.json` (command line, a JSON
-object, or one with it under `presets`) maps a name to `{yaw, pitch,
-orthographic, fov, margin}`: a built-in name is overridden field by field,
-another name is a new preset over `default`. `yaw`, `pitch`, `view`,
-`orthographic`, `fov`, and `margin` given beside a preset win over it.
-`set_view` takes the same `preset`, and the Camera section's Game view
-button is `set_view` with `game`.
+`preset` names a camera. `game` is the gameplay camera: frog-world's
+(`scripts/player/pond_camera.gd`), orthographic, yaw −135, pitch 32. `default`
+is the perspective yaw 30, pitch 25. A project defines its own or overrides
+these with camera presets, name to `{yaw, pitch, orthographic, fov, margin}`.
+They come from, later over earlier and field by field:
+
+1. The built-in ones.
+2. The user's `camera_presets.json` in Froxel's support folder
+   (`~/Library/Application Support/Froxel` on macOS, else
+   `$XDG_DATA_HOME/froxel` or `~/.local/share/froxel`), or the file
+   `FROXEL_CAMERA_PRESETS` names.
+3. `presets` (MCP, an object or the path of a JSON file), `--presets
+   presets.json` (command line), or the Camera presets… file in the Camera
+   section. A file holds the object itself or has it under `presets`, so one
+   project file can hold `presets` and `lighting` together.
+
+A name found nowhere below is a new preset over `default`. `yaw`, `pitch`,
+`view`, `orthographic`, `fov`, and `margin` given beside a preset win over it.
+`set_view` and `compare_silhouette` take the same `preset`, `presets`, and
+`placementYaw`, and the Camera section's Game view button is `set_view` with
+`game`.
 
 ```json
-{"presets": {"game": {"yaw": -55}, "low": {"pitch": 8, "orthographic": true}}}
+{"presets": {"game": {"godotLook": [0.5997, -0.5299, -0.5997], "orthographic": true},
+             "low": {"pitch": 8, "orthographic": true}}}
+```
+
+`godotLook` is a Godot camera's look direction (its `-basis.z`, Y up), in place
+of `yaw` and `pitch`. A Godot camera's yaw about up, measured as the rotation
+of its offset from the target, is Froxel's yaw plus 90, because Froxel's yaw is
+from +X in Z-up cells and a `.glb` goes in at `(x, z, -y)`.
+
+`placementYaw` (`--placement-yaw`; Placement turn in the Camera section) is
+how far the asset is turned about up where it is placed in a level, positive
+counter-clockwise from above: the same number as a Godot node's
+`rotation_degrees.y`. The image is the asset as it stands in the level, from
+the same camera. The camera turns the other way (the reply's `yaw` is the
+angle used, yaw minus the turn), and so does the sun of a `lighting` that gives
+one; the viewport light stays. It applies to `yaw` and `view` as well as to a
+preset, and `set_view` refuses it with no angle to turn from.
+
+```json
+{"name": "preview", "arguments": {"path": "out/boat.png", "preset": "game",
+  "placementYaw": 45, "lighting": "old_pond"}}
 ```
 
 `background` is `#rrggbb`, `#rrggbbaa`, or `[r, g, b, a?]`; it defaults to
@@ -290,7 +322,7 @@ froxel preview --input model.vox --out preview.png --yaw -35 --pitch 30 --width 
 The flags mirror the MCP arguments: `--width`, `--height`, `--yaw`,
 `--pitch`, `--view`, `--ortho`, `--fov`, `--margin`, `--object NAME|INDEX`,
 `--isolate`, `--background`, `--no-antialias`, `--preset`, `--presets
-FILE`, `--lighting NAME`, and `--lighting-presets FILE`. `--output` is an alias of `--out`, which must end in `.png`. It
+FILE`, `--placement-yaw DEG`, `--lighting NAME`, and `--lighting-presets FILE`. `--output` is an alias of `--out`, which must end in `.png`. It
 prints the time taken and both triangle counts on stderr. The export
 counts take the `froxel export` flags: `--merge`, `--color-atlas`,
 `--vertex-colors`, `--export-hidden`, `--split-objects`, `--ao`,

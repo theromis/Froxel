@@ -927,6 +927,12 @@ impl Session {
             if let Some(file) = &self.preview_lighting_file {
                 params["lightingPresets"] = serde_json::json!(file.to_string_lossy());
             }
+            // The window's angle is kept: only the sun turns with the asset.
+            if self.placement_yaw != 0.0 {
+                params["placementYaw"] = serde_json::json!(self.placement_yaw);
+                let yaw = params["yaw"].as_f64().unwrap_or_default();
+                params["yaw"] = serde_json::json!(yaw + f64::from(self.placement_yaw));
+            }
         }
     }
 
@@ -962,13 +968,56 @@ impl Session {
         }
     }
 
-    /// The Camera section's Game view: MCP `set_view` with preset `game`.
+    /// The Camera section's Game view: MCP `set_view` with preset `game`, the
+    /// Camera presets… file, and the Placement turn.
     pub fn game_view(&mut self) {
-        let params = serde_json::json!({"preset": "game"});
+        let mut params = serde_json::json!({"preset": "game"});
+        self.add_camera_presets(&mut params);
         self.status = match crate::remote::apply(self, "view.set", &params) {
-            Ok(_) => "Game view: orthographic, yaw -60, pitch 25.".into(),
+            Ok(reply) => format!(
+                "Game view: yaw {:.1}, pitch {:.1}, {}.",
+                reply["yaw"].as_f64().unwrap_or_default(),
+                reply["pitch"].as_f64().unwrap_or_default(),
+                if self.orthographic {
+                    "orthographic"
+                } else {
+                    "perspective"
+                }
+            ),
             Err(err) => err,
         };
+    }
+
+    /// The Camera section's Camera presets… and Placement turn: MCP `presets`
+    /// and `placementYaw` for a call that names preset `game`.
+    pub(crate) fn add_camera_presets(&self, params: &mut serde_json::Value) {
+        if let Some(file) = &self.camera_presets_file {
+            params["presets"] = serde_json::json!(file.to_string_lossy());
+        }
+        if self.placement_yaw != 0.0 {
+            params["placementYaw"] = serde_json::json!(self.placement_yaw);
+        }
+    }
+
+    /// Camera presets…: a project's camera presets JSON file. Every preset
+    /// in it is checked so a typo shows now.
+    pub fn pick_camera_presets_file(&mut self) {
+        if let Some(path) = dialog::pick_open("Camera presets", &["json"]) {
+            let file = serde_json::json!(path.to_string_lossy());
+            let names = crate::sheet::preset_names(Some(&file)).and_then(|names| {
+                for name in &names {
+                    crate::sheet::preset(name, Some(&file))?;
+                }
+                Ok(names)
+            });
+            self.status = match names {
+                Ok(names) => {
+                    self.camera_presets_file = Some(path.clone());
+                    format!("Camera presets: {}.", names.join(", "))
+                }
+                Err(err) => err,
+            };
+        }
     }
 
     /// File > Export Models: MCP `export_models` for .vox files on disk, each

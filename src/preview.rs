@@ -28,6 +28,10 @@ pub struct Preview {
     pub height: u32,
     /// Degrees. 0 puts the camera on +X looking toward −X.
     pub yaw: f32,
+    /// Degrees about up: how the asset is turned where it is placed (MCP
+    /// `placementYaw`). `yaw` is already relative to the asset; this turns a
+    /// game light's sun into the asset's frame too.
+    pub placement_yaw: f32,
     /// Degrees, −90..90. 90 looks straight down.
     pub pitch: f32,
     pub orthographic: bool,
@@ -87,6 +91,7 @@ impl Default for Preview {
             width: 1024,
             height: 1024,
             yaw: 30.0,
+            placement_yaw: 0.0,
             pitch: 25.0,
             orthographic: false,
             fov: VIEWPORT_FOV,
@@ -420,6 +425,7 @@ pub fn render(session: &Session, preview: &Preview) -> Result<Frame, String> {
         .lighting
         .as_ref()
         .and_then(|lighting| lighting.sun_direction)
+        .map(|sun| glam::Quat::from_rotation_z(-preview.placement_yaw.to_radians()) * sun)
         .unwrap_or_else(|| session.sun_dir());
     let mut depth = vec![f32::NEG_INFINITY; (sw * sh) as usize];
     let mut color = vec![[0f32; 3]; (sw * sh) as usize];

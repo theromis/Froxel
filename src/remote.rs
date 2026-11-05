@@ -491,6 +491,7 @@ fn preview(session: &mut Session, params: &Value) -> Result<Value, String> {
         "width": preview.width,
         "height": preview.height,
         "yaw": preview.yaw,
+        "placementYaw": preview.placement_yaw,
         "pitch": preview.pitch,
         "orthographic": preview.orthographic,
         "previewTriangles": frame.preview_triangles,
@@ -517,7 +518,8 @@ fn preview(session: &mut Session, params: &Value) -> Result<Value, String> {
 
 /// MCP `preview` `preset`, `presets`, `view`, `yaw`, `pitch`,
 /// `orthographic`, `margin`, and `fov` onto `preview`. Arguments win over
-/// the preset.
+/// the preset. `placementYaw` then turns the camera the other way, into the
+/// frame of an asset turned that much where it is placed.
 fn preview_camera(params: &Value, preview: &mut crate::preview::Preview) -> Result<(), String> {
     let preset = match opt_str(params, "preset")? {
         Some(name) => Some(crate::sheet::preset(&name, params.get("presets"))?),
@@ -539,6 +541,10 @@ fn preview_camera(params: &Value, preview: &mut crate::preview::Preview) -> Resu
     }
     if let Some(fov) = opt_f64(params, "fov")? {
         preview.fov = fov as f32;
+    }
+    if let Some(turn) = opt_f64(params, "placementYaw")? {
+        preview.placement_yaw = turn as f32;
+        preview.yaw -= preview.placement_yaw;
     }
     Ok(())
 }
@@ -682,6 +688,11 @@ fn set_view(session: &mut Session, params: &Value) -> Result<Value, String> {
     if let Some(preset) = preset {
         yaw = yaw.or(Some(f64::from(preset.yaw)));
         pitch = pitch.or(Some(f64::from(preset.pitch)));
+    }
+    let placement = opt_f64(params, "placementYaw")?;
+    if let Some(turn) = placement {
+        // With no angle given this would turn further on every call.
+        yaw = Some(yaw.ok_or("placementYaw needs yaw, view, or preset")? - turn);
     }
     let frame = opt_bool(params, "frame")?.unwrap_or(true);
     let distance = opt_f64(params, "distance")?;
