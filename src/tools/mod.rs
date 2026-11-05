@@ -16,6 +16,7 @@ mod generate;
 mod growth;
 mod joints;
 mod loft;
+mod planks;
 mod relief;
 mod scatter;
 mod sculpt;
@@ -36,6 +37,7 @@ pub use generate::{foliage, generate, Gen, MAX_GENERATOR_CELLS};
 pub use growth::{grow, Face, GrowthKind, GrowthSpec, Layer};
 pub use joints::{joints, JointPattern, JointSpec};
 pub use loft::{loft, loft_length, Caps, LoftPoint, Section};
+pub use planks::{planks, PlankAxis, PlankSpec};
 pub use relief::{column_relief, relief_facing, ReliefSpec};
 pub use scatter::{scatter, PieceKind, ScatterSpec, Scattered, MAX_PIECES};
 #[cfg(test)]

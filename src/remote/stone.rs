@@ -1,5 +1,5 @@
 //! The stone and surface tools: MCP `joints`, `column_relief`, `weather`,
-//! `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `bark`, `foliage`, and
+//! `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `bark`, `planks`, `foliage`, and
 //! `cavity_tint`, their
 //! arguments, and their replies.
 //!
@@ -30,6 +30,7 @@ pub(crate) enum Stone {
     Sweep,
     Trim,
     Bark,
+    Planks,
     Foliage,
 }
 
@@ -110,6 +111,19 @@ pub(crate) fn stone_writes(
             if let Some(warning) = done.warning {
                 reply.insert("warning".into(), json!(warning));
             }
+            done.writes
+        }
+        Stone::Planks => {
+            let done = crate::tools::planks(cells, &planks_spec(params)?)?;
+            reply.insert("rows".into(), json!(done.rows));
+            reply.insert("boards".into(), json!(done.boards));
+            reply.insert("joints".into(), json!(done.joints));
+            reply.insert("added".into(), json!(done.added));
+            reply.insert("painted".into(), json!(done.painted));
+            reply.insert("removed".into(), json!(done.removed));
+            reply.insert("dirtied".into(), json!(done.dirtied));
+            reply.insert("nails".into(), json!(done.nails));
+            reply.insert("knots".into(), json!(done.knots));
             done.writes
         }
         Stone::Foliage => {
@@ -363,6 +377,48 @@ pub(crate) fn bark_spec(params: &Value) -> Result<crate::tools::BarkSpec, String
             (lo as u32, hi as u32)
         },
         cracks: opt_f64(params, "cracks")?.unwrap_or(0.25),
+        only: slot_list(params, "only")?,
+        exclude: exclude_boxes(params)?,
+        seed: seed(params)?,
+    })
+}
+
+/// MCP `planks` arguments as a spec.
+pub(crate) fn planks_spec(params: &Value) -> Result<crate::tools::PlankSpec, String> {
+    use crate::tools::PlankAxis;
+    let axis = match opt_str(params, "axis")?.as_deref() {
+        None => return Err("axis is required: the way the boards run, x or y".into()),
+        Some("x" | "+x" | "-x") => PlankAxis::X,
+        Some("y" | "+y" | "-y") => PlankAxis::Y,
+        Some(other) => return Err(format!("axis must be x or y, not `{other}`")),
+    };
+    let palettes = slot_list(params, "palettes")?;
+    if palettes.is_empty() {
+        return Err("palettes is required: at least two board tones".into());
+    }
+    let dark = one_slot(params, "dark")?;
+    if dark.is_none() {
+        for key in ["nails", "knots"] {
+            if opt_f64(params, key)?.is_some_and(|share| share > 0.0) {
+                return Err(format!("{key} needs dark: the slot of nails and knots"));
+            }
+        }
+    }
+    Ok(crate::tools::PlankSpec {
+        x: (req_i32(params, "x0")?, req_i32(params, "x1")?),
+        y: (req_i32(params, "y0")?, req_i32(params, "y1")?),
+        z: req_i32(params, "z")?,
+        axis,
+        palettes,
+        dirt: one_slot(params, "dirt")?,
+        dark,
+        width: whole_pair(params, "width", (3, 6))?,
+        length: whole_pair(params, "length", (8, 20))?,
+        gap: whole_pair(params, "gap", (1, 1))?,
+        thickness: whole(params, "thickness", 2, 1, 16)? as i32,
+        ragged: opt_f64(params, "ragged")?.unwrap_or(0.0),
+        nails: opt_f64(params, "nails")?.unwrap_or(0.25),
+        knots: opt_f64(params, "knots")?.unwrap_or(0.15),
         only: slot_list(params, "only")?,
         exclude: exclude_boxes(params)?,
         seed: seed(params)?,

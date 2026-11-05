@@ -1,4 +1,4 @@
-//! Inspector sections of the stone tools: Joints, Weather, Bark, Cavity,
+//! Inspector sections of the stone tools: Joints, Weather, Bark, Planks, Cavity,
 //! Growth, Sweep, Trim, and Markers. Each button runs the MCP
 //! tool over the selection's box, or the whole active object.
 
@@ -53,14 +53,14 @@ fn slots_field(ui: &mut Ui, text: &mut String, hint: &str) {
     );
 }
 
-/// MCP `exclude`: boxes Scatter, Relief, Joints, Weather, Bark, Cavity,
+/// MCP `exclude`: boxes Scatter, Relief, Joints, Weather, Bark, Planks, Cavity,
 /// Foliage, and Growth leave alone.
 pub(super) fn protect(ui: &mut Ui, session: &mut Session) {
     let enabled = session.editor_mode == EditorMode::Model;
     ui.add_enabled_ui(enabled, |ui| {
         section(ui, "Protect");
         ui.label(
-            RichText::new("Boxes Scatter, Relief, Joints, Weather, Bark, Cavity, Foliage, and Growth leave alone: ledge tops, cave floors, river beds.")
+            RichText::new("Boxes Scatter, Relief, Joints, Weather, Bark, Planks, Cavity, Foliage, and Growth leave alone: ledge tops, cave floors, river beds.")
                 .small()
                 .color(DIM),
         );
@@ -346,6 +346,79 @@ pub(super) fn bark(ui: &mut Ui, session: &mut Session) {
     if from_sweep {
         session.bark_points_from_sweep();
     }
+}
+
+/// MCP `planks`: a deck of separate boards.
+pub(super) fn planks(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.voxel_count() > 0 && session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Planks");
+        let panel = &mut session.stone.planks;
+        egui::Grid::new("planks-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Along", "The way the boards run.");
+                ui.horizontal(|ui| {
+                    for (index, name) in ["X", "Y"].into_iter().enumerate() {
+                        ui.selectable_value(&mut panel.axis, index, name);
+                    }
+                });
+                ui.end_row();
+                label(ui, "Height", "The top layer of the boards. Off: the top of the selection's box, or of the object.");
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut panel.height_on, "");
+                    ui.add_enabled(
+                        panel.height_on,
+                        egui::DragValue::new(&mut panel.height).range(-1024..=1023),
+                    );
+                });
+                ui.end_row();
+                label(ui, "Palettes", "Board tones, at least two different slots; each board takes one, never that of the board before it, so the boards never read as one stripe.");
+                slots_field(ui, &mut panel.palettes, "3 4 5");
+                ui.end_row();
+                label(ui, "Dirt", "Palette slot of the cell under each gap, a dark brown. 0 leaves that cell as it is.");
+                ui.add(egui::DragValue::new(&mut panel.dirt).range(0..=255));
+                ui.end_row();
+                label(ui, "Width", "Board width range across the axis, in cells.");
+                range_i32(ui, &mut panel.width, 1..=64);
+                ui.end_row();
+                label(ui, "Length", "Board length range along the axis, in cells. End joints keep clear of those of the neighbouring rows, and a row's first and last boards are sawn to fit.");
+                range_i32(ui, &mut panel.length, 2..=256);
+                ui.end_row();
+                label(ui, "Gap", "Gap range between boards, in cells: empty down through the boards to the dirt.");
+                range_i32(ui, &mut panel.gap, 1..=8);
+                ui.end_row();
+                label(ui, "Thickness", "Layers of board under the top; the gaps run through them all.");
+                ui.add(egui::Slider::new(&mut panel.thickness, 1..=16));
+                ui.end_row();
+                label(ui, "Ragged", "Chance per cell across a board's end that it is cut back 1 or 2 cells: about 0.3 for old wood, 0 for square ends.");
+                ui.add(egui::Slider::new(&mut panel.ragged, 0.0..=1.0).max_decimals(2));
+                ui.end_row();
+                label(ui, "Dark", "Palette slot of nails and knots. 0 lays neither.");
+                ui.add(egui::DragValue::new(&mut panel.dark).range(0..=255));
+                ui.end_row();
+                label(ui, "Nails", "Share of boards with a nail near each end, with Dark.");
+                ui.add(egui::Slider::new(&mut panel.nails, 0.0..=1.0).max_decimals(2));
+                ui.end_row();
+                label(ui, "Knots", "Share of boards with a knot along the middle, with Dark.");
+                ui.add(egui::Slider::new(&mut panel.knots, 0.0..=1.0).max_decimals(2));
+                ui.end_row();
+                label(ui, "Only", "Act only on solid cells of these palette slots, such as a deck filled to a curved outline; empty lays boards over the whole rectangle.");
+                slots_field(ui, &mut panel.only, "whole rectangle");
+                ui.end_row();
+                label(ui, "Seed", "Same seed, same boards.");
+                ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
+                ui.end_row();
+            });
+        if ui
+            .button(scope(session, "Lay planks on"))
+            .on_hover_text("MCP planks over the selection's rectangle, or the whole object's, keeping the Protect boxes. One undo step.")
+            .clicked()
+        {
+            session.planks_from_panel();
+        }
+    });
 }
 
 /// MCP `cavity_tint`: darker crevices and lighter ridges.

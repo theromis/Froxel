@@ -176,6 +176,7 @@ tracer. A file with no scene graph still loads its first model.
 | `joints` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `pattern` | Cut real joint gaps into the solid cells of the box: `columns`, `courses` (running bond), or `cracks`. Optional `spacing`, `course`, `width`, `depth`, `dirt`, `only`, `exclude`, `density`, `seed`. Replies with `removed` and `dirtied`. One undo step |
 | `weather` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Chip edges and corners, dent pits into flat faces, and add subtle colour noise on the exposed cells of the box. Optional `chip`, `chipSize`, `pits`, `pitDepth`, `broken`, `noise`, `noiseDensity`, `noiseScale`, `only`, `exclude`, `seed`. Replies with `chips`, `pits`, `removed`, `broken`, `recoloured`. One undo step |
 | `bark` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `axis` or `points`, `palettes` | Bark on wood along the grain: long plates of varied width, offset like real bark, split by fissures cut 1 to 2 cells deep with `dirt` at their bottom, and now and then a crack across a plate; a flat plate gets them across its surface. Optional `curve`, `dirt`, `width`, `length`, `depth`, `cracks`, `only`, `exclude`, `seed`. Replies with `plates`, `removed`, `dirtied`, `painted`, `cracks`, and `warning` when a shape could not be cut. One undo step |
+| `planks` | `x0`, `y0`, `x1`, `y1`, `z`, `axis`, `palettes` | A deck of separate boards over a rectangle at a height: rows of varied width, end joints staggered between neighbouring rows, gaps open down to a `dirt` cell, a tone per board, never one uniform stripe. Optional `dirt`, `dark`, `width`, `length`, `gap`, `thickness`, `ragged`, `nails`, `knots`, `only`, `exclude`, `seed`. Replies with `rows`, `boards`, `joints`, `added`, `painted`, `removed`, `dirtied`, `nails`, `knots`, `changed`, `voxels`. One undo step |
 | `cavity_tint` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Darken exposed cells in concave spots and crevices, and with `lighten` lighten ridges, by neighbour occupancy, to the slots in `pairs` or to shades it makes in free slots. Optional `radius`, `dark`, `lighten`, `light`, `pairs`, `darken`, `brighten`, `only`, `exclude`. Replies with `darkened`, `lightened`, `shades`. One undo step with the palette |
 | `foliage` | `palettes`, and `ellipsoids`, `boxes`, or `from` | A clustered broadleaf crown: separate leaf clumps packed over the volume's surface, each a flattened ragged ellipsoid shaded as one piece (sunlit top, dark underside, a darker seam where two meet), with a dark `core` inside that shows in the gaps; the wood is left alone. Optional box `x0`..`z1`, `core`, `size`, `gap`, `flatten`, `ragged`, `light`, `dark`, `sun`, `masses`, `groove`, `protect`, `exclude`, `seed`. Replies with `clumps`, `masses`, `added`, `recoloured`, `removed`, `core`. One undo step |
 | `moss` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Moss caps on tops and curtains with a ragged end down the side faces below them, or with `style` `cushions` separate cushions on exposed cells with drapes from overhangs. Optional `style`, `amount`, `noise`, `faces`, `facing`, `band`, `only`, `exclude`, `layer`, `curtains`, `length`, `thickness`, `size`, `gap`, `exposure`, `drapes`, `seed`. `faces` defaults to top and side, or every face when `facing` is set; caps take undersides with `bottom`, and a `facing` that no face in `faces` points along is an error. Replies with `added`, `painted`, and `curtains`, or `cushions` and `drapes`, plus `warning` (why) when nothing grew. One undo step |
@@ -323,7 +324,7 @@ cell at the top of the box, or would come to rest with a cell in an
 `exclude` box, is skipped and counted in `skipped`. Only empty
 cells are written, at most 200000; the same `seed` gives the same pile.
 
-`exclude` on `scatter`, `joints`, `weather`, `bark`, `cavity_tint`,
+`exclude` on `scatter`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`,
 `foliage`, `moss`, `algae`, and `vines` keeps walking surfaces whole: one inclusive box `[x0, y0, z0, x1, y1, z1]`
 or a list of up to 64, in the object's cells, of any size. No cell inside a
 box is removed, recoloured, or written, no plant grows from a cell inside
@@ -592,6 +593,44 @@ in a slot that already holds exactly that shade or the highest free slot
 (one no cell of any object uses); the reply's `shades` lists the slots it
 made, and the palette changes are part of the same undo step. Run it after
 `bark`, `joints`, or `weather`, and before `moss`.
+
+`planks` lays a deck, floor, or dock of separate boards, instead of dozens of
+`fill_box` and `carve` calls or painted stripes. The boards cover the inclusive
+rectangle `x0`, `y0`, `x1`, `y1`, with their top layer at `z` and `thickness`
+layers ([2], 1..=16), running along `axis` (`x` or `y`). Rows `width` cells wide
+([3, 6], 1..=64) tile the rectangle across the axis; each row is split into
+boards `length` cells long ([8, 20], 2..=256). A row's first and last boards are
+sawn pieces, so they may be shorter, and the last may run over by what no
+further joint has room for. Between rows and at end joints is a gap of `gap`
+cells (a number or `[min, max]`, default 1, 1..=8), empty down through every
+layer of board, with a `dirt` cell under it; without `dirt` that cell stays as
+it is, so a gap over nothing is open. An end joint keeps clear of those of the
+rows beside it; a board gives way by a few cells rather than line up.
+
+`palettes` are at least two different board tones, ideally three or more close
+ones. Each board takes one, never that of the board before it in the row and as
+seldom as it can that of the boards beside it, and a row with room for a joint
+always has one however long `length` is, so no layout runs as one uniform
+stripe. `ragged` (0..=1, default 0, about 0.3 for old wood) is the chance per
+cell across a board's end that it is cut back 1 or 2 cells. `dark` is the slot
+of a few dark cells in the top layer: `nails` of the boards (default 0.25) have
+a nail near each end, and `knots` (default 0.15) a knot along the middle; without
+`dark` there are neither, and passing `nails` or `knots` is an error.
+
+Every cell of the rectangle takes a board or a gap, solid or not, so boards
+paint what was there and gaps cut it. To fit a curved hull, fill its deck to the
+outline in one slot and pass that slot as `only`: only solid cells of it change,
+and only columns holding one get dirt. `exclude` boxes stay as they are, such as
+a hatch. The same `seed` gives the same boards.
+
+```json
+{"name": "planks", "arguments": {
+  "x0": 0, "y0": 0, "x1": 71, "y1": 31, "z": 14, "axis": "x",
+  "palettes": [3, 4, 5], "dirt": 6, "dark": 7, "length": [10, 24],
+  "ragged": 0.3, "nails": 0.3, "knots": 0.2, "seed": 3}}
+```
+
+![examples/plank_dock.rhai in the fast preview: separate boards of three tones, staggered end joints, dark gaps, ragged ends, nails and knots, and a hatch left whole](images/plank-dock.png)
 
 `foliage` builds a tree crown the way pixel-art broadleaf trees are drawn:
 many separate leaf clumps with sunlit tops, darker undersides, and dark gaps
@@ -1122,7 +1161,7 @@ no undo step is added.
 It runs `set_voxel`, `set_voxels`, `set_palette`, `fill_box`, `fill_ellipsoid`,
 `fill_rounded_box`, `fill_tube`, `sweep`, `loft`, `carve`, `trim_outline`, `smooth`, `deform`,
 `brush`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`,
-`cavity_tint`, `foliage`, `moss`, `algae`, and `vines`, all on the active
+`planks`, `cavity_tint`, `foliage`, `moss`, `algae`, and `vines`, all on the active
 object. Tools that write files (`save_file`, `render`, `preview`, `model_view`,
 `export_mesh`, and the like) are refused, and so are the readers, `undo`,
 `batch` itself, and the tools that change the active object or the document:
@@ -1286,12 +1325,13 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `deform` | Deform section: Bend, Taper, Twist, or Displace; Axis, Origin, Length; Angle and Toward, Start and End, or Amplitude, Scale, Octaves, Bias, Seed; over the selection's box or the whole object |
 | `brush` | Sculpt tool (**S**): Inflate, Deflate, Smooth, Flatten, or Grab; Radius, Strength, Falloff, Only. A drag lays dabs on the surface; Grab pulls the pressed point along the drag in the view plane. One undo step per drag |
 | `break_end` | Break section: Point (or Point at selection), Normal with ±X/Y/Z, Depth, Splinters, Length, Thickness, Taper, Rim bias, Bark, Sapwood, and Tip slots, Seed |
-| `exclude` (on the stone tools) | Protect section: one box per line, Add selection, Clear; Scatter, Joints, Weather, Bark, Cavity, Foliage, and Growth use it |
+| `exclude` (on the stone tools) | Protect section: one box per line, Add selection, Clear; Scatter, Joints, Weather, Bark, Planks, Cavity, Foliage, and Growth use it |
 | `scatter` | Scatter section: Pieces, Kinds, Size, Palettes, Clump, Seed, over the selection's box or above the whole object |
 | `column_relief` | Relief section: Facing ±X/±Y, Palette, Width, Out, Crown, Top, Lower, Depth, Seed, Raise columns on the selection's box or the whole object |
 | `joints` | Joints section: Columns, Courses, or Cracks, Spacing, Course (or Density), Width, Depth, Dirt, Only, Seed, over the selection's box or the whole object |
 | `weather` | Weather section: Chip, Chip size, Pits, Pit depth, Broken, Noise, Density, Patch, Only, Seed, over the selection's box or the whole object |
 | `bark` | Bark section: Along X, Y, Z, or Points (Smooth, From Sweep), Palettes, Dirt, Width, Length, Depth, Cracks, Only, Seed, over the selection's box or the whole object; the status line carries `warning` |
+| `planks` | Planks section: Along X or Y, Height, Palettes, Dirt, Width, Length, Gap, Thickness, Ragged, Dark, Nails, Knots, Only, Seed, over the selection's rectangle or the whole object's, keeping the Protect boxes |
 | `cavity_tint` | Cavity section: Radius, Dark, Lighten, Pairs, Shades, Only, over the selection's box or the whole object |
 | `foliage` | Foliage section: Volume (Ellipsoids, with Ellipsoid at selection, or From slots), Palettes, Core, Size, Gap, Flatten, Ragged, Light, Dark, Masses, Groove, Keep, Seed; Grow crown within the selection's box, or the whole crown with nothing selected |
 | `moss`, `algae`, `vines` | Growth section: Moss (Caps or Cushions), Algae, or Vines, Palettes, Amount, Noise, Faces, Facing, Band, Only, Paint, Curtains, Thickness, Size, Gap, Exposure, Drapes, Length, Blooms, Bloom chance, Seed, over the selection's box or the whole object |

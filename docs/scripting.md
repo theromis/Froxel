@@ -610,6 +610,38 @@ thick only takes the tones. Options:
 It returns `#{changed, plates, removed, dirtied, painted, cracks}`, and
 `warning` (why) when a shape could not be cut.
 
+### Planks
+
+```rhai
+let report = planks(x0, y0, x1, y1, z, "x", [3, 4, 5], #{dirt: 6});
+let report = planks(0, 0, 71, 31, 14, "x", [3, 4, 5], #{dirt: 6, dark: 7, length: [10, 24], ragged: 0.3, exclude: hatch, seed: 3});
+```
+
+MCP `planks`: separate boards over the rectangle, a deck, floor, or dock, instead
+of many `fill_box` and `carve` calls. The rectangle comes first, then `z` (the
+top layer of the boards), the axis the boards run along (`"x"` or `"y"`), and at
+least two different board tones. Rows tile the rectangle across the axis, end
+joints keep clear of those of the rows beside them, gaps run down through the
+boards to a `dirt` cell, and each board takes one tone, so no layout runs as one
+uniform stripe. Options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `dirt` | keep | Slot of the cell under each gap. |
+| `dark` | none | Slot of nails and knots, in the top layer. |
+| `width` | `[3, 6]` | Board width range across the axis, 1..=64. |
+| `length` | `[8, 20]` | Board length range along the axis, 2..=256. A row's first and last boards are sawn to fit. |
+| `gap` | `1` | Gap in cells, a number or `[min, max]`, 1..=8. |
+| `thickness` | `2` | Layers of board from `z` down, 1..=16; gaps run through them all. |
+| `ragged` | `0` | Chance per cell across a board's end that it is cut back 1 or 2 cells. |
+| `nails` | `0.25` | Share of boards with a nail near each end, with `dark`. |
+| `knots` | `0.15` | Share of boards with a knot along the middle, with `dark`. |
+| `only` | whole rectangle | Act only on solid cells of these slots, such as a deck filled to a curved outline. |
+| `exclude` | none | Boxes left alone (see [Protected boxes](#protected-boxes)). |
+| `seed` | `0` | A whole number of at least 0. |
+
+It returns `#{changed, rows, boards, joints, added, painted, removed, dirtied, nails, knots}`.
+
 ### Cavity tint
 
 ```rhai
@@ -732,7 +764,7 @@ weather(x0, y0, z0, x1, y1, z1, #{chip: 0.16, pits: 0.02, broken: 2, exclude: to
 moss(x0, y0, z0, x1, y1, z1, [10, 11, 12], #{exclude: tops});
 ```
 
-`exclude` on `scatter`, `joints`, `weather`, `bark`, `cavity_tint`, `foliage`, `moss`,
+`exclude` on `scatter`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`,
 `algae`, and `vines` is one inclusive box `[x0, y0, z0, x1, y1, z1]` or a list of up to 64, of
 any size. No cell inside a box is removed, recoloured, or written, no plant
 grows from a cell inside one, and no piece rests in one. Give a walking
@@ -752,6 +784,10 @@ egg-shaped and flattened where it rests, flat `loft` roots in a flare at the
 torn root plate, a forked limb of three lofts, `deform` `displace` bark
 lumps, and `brush` calls that smooth the limb joint, raise a burl, dig a rot
 pocket, and grab the root plate back.
+
+`examples/plank_dock.rhai` (baked in `examples/plank_dock.vox`) is a dock:
+posts, beams, and `planks` with staggered joints, dirt in the gaps, ragged ends,
+nails, and knots, around a hatch kept whole by `exclude`.
 
 `examples/barked_trunk.rhai` (baked in `examples/barked_trunk.vox`) is a
 fallen trunk dressed by its form instead of painted stripes: one tube

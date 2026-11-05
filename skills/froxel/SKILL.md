@@ -23,7 +23,7 @@ If the tools are missing, the server is not configured. Point the user to
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, and `marker`,
+  (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, and `marker`,
   `collision_box`, `connector`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -34,7 +34,8 @@ If the tools are missing, the server is not configured. Point the user to
   `voxelize(#{positions, triangles, colors}, opts)` voxelizes a mesh the
   script builds (`examples/faceted_boulder.rhai`). Name things in loops with `"ledge_" + i` or
   `` `ledge_${i}` ``. See `docs/scripting.md`,
-  `examples/hollow_log.rhai`, and `examples/barked_trunk.rhai`.
+  `examples/hollow_log.rhai`, `examples/barked_trunk.rhai`, and
+  `examples/plank_dock.rhai`.
 
 - **Markers** for game data: `set_marker` names a ledge point, a collision
   `box`, or a `connector` (a joining end) on an object; scripts call
@@ -122,7 +123,13 @@ If the tools are missing, the server is not configured. Point the user to
    at least 2 cells thick (plates and fissures with dirt at the
    bottom; read `warning` in the reply), then `cavity_tint` to darken fissures, crevices, and root
    crooks (it makes the shades itself) before moss. `cavity_tint` gives
-   rock depth the same way. Build a broadleaf crown with `foliage`, never
+   rock depth the same way. Lay a deck, floor, or dock with `planks`, never
+   dozens of `fill_box` and `carve` calls or painted stripes: one call lays
+   separate boards with real gaps down to a `dirt` slot, staggered end
+   joints, a tone per board (`palettes`, at least two), and optional
+   `ragged` ends and `dark` nails and knots; for a curved hull, fill the
+   deck in one slot and pass it as `only` (`examples/plank_dock.rhai`).
+   Build a broadleaf crown with `foliage`, never
    a blob of `fill_ellipsoid` calls with noise or grooves: after the trunk
    and branches, `foliage` over a few ellipsoids (or `from` an existing
    crown's leaf slots) packs separate clumps with sunlit tops, dark

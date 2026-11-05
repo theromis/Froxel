@@ -137,6 +137,8 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
                     ui.separator();
                     stone::bark(ui, session);
                     ui.separator();
+                    stone::planks(ui, session);
+                    ui.separator();
                     stone::cavity(ui, session);
                     ui.separator();
                     foliage::foliage(ui, session);

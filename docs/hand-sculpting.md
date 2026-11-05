@@ -235,6 +235,18 @@ pipe with a stripe. Build the trunk, branch, or root with one slot, then:
 
 `examples/barked_trunk.rhai` puts them together on a fallen trunk.
 
+A deck, floor, or dock is not 50 `fill_box` and `carve` calls, and not painted
+stripes. `planks` lays separate boards over a rectangle at a height: real gaps
+down to a `dirt` slot, end joints staggered between neighbouring rows, a tone per
+board from `palettes` (at least two), and with `ragged` and `dark` worn ends and a
+few nails and knots. For a curved hull, fill the deck to its outline in one slot
+and pass that slot as `only`; an `exclude` box keeps a hatch whole.
+`examples/plank_dock.rhai` is a whole dock.
+
+```
+planks               x0=0 y0=0 x1=71 y1=31 z=14 axis=x palettes=[3, 4, 5] dirt=6 dark=7 length=[10, 24] ragged=0.3 seed=3   # boards, not stripes
+```
+
 A broadleaf crown is not a blob of `fill_ellipsoid` calls with noise or
 grooves on top: that reads as one uniform mass. Build the trunk and
 branches first, then `foliage` over a few ellipsoids (a broad middle and
@@ -253,7 +265,7 @@ the same sway. `examples/clustered_tree.rhai` is a whole tree.
 foliage              palettes=[3, 4, 5, 6, 7] core=3 ellipsoids=[[1, 0, 30, 15, 13.5, 9], [-7, 4, 34, 9, 9, 7], [7, -4, 34, 9, 8, 7]] size=[3, 5] masses=4 seed=3   # clumps, not a blob
 ```
 
-Pass `exclude` boxes to `joints`, `weather`, `bark`, `cavity_tint`, `foliage`, the
+Pass `exclude` boxes to `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, the
 plants, and `scatter` to
 keep walking surfaces whole: a ledge top, a cave floor, or a river bed (its
 top layer and the air above it) stays flat while the stone around it is
@@ -358,7 +370,7 @@ then the world cells, so `add_bone` pivots are read straight off the cells
 and `bind_object` needs no cell moves.
 
 **Send many small edits as one `batch`.** A run of `fill_box`, `carve`,
-`sweep`, `set_palette`, and surface tools goes in one call, one undo step:
+`sweep`, `set_palette`, and surface tools such as `planks` goes in one call, one undo step:
 
 ```
 batch operations=[{tool: "fill_box", arguments: {x0: 0, y0: 0, z0: 0, x1: 9, y1: 2, z1: 0, palette: 3}}, {tool: "carve", arguments: {shape: "box", x0: 4, y0: 0, z0: 0, x1: 4, y1: 2, z1: 0}}]

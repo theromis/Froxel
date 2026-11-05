@@ -1,5 +1,5 @@
 //! The stone panels: the fields of MCP `joints`, `column_relief`, `weather`,
-//! `bark`, `cavity_tint`, `moss`, `algae`, `vines`, `sweep`, and `trim_outline`. Each panel's button builds
+//! `bark`, `planks`, `cavity_tint`, `moss`, `algae`, `vines`, `sweep`, and `trim_outline`. Each panel's button builds
 //! the tool's MCP arguments over the selection's box (or the active object's
 //! box) and runs the MCP handler, so the editor and MCP share one path.
 
@@ -257,6 +257,78 @@ impl BarkPanel {
         }
         if self.dirt > 0 {
             args["dirt"] = json!(self.dirt);
+        }
+        Ok(args)
+    }
+}
+
+/// The Planks panel: MCP `planks`.
+#[derive(Clone, PartialEq)]
+pub struct PlanksPanel {
+    /// 0 along X, 1 along Y.
+    pub axis: usize,
+    /// Off: the top of the selection's or the object's box.
+    pub height_on: bool,
+    pub height: i32,
+    /// Board tones, at least two.
+    pub palettes: String,
+    /// 0 leaves the cell under a gap as it is.
+    pub dirt: i32,
+    /// 0 lays no nails or knots.
+    pub dark: i32,
+    pub width: [i32; 2],
+    pub length: [i32; 2],
+    pub gap: [i32; 2],
+    pub thickness: i32,
+    pub ragged: f32,
+    pub nails: f32,
+    pub knots: f32,
+    pub only: String,
+    pub seed: i32,
+}
+
+impl Default for PlanksPanel {
+    fn default() -> Self {
+        Self {
+            axis: 0,
+            height_on: false,
+            height: 0,
+            palettes: String::new(),
+            dirt: 0,
+            dark: 0,
+            width: [3, 6],
+            length: [8, 20],
+            gap: [1, 1],
+            thickness: 2,
+            ragged: 0.0,
+            nails: 0.25,
+            knots: 0.15,
+            only: String::new(),
+            seed: 0,
+        }
+    }
+}
+
+impl PlanksPanel {
+    fn args(&self) -> Result<Value, String> {
+        let mut args = json!({
+            "axis": if self.axis == 0 { "x" } else { "y" },
+            "palettes": slots("Palettes", &self.palettes)?,
+            "width": [self.width[0], self.width[1].max(self.width[0])],
+            "length": [self.length[0], self.length[1].max(self.length[0])],
+            "gap": [self.gap[0], self.gap[1].max(self.gap[0])],
+            "thickness": self.thickness,
+            "ragged": self.ragged,
+            "only": slots("Only", &self.only)?,
+            "seed": self.seed.max(0),
+        });
+        if self.dirt > 0 {
+            args["dirt"] = json!(self.dirt);
+        }
+        if self.dark > 0 {
+            args["dark"] = json!(self.dark);
+            args["nails"] = json!(self.nails);
+            args["knots"] = json!(self.knots);
         }
         Ok(args)
     }
@@ -687,13 +759,14 @@ pub const DIRECTIONS: [(&str, [i32; 3]); 6] = [
 #[derive(Clone, Default, PartialEq)]
 pub struct StonePanels {
     /// The Protect section: MCP `exclude` boxes for Scatter, Relief,
-    /// Joints, Weather, Bark, Cavity, Foliage, and Growth, `x0 y0 z0 x1 y1 z1`
+    /// Joints, Weather, Bark, Planks, Cavity, Foliage, and Growth, `x0 y0 z0 x1 y1 z1`
     /// separated by semicolons or new lines.
     pub exclude: String,
     pub joints: JointsPanel,
     pub relief: ReliefPanel,
     pub weather: WeatherPanel,
     pub bark: BarkPanel,
+    pub planks: PlanksPanel,
     pub cavity: CavityPanel,
     pub foliage: super::FoliagePanel,
     pub growth: GrowthPanel,
@@ -775,6 +848,51 @@ impl Session {
                 None => text + ".",
             }
         });
+    }
+
+    /// The Planks panel's button: MCP `planks` over the selection's rectangle,
+    /// or the active object's, at the box's top unless Height is on.
+    pub fn planks_from_panel(&mut self) {
+        let args = self
+            .stone
+            .planks
+            .args()
+            .and_then(|args| Ok((args, self.stone.exclude_arg()?)));
+        let mut args = match args {
+            Ok((mut args, exclude)) => {
+                args["exclude"] = exclude;
+                args
+            }
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
+        let region = if self.picked.is_empty() {
+            cell_bounds(self.active().cells.keys().copied())
+        } else {
+            cell_bounds(self.picked.iter().copied())
+        };
+        let Some((min, max)) = region else {
+            self.status = "Select a region or add voxels first.".into();
+            return;
+        };
+        for (key, value) in ["x0", "y0", "x1", "y1"]
+            .into_iter()
+            .zip([min.0, min.1, max.0, max.1])
+        {
+            args[key] = json!(value);
+        }
+        let panel = &self.stone.planks;
+        args["z"] = json!(if panel.height_on { panel.height } else { max.2 });
+        self.status = match crate::remote::apply(self, "voxel.planks", &args) {
+            Ok(reply) => format!(
+                "Planks: {} boards in {} rows, {} end joints, {} cells cut, {} with dirt.",
+                reply["boards"], reply["rows"], reply["joints"], reply["removed"], reply["dirtied"]
+            ),
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
     }
 
     /// The Bark panel's copy of the Sweep panel's points.

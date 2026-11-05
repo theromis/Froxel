@@ -37,6 +37,7 @@ pub(crate) const BATCH_TOOLS: &[(&str, &str)] = &[
     ("joints", "voxel.joints"),
     ("weather", "voxel.weather"),
     ("bark", "voxel.bark"),
+    ("planks", "voxel.planks"),
     ("cavity_tint", "voxel.cavity_tint"),
     ("foliage", "voxel.foliage"),
     ("moss", "voxel.moss"),

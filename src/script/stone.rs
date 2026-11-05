@@ -1,5 +1,5 @@
 //! The MCP stone and surface tools in Rhai: `joints`, `column_relief`,
-//! `weather`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `bark`,
+//! `weather`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `bark`, `planks`,
 //! `cavity_tint`, and `foliage`.
 //!
 //! Each call turns its arguments into the MCP tool's arguments and runs
@@ -80,6 +80,21 @@ const TRIM: &[&str] = &["curve", "only", "skin", "thickness"];
 
 const BARK: &[&str] = &[
     "axis", "points", "curve", "dirt", "width", "length", "depth", "cracks", "only", "exclude",
+    "seed",
+];
+
+const PLANKS: &[&str] = &[
+    "dirt",
+    "dark",
+    "width",
+    "length",
+    "gap",
+    "thickness",
+    "ragged",
+    "nails",
+    "knots",
+    "only",
+    "exclude",
     "seed",
 ];
 
@@ -302,6 +317,51 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
                       facing: Dynamic,
                       palette: INT| {
                     run([x0, y0, z0, x1, y1, z1], facing, palette, &Map::new())
+                },
+            );
+        }
+    }
+    // `planks(x0, y0, x1, y1, z, axis, palettes, opts)`: a rectangle at a
+    // height, not a box.
+    for with_opts in [false, true] {
+        let state = scratch.clone();
+        let run = move |corners: [INT; 4],
+                        z: INT,
+                        axis: &str,
+                        palettes: Dynamic,
+                        opts: &Map|
+              -> Fallible<Map> {
+            let mut args = options(opts, PLANKS, "planks")?;
+            for (key, value) in ["x0", "y0", "x1", "y1"].into_iter().zip(corners) {
+                args.insert(key.into(), value.into());
+            }
+            args.insert("z".into(), z.into());
+            args.insert("axis".into(), axis.into());
+            args.insert("palettes".into(), json(&palettes)?);
+            state
+                .borrow_mut()
+                .stone(args, Stone::Planks)
+                .map_err(runtime)
+        };
+        if with_opts {
+            engine.register_fn(
+                "planks",
+                move |x0: INT,
+                      y0: INT,
+                      x1: INT,
+                      y1: INT,
+                      z: INT,
+                      axis: &str,
+                      palettes: Dynamic,
+                      opts: Map| {
+                    run([x0, y0, x1, y1], z, axis, palettes, &opts)
+                },
+            );
+        } else {
+            engine.register_fn(
+                "planks",
+                move |x0: INT, y0: INT, x1: INT, y1: INT, z: INT, axis: &str, palettes: Dynamic| {
+                    run([x0, y0, x1, y1], z, axis, palettes, &Map::new())
                 },
             );
         }
