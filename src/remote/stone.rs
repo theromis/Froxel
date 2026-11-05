@@ -105,6 +105,9 @@ pub(crate) fn stone_writes(
             reply.insert("dirtied".into(), json!(done.dirtied));
             reply.insert("painted".into(), json!(done.painted));
             reply.insert("cracks".into(), json!(done.cracks));
+            if let Some(warning) = done.warning {
+                reply.insert("warning".into(), json!(warning));
+            }
             done.writes
         }
         Stone::Foliage => {

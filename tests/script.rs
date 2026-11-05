@@ -1406,6 +1406,40 @@ fn the_swept_cut_removes_what_the_same_sweep_covers() {
 }
 
 #[test]
+fn bark_on_a_flat_plate_matches_mcp_and_warns_on_one_cell() {
+    let cells = run_cells(
+        r#"
+        fill_box(0, 0, 0, 59, 39, 1, 1);
+        let cut = bark(0, 0, 0, 59, 39, 1, [1], #{axis: "x", width: [4, 6], length: [16, 44], depth: 1, only: [1]});
+        if cut.plates < 15 || cut.removed == 0 || cut.warning != () { throw "flat plate"; }
+        fill_box(0, 0, 10, 59, 39, 10, 2);
+        let thin = bark(0, 0, 10, 59, 39, 10, [3], #{axis: "x"});
+        if thin.removed != 0 || thin.warning == () { throw "one cell"; }
+    "#,
+    )
+    .unwrap();
+    let box_args = serde_json::json!({
+        "x0": 0, "y0": 0, "z0": 0, "x1": 59, "y1": 39, "z1": 1,
+        "axis": "x", "palettes": [1], "width": [4, 6], "length": [16, 44], "depth": 1, "only": [1]
+    });
+    let by_mcp = mcp_cells(&[
+        (
+            "voxel.fill",
+            serde_json::json!({"x0": 0, "y0": 0, "z0": 0, "x1": 59, "y1": 39, "z1": 1, "palette": 1}),
+        ),
+        ("voxel.bark", box_args),
+    ]);
+    let plate: HashMap<Cell, u8> = cells.into_iter().filter(|(c, _)| c.2 < 10).collect();
+    assert_eq!(plate, by_mcp);
+    assert!(plate.len() < 60 * 40 * 2);
+    assert!(
+        plate.len() >= 60 * 40,
+        "the back layer stays: {}",
+        plate.len()
+    );
+}
+
+#[test]
 fn the_barked_trunk_has_plates_shaded_fissures_and_moss_cushions() {
     let mut session = Session::new();
     session.replace_empty();

@@ -704,10 +704,14 @@ impl Session {
     pub fn bark_from_panel(&mut self) {
         let args = self.stone.bark.args(self.active_slot);
         self.stone_from_panel("voxel.bark", args, |reply| {
-            format!(
-                "Bark: {} plates, {} cells cut, {} with dirt, {} cracks.",
+            let text = format!(
+                "Bark: {} plates, {} cells cut, {} with dirt, {} cracks",
                 reply["plates"], reply["removed"], reply["dirtied"], reply["cracks"]
-            )
+            );
+            match reply.get("warning").and_then(Value::as_str) {
+                Some(warning) => format!("{text}. {warning}."),
+                None => text + ".",
+            }
         });
     }
 

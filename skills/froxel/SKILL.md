@@ -108,8 +108,9 @@ If the tools are missing, the server is not configured. Point the user to
    waterline band), and `vines` (hanging strands with blooms) with your own
    slots and `set_palette` motion. Dress wood by its form, never with
    painted stripes: build it in one slot, `bark` it along the same
-   `points` as its `fill_tube` (plates and fissures with dirt at the
-   bottom), then `cavity_tint` to darken fissures, crevices, and root
+   `points` as its `fill_tube`, or the `axis` of a flat deck or plank
+   at least 2 cells thick (plates and fissures with dirt at the
+   bottom; read `warning` in the reply), then `cavity_tint` to darken fissures, crevices, and root
    crooks (it makes the shades itself) before moss. `cavity_tint` gives
    rock depth the same way. Build a broadleaf crown with `foliage`, never
    a blob of `fill_ellipsoid` calls with noise or grooves: after the trunk

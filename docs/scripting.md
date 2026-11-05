@@ -559,7 +559,10 @@ slots come second; each plate takes one, so the tone changes plate by
 plate instead of in stripes. The grain is `axis` or `points`, one of them
 required: pass the tube's own points (radius and all) and `curve` so the
 plates follow its bend. End grain and the inside of a hollow are left
-alone; bark a hollow log after carving it. Options:
+alone; bark a hollow log after carving it. A flat or gently curved plate
+(a deck, a plank, a wall) gets its columns across its width instead; one too
+thin to cut from both faces is cut from one and never through, and one cell
+thick only takes the tones. Options:
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -567,7 +570,7 @@ alone; bark a hollow log after carving it. Options:
 | `points` | — | The wood's path, `[x, y, z]` and any extra numbers (a tube's radius, a sweep's twist and scale). |
 | `curve` | `"polyline"` | With `points`: `"smooth"` follows the same curve as a smooth tube. |
 | `dirt` | keep | Slot of the cell at the bottom of each fissure. |
-| `width` | `[3, 6]` | Plate width range in cells around the wood, 1..=64. |
+| `width` | `[3, 6]` | Plate width range in cells around the wood or across a flat plate, 1..=64. |
 | `length` | `[8, 20]` | Plate length range in cells along the grain, 2..=256. |
 | `depth` | `[1, 2]` | Fissure depth range in cells, 1..=4; plate ends and cracks take the smaller. |
 | `cracks` | `0.25` | Share of plates with a crack part way across. |
@@ -575,7 +578,8 @@ alone; bark a hollow log after carving it. Options:
 | `exclude` | none | Boxes left alone (see [Protected boxes](#protected-boxes)). |
 | `seed` | `0` | A whole number of at least 0. |
 
-It returns `#{changed, plates, removed, dirtied, painted, cracks}`.
+It returns `#{changed, plates, removed, dirtied, painted, cracks}`, and
+`warning` (why) when a shape could not be cut.
 
 ### Cavity tint
 

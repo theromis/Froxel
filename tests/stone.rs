@@ -741,6 +741,210 @@ fn bark_refuses_bad_values() {
     assert!(bark(&cells, &spec).unwrap().writes.is_empty());
 }
 
+/// The spec of a deck board: a straight grain along x over the whole slab.
+fn deck_spec(max: Cell) -> BarkSpec {
+    let mut spec = bark_spec(BarkDirection::Axis([1.0, 0.0, 0.0]));
+    spec.region = Region::new((0, 0, 0), max, "bark").unwrap();
+    spec.palettes = vec![1];
+    spec.dirt = None;
+    spec.width = (4.0, 6.0);
+    spec.length = (16.0, 44.0);
+    spec.depth = (1, 1);
+    spec.only = vec![1];
+    spec
+}
+
+fn removed_cells(done: &super::bark::Barked) -> HashSet<Cell> {
+    done.writes
+        .iter()
+        .filter(|w| w.3 == 0)
+        .map(|w| (w.0, w.1, w.2))
+        .collect()
+}
+
+#[test]
+fn bark_cuts_plates_across_a_flat_plate() {
+    let cells = slab((0, 0, 0), (97, 68, 1), 1);
+    let done = bark(&cells, &deck_spec((97, 68, 1))).unwrap();
+    assert!(done.plates >= 30, "{done:?}");
+    assert_eq!(done.warning, None);
+    let removed = removed_cells(&done);
+    assert!(removed.iter().all(|c| c.2 == 1), "only the top is cut");
+    // Fissures reach across the whole width, near both long edges too.
+    let rows: HashSet<i32> = removed.iter().map(|c| c.1).collect();
+    assert!(rows.len() >= 50, "rows cut: {}", rows.len());
+    assert!(rows.iter().any(|y| *y < 12) && rows.iter().any(|y| *y > 56));
+    // Boards along the grain: longer runs along x than across, and about one
+    // fissure per plate width.
+    let (along, across) = runs(&removed, (1, 0, 0), [(0, 1, 0), (0, -1, 0)]);
+    assert!(along > across, "along {along}, across {across}");
+    let mid: HashSet<i32> = removed.iter().filter(|c| c.0 == 48).map(|c| c.1).collect();
+    assert!(
+        (8..=40).contains(&mid.len()),
+        "fissure cells at x 48: {mid:?}"
+    );
+    // The outer edges stay whole: no fissure runs along the rim.
+    let rim = removed.iter().filter(|c| c.1 == 0 || c.1 == 68).count();
+    assert!(rim < 40, "cells cut on the rim: {rim}");
+}
+
+#[test]
+fn bark_never_cuts_through_a_plate_and_puts_dirt_under_its_fissures() {
+    // Deeper than the plate allows: the back layer stays.
+    let cells = slab((0, 0, 0), (59, 39, 1), 1);
+    let mut spec = deck_spec((59, 39, 1));
+    spec.depth = (2, 4);
+    spec.dirt = Some(9);
+    let done = bark(&cells, &spec).unwrap();
+    let removed = removed_cells(&done);
+    assert!(!removed.is_empty() && removed.iter().all(|c| c.2 == 1));
+    assert_eq!(done.dirtied, removed.len(), "{done:?}");
+    for &(x, y, z, slot) in &done.writes {
+        if slot == 9 {
+            assert!(z == 0 && removed.contains(&(x, y, 1)));
+        }
+    }
+    // Thick enough for both faces: each is cut, and something stays between.
+    let cells = slab((0, 0, 0), (59, 39, 4), 1);
+    let mut spec = deck_spec((59, 39, 4));
+    spec.depth = (2, 2);
+    let removed = removed_cells(&bark(&cells, &spec).unwrap());
+    assert!(removed.iter().any(|c| c.2 == 4) && removed.iter().any(|c| c.2 == 0));
+    let mid = |c: &&Cell| c.2 == 2 && (2..38).contains(&c.1);
+    assert_eq!(removed.iter().filter(mid).count(), 0, "the middle stays");
+}
+
+#[test]
+fn bark_cuts_a_standing_slanted_and_gently_curved_plate() {
+    // Standing on edge, with the grain along z.
+    let cells = slab((0, 0, 0), (1, 40, 80), 1);
+    let mut spec = deck_spec((1, 40, 80));
+    spec.direction = BarkDirection::Axis([0.0, 0.0, 1.0]);
+    let done = bark(&cells, &spec).unwrap();
+    assert!(done.plates >= 15, "{done:?}");
+    let removed = removed_cells(&done);
+    let faces: HashSet<i32> = removed.iter().map(|c| c.0).collect();
+    assert_eq!(faces.len(), 1, "one face of a thin wall, not through it");
+    // A hull strake: 3 thick, bowed by 6 cells over 70, along x. The
+    // bow is nearly flat, and points give the same result as an axis.
+    let mut cells = HashMap::new();
+    for x in 0..80 {
+        for y in 0..70 {
+            let bow = (6.0 * (1.0 - (f64::from(y - 35) / 35.0).powi(2))).round() as i32;
+            for z in 0..3 {
+                cells.insert((x, y, z + bow), 1u8);
+            }
+        }
+    }
+    let mut spec = deck_spec((79, 69, 10));
+    let done = bark(&cells, &spec).unwrap();
+    assert!(done.plates >= 25, "{done:?}");
+    let rows: HashSet<i32> = removed_cells(&done).iter().map(|c| c.1).collect();
+    assert!(rows.len() >= 40, "rows cut: {}", rows.len());
+    spec.direction = BarkDirection::Path {
+        points: vec![[0.0, 35.0, 7.0], [79.0, 35.0, 7.0]],
+        curve: false,
+    };
+    let done = bark(&cells, &spec).unwrap();
+    assert!(done.plates >= 25, "{done:?}");
+}
+
+#[test]
+fn bark_warns_when_a_shape_cannot_be_cut() {
+    // One cell thick: tones only, never a hole.
+    let cells = slab((0, 0, 0), (59, 39, 0), 1);
+    let mut spec = deck_spec((59, 39, 0));
+    spec.palettes = vec![2, 3];
+    let done = bark(&cells, &spec).unwrap();
+    assert_eq!(done.removed, 0);
+    assert!(done.plates >= 15 && done.painted >= 50 * 40, "{done:?}");
+    assert!(done.warning.as_deref().unwrap().contains("one cell thick"));
+    // The grain straight through the plate: its faces are end grain, so
+    // only the rim takes bark, and the reply says so.
+    let cells = slab((0, 0, 0), (59, 39, 1), 1);
+    let mut spec = deck_spec((59, 39, 1));
+    spec.direction = BarkDirection::Axis([0.0, 0.0, 1.0]);
+    let done = bark(&cells, &spec).unwrap();
+    assert!(
+        removed_cells(&done)
+            .iter()
+            .all(|c| { c.0 < 3 || c.0 > 56 || c.1 < 3 || c.1 > 36 }),
+        "{done:?}"
+    );
+    assert!(done.warning.as_deref().unwrap().contains("end grain"));
+    // Nothing to act on.
+    let mut spec = deck_spec((59, 39, 1));
+    spec.only = vec![7];
+    let done = bark(&cells, &spec).unwrap();
+    assert!(done.writes.is_empty() && done.warning.is_some());
+    let done = bark(&HashMap::new(), &deck_spec((59, 39, 1))).unwrap();
+    assert!(done.writes.is_empty() && done.warning.is_some());
+    // Plates wider and longer than the wood: no fissure falls on it.
+    let cells = slab((0, 0, 0), (19, 39, 3), 1);
+    let mut spec = deck_spec((19, 39, 3));
+    spec.width = (64.0, 64.0);
+    spec.length = (256.0, 256.0);
+    spec.cracks = 0.0;
+    spec.seed = (0..64)
+        .find(|seed| {
+            spec.seed = *seed;
+            bark(&cells, &spec).unwrap().removed == 0
+        })
+        .unwrap();
+    let done = bark(&cells, &spec).unwrap();
+    assert!(done.warning.as_deref().unwrap().contains("no fissure"));
+}
+
+/// FNV-1a over the sorted writes.
+fn fingerprint(done: &super::bark::Barked) -> u64 {
+    let mut writes = done.writes.clone();
+    writes.sort_unstable();
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    for w in writes {
+        for v in [w.0, w.1, w.2, w.3] {
+            hash = (hash ^ v as u32 as u64).wrapping_mul(0x0100_0000_01b3);
+        }
+    }
+    hash
+}
+
+#[test]
+fn bark_leaves_round_wood_as_it_was() {
+    let axis = BarkDirection::Axis([1.0, 0.0, 0.0]);
+    let solid = log(48, 7.0, 1);
+    let mut hollow = log(32, 7.0, 1);
+    hollow.retain(|c, _| c.1 * c.1 + c.2 * c.2 > 25);
+    let mut flattened = HashMap::new();
+    for x in 0..48 {
+        for z in -4..=4i32 {
+            for y in -8..=8i32 {
+                if f64::from(y * y) / 64.0 + f64::from(z * z) / 16.0 <= 1.0 {
+                    flattened.insert((x, y, z), 1u8);
+                }
+            }
+        }
+    }
+    let path = BarkDirection::Path {
+        points: vec![[0.0, 0.0, 0.0], [24.0, 0.0, 0.0], [47.0, 0.0, 0.0]],
+        curve: true,
+    };
+    let print = [
+        fingerprint(&bark(&solid, &bark_spec(axis.clone())).unwrap()),
+        fingerprint(&bark(&hollow, &bark_spec(axis.clone())).unwrap()),
+        fingerprint(&bark(&flattened, &bark_spec(axis)).unwrap()),
+        fingerprint(&bark(&solid, &bark_spec(path)).unwrap()),
+    ];
+    assert_eq!(
+        print,
+        [
+            3703905666202604089,
+            8259575221550684558,
+            5723156095587838077,
+            3426913992753325201
+        ]
+    );
+}
+
 fn cushions(length: (i32, i32)) -> GrowthKind {
     GrowthKind::Cushions {
         size: (2, 4),

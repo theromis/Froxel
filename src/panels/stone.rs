@@ -316,7 +316,7 @@ pub(super) fn bark(ui: &mut Ui, session: &mut Session) {
                 label(ui, "Dirt", "Palette slot of the cell at the bottom of each fissure, a dark brown. 0 keeps its colour.");
                 ui.add(egui::DragValue::new(&mut panel.dirt).range(0..=255));
                 ui.end_row();
-                label(ui, "Width", "Plate width range in cells around the wood.");
+                label(ui, "Width", "Plate width range in cells around the wood, or across a flat plate such as a deck.");
                 range_f32(ui, &mut panel.width, 1.0..=64.0);
                 ui.end_row();
                 label(ui, "Length", "Plate length range in cells along the grain.");
@@ -337,7 +337,7 @@ pub(super) fn bark(ui: &mut Ui, session: &mut Session) {
             });
         if ui
             .button(scope(session, "Cut bark on"))
-            .on_hover_text("MCP bark over the selection's box, or the whole object, keeping the Protect boxes. End grain is left alone. One undo step.")
+            .on_hover_text("MCP bark over the selection's box, or the whole object, keeping the Protect boxes. End grain is left alone. A flat plate gets boards across its surface and is never cut through; the status line says when a shape could not be cut. One undo step.")
             .clicked()
         {
             session.bark_from_panel();

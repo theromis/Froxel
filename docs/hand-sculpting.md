@@ -211,7 +211,9 @@ pipe with a stripe. Build the trunk, branch, or root with one slot, then:
   as the `fill_tube` (or `axis` for a straight one), split by fissures 1 to
   2 cells deep with a `dirt` slot at their bottom, plate ends offset from
   the next column's and an occasional crack across. `palettes` are a few
-  bark tones; each plate takes one.
+  bark tones; each plate takes one. On a flat deck or plank pass the `axis`
+  the boards run along, at least 2 cells thick: the columns go across its
+  width, and the back layer stays. Read `warning` in the reply.
 - `cavity_tint` darkens the cells in concave spots, the fissures, the
   crook of a root, a branch join, and with `lighten` lightens the plate
   ridges, by how many of their neighbours are solid. Without `pairs` it

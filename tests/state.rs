@@ -2261,6 +2261,35 @@ fn log_session() -> Session {
 }
 
 #[test]
+fn bark_panel_cuts_a_flat_plate_and_shows_the_warning() {
+    let mut session = Session::new();
+    session.replace_empty();
+    for x in 0..60 {
+        for y in 0..40 {
+            session.objects[0].cells.insert((x, y, 0), 3);
+        }
+    }
+    session.active_slot = 3;
+    session.stone.bark.palettes = "4 5".into();
+    session.bark_from_panel();
+    assert!(
+        session.status.contains("one cell thick"),
+        "{}",
+        session.status
+    );
+    assert_eq!(session.active().cells.len(), 60 * 40, "no hole");
+    for x in 0..60 {
+        for y in 0..40 {
+            session.objects[0].cells.insert((x, y, 1), 3);
+        }
+    }
+    session.bark_from_panel();
+    assert!(!session.status.contains("thick"), "{}", session.status);
+    assert!(session.active().cells.len() < 60 * 80);
+    assert!(session.active().cells.len() >= 60 * 40);
+}
+
+#[test]
 fn bark_cavity_and_cushion_panels_run_their_mcp_tools() {
     let mut session = log_session();
     let before = session.active().cells.clone();
