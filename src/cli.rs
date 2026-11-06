@@ -89,6 +89,94 @@ pub fn export(args: &[String]) -> i32 {
     }
 }
 
+const BAKE_SCENE_USAGE: &str = "\
+usage: froxel bake-scene --scene <scene.json> --output <file.glb> [--bake JSON|FILE]
+
+Bakes one placement of many .vox files together, so each is shaded by its
+neighbours and by ground, into one merged mesh with one colour atlas, to draw
+unshaded (MCP bake_scene). scene.json, with paths relative to its folder:
+
+  {\"instances\": [{\"source\": \"stone.vox\", \"translation\": [2, 0, -1],
+                   \"yaw\": 7, \"scale\": 0.1}],
+   \"occluders\": [{\"mesh\": \"ground.glb\", \"translation\": [0, 0, 0]},
+                 {\"plane\": 0},
+                 {\"height\": {\"origin\": [-4, -4], \"cell\": 1,
+                             \"rows\": [[0, 0, 0], [0, 1, 0], [0, 0, 0]]}}],
+   \"bake\": {\"preset\": \"old_pond\", \"distance\": 2}}
+
+A placement is the frame of the glb froxel export writes, as a game places it:
+world = translation + scale x Ry(yaw) x (x, z, -y) of a cell corner, Y up, with
+yaw in degrees about +Y. Occluders stop light and are not written: mesh is a
+.glb, .gltf or .obj, plane is solid below that height, height is y at grid
+points, rows[z][x]. bake is the option of froxel export, with distance in scene
+units, and --bake replaces it. Without either it is occlusion alone. It prints
+the triangles, the atlas size and the memory used. See docs/mcp.md.";
+
+/// `froxel bake-scene`: MCP `bake_scene` with no window.
+pub fn bake_scene(args: &[String]) -> i32 {
+    match bake_scene_args(args) {
+        Ok(None) => 0,
+        Ok(Some(params)) => {
+            let started = std::time::Instant::now();
+            match crate::remote::bake_scene(&params) {
+                Ok(reply) => {
+                    eprintln!(
+                        "wrote {} ({} instances, {} triangles, {}x{} atlas, {} ms)",
+                        reply["path"].as_str().unwrap_or(""),
+                        reply["instances"],
+                        reply["triangles"],
+                        reply["atlas"][0],
+                        reply["atlas"][1],
+                        started.elapsed().as_millis()
+                    );
+                    0
+                }
+                Err(err) => {
+                    eprintln!("{err}");
+                    1
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            2
+        }
+    }
+}
+
+fn bake_scene_args(args: &[String]) -> Result<Option<serde_json::Value>, String> {
+    use serde_json::json;
+    let mut params = json!({});
+    let mut index = 0;
+    while index < args.len() {
+        let arg = args[index].as_str();
+        let mut value = || {
+            index += 1;
+            args.get(index)
+                .cloned()
+                .ok_or_else(|| format!("missing value for {arg}"))
+        };
+        match arg {
+            "-h" | "--help" => {
+                eprintln!("{BAKE_SCENE_USAGE}");
+                return Ok(None);
+            }
+            "--scene" => params["scene"] = json!(value()?),
+            "--output" => params["path"] = json!(value()?),
+            "--bake" => {
+                let text = value()?;
+                params["bake"] = crate::bridge::parse_bake(Some(&text))?;
+            }
+            other => return Err(format!("unknown argument `{other}`\n{BAKE_SCENE_USAGE}")),
+        }
+        index += 1;
+    }
+    if params.get("scene").is_none() || params.get("path").is_none() {
+        return Err(BAKE_SCENE_USAGE.into());
+    }
+    Ok(Some(params))
+}
+
 /// `froxel preview`: the fast lit raster of MCP `preview`, or a contact
 /// sheet of several inputs or of the variants of one.
 pub fn preview(args: &[String]) -> i32 {

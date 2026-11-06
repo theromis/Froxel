@@ -127,7 +127,7 @@ than 256 on any axis is refused and changes nothing.
 
 Every tool that writes a file (`save_file`, `render`, `model_view`,
 `preview`, `compare_silhouette`, `export_mesh`, `export_models`,
-`export_variants`, and the screenshots) creates the missing folders of its
+`export_variants`, `bake_scene`, and the screenshots) creates the missing folders of its
 path before writing, so a save into a fresh folder does not fail.
 
 `save_file` writes every non-empty object. A new object is a normal model:
@@ -220,6 +220,7 @@ tracer. A file with no scene graph still loads its first model.
 | `export_mesh` | `path` | Write a glTF 2.0 `.glb` of every object. `merge` defaults to false. `vertexColors` defaults to false. `exportHidden` and `splitObjects` default to false. A slot with motion adds `TEXCOORD_1`. Clips become glTF animations. Markers become nodes. The reply includes `quads`, `triangles` (every triangle in the glb), `structure`, and `markers`. `bake` (with `colorAtlas`) paints ray-traced occlusion and a sun with shadows into the atlas, to draw unshaded |
 | `export_variants` | `variants`, `dir` | Bake the scripted document once per parameter set `{name?, params}` and write `<name>.vox` and `<name>.glb` into `dir` with the `export_mesh` options, then merge them by name into a manifest (default `dir/variants.json`) of each set's parameters, markers, and bounds; the reply names the entries `added`, `replaced`, and `kept`. Optional `manifest`, `replace` (a fresh manifest), `vox`, `timeoutSeconds`. The document and its undo history stay as they were |
 | `export_models` | `models` | Write 1 to 16 `.glb` files. Each item is `{path, source?, merge?, vertexColors?, exportHidden?, splitObjects?, colorAtlas?, aoStrength?, aoRadius?, aoTarget?, bake?}`. `source` is a `.vox` opened in its own session, so the open document stays. Each file's reply has `quads`, `triangles`, and `structure`: nodes, meshes, skins, animations, and warnings |
+| `bake_scene` | `scene`, `path` | Bake a placement of many `.vox` files together into one `.glb` with one colour atlas, each shaded by its neighbours and by ground, to draw unshaded. Optional `bake`. Replies with `triangles`, `vertices`, `atlas`, `texels`, `bytes`, `memory`, `bake`, and `structure` |
 | `set_script` | `source`, optional `object` | Store a Rhai script and read its parameters. One undo step. Does not rebuild voxels |
 | `get_script` | optional `object` | Source, auto flag, and parameters |
 | `set_params` | `values`, optional `object` | Set parameter values by name. One undo step. Does not run the script |
@@ -1022,6 +1023,77 @@ gives the same bytes: every face uses one fixed pattern of rays, so there is no
 seed and no noise. To look at the result, `preview` with `glb` (`froxel preview
 --input file.glb`) draws the written file unlit.
 
+#### Baking a scene
+
+`bake_scene` (`froxel bake-scene`, Export section's Bake scene…) bakes one
+placement of many `.vox` files together, so each is shaded by its neighbours and
+by ground, into **one merged `.glb` with one colour atlas**: one mesh node, one
+draw call, the level's island as a single file. It writes that one form because
+every placement's light is its own anyway, so a mesh per instance would save no
+texels. The open document is not touched.
+
+```json
+{
+  "instances": [
+    {"source": "stone.vox", "translation": [2.0, 0.0, -1.0], "yaw": 7, "scale": 0.1},
+    {"source": "stone.vox", "translation": [3.1, 0.2, 0.5], "yaw": -12, "scale": 0.1}
+  ],
+  "occluders": [
+    {"mesh": "ground.glb", "translation": [0, 0, 0], "yaw": 0, "scale": 1},
+    {"plane": 0},
+    {"height": {"origin": [-4, -4], "cell": 1, "rows": [[0, 0, 0], [0, 1, 0], [0, 0, 0]]}}
+  ],
+  "bake": {"preset": "old_pond", "distance": 2.5, "sunSoftness": 2},
+  "exportHidden": false
+}
+```
+
+`bake_scene` takes `scene` (that object, or the path of a JSON file of it,
+whose folder its relative paths start from), `path` (the `.glb`), and optional
+`bake`, which replaces the scene's. The command line is `froxel bake-scene
+--scene scene.json --output level.glb [--bake JSON|FILE]`.
+
+- **A placement** is the frame of the glb `export_mesh` writes, as a game places
+  it: `world = translation + scale × Ry(yaw) × (x, z, −y)` of a cell corner, Y
+  up, with `yaw` in degrees about +Y counter-clockwise from above (Godot's
+  `rotation.y`) and one uniform `scale` above 0. So a level's transforms copy
+  across, and the file sits where the separate glbs sat. Each defaults to no
+  change. Any yaw works: cells stay on their own lattice, and a ray enters a
+  placement through the inverse transform, so 7 degrees costs what 0 does and
+  nothing is resampled.
+- **Occluders** stop light and are not written. `mesh` is a `.glb`, `.gltf` or
+  `.obj` placed like an instance, two-sided. `plane` is solid below that height,
+  so a face under it goes dark. `height` is a surface through grid points,
+  `rows[z][x]` at `origin + cell × (x, z)`, with `origin` `[x, z]`. Translucent
+  slots and hidden objects stop nothing. Ground is not lit by the stones on it,
+  because it is not in the file: to bake the ground too, place it as a `.vox`
+  instance.
+- **`bake`** is the option above, with `distance` in scene units, not cells, so
+  at scale 0.1 a `distance` of 1.6 is 16 cells. `sunDirection` stays in Froxel's Z
+  up, as everywhere: `(x, y, z)` is the scene's `(x, z, −y)`, and `godotSunBasis`
+  or a preset says the same sun for a Y-up level. Without one it is occlusion
+  alone. It cannot be off.
+- **What comes out** follows [Baked light](#baked-light): the material is
+  `voxel-baked` with `KHR_materials_unlit`, and `extras.froxelBake` on it records
+  the values. `extras.froxelScene.instances` on the scene lists each placement's
+  `firstIndex` and `indexCount`. Markers and collision boxes are not carried:
+  read them from each model's own export. A model with bones is refused.
+
+**Costs.** One placement of `examples/stacked_blocks_scene.json` is 3 702
+triangles and 3 780 texels. Triangles are the sum of what each placement
+writes with `colorAtlas`, since nothing merges across placements and faces that a
+neighbour or the ground buries are kept (they come out dark). The atlas is one
+RGBA texel per exposed cell face of every placement, 4 bytes each in memory and
+compressed in the file; it must stay within 16 384 a side, or the bake refuses
+and the scene has to be split. Repeats of a `.vox` share one grid: 512 bytes per
+16³ brick of cells it touches, and 4 bytes per brick of its box. Occluder
+triangles take about 112 bytes each, tree included. The reply's `memory` gives
+`grids`, `occluders`, and `atlas` in bytes, with `triangles`, `vertices`, `atlas`,
+`texels`, and `bytes`. Measured: 400 placements of that model at scale 0.1 over a
+28 322-triangle height field, 64 rays and 16 sun rays a face, 10 cores: 5.3 s,
+435 MB peak, 1 480 800 triangles, a 2048×748 atlas, and a 103 MB file. Time is
+texels × rays; `rays` is the first thing to lower.
+
 The file is Y-up, positions `(x, z, −y)`. File → Export Mesh… uses the Export panel
 options. An empty scene is an error.
 The reply's `structure` is the JSON chunk: node names, mesh primitive vertex
@@ -1171,7 +1243,7 @@ same names (`set_voxels`, `fill_tube`, `mirror_object`, `add_bone`,
 map; object, rig, clip, and palette calls apply after the script, in order,
 in the regenerate's undo step. Only the tools that write files (`render`,
 `model_view`, `preview`, `compare_silhouette`, `export_mesh`,
-`export_models`), `import_mesh` (scripts read no files; `voxelize`
+`export_models`, `bake_scene`), `import_mesh` (scripts read no files; `voxelize`
 runs its voxelizer on a mesh the script builds), and the session and UI
 tools have no script form. A
 script reads no files either, so its `carve_from_views` takes `rows`
@@ -1461,6 +1533,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `export_variants` | Export section: Export variants… picks a variants JSON file and a folder and uses the section's options; Replace manifest is `replace` |
 | `export_mesh` | Export section and File > Export Mesh, with Occlusion, AO radius, AO target; Bake light with its occlusion, distance, rays, sun and ambient energy and colour, softness, Sun from Light, and Light preset |
 | `export_models` | File > Export Models and the Export section's Export models: pick `.vox` files and a folder |
+| `bake_scene` | Export section's Bake scene…: pick a scene JSON file and a `.glb`; Bake light's values replace the file's when it is on |
 
 The screenshot, `ui_inspect`, and `ui_click` tools drive the window and have
 no control of their own.

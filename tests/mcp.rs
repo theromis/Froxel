@@ -2703,3 +2703,36 @@ fn every_batch_tool_is_a_tool_that_writes_no_file() {
         );
     }
 }
+
+#[test]
+fn bake_scene_writes_one_glb_from_placed_files() {
+    let mut head = Headless::new();
+    head.ok("set_voxel", json!({"x": 0, "y": 0, "z": 0, "palette": 3}));
+    let dir = std::env::temp_dir().join(format!("froxel-mcp-scene-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let source = dir.join("one.vox");
+    head.ok("save_file", json!({"path": source.to_string_lossy()}));
+    let voxels = head.ok("inspect_document", json!({}))["objects"].clone();
+    let glb = dir.join("sub/scene.glb");
+    let reply = head.ok(
+        "bake_scene",
+        json!({
+            "path": glb.to_string_lossy(),
+            "scene": {
+                "instances": [
+                    {"source": source.to_string_lossy()},
+                    {"source": source.to_string_lossy(), "translation": [3, 0, 0], "yaw": 5}
+                ],
+                "occluders": [{"plane": 0}]
+            },
+            "bake": {"rays": 8}
+        }),
+    );
+    assert_eq!(reply["triangles"], 24);
+    assert_eq!(reply["bake"]["rays"], 8);
+    assert!(glb.is_file());
+    // The open document is not touched.
+    assert_eq!(head.ok("inspect_document", json!({}))["objects"], voxels);
+    let _ = std::fs::remove_dir_all(&dir);
+}

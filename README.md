@@ -263,7 +263,9 @@ with `--ao-radius CELLS` and `--ao-target vertex|texture|both` for baked
 ambient occlusion in `COLOR_0` or the colour atlas. `--bake JSON|FILE` with
 `--color-atlas` paints ray-traced occlusion and a sun with shadows into the
 atlas, for a game to draw unshaded; `froxel preview --input model.glb` looks at
-the written file.
+the written file. `froxel bake-scene --scene scene.json --output level.glb` bakes
+a placement of many `.vox` files together, each shaded by its neighbours and by
+ground, into one mesh with one atlas (`examples/stacked_blocks_scene.json`).
 
 ```sh
 froxel export --input ruins.vox --output ruins.glb --merge --ao 0.8 --ao-radius 3

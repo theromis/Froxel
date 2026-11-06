@@ -324,6 +324,47 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
     built
 }
 
+/// A document's colour-atlas quads with no occlusion: world-space cells, each
+/// cell's real slot, and the merge classes.
+#[allow(clippy::type_complexity)]
+pub(super) fn atlas_quads(
+    session: &Session,
+    export_hidden: bool,
+) -> (Vec<GreedyQuad>, HashMap<Cell, u8>, Vec<(u8, u8)>) {
+    let classes = merge_classes(session);
+    let mut colors = HashMap::new();
+    let mut quads = Vec::new();
+    for object in &session.objects {
+        if object.hidden && !export_hidden {
+            continue;
+        }
+        let offset = object.translation;
+        let classed: HashMap<Cell, u8> = object
+            .cells
+            .iter()
+            .filter(|(_, slot)| **slot != 0)
+            .map(|(cell, slot)| (*cell, classes[*slot as usize].0))
+            .collect();
+        for (cell, slot) in &object.cells {
+            if *slot != 0 {
+                colors.insert(
+                    (cell.0 + offset.0, cell.1 + offset.1, cell.2 + offset.2),
+                    *slot,
+                );
+            }
+        }
+        for mut quad in merged_quads_shaded(&classed, true, None) {
+            quad.cell = (
+                quad.cell.0 + offset.0,
+                quad.cell.1 + offset.1,
+                quad.cell.2 + offset.2,
+            );
+            quads.push(quad);
+        }
+    }
+    (quads, colors, classes)
+}
+
 /// The cell face of every atlas texel, quad by quad, row by row.
 pub(super) fn atlas_faces(quads: &[GreedyQuad]) -> Vec<(usize, Cell)> {
     let mut faces = Vec::new();
@@ -350,7 +391,7 @@ pub(super) fn atlas_faces(quads: &[GreedyQuad]) -> Vec<(usize, Cell)> {
 /// a vertex on the quad's outline, and the outline is ear-clipped into
 /// `n - 2` triangles with no zero-area ones. The seams stay closed, with one
 /// pass, because the added vertices are corners that already exist.
-fn emit_atlas(
+pub(super) fn emit_atlas(
     built: &mut Built,
     session: &Session,
     quads: &[GreedyQuad],

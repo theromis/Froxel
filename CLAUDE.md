@@ -65,7 +65,10 @@ export from the command line. `bake` (`export/bake.rs`, with `colorAtlas`)
 paints occlusion from real rays and a sun with shadows into the atlas texels,
 for a game to draw unshaded: the material is `KHR_materials_unlit`, every face
 uses one fixed ray pattern so there is no noise, and off leaves the file byte
-for byte. Clips are glTF
+for byte. `export/scene.rs` is MCP `bake_scene` and `froxel bake-scene`: placed
+`.vox` files, in the frame of the glb they export to, plus occluders, into one
+merged mesh and atlas; rays enter a placement through its inverse transform, over
+one grid per source and a BVH. Clips are glTF
 animations on the joint nodes. The preview pose is not the bind pose:
 it is a local quaternion per bone, and an empty pose leaves the mesh and
 the tracer unchanged.
@@ -135,7 +138,7 @@ A capability added to MCP goes, in the same change, into:
 
 MCP-only plumbing (screenshots, ui_inspect, ui_click, session handling) is
 exempt, and so are the tools that write files (render, model_view, preview,
-export_mesh, export_models): scripts never write files. A feature is not done
+export_mesh, export_models, bake_scene): scripts never write files. A feature is not done
 until all of these exist. (User decision, 2026-11-02.)
 
 ## Git

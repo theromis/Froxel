@@ -18,6 +18,7 @@ use crate::state::{Cell, Session};
 pub mod bake;
 pub mod occlusion;
 mod quads;
+pub mod scene;
 
 use quads::build_with;
 
@@ -251,12 +252,6 @@ fn encode(session: &Session, options: &MeshExport) -> Result<Vec<u8>, String> {
     if quads == 0 {
         return Err("Nothing to export.".into());
     }
-    let verts = (built.positions.len() / 3) as u32;
-    let pos_bytes = built.positions.len() * 4;
-    let nrm_bytes = built.normals.len() * 4;
-    let extra_bytes = built.extra.len() * 4;
-    let motion_bytes = built.motion.len() * 4;
-    let idx_bytes = built.indices.len() * 4;
     let png = if options.vertex_colors {
         Vec::new()
     } else if options.color_atlas {
@@ -265,6 +260,56 @@ fn encode(session: &Session, options: &MeshExport) -> Result<Vec<u8>, String> {
     } else {
         palette_png(&session.palette)?
     };
+    let material_name = if options.vertex_colors {
+        "voxel-vertex-color"
+    } else if options.bake.is_some() {
+        "voxel-baked"
+    } else if options.color_atlas {
+        "voxel-atlas"
+    } else {
+        "voxel-palette"
+    };
+    rigid_glb(
+        &built,
+        png,
+        options.vertex_colors,
+        material_name,
+        |root, bin| {
+            append_shade(root, bin, 0, &built.shade);
+            if let Some(bake) = &options.bake {
+                mark_baked(root, bake.json());
+            }
+            crate::state::append_gltf_markers(session, root);
+        },
+    )
+}
+
+/// The merged mesh of a scene bake: one rigid mesh, its atlas, and an unlit
+/// material. `extras` goes on the scene.
+fn encode_scene(built: &Built, bake: &bake::Bake, extras: Value) -> Result<Vec<u8>, String> {
+    let (width, height, pixels) = &built.atlas;
+    let png = rgba_png(*width, *height, pixels)?;
+    rigid_glb(built, png, false, "voxel-baked", |root, _| {
+        mark_baked(root, bake.json());
+        root["scenes"][0]["extras"] = json!({ "froxelScene": extras });
+    })
+}
+
+/// The one-mesh file: `png` is its base colour texture unless `vertex_colors`,
+/// and `finish` adds to the document last.
+fn rigid_glb(
+    built: &Built,
+    png: Vec<u8>,
+    vertex_colors: bool,
+    material_name: &str,
+    finish: impl FnOnce(&mut Value, &mut Vec<u8>),
+) -> Result<Vec<u8>, String> {
+    let verts = (built.positions.len() / 3) as u32;
+    let pos_bytes = built.positions.len() * 4;
+    let nrm_bytes = built.normals.len() * 4;
+    let extra_bytes = built.extra.len() * 4;
+    let motion_bytes = built.motion.len() * 4;
+    let idx_bytes = built.indices.len() * 4;
     let mut bin = Vec::with_capacity(
         pos_bytes + nrm_bytes + extra_bytes + motion_bytes + idx_bytes + png.len(),
     );
@@ -284,26 +329,13 @@ fn encode(session: &Session, options: &MeshExport) -> Result<Vec<u8>, String> {
     let nrm_off = pos_bytes;
     let extra_off = nrm_off + nrm_bytes;
     let idx_off = extra_off + extra_bytes + motion_bytes;
-    let color_name = if options.vertex_colors {
+    let color_name = if vertex_colors {
         "COLOR_0"
     } else {
         "TEXCOORD_0"
     };
-    let extra_type = if options.vertex_colors {
-        "VEC4"
-    } else {
-        "VEC2"
-    };
+    let extra_type = if vertex_colors { "VEC4" } else { "VEC2" };
     let alpha = if built.blend { "BLEND" } else { "OPAQUE" };
-    let material_name = if options.vertex_colors {
-        "voxel-vertex-color"
-    } else if options.bake.is_some() {
-        "voxel-baked"
-    } else if options.color_atlas {
-        "voxel-atlas"
-    } else {
-        "voxel-palette"
-    };
     let mut material = json!({
         "name": material_name,
         "pbrMetallicRoughness": {
@@ -313,7 +345,7 @@ fn encode(session: &Session, options: &MeshExport) -> Result<Vec<u8>, String> {
         },
         "alphaMode": alpha
     });
-    if !options.vertex_colors {
+    if !vertex_colors {
         material["pbrMetallicRoughness"]["baseColorTexture"] = json!({"index": 0});
     }
     let mut attributes = serde_json::Map::new();
@@ -384,7 +416,7 @@ fn encode(session: &Session, options: &MeshExport) -> Result<Vec<u8>, String> {
                 "target": 34962
             }));
     }
-    if !options.vertex_colors {
+    if !vertex_colors {
         root["textures"] = json!([{"sampler": 0, "source": 0}]);
         root["samplers"] = json!([{
             "magFilter": 9728,
@@ -403,11 +435,7 @@ fn encode(session: &Session, options: &MeshExport) -> Result<Vec<u8>, String> {
                 "byteLength": png.len()
             }));
     }
-    append_shade(&mut root, &mut bin, 0, &built.shade);
-    if let Some(bake) = &options.bake {
-        mark_baked(&mut root, bake.json());
-    }
-    crate::state::append_gltf_markers(session, &mut root);
+    finish(&mut root, &mut bin);
     let json = root;
     let mut json_bytes = serde_json::to_vec(&json).map_err(|err| err.to_string())?;
     pad(&mut json_bytes, b' ');

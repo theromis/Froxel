@@ -1140,6 +1140,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         }
         "mesh.export" => export_mesh(session, &params),
         "mesh.export_batch" => export_batch(session, &params),
+        "mesh.bake_scene" => bake_scene(&params),
         "mesh.export_variants" => crate::variants::export_variants(session, &params),
         "ui.screenshot" | "ui.inspect" | "ui.click" => Err(NO_WINDOW.into()),
         "control.methods" => Ok(Value::Array(
@@ -1180,6 +1181,26 @@ fn export_mesh(session: &Session, params: &Value) -> Result<Value, String> {
         }
         reply
     })
+}
+
+/// MCP `bake_scene`: `scene` is the JSON, or the path of a file holding it,
+/// whose folder its relative paths start from.
+pub(crate) fn bake_scene(params: &Value) -> Result<Value, String> {
+    let path = req_str(params, "path")?;
+    let (scene, dir) = match params.get("scene") {
+        Some(Value::String(file)) => {
+            let text = std::fs::read_to_string(file)
+                .map_err(|err| format!("Could not read {file}: {err}"))?;
+            let scene =
+                serde_json::from_str(&text).map_err(|err| format!("{file} is not JSON: {err}"))?;
+            let dir = Path::new(file).parent().map(Path::to_path_buf);
+            (scene, dir.unwrap_or_default())
+        }
+        Some(scene @ Value::Object(_)) => (scene.clone(), std::path::PathBuf::new()),
+        _ => return Err("scene must be a scene object or the path of a JSON file".into()),
+    };
+    let scene = crate::export::scene::SceneBake::parse(&scene, &dir, params.get("bake"))?;
+    crate::export::scene::bake_scene(&scene, Path::new(&path))
 }
 
 fn export_batch(session: &Session, params: &Value) -> Result<Value, String> {
@@ -1471,6 +1492,11 @@ const METHODS: &[(&str, &str, &str)] = &[
         "mesh.export_batch",
         "models",
         "Write 1 to 16 .glb files. Each model is {path, source?, merge?, vertexColors?, exportHidden?, splitObjects?, colorAtlas?, aoStrength?, aoRadius?, aoTarget?, bake?}. source opens that .vox in a separate session, so the open document stays. The reply includes each file's node, mesh, skin and animation structure.",
+    ),
+    (
+        "mesh.bake_scene",
+        "scene, path, bake?",
+        "Bake a placement of many .vox files together into one .glb with one colour atlas, each shaded by its neighbours and by ground. scene is {instances: [{source, translation?, yaw?, scale?}], occluders?: [{mesh, translation?, yaw?, scale?} | {plane} | {height: {origin?, cell?, rows}}], bake?, exportHidden?} or the path of a JSON file of it. Y up, the frame of the exported glb. bake is the export_mesh option, over the scene's.",
     ),
     (
         "script.set",

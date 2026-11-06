@@ -1054,6 +1054,40 @@ impl Session {
         };
     }
 
+    pub fn bake_scene_dialog(&mut self) {
+        let Some(scene) = dialog::pick_open("Scene JSON", &["json"]) else {
+            return;
+        };
+        let name = scene
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "scene".into());
+        let Some(path) = dialog::pick_save(None, "glTF", &["glb"], &format!("{name}.glb")) else {
+            return;
+        };
+        let path = if path.extension().is_some() {
+            path
+        } else {
+            path.with_extension("glb")
+        };
+        let mut params = serde_json::json!({
+            "scene": scene.to_string_lossy(),
+            "path": path.to_string_lossy(),
+        });
+        if let Some(bake) = &self.export.bake {
+            params["bake"] = bake.json();
+        }
+        self.status = match crate::remote::bake_scene(&params) {
+            Ok(reply) => format!(
+                "Baked {} instances to {}: {} triangles.",
+                reply["instances"],
+                path.display(),
+                reply["triangles"]
+            ),
+            Err(err) => err,
+        };
+    }
+
     pub fn export_models_dialog(&mut self) {
         let sources = dialog::pick_open_many("MagicaVoxel", &["vox"]);
         if sources.is_empty() {
@@ -1186,7 +1220,15 @@ impl Session {
             UiAction::RemoveClip => self.remove_selected_clip()?,
             UiAction::ShowBones => self.show_bones = !self.show_bones,
             UiAction::Export(flag) => {
+                if flag == ExportFlag::Bake {
+                    self.export.bake = match self.export.bake {
+                        Some(_) => None,
+                        None => Some(crate::export::bake::Bake::default()),
+                    };
+                    return Ok(());
+                }
                 let value = match flag {
+                    ExportFlag::Bake => unreachable!("handled above"),
                     ExportFlag::Merge => &mut self.export.merge,
                     ExportFlag::VertexColors => &mut self.export.vertex_colors,
                     ExportFlag::Hidden => &mut self.export.export_hidden,

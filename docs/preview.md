@@ -322,7 +322,7 @@ froxel preview --input model.vox --out preview.png --yaw -35 --pitch 30 --width 
 An `--input` ending in `.glb` (MCP `glb`) draws that written file instead of a
 document, as an unlit material does: nearest texel times `COLOR_0`, no light,
 with glTF Y-up turned back so the camera means the same. That is how a baked
-export looks unshaded in a game. It takes the camera, size, background, and
+export or `bake_scene` file looks unshaded in a game. It takes the camera, size, background, and
 antialias arguments only.
 
 The flags mirror the MCP arguments: `--width`, `--height`, `--yaw`,

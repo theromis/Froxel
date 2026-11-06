@@ -244,6 +244,9 @@ fn main(
     if args.first().is_some_and(|arg| arg == "export") {
         std::process::exit(cli::export(&args[1..]));
     }
+    if args.first().is_some_and(|arg| arg == "bake-scene") {
+        std::process::exit(cli::bake_scene(&args[1..]));
+    }
     if args.first().is_some_and(|arg| arg == "import") {
         std::process::exit(cli::import(&args[1..]));
     }
@@ -701,6 +704,7 @@ usage: froxel [--control PORT] [--bridge PORT] [file.vox]
        froxel render --input <file.vox> --output <file.png>
        froxel preview --input <file.vox> --out <file.png> (--help for its flags)
        froxel export --input <file.vox> --output <file.glb>
+       froxel bake-scene --scene <scene.json> --output <file.glb> (--help for its format)
        froxel carve --views <views.json> --out <file.vox> (--help for its flags)
        froxel compare --input <file.vox> --concept <concept.png> --out <overlay.png> (--help for its flags)
        froxel import --mesh <file.glb|.obj> --output <file.vox> (--help for its flags)

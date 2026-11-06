@@ -299,6 +299,22 @@ impl Grid {
         )
     }
 
+    pub(super) fn is_empty(&self) -> bool {
+        self.bricks.is_empty()
+    }
+
+    /// Memory of the grid, in bytes.
+    pub(super) fn bytes(&self) -> usize {
+        self.index.len() * 4 + self.bricks.len() * 512
+    }
+
+    /// The box of the cells, on the lattice.
+    pub(super) fn bounds(&self) -> ([f64; 3], [f64; 3]) {
+        let low = self.min.map(f64::from);
+        let high = [0, 1, 2].map(|axis| f64::from(self.min[axis] + self.size[axis]));
+        (low, high)
+    }
+
     /// `at` is from the grid's corner and inside it.
     fn solid(&self, at: [i32; 3]) -> bool {
         let slot = self.index[self.brick_at(at)];

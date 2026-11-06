@@ -449,6 +449,7 @@ pub enum ExportFlag {
     Hidden,
     Split,
     Atlas,
+    Bake,
 }
 
 /// A slider `ui_click` can set. `min` and `max` match the widget range.

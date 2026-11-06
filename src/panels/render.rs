@@ -125,6 +125,13 @@ pub(super) fn export(ui: &mut Ui, session: &mut Session) {
             session.export_models_dialog();
         }
         if ui
+            .button("Bake scene…")
+            .on_hover_text("Bake a placement of many .vox files together from a scene JSON file, each shaded by its neighbours and by ground, into one .glb with one atlas. Bake light's values replace the file's when it is on (MCP bake_scene)")
+            .clicked()
+        {
+            session.bake_scene_dialog();
+        }
+        if ui
             .button("Export variants…")
             .on_hover_text("Bake the script once per parameter set in a variants JSON file and write a .vox and a .glb with these options per set, then update the folder's manifest: these sets replace their entries by name and the others are kept (MCP export_variants)")
             .clicked()
@@ -139,16 +146,18 @@ pub(super) fn export(ui: &mut Ui, session: &mut Session) {
 /// The export option `bake`: the same fields as MCP, less the ray counts of
 /// a sharper shadow, which follow the softness here.
 fn bake_light(ui: &mut Ui, session: &mut Session) {
-    let mut on = session.export.bake.is_some();
+    let on = session.export.bake.is_some();
     let hover = "Paint ray-traced occlusion and a sun with shadows into the colour atlas, one texel per cell face, to draw unshaded in a game. Needs Colour atlas (MCP export option bake)";
-    if ui
-        .checkbox(&mut on, "Bake light")
-        .on_hover_text(hover)
-        .changed()
-    {
-        session.export.bake = on.then(crate::export::bake::Bake::default);
-    }
-    if !on {
+    let mut shown = on;
+    let resp = ui.checkbox(&mut shown, "Bake light").on_hover_text(hover);
+    run_action(
+        session,
+        "export.bake",
+        "Bake light",
+        resp,
+        UiAction::Export(ExportFlag::Bake),
+    );
+    if session.export.bake.is_none() {
         return;
     }
     slider_f32(
