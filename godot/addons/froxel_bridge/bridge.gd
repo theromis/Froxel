@@ -133,6 +133,13 @@ func poll_bridge() -> void:
 		peer.disconnect_from_host()
 		fail("Connection timed out")
 
+# Reads a list as the server does: whole 0..255, or 0..1 when all are at most 1 and one is a float.
+func color_from_list(list: Array) -> Color:
+	var channels := list.slice(0, 3)
+	var unit: bool = channels.all(func(c): return c <= 1.0) and channels.any(func(c): return c is float)
+	var divisor := 1.0 if unit else 255.0
+	return Color(channels[0] / divisor, channels[1] / divisor, channels[2] / divisor)
+
 func wire_values() -> Dictionary:
 	var result := {}
 	for key in values:
@@ -393,7 +400,7 @@ func set_parameter(parameter_name: String, value: Variant) -> String:
 			typed = float(value)
 		"color":
 			if value is Array and (value.size() == 3 or value.size() == 4):
-				typed = Color(value[0], value[1], value[2])
+				typed = color_from_list(value)
 			elif not (value is Color):
 				fail("Expected color for " + parameter_name)
 				return fault

@@ -77,6 +77,24 @@ fn evaluate_reruns_the_script_and_writes_a_glb() {
         session.objects[0].script.params[2].value,
         ParamValue::Color([0, 0, 255])
     ));
+    // The bridge reads colours as set_params does: bytes unless 0..1 with a point.
+    for (value, rgb) in [
+        (json!([176, 148, 118]), [176, 148, 118]),
+        (json!([1, 1, 1]), [1, 1, 1]),
+        (json!([1.0, 1.0, 1.0]), [255, 255, 255]),
+    ] {
+        dispatch(
+            &mut session,
+            &root,
+            9,
+            &Op::Evaluate(map(&[("tint", value)])),
+        )
+        .unwrap();
+        assert_eq!(
+            session.objects[0].script.params[2].value,
+            ParamValue::Color(rgb)
+        );
+    }
     let _ = fs::remove_dir_all(root);
 }
 

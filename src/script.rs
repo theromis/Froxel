@@ -1376,6 +1376,36 @@ impl Session {
     }
 }
 
+/// A colour parameter's value, the one reading every caller shares (`set_params`,
+/// `export_variants`, `preview`, `froxel variants`, bridge `evaluate`):
+/// `[r, g, b]` or `[r, g, b, a]`, alpha ignored. Channels are whole 0..255, as
+/// `param_color`, `list_params`, and a manifest write them. They are 0..1 only
+/// when every one is at most 1 and at least one is written with a decimal point,
+/// as Godot's `Color` is sent. So `[1, 1, 1]` is the near-black byte colour that
+/// a manifest reports, and `[1.0, 1.0, 1.0]` is white.
+pub fn parse_color(value: &serde_json::Value) -> Result<[u8; 3], String> {
+    let channels = value
+        .as_array()
+        .filter(|channels| matches!(channels.len(), 3 | 4))
+        .ok_or("color must be [r, g, b] or [r, g, b, a]")?;
+    let numbers = channels
+        .iter()
+        .map(|channel| channel.as_f64().filter(|number| number.is_finite()))
+        .collect::<Option<Vec<f64>>>()
+        .ok_or("color channel must be a number")?;
+    let unit = numbers.iter().all(|number| *number <= 1.0) && channels.iter().any(|c| c.is_f64());
+    let valid = numbers
+        .iter()
+        .all(|number| *number >= 0.0 && (unit || (*number <= 255.0 && number.fract() == 0.0)));
+    if !valid {
+        return Err(
+            "color channels must be whole numbers 0..255, or 0..1 with a decimal point".into(),
+        );
+    }
+    let scale = if unit { 255.0 } else { 1.0 };
+    Ok([0, 1, 2].map(|index| (numbers[index] * scale).round() as u8))
+}
+
 pub fn parse_param(spec: &ParamValue, value: &serde_json::Value) -> Result<ParamValue, String> {
     match spec {
         ParamValue::Float { min, max, .. } => {
@@ -1409,23 +1439,7 @@ pub fn parse_param(spec: &ParamValue, value: &serde_json::Value) -> Result<Param
             let flag = value.as_bool().ok_or("parameter value must be a bool")?;
             Ok(ParamValue::Bool(flag))
         }
-        ParamValue::Color(_) => {
-            let channels = value
-                .as_array()
-                .ok_or("parameter value must be [r, g, b]")?;
-            if channels.len() != 3 {
-                return Err("parameter value must be [r, g, b]".into());
-            }
-            let mut rgb = [0u8; 3];
-            for (index, channel) in channels.iter().enumerate() {
-                let number = channel.as_i64().ok_or("color channel must be an integer")?;
-                if !(0..=255).contains(&number) {
-                    return Err("color channel must be 0..255".into());
-                }
-                rgb[index] = number as u8;
-            }
-            Ok(ParamValue::Color(rgb))
-        }
+        ParamValue::Color(_) => parse_color(value).map(ParamValue::Color),
         ParamValue::Floats {
             width,
             min,

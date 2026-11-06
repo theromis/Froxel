@@ -55,7 +55,8 @@ let tint = param_color("tint", [40, 160, 60]); // [r, g, b], each 0..255
 ```
 
 `param_float` returns a float. `param_int` returns an integer. `param_bool`
-returns a bool. `param_color` returns `[r, g, b]`.
+returns a bool. `param_color` returns `[r, g, b]`, each 0..255. A value set from outside
+the script is read as in `set_params` (`docs/mcp.md`): whole 0..255, or 0..1 with a decimal point.
 
 ### Lists
 

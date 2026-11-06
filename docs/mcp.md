@@ -1229,7 +1229,15 @@ omitted) and runs it once only to discover parameters. The voxels stay as
 they were. A script that does not run is still stored, and the error text
 includes the line. `set_params` takes `values`, an object whose keys are
 parameter names. Numbers fill float and int parameters, booleans fill bool
-parameters, and `[r, g, b]` fills a color. A list of numbers fills a
+parameters, and `[r, g, b]` fills a color. A color's channels are whole numbers
+0..255, as `param_color`, `list_params`, and a variants manifest write them. They
+are read as 0..1 only when every channel is at most 1 and at least one is written
+with a decimal point, as Godot sends a `Color`: `[1, 1, 1]` is near black,
+`[1.0, 1.0, 1.0]` is white, and `[0.5, 0, 0]` is a dark red. A JSON writer that
+drops the point on a whole float (JavaScript) has to send white as `[255, 255, 255]`.
+`[r, g, b, a]` is accepted and its alpha ignored. `export_variants`, `preview`
+inputs and variants, `froxel variants`, and the bridge read colors the same way.
+A list of numbers fills a
 `floats` parameter, and a list of `[x, y]` or `[x, y, z]` arrays fills `vec2s`
 or `vec3s`. Values outside the declared range, and a list with more than
 `maxLen` entries, are an error that names the parameter and the entry; nothing

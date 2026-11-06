@@ -350,7 +350,11 @@ updated by variant name: the sets exported now replace their entries, the
 others are kept in order, and new names are appended; --replace writes a
 fresh manifest with only these sets. sets.json is a list of
 {\"name\": \"low\", \"params\": {\"height\": 12, \"wall/seed\": 3}}, or an object
-with that list under \"variants\". The mesh options are those of froxel export.";
+with that list under \"variants\". A colour is [r, g, b] in whole 0..255, or in
+0..1 when every channel is at most 1 and one has a decimal point: [1, 1, 1] is
+near black, [1.0, 1.0, 1.0] white. Keys and values under a manifest entry's
+\"params\" can be passed back unchanged. The mesh options are those of froxel
+export.";
 
 fn cli_args(args: &[String]) -> Result<Option<(PathBuf, Value)>, String> {
     let mut input = None;

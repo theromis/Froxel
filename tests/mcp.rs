@@ -1853,6 +1853,74 @@ fn export_variants_writes_each_set_and_leaves_the_document() {
 }
 
 #[test]
+fn a_manifests_params_pass_back_unchanged() {
+    let mut head = Headless::new();
+    let source = r#"
+        let tint = param_color("tint", [176, 148, 118]);
+        fill_box(0, 0, 0, 1, 1, 1, 2);
+    "#;
+    head.ok("add_object", json!({"name": "wall"}));
+    head.ok("add_object", json!({"name": "roof"}));
+    for object in [1, 2] {
+        head.ok("set_script", json!({"object": object, "source": source}));
+    }
+    head.ok("regenerate", json!({"object": 1}));
+    head.ok("regenerate", json!({"object": 2}));
+    let dir = std::env::temp_dir().join("froxel-mcp-variants-roundtrip");
+    let _ = std::fs::remove_dir_all(&dir);
+    let first = head.ok(
+        "export_variants",
+        json!({"dir": dir.to_string_lossy(), "variants": [
+            {"name": "bytes", "params": {"1/tint": [219, 168, 117], "2/tint": [1, 1, 1]}},
+            {"name": "unit", "params": {"1/tint": [0.86, 0.66, 0.46], "2/tint": [1.0, 1.0, 1.0]}},
+        ]}),
+    );
+    let params = &first["variants"][0]["params"];
+    assert_eq!(params["wall/tint"], json!([219, 168, 117]));
+    assert_eq!(params["roof/tint"], json!([1, 1, 1]));
+    let unit = &first["variants"][1]["params"];
+    assert_eq!(unit["wall/tint"], json!([219, 168, 117]));
+    assert_eq!(unit["roof/tint"], json!([255, 255, 255]));
+
+    // Read from the file, as a later call would, and pass back as written.
+    let text = std::fs::read_to_string(dir.join("variants.json")).unwrap();
+    let manifest: Value = serde_json::from_str(&text).unwrap();
+    let sets: Vec<Value> = manifest["variants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| json!({"name": entry["name"], "params": entry["params"]}))
+        .collect();
+    let again = head.ok(
+        "export_variants",
+        json!({"dir": dir.to_string_lossy(), "variants": sets}),
+    );
+    for index in 0..2 {
+        assert_eq!(
+            again["variants"][index]["params"], manifest["variants"][index]["params"],
+            "variant {index} changed on the way back"
+        );
+    }
+    // The same values through preview's variants and inputs.
+    let sheet = dir.join("sheet.png");
+    head.ok(
+        "preview",
+        json!({"path": sheet.to_string_lossy(), "width": 64, "height": 64, "variants": sets}),
+    );
+    head.ok(
+        "preview",
+        json!({"path": sheet.to_string_lossy(), "width": 64, "height": 64,
+            "inputs": [{"label": "bytes", "params": sets[0]["params"]}]}),
+    );
+    assert!(sheet.is_file());
+    // set_params takes a value of the manifest too.
+    let values = json!({"tint": manifest["variants"][0]["params"]["wall/tint"]});
+    let set = head.ok("set_params", json!({"object": 1, "values": values}));
+    assert_eq!(set["params"][0]["value"], json!([219, 168, 117]));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn export_variants_merges_into_the_manifest_by_name() {
     let mut head = Headless::new();
     head.ok(

@@ -232,7 +232,7 @@ Types:
 | `bool` | `true` / `false` | not coerced from a number |
 | `int` | integer | inclusive `min` / `max` |
 | `float` | number | inclusive `min` / `max` |
-| `color` | `[r, g, b]` or `[r, g, b, a]` | components in 0..1; alpha is ignored |
+| `color` | `[r, g, b]` or `[r, g, b, a]` | whole 0..255, or 0..1 when every component is at most 1 and one has a decimal point; alpha is ignored |
 | `floats` | `[a, b, …]` | every number in `min` / `max`; at most `maxLen` entries |
 | `vec2s` | `[[x, y], …]` | each coordinate in `min` / `max`; at most `maxLen` points |
 | `vec3s` | `[[x, y, z], …]` | each coordinate in `min` / `max`; at most `maxLen` points |

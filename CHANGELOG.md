@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Fixed
+
+- A colour parameter reads one way everywhere (`set_params`, `export_variants`,
+  `preview`, `froxel variants`, `froxel bridge`): whole numbers 0..255, or 0..1
+  when every channel is at most 1 and one has a decimal point. `[1, 1, 1]` is
+  near black and `[1.0, 1.0, 1.0]` white. The bridge used to take only 0..1 and
+  `set_params` only whole numbers, so a client sending whole 0..1 values such as
+  `[1, 0, 0]` must now write `[1.0, 0.0, 0.0]`; Godot and the addon already do.
+- `objectName/param` keys now resolve, as documented, so a variants manifest's
+  `params` can be passed back unchanged.
+
 ### Added
 
 - Baked light: the export option `bake` (MCP `export_mesh`, `export_models`,

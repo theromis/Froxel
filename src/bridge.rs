@@ -527,8 +527,9 @@ pub(crate) fn apply_values(
     Ok(())
 }
 
-/// `0/radius` selects one object. A bare name is accepted when only one
-/// parameter has it, so a variant file can say `{"radius": 12}`.
+/// `0/radius` selects one object, and so does `wall/radius`, the key a
+/// variants manifest writes. A bare name is accepted when only one parameter
+/// has it, so a variant file can say `{"radius": 12}`.
 fn resolve(session: &Session, key: &str) -> Result<(usize, String), String> {
     if let Some((index, name)) = key.split_once('/') {
         if !name.is_empty() {
@@ -541,6 +542,23 @@ fn resolve(session: &Session, key: &str) -> Result<(usize, String), String> {
                 }
             }
         }
+    }
+    let mut named = session
+        .objects
+        .iter()
+        .enumerate()
+        .filter_map(|(index, object)| {
+            let name = key.strip_prefix(object.name.as_str())?.strip_prefix('/')?;
+            let has = object.script.params.iter().any(|param| param.name == name);
+            has.then(|| (index, name.to_string()))
+        });
+    if let Some(first) = named.next() {
+        if named.next().is_some() {
+            return Err(format!(
+                "parameter `{key}` is ambiguous: two objects have that name; use index/name"
+            ));
+        }
+        return Ok(first);
     }
     let mut found = None;
     for (index, object) in session.objects.iter().enumerate() {
@@ -593,33 +611,9 @@ fn coerce(key: &str, value: &Value, spec: &ParamValue) -> Result<ParamValue, Str
                 max: *max,
             })
         }
-        ParamValue::Color(_) => {
-            let Some(channels) = value.as_array() else {
-                return Err(fail("invalid component count"));
-            };
-            if channels.len() != 3 && channels.len() != 4 {
-                return Err(fail("invalid component count"));
-            }
-            let mut rgb = [0u8; 3];
-            for (index, channel) in channels.iter().take(3).enumerate() {
-                let Some(component) = channel.as_f64().filter(|n| n.is_finite()) else {
-                    return Err(fail("invalid component"));
-                };
-                if !(0.0..=1.0).contains(&component) {
-                    return Err(fail("color outside [0,1]"));
-                }
-                rgb[index] = (component * 255.0).round().clamp(0.0, 255.0) as u8;
-            }
-            if channels.len() == 4 {
-                let Some(alpha) = channels[3].as_f64().filter(|n| n.is_finite()) else {
-                    return Err(fail("invalid component"));
-                };
-                if !(0.0..=1.0).contains(&alpha) {
-                    return Err(fail("color outside [0,1]"));
-                }
-            }
-            Ok(ParamValue::Color(rgb))
-        }
+        ParamValue::Color(_) => crate::script::parse_color(value)
+            .map(ParamValue::Color)
+            .map_err(|err| fail(&err)),
         ParamValue::Floats {
             width,
             min,

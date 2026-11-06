@@ -1498,3 +1498,42 @@ fn the_barked_trunk_has_plates_shaded_fissures_and_moss_cushions() {
         "the same seed builds the same trunk"
     );
 }
+
+#[test]
+fn a_color_is_whole_bytes_unless_written_with_a_point_within_one() {
+    use serde_json::json;
+    let spec = ParamValue::Color([0, 0, 0]);
+    let read = |value: serde_json::Value| match parse_param(&spec, &value) {
+        Ok(ParamValue::Color(rgb)) => Ok(rgb),
+        Ok(other) => panic!("not a color: {other:?}"),
+        Err(err) => Err(err),
+    };
+    // Whole numbers are bytes, also the ambiguous ones a manifest can report.
+    assert_eq!(read(json!([176, 148, 118])), Ok([176, 148, 118]));
+    assert_eq!(read(json!([1, 1, 1])), Ok([1, 1, 1]));
+    assert_eq!(read(json!([1, 0, 0])), Ok([1, 0, 0]));
+    // A writer that makes every number a float still means bytes above 1.
+    assert_eq!(read(json!([176.0, 148.0, 1.0])), Ok([176, 148, 1]));
+    assert_eq!(read(json!([200, 30, 5, 255])), Ok([200, 30, 5]));
+    // A decimal point with every channel at most 1 is 0..1.
+    assert_eq!(read(json!([1.0, 1.0, 1.0])), Ok([255, 255, 255]));
+    assert_eq!(read(json!([0.0, 0.0, 1.0, 1.0])), Ok([0, 0, 255]));
+    assert_eq!(read(json!([1, 0.5, 0])), Ok([255, 128, 0]));
+    assert_eq!(read(json!([0.86, 0.66, 0.46])), Ok([219, 168, 117]));
+    // Black reads the same both ways.
+    assert_eq!(read(json!([0, 0, 0])), Ok([0, 0, 0]));
+    assert_eq!(read(json!([0.0, 0.0, 0.0])), Ok([0, 0, 0]));
+    for bad in [
+        json!([256, 0, 0]),
+        json!([-1, 0, 0]),
+        json!([-0.5, 0.5, 0.5]),
+        json!([1.5, 0.5, 0.5]),
+        json!([200.5, 3, 4]),
+        json!([1, 2]),
+        json!([1, 2, 3, 4, 5]),
+        json!([1, "2", 3]),
+        json!("red"),
+    ] {
+        assert!(read(bad.clone()).is_err(), "{bad} should be refused");
+    }
+}
