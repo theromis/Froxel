@@ -725,6 +725,53 @@ fn clips_save_in_vox_and_mirror_and_shapes_follow_the_box_rules() {
 }
 
 #[test]
+fn every_export_tool_takes_a_bake() {
+    let mut head = Headless::new();
+    head.ok("set_voxel", json!({"x": 0, "y": 0, "z": 0, "palette": 3}));
+    let dir = std::env::temp_dir().join(format!("froxel-mcp-bake-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let source = dir.join("one.vox");
+    head.ok("save_file", json!({"path": source.to_string_lossy()}));
+    let bake = json!({"preset": "old_pond", "distance": 8, "rays": 8});
+    let glb = dir.join("one.glb");
+    let reply = head.ok(
+        "export_mesh",
+        json!({"path": glb.to_string_lossy(), "colorAtlas": true, "bake": bake}),
+    );
+    assert_eq!(reply["bake"]["rays"], 8);
+    let batch = dir.join("batch.glb");
+    let report = head.ok(
+        "export_models",
+        json!({"models": [{
+            "source": source.to_string_lossy(),
+            "path": batch.to_string_lossy(),
+            "colorAtlas": true,
+            "bake": bake
+        }]}),
+    );
+    assert_eq!(report["ok"], true, "{report}");
+    assert_eq!(std::fs::read(&glb).unwrap(), std::fs::read(&batch).unwrap());
+    // A file drawn back through preview.
+    let png = dir.join("one.png");
+    let drawn = head.ok(
+        "preview",
+        json!({"path": png.to_string_lossy(), "glb": glb.to_string_lossy(), "width": 32, "height": 32}),
+    );
+    assert_eq!(drawn["previewTriangles"], 12);
+    assert!(png.is_file());
+    // The counts of a preview name it, and a bad one fails.
+    let counted = head.ok(
+        "preview",
+        json!({"path": png.to_string_lossy(), "width": 32, "height": 32,
+               "export": {"colorAtlas": true, "bake": bake}}),
+    );
+    assert_eq!(counted["export"]["triangles"], 12);
+    assert_eq!(counted["export"]["bake"]["rays"], 8);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn export_models_checks_structure_and_leaves_the_open_document() {
     let mut head = Headless::new();
     head.ok("set_voxel", json!({"x": 0, "y": 0, "z": 0, "palette": 3}));

@@ -300,14 +300,9 @@ impl Camera {
 }
 
 /// Fit every framed vertex inside the image less the margin.
-fn frame(meshes: &[(Mesh, bool)], preview: &Preview, w: f32, h: f32) -> Option<Camera> {
+fn frame(points: &[Vec3], preview: &Preview, w: f32, h: f32) -> Option<Camera> {
     let (right, up, forward) = basis(preview.yaw, preview.pitch);
-    let framed = || {
-        meshes
-            .iter()
-            .filter(|(_, framed)| *framed)
-            .flat_map(|(mesh, _)| mesh.verts.iter().map(|v| Vec3::from_array(v.pos)))
-    };
+    let framed = || points.iter().copied();
     let fill = 1.0 - 2.0 * preview.margin;
     let half = (w * 0.5, h * 0.5);
     if preview.orthographic {
@@ -419,7 +414,12 @@ pub fn render(session: &Session, preview: &Preview) -> Result<Frame, String> {
         1
     };
     let (sw, sh) = (preview.width * ss, preview.height * ss);
-    let camera = frame(&meshes, preview, sw as f32, sh as f32)
+    let points: Vec<Vec3> = meshes
+        .iter()
+        .filter(|(_, framed)| *framed)
+        .flat_map(|(mesh, _)| mesh.verts.iter().map(|v| Vec3::from_array(v.pos)))
+        .collect();
+    let camera = frame(&points, preview, sw as f32, sh as f32)
         .ok_or_else(|| "nothing to frame".to_string())?;
     let sun = preview
         .lighting
@@ -477,6 +477,69 @@ pub fn render(session: &Session, preview: &Preview) -> Result<Frame, String> {
     })
 }
 
+/// A `.glb` as an unlit material draws it: nearest texel times `COLOR_0`, no
+/// light, so a baked file looks here as it does unshaded in a game. The camera
+/// is the document's: glTF Y-up is turned back to Froxel's Z up. Writes `path`.
+pub fn write_glb(
+    glb: &std::path::Path,
+    preview: &Preview,
+    path: &std::path::Path,
+) -> Result<Frame, String> {
+    check(preview)?;
+    let mesh = crate::import::load(glb)?;
+    let points: Vec<Vec3> = mesh
+        .positions
+        .iter()
+        .map(|p| Vec3::new(p[0] as f32, -p[2] as f32, p[1] as f32))
+        .collect();
+    let pixels = preview.width as u64 * preview.height as u64;
+    let ss = if preview.antialias && pixels <= ANTIALIAS_MAX_PIXELS {
+        2
+    } else {
+        1
+    };
+    let (sw, sh) = (preview.width * ss, preview.height * ss);
+    let camera = frame(&points, preview, sw as f32, sh as f32)
+        .ok_or_else(|| format!("{} has no vertices", glb.display()))?;
+    let perspective = matches!(camera, Camera::Persp { .. });
+    let mut depth = vec![f32::NEG_INFINITY; (sw * sh) as usize];
+    let mut color = vec![[0f32; 3]; (sw * sh) as usize];
+    let mut triangles = 0;
+    for triangle in &mesh.triangles {
+        let [Some(a), Some(b), Some(c)] = triangle.v.map(|v| camera.project(points[v as usize]))
+        else {
+            continue;
+        };
+        let drawn = raster_with(&mut depth, &mut color, sw, sh, a, b, c, |mut weights| {
+            if perspective {
+                // Nearness is 1 / depth, so this corrects the interpolation.
+                let w = [weights[0] * a[2], weights[1] * b[2], weights[2] * c[2]];
+                let sum = w[0] + w[1] + w[2];
+                weights = w.map(|v| v / sum);
+            }
+            let [r, g, b, _] = mesh.unlit_color(triangle, weights.map(f64::from));
+            [r as f32, g as f32, b as f32]
+        });
+        if drawn {
+            triangles += 1;
+        }
+    }
+    let rgba = resolve(&depth, &color, preview, ss);
+    crate::state::create_parent(path)?;
+    crate::trace::write_rgba_png(path, preview.width, preview.height, &rgba)?;
+    let pixels_per_voxel = match camera {
+        Camera::Ortho { scale, .. } => Some(scale / ss as f32),
+        Camera::Persp { .. } => None,
+    };
+    Ok(Frame {
+        rgba,
+        preview_triangles: triangles,
+        export: None,
+        pixels_per_voxel,
+        overlay: Vec::new(),
+    })
+}
+
 /// `12345678` as `12,345,678`.
 fn grouped(n: usize) -> String {
     let digits = n.to_string();
@@ -514,6 +577,9 @@ pub fn counts_lines(
         }
         if options.ao_strength > 0.0 {
             kind.push("ao");
+        }
+        if options.bake.is_some() {
+            kind.push("bake");
         }
         lines.push(match found {
             Ok(counts) => format!(
@@ -765,6 +831,21 @@ fn raster(
     c: [f32; 3],
     lit: [f32; 3],
 ) -> bool {
+    raster_with(depth, color, w, h, a, b, c, |_| lit)
+}
+
+/// [`raster`] with a colour per sample from its screen-space weights.
+#[allow(clippy::too_many_arguments)]
+fn raster_with(
+    depth: &mut [f32],
+    color: &mut [[f32; 3]],
+    w: u32,
+    h: u32,
+    a: [f32; 3],
+    b: [f32; 3],
+    c: [f32; 3],
+    lit: impl Fn([f32; 3]) -> [f32; 3],
+) -> bool {
     let area = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
     if area.abs() < 1e-9 {
         return false;
@@ -795,7 +876,7 @@ fn raster(
             let index = row + x as usize;
             if z > depth[index] {
                 depth[index] = z;
-                color[index] = lit;
+                color[index] = lit([wa, wb, wc]);
             }
         }
     }

@@ -205,7 +205,7 @@ tracer. A file with no scene graph still loads its first model.
 | `redo` | — | Redo the last undone edit |
 | `render` | `path` | Path-trace the scene to a PNG. The camera fits the visible cells (or `target`) in the frame. `width` and `height` default to 256 (up to 4096, 4096 × 2048 pixels in all); one alone and the other follows the model. `samples` defaults to 16. `bounces` defaults to 4. `denoise` defaults to true. `yaw` defaults to 30°, `pitch` to 25°. Optional `zoom`, `margin`, `target`, `distance`, `orthographic`, `views`, `pose`, `showBones` |
 | `model_view` | `path` | Flat model view PNG: each pixel is the palette colour of the first cell hit, no light, no tonemap. Fitted like `render`. `width` and `height` default to 512 (up to 4096). Orthographic by default. Optional `view`, `yaw`, `pitch`, `zoom`, `margin`, `target`, `pixelsPerVoxel`, `distance`, `orthographic`, `background`, `views`, `pose`, `showBones` |
-| `preview` | `path` | Fast lit PNG: the viewport's mesh and light rasterised on the CPU in well under a second, fitted to the model or one object with a margin. `width` and `height` default to 1024 (up to 4096). Optional `view`, `yaw`, `pitch`, `preset` (`game`: orthographic, yaw −135, pitch 32), `presets` (an object or a JSON file; the user's `camera_presets.json` is read too), `placementYaw` (the asset's turn about up where it is placed in a level), `orthographic`, `fov`, `margin`, `object`, `isolate`, `background`, `antialias`, `pose`. `inputs`, `variants`, or `reference` (with `columns`, `labels`) make a labelled contact sheet of several models and a concept image. `overlay` (`true`, or `boxes`, `points`, `connectors`) draws the markers over the model with their names (`overlayLabels`). `lighting` (`old_pond`, or a name from `lightingPresets` or the user's `lighting_presets.json`, or fields: sun direction, colour, and energy, ambient colour and energy, exposure, background, a LUT) lights it as a game does. Replies `previewTriangles` (the unmerged mesh it draws) and `export` (`triangles` and `quads` that `export_mesh` writes with the options in `export`, such as `colorAtlas`); `countsLabel` writes both on the image. See [preview.md](preview.md) |
+| `preview` | `path` | Fast lit PNG: the viewport's mesh and light rasterised on the CPU in well under a second, fitted to the model or one object with a margin. `width` and `height` default to 1024 (up to 4096). Optional `view`, `yaw`, `pitch`, `preset` (`game`: orthographic, yaw −135, pitch 32), `presets` (an object or a JSON file; the user's `camera_presets.json` is read too), `placementYaw` (the asset's turn about up where it is placed in a level), `orthographic`, `fov`, `margin`, `object`, `isolate`, `background`, `antialias`, `pose`. `inputs`, `variants`, or `reference` (with `columns`, `labels`) make a labelled contact sheet of several models and a concept image. `overlay` (`true`, or `boxes`, `points`, `connectors`) draws the markers over the model with their names (`overlayLabels`). `lighting` (`old_pond`, or a name from `lightingPresets` or the user's `lighting_presets.json`, or fields: sun direction, colour, and energy, ambient colour and energy, exposure, background, a LUT) lights it as a game does. Replies `previewTriangles` (the unmerged mesh it draws) and `export` (`triangles` and `quads` that `export_mesh` writes with the options in `export`, such as `colorAtlas`); `countsLabel` writes both on the image. See [preview.md](preview.md). `glb` draws a written `.glb` instead of the document, unlit, as a game draws a baked file |
 | `compare_silhouette` | `path`, `concept` | Compare the model's `preview` silhouette from a camera (`preset`, `presets`, `placementYaw`, `view`, `yaw`, `pitch`, `orthographic`, `fov`, `margin`, `object`, `isolate`, `pose`) with a mask cut from a concept PNG (`crop`, `background`, `tolerance`, `alphaThreshold`, `flip`). `align` `fit` (default), `height`, `width`, or `{scale, offset}` places the concept with one uniform scale. Replies with `iou`, `missing`, `excess`, `pixels`, `align`, `conceptBounds`, `modelBounds`, and `aspect`, and writes an overlay PNG. Optional `width`, `height`, `lighting`, `antialias`. See [Silhouettes](#silhouettes) |
 | `set_view` | — | Move the session camera; connected, the window's. Optional `view`, `yaw`, `pitch`, `preset`, `presets`, `placementYaw`, `frame`, `distance`, `orthographic`, `bones`. Not an edit |
 | `screenshot` | — | PNG of the whole editor window. Connected mode only |
@@ -217,9 +217,9 @@ tracer. A file with no scene graph still loads its first model.
 | `remove_marker` | `name` or `all` | Remove one marker, or every marker. One undo step |
 | `list_markers` | — | Markers with `local`, `world`, and `gltf` coordinates |
 | `collision_from_voxels` | — | Collision box markers from an object's solid cells, keeping hollows open: `prefix` (default `<object>_collider`), `holeSize` (default 3), `layer` or `zBands`, `minFeature`, `only`, `exclude` (slots), `maxBoxes`, `object`. A rerun replaces that prefix's boxes on the object. One undo step. Replies with `boxes`, `coveredPercent`, `emptyFilledCells`, `emptyFilledPercent`, `dropped`, and the cell counts |
-| `export_mesh` | `path` | Write a glTF 2.0 `.glb` of every object. `merge` defaults to false. `vertexColors` defaults to false. `exportHidden` and `splitObjects` default to false. A slot with motion adds `TEXCOORD_1`. Clips become glTF animations. Markers become nodes. The reply includes `quads`, `triangles` (every triangle in the glb), `structure`, and `markers` |
+| `export_mesh` | `path` | Write a glTF 2.0 `.glb` of every object. `merge` defaults to false. `vertexColors` defaults to false. `exportHidden` and `splitObjects` default to false. A slot with motion adds `TEXCOORD_1`. Clips become glTF animations. Markers become nodes. The reply includes `quads`, `triangles` (every triangle in the glb), `structure`, and `markers`. `bake` (with `colorAtlas`) paints ray-traced occlusion and a sun with shadows into the atlas, to draw unshaded |
 | `export_variants` | `variants`, `dir` | Bake the scripted document once per parameter set `{name?, params}` and write `<name>.vox` and `<name>.glb` into `dir` with the `export_mesh` options, then merge them by name into a manifest (default `dir/variants.json`) of each set's parameters, markers, and bounds; the reply names the entries `added`, `replaced`, and `kept`. Optional `manifest`, `replace` (a fresh manifest), `vox`, `timeoutSeconds`. The document and its undo history stay as they were |
-| `export_models` | `models` | Write 1 to 16 `.glb` files. Each item is `{path, source?, merge?, vertexColors?, exportHidden?, splitObjects?}`. `source` is a `.vox` opened in its own session, so the open document stays. Each file's reply has `quads`, `triangles`, and `structure`: nodes, meshes, skins, animations, and warnings |
+| `export_models` | `models` | Write 1 to 16 `.glb` files. Each item is `{path, source?, merge?, vertexColors?, exportHidden?, splitObjects?, colorAtlas?, aoStrength?, aoRadius?, aoTarget?, bake?}`. `source` is a `.vox` opened in its own session, so the open document stays. Each file's reply has `quads`, `triangles`, and `structure`: nodes, meshes, skins, animations, and warnings |
 | `set_script` | `source`, optional `object` | Store a Rhai script and read its parameters. One undo step. Does not rebuild voxels |
 | `get_script` | optional `object` | Source, auto flag, and parameters |
 | `set_params` | `values`, optional `object` | Set parameter values by name. One undo step. Does not run the script |
@@ -956,6 +956,72 @@ a shader that uses one of them: a material that multiplies the texture by
 `COLOR_0`, as Godot's import does, darkens twice. `auto`, the default, is
 `texture` with `colorAtlas` and `vertex` without it.
 `froxel export --ao 0.8 --ao-radius 3` is the same from the command line.
+
+#### Baked light
+
+`bake` paints light into the colour atlas by real rays, one texel per cell
+face, for a game to draw unshaded. It needs `colorAtlas`. Absent or `false` is
+off and leaves the file byte for byte as before; `true` is every default.
+`export_mesh`, `export_models`, `export_variants`, the `export` of `preview`,
+`froxel export`, `froxel variants`, `froxel preview`, `froxel bridge`, and the
+Export panel all take it. On the command line `--bake` takes the same object as
+JSON, or the path of a JSON file; `--bake '{}'` is occlusion alone.
+
+```json
+{"bake": {
+  "occlusion": 1, "distance": 16, "rays": 64,
+  "sunDirection": [0.35, -0.45, 0.82], "sunColor": [1, 0.76, 0.48], "sunEnergy": 1.45,
+  "ambientColor": [0.62, 0.72, 0.9], "ambientEnergy": 1.1,
+  "sunSoftness": 2, "sunRays": 16
+}}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `occlusion` | 1 | 0 to 1, how much ambient a fully blocked face loses |
+| `distance` | 16 | How far occlusion rays reach, in cells, up to 4096 |
+| `rays` | 64 | Occlusion rays per cell face, 1 to 1024 |
+| `preset` | | A lighting preset such as `old_pond` (`preview`'s `lighting` presets); the fields here go over it |
+| `lightingPresets` | | Presets for `preset`, an object or a JSON file, as `preview` takes them |
+| `sunDirection` or `godotSunBasis` | `[0.35, -0.45, 0.82]` | Toward the sun, Froxel's Z up; or the 9 or 12 numbers of a `DirectionalLight3D`'s `Transform3D` from a `.tscn` |
+| `sunColor`, `ambientColor` | white | `[r, g, b]` 0 to 16, sRGB as an engine's picker stores it, or `#rrggbb` |
+| `sunEnergy` | 0, or 1 with any sun field or preset | The sun's strength |
+| `ambientEnergy` | 1, or 0.3 with any sun field or preset | The ambient's strength |
+| `sunSoftness` | 0 | The sun disc's half angle in degrees, 0 to 45. 0 is a hard shadow |
+| `sunRays` | 1, or 16 when soft | Shadow rays per cell face, 1 to 256 |
+
+**What a texel means.** It is the final colour, sRGB, with the light already in it:
+
+```
+texel = albedo × ( ambient × ambientEnergy × (1 − occlusion × blocked)
+                 + sun × sunEnergy × max(n·l, 0) × open )
+```
+
+in linear light, each channel clamped to 1 with no tonemap, then encoded to
+sRGB. `albedo` is the palette colour. `blocked` is the cosine-weighted share of
+`rays` hemisphere rays that hit an opaque cell within `distance`; a hit at `t`
+counts `1 − (t / distance)²`, so the end of the reach leaves no band. `open` is
+the share of `sunRays` shadow rays that reach the bounds. Translucent slots and
+hidden objects let light through. There is no bounce light. An open face under
+a white ambient of 1 keeps its palette colour exactly, so `--bake '{}'` only
+ever darkens.
+
+**How to draw it.** Unshaded. The material has `KHR_materials_unlit`, which
+Godot's importer turns into an unshaded material, and a `name` of
+`voxel-baked`; a loader that replaces materials must use an unlit one, or the
+game's light lands on top of the baked light. `extras.froxelBake` on the
+material records the values used. A preset's `exposure`, `background` and `lut`
+are not baked, and `bake` refuses them as fields, because a game's tonemapper
+and grade reach unshaded surfaces too. If `aoStrength` is also set, its texture
+shade multiplies in. The file's vertices, triangles and atlas layout are the
+ones `colorAtlas` writes without `bake`.
+
+**Cost.** Time is cell faces × (`rays` + `sunRays`), on every core; the 8 408
+cells of `examples/stacked_blocks.vox` take well under a second. The same input
+gives the same bytes: every face uses one fixed pattern of rays, so there is no
+seed and no noise. To look at the result, `preview` with `glb` (`froxel preview
+--input file.glb`) draws the written file unlit.
+
 The file is Y-up, positions `(x, z, −y)`. File → Export Mesh… uses the Export panel
 options. An empty scene is an error.
 The reply's `structure` is the JSON chunk: node names, mesh primitive vertex
@@ -964,7 +1030,7 @@ counts. A warning names an empty mesh, a skin with no joints, a missing or
 repeated node name, or an animation with no channels.
 
 `export_models` is the same write, for 1 to 16 files, and each model takes
-the same options, `aoStrength` and `aoRadius` included. A `source` path loads
+the same options, `aoStrength`, `aoRadius` and `bake` included. A `source` path loads
 that `.vox` into a separate session. The open document is not replaced and is
 what a model without `source` exports. One file's error is that model's
 `error`; the other files are still written. `ok` is false when any model
@@ -1320,7 +1386,7 @@ case). For each set the parameters are applied and every script runs, as
 `regenerate` does, inside a scratch run: afterwards the document, its
 parameters, and its undo history are as before. `<name>.glb` is written
 with the `export_mesh` options (`merge`, `colorAtlas`, `aoStrength`,
-`aoRadius`, `aoTarget`, `vertexColors`, `exportHidden`, `splitObjects`) and
+`aoRadius`, `aoTarget`, `bake`, `vertexColors`, `exportHidden`, `splitObjects`) and
 `<name>.vox` unless `vox` is false. The manifest JSON lists, per set,
 `requested` (the values given), `params` (every parameter after clamping,
 keyed `object/name`), `markers` (as `list_markers`), `bounds` (`voxel` mesh
@@ -1393,7 +1459,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `set_marker`, `remove_marker`, `list_markers` | Markers section: the list with ✕ to remove, Name, Point, Box, or Connector with Facing, Add at selection |
 | `collision_from_voxels` | Markers section, Collision from voxels: Prefix, Layer, Z bands, Min feature, Hole size, Only, Leave out, Max boxes, Build collision; the status gives the box count, the solid covered, and the empty cells filled |
 | `export_variants` | Export section: Export variants… picks a variants JSON file and a folder and uses the section's options; Replace manifest is `replace` |
-| `export_mesh` | Export section and File > Export Mesh, with Occlusion, AO radius, AO target |
+| `export_mesh` | Export section and File > Export Mesh, with Occlusion, AO radius, AO target; Bake light with its occlusion, distance, rays, sun and ambient energy and colour, softness, Sun from Light, and Light preset |
 | `export_models` | File > Export Models and the Export section's Export models: pick `.vox` files and a folder |
 
 The screenshot, `ui_inspect`, and `ui_click` tools drive the window and have

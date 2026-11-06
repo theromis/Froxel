@@ -153,7 +153,7 @@ fn counts_text(reply: &serde_json::Value) -> String {
 }
 
 const PREVIEW_USAGE: &str = "\
-usage: froxel preview --input <file.vox> [--input <file.vox> ...] --out <file.png>
+usage: froxel preview --input <file.vox|file.glb> [--input <file.vox> ...] --out <file.png>
                       [--width N] [--height N] [--yaw DEG] [--pitch DEG]
                       [--view front|back|left|right|top|bottom]
                       [--preset game|default|NAME] [--presets <presets.json>]
@@ -168,7 +168,7 @@ usage: froxel preview --input <file.vox> [--input <file.vox> ...] --out <file.pn
                       [--no-overlay-labels] [--counts-label] [--no-export-counts]
                       [--merge] [--color-atlas] [--vertex-colors] [--export-hidden]
                       [--split-objects] [--ao STRENGTH] [--ao-radius CELLS]
-                      [--ao-target vertex|texture|both]
+                      [--ao-target vertex|texture|both] [--bake JSON|FILE]
 
 The editor viewport's mesh and light (sun plus ambient), rasterised on the
 CPU: no path tracer, no window, no GPU. The camera orbits at yaw and pitch
@@ -198,6 +198,10 @@ godotSunBasis, sunColor, sunEnergy, ambientColor, ambientEnergy, exposure,
 background, lut, preset}; the user's lighting_presets.json in Froxel's
 support folder (or FROXEL_LIGHTING_PRESETS) is read as well. --background
 still wins over a preset's.
+
+An --input ending in .glb draws that written file instead, as an unlit material
+does: nearest texel times COLOR_0, no light. Use it to look at a baked export
+or bake-scene file; the camera flags work, and --lighting and --object do not.
 
 A contact sheet: several --input files, --variants (the parameter sets of
 froxel variants, baked from the one --input), or --reference (a PNG placed
@@ -322,6 +326,10 @@ fn preview_args(args: &[String]) -> Result<Option<(Option<PathBuf>, serde_json::
                 export["aoRadius"] = json!(crate::bridge::parse_ao_radius(Some(&text))?);
             }
             "--ao-target" => export["aoTarget"] = json!(value(&mut index)?),
+            "--bake" => {
+                let text = value(&mut index)?;
+                export["bake"] = crate::bridge::parse_bake(Some(&text))?;
+            }
             other => return Err(format!("unknown argument `{other}`\n{PREVIEW_USAGE}")),
         }
         index += 1;
@@ -366,6 +374,12 @@ fn preview_args(args: &[String]) -> Result<Option<(Option<PathBuf>, serde_json::
     if !output.extension().is_some_and(|ext| ext == "png") {
         return Err("--out must end in .png".into());
     }
+    if inputs.len() == 1 && inputs[0].extension().is_some_and(|ext| ext == "glb") {
+        // A written file, drawn unlit as a game draws a baked one.
+        params["glb"] = json!(inputs[0].display().to_string());
+        params["export"] = json!(false);
+        return Ok(Some((None, params)));
+    }
     if inputs.len() == 1 {
         return Ok(Some((inputs.pop(), params)));
     }
@@ -384,7 +398,7 @@ usage: froxel export --input <file.vox> --output <file.glb>
                      [--merge] [--vertex-colors] [--color-atlas]
                      [--export-hidden] [--split-objects]
                      [--ao STRENGTH] [--ao-radius CELLS]
-                     [--ao-target vertex|texture|both]
+                     [--ao-target vertex|texture|both] [--bake JSON|FILE]
 
 The same options as the MCP tool export_mesh, all off by default.
 --ao bakes ambient occlusion: 0..1, the light a fully occluded corner loses.
@@ -392,7 +406,12 @@ The same options as the MCP tool export_mesh, all off by default.
 corner term alone). --ao-target vertex writes it into COLOR_0 per corner
 (faces that shade differently stay unmerged); texture darkens each cell's
 colour atlas texel and merges as without occlusion (needs --color-atlas);
-both writes the two. The default is texture with --color-atlas, else vertex.";
+both writes the two. The default is texture with --color-atlas, else vertex.
+--bake paints light into the colour atlas by real rays, one texel per cell
+face, to draw unshaded (needs --color-atlas). It takes the export_mesh bake
+option as a JSON object or a JSON file: occlusion, distance, rays, preset or
+sunDirection, sunColor, sunEnergy, ambientColor, ambientEnergy, sunSoftness,
+sunRays. --bake '{}' is occlusion alone. See docs/mcp.md.";
 
 fn export_args(
     args: &[String],
@@ -408,6 +427,7 @@ fn export_args(
         ao_strength: 0.0,
         ao_radius: crate::bridge::DEFAULT_AO_RADIUS,
         ao_target: crate::export::AoTarget::Auto,
+        bake: None,
     };
     let mut index = 0;
     while index < args.len() {
@@ -447,6 +467,11 @@ fn export_args(
                 index += 1;
                 options.ao_target =
                     crate::bridge::parse_ao_target(args.get(index).map(String::as_str))?;
+            }
+            "--bake" => {
+                index += 1;
+                let value = crate::bridge::parse_bake(args.get(index).map(String::as_str))?;
+                options.bake = crate::export::bake::Bake::parse(Some(&value))?;
             }
             other => return Err(format!("unknown argument `{other}`\n{EXPORT_USAGE}")),
         }

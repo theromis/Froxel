@@ -216,7 +216,7 @@ two apart:
   It changes with the framing and with `object` and `isolate`.
 - `export` is what `export_mesh` or `export_models` writes with the options
   in the `export` argument: `merge`, `colorAtlas`, `vertexColors`,
-  `exportHidden`, `splitObjects`, `aoStrength`, `aoRadius`, `aoTarget`,
+  `exportHidden`, `splitObjects`, `aoStrength`, `aoRadius`, `aoTarget`, `bake`,
   with `export_mesh`'s defaults (all off) for what is not given. It replies
   `triangles` (every triangle the glb's index buffers hold), `quads`
   (`export_mesh`'s own `quads`: index count / 6; with the colour atlas a
@@ -319,6 +319,12 @@ the first tile.
 froxel preview --input model.vox --out preview.png --yaw -35 --pitch 30 --width 1600 --height 800
 ```
 
+An `--input` ending in `.glb` (MCP `glb`) draws that written file instead of a
+document, as an unlit material does: nearest texel times `COLOR_0`, no light,
+with glTF Y-up turned back so the camera means the same. That is how a baked
+export looks unshaded in a game. It takes the camera, size, background, and
+antialias arguments only.
+
 The flags mirror the MCP arguments: `--width`, `--height`, `--yaw`,
 `--pitch`, `--view`, `--ortho`, `--fov`, `--margin`, `--object NAME|INDEX`,
 `--isolate`, `--background`, `--no-antialias`, `--preset`, `--presets
@@ -326,7 +332,7 @@ FILE`, `--placement-yaw DEG`, `--lighting NAME`, and `--lighting-presets FILE`. 
 prints the time taken and both triangle counts on stderr. The export
 counts take the `froxel export` flags: `--merge`, `--color-atlas`,
 `--vertex-colors`, `--export-hidden`, `--split-objects`, `--ao`,
-`--ao-radius`, and `--ao-target`; `--counts-label` writes them on the
+`--ao-radius`, `--ao-target`, and `--bake`; `--counts-label` writes them on the
 image and `--no-export-counts` skips them. `froxel preview --help` lists
 them.
 

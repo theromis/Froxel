@@ -135,6 +135,7 @@ fn mesh_params_round_trip_through_the_export_options() {
         ao_strength: 0.5,
         ao_radius: 3,
         ao_target: crate::export::AoTarget::Both,
+        bake: None,
     };
     let back = mesh_options(&mesh_params(&options)).unwrap();
     assert_eq!(mesh_params(&back), mesh_params(&options));

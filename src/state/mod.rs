@@ -519,6 +519,12 @@ pub enum SliderTarget {
     SmoothRemoveAt,
     ExportAo,
     ExportAoRadius,
+    BakeOcclusion,
+    BakeDistance,
+    BakeRays,
+    BakeSunEnergy,
+    BakeAmbientEnergy,
+    BakeSunSoftness,
 }
 
 impl SliderTarget {
@@ -582,6 +588,12 @@ impl SliderTarget {
             SliderTarget::SmoothRemoveAt => "slider.smooth-remove-at",
             SliderTarget::ExportAo => "slider.export-ao",
             SliderTarget::ExportAoRadius => "slider.export-ao-radius",
+            SliderTarget::BakeOcclusion => "slider.bake-occlusion",
+            SliderTarget::BakeDistance => "slider.bake-distance",
+            SliderTarget::BakeRays => "slider.bake-rays",
+            SliderTarget::BakeSunEnergy => "slider.bake-sun-energy",
+            SliderTarget::BakeAmbientEnergy => "slider.bake-ambient-energy",
+            SliderTarget::BakeSunSoftness => "slider.bake-sun-softness",
         }
     }
 

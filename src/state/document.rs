@@ -120,6 +120,7 @@ impl Session {
                 ao_strength: 0.0,
                 ao_radius: crate::bridge::DEFAULT_AO_RADIUS,
                 ao_target: crate::export::AoTarget::Auto,
+                bake: None,
             },
             editor_mode: EditorMode::Model,
             render_mode: RenderMode::Edit,

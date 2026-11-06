@@ -485,6 +485,22 @@ pub(super) fn slider_value(session: &Session, target: SliderTarget) -> f32 {
         SliderTarget::SmoothRemoveAt => session.smooth_remove_at as f32,
         SliderTarget::ExportAo => session.export.ao_strength,
         SliderTarget::ExportAoRadius => session.export.ao_radius as f32,
+        SliderTarget::BakeOcclusion
+        | SliderTarget::BakeDistance
+        | SliderTarget::BakeRays
+        | SliderTarget::BakeSunEnergy
+        | SliderTarget::BakeAmbientEnergy
+        | SliderTarget::BakeSunSoftness => {
+            let bake = session.export.bake.clone().unwrap_or_default();
+            match target {
+                SliderTarget::BakeOcclusion => bake.occlusion,
+                SliderTarget::BakeDistance => bake.distance,
+                SliderTarget::BakeRays => bake.rays as f32,
+                SliderTarget::BakeSunEnergy => bake.sun_energy,
+                SliderTarget::BakeAmbientEnergy => bake.ambient_energy,
+                _ => bake.sun_softness,
+            }
+        }
     }
 }
 

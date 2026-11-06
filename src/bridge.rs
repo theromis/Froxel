@@ -213,6 +213,7 @@ struct ServeArgs {
     ao_strength: f32,
     ao_radius: u32,
     ao_target: crate::export::AoTarget,
+    bake: Option<crate::export::bake::Bake>,
 }
 
 fn run_args(args: &[String]) -> Result<Option<ServeArgs>, String> {
@@ -222,6 +223,7 @@ fn run_args(args: &[String]) -> Result<Option<ServeArgs>, String> {
     let mut ao_strength = 0.0;
     let mut ao_radius = DEFAULT_AO_RADIUS;
     let mut ao_target = crate::export::AoTarget::Auto;
+    let mut bake = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -260,6 +262,11 @@ fn run_args(args: &[String]) -> Result<Option<ServeArgs>, String> {
                 index += 1;
                 ao_target = parse_ao_target(args.get(index).map(String::as_str))?;
             }
+            "--bake" => {
+                index += 1;
+                let value = parse_bake(args.get(index).map(String::as_str))?;
+                bake = crate::export::bake::Bake::parse(Some(&value))?;
+            }
             other => return Err(format!("unknown argument `{other}`")),
         }
         index += 1;
@@ -275,6 +282,7 @@ fn run_args(args: &[String]) -> Result<Option<ServeArgs>, String> {
         ao_strength,
         ao_radius,
         ao_target,
+        bake,
     }))
 }
 
@@ -308,12 +316,24 @@ pub fn parse_ao_radius(text: Option<&str>) -> Result<u32, String> {
         .ok_or_else(|| format!("--ao-radius `{text}` is not a whole number from 0 to {max}"))
 }
 
+/// `--bake JSON`: the export option `bake`, as a JSON object or the path of
+/// a file holding one.
+pub fn parse_bake(text: Option<&str>) -> Result<Value, String> {
+    let text = text.ok_or("--bake needs a JSON object or a JSON file")?;
+    let source = if text.trim_start().starts_with('{') {
+        text.to_string()
+    } else {
+        std::fs::read_to_string(text).map_err(|err| format!("Could not read {text}: {err}"))?
+    };
+    serde_json::from_str(&source).map_err(|err| format!("--bake is not JSON: {err}"))
+}
+
 fn print_help() {
     eprintln!(
         "\
 usage: froxel bridge --input <file.vox> [--port PORT] [--color-atlas]
                      [--ao STRENGTH] [--ao-radius CELLS]
-                     [--ao-target vertex|texture|both]
+                     [--ao-target vertex|texture|both] [--bake JSON|FILE]
 
 Listens on 127.0.0.1. PORT defaults to {DEFAULT_PORT}; 0 picks a free port.
 Prints FROXEL_SESSION=<path> and serves that .vox until the process stops.
@@ -323,6 +343,8 @@ per-mesh colour atlas, as the export_mesh option colorAtlas.
 --ao-radius sets its hemisphere reach in cells (0..8, default 3), and
 --ao-target where it goes (texture with --color-atlas, else vertex), as the
 export_mesh options aoStrength, aoRadius and aoTarget.
+--bake paints ray-traced occlusion and a sun with shadows into the atlas (needs
+--color-atlas), as the export_mesh option bake: a JSON object or a JSON file.
 Godot and Blender connect with the session file. See docs/bridges.md."
     );
 }
@@ -334,6 +356,7 @@ fn serve(args: &ServeArgs) -> Result<(), String> {
     session.export.ao_strength = args.ao_strength;
     session.export.ao_radius = args.ao_radius;
     session.export.ao_target = args.ao_target;
+    session.export.bake = args.bake.clone();
     let server = BridgeServer::start(args.port).map_err(|err| err.to_string())?;
     loop {
         match server.wait(Duration::from_secs(1)) {
@@ -471,6 +494,7 @@ fn evaluate_within(
             ao_strength: session.export.ao_strength,
             ao_radius: session.export.ao_radius,
             ao_target: session.export.ao_target,
+            bake: session.export.bake.clone(),
         };
         crate::export::export_with(session, &path, &options)
     })?;

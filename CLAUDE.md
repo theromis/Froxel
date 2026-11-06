@@ -61,7 +61,11 @@ keeps apart faces whose corner shades differ. `aoTarget` `texture` (the
 default with `colorAtlas`) darkens each cell's atlas texel instead (mean of
 the corners), so the atlas merge and triangle count stay as without it;
 `vertex` and `both` are the other choices. `froxel export` is the same
-export from the command line. Clips are glTF
+export from the command line. `bake` (`export/bake.rs`, with `colorAtlas`)
+paints occlusion from real rays and a sun with shadows into the atlas texels,
+for a game to draw unshaded: the material is `KHR_materials_unlit`, every face
+uses one fixed ray pattern so there is no noise, and off leaves the file byte
+for byte. Clips are glTF
 animations on the joint nodes. The preview pose is not the bind pose:
 it is a local quaternion per bone, and an empty pose leaves the mesh and
 the tracer unchanged.

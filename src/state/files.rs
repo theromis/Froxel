@@ -1294,6 +1294,28 @@ impl Session {
                 self.export.ao_radius =
                     whole.clamp(0, crate::export::occlusion::MAX_RADIUS as i32) as u32;
             }
+            SliderTarget::BakeOcclusion
+            | SliderTarget::BakeDistance
+            | SliderTarget::BakeRays
+            | SliderTarget::BakeSunEnergy
+            | SliderTarget::BakeAmbientEnergy
+            | SliderTarget::BakeSunSoftness => {
+                if let Some(bake) = &mut self.export.bake {
+                    match target {
+                        SliderTarget::BakeOcclusion => bake.occlusion = value.clamp(0.0, 1.0),
+                        SliderTarget::BakeDistance => bake.distance = value.clamp(1.0, 64.0),
+                        SliderTarget::BakeRays => bake.rays = whole.clamp(4, 256) as u32,
+                        SliderTarget::BakeSunEnergy => bake.sun_energy = value.clamp(0.0, 4.0),
+                        SliderTarget::BakeAmbientEnergy => {
+                            bake.ambient_energy = value.clamp(0.0, 4.0)
+                        }
+                        _ => {
+                            bake.sun_softness = value.clamp(0.0, 15.0);
+                            bake.sun_rays = if bake.sun_softness > 0.0 { 16 } else { 1 };
+                        }
+                    }
+                }
+            }
         }
     }
 

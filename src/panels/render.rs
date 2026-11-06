@@ -112,6 +112,7 @@ pub(super) fn export(ui: &mut Ui, session: &mut Session) {
                 });
         });
     });
+    bake_light(ui, session);
     ui.horizontal(|ui| {
         if ui.button("Export mesh…").clicked() {
             session.export_mesh_dialog();
@@ -133,6 +134,109 @@ pub(super) fn export(ui: &mut Ui, session: &mut Session) {
     });
     ui.checkbox(&mut session.variants_replace, "Replace manifest")
         .on_hover_text("Export variants… writes a fresh manifest with only the exported sets instead of merging into the one in the folder (MCP export_variants replace)");
+}
+
+/// The export option `bake`: the same fields as MCP, less the ray counts of
+/// a sharper shadow, which follow the softness here.
+fn bake_light(ui: &mut Ui, session: &mut Session) {
+    let mut on = session.export.bake.is_some();
+    let hover = "Paint ray-traced occlusion and a sun with shadows into the colour atlas, one texel per cell face, to draw unshaded in a game. Needs Colour atlas (MCP export option bake)";
+    if ui
+        .checkbox(&mut on, "Bake light")
+        .on_hover_text(hover)
+        .changed()
+    {
+        session.export.bake = on.then(crate::export::bake::Bake::default);
+    }
+    if !on {
+        return;
+    }
+    slider_f32(
+        ui,
+        session,
+        "Bake occlusion",
+        SliderTarget::BakeOcclusion,
+        0.0..=1.0,
+        2,
+    );
+    slider_f32(
+        ui,
+        session,
+        "Bake distance",
+        SliderTarget::BakeDistance,
+        1.0..=64.0,
+        0,
+    );
+    slider_i32(ui, session, "Bake rays", SliderTarget::BakeRays, 4..=256);
+    slider_f32(
+        ui,
+        session,
+        "Sun energy",
+        SliderTarget::BakeSunEnergy,
+        0.0..=4.0,
+        2,
+    );
+    slider_f32(
+        ui,
+        session,
+        "Ambient energy",
+        SliderTarget::BakeAmbientEnergy,
+        0.0..=4.0,
+        2,
+    );
+    slider_f32(
+        ui,
+        session,
+        "Sun softness",
+        SliderTarget::BakeSunSoftness,
+        0.0..=15.0,
+        1,
+    );
+    let sun = session.sun_dir().to_array();
+    if let Some(bake) = &mut session.export.bake {
+        ui.horizontal(|ui| {
+            ui.color_edit_button_rgb(&mut bake.sun_color)
+                .on_hover_text("Sun colour");
+            ui.color_edit_button_rgb(&mut bake.ambient_color)
+                .on_hover_text("Ambient colour");
+            if ui
+                .button("Sun from Light")
+                .on_hover_text("Bake with the Light section's sun direction")
+                .clicked()
+            {
+                bake.sun_direction = sun;
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.add_sized(
+                [64.0, 16.0],
+                egui::Label::new(RichText::new("Light preset").small().color(DIM)),
+            );
+            egui::ComboBox::from_id_salt("bake-preset")
+                .selected_text("Apply…")
+                .show_ui(ui, |ui| {
+                    let names = crate::lighting::Presets::load(None)
+                        .map(|presets| presets.names())
+                        .unwrap_or_default();
+                    for name in names
+                        .iter()
+                        .filter(|name| *name != crate::lighting::VIEWPORT)
+                    {
+                        if ui.selectable_label(false, name).clicked() {
+                            let given = serde_json::json!({"preset": name});
+                            if let Ok(Some(found)) = crate::export::bake::Bake::parse(Some(&given))
+                            {
+                                bake.sun_direction = found.sun_direction;
+                                bake.sun_color = found.sun_color;
+                                bake.sun_energy = found.sun_energy;
+                                bake.ambient_color = found.ambient_color;
+                                bake.ambient_energy = found.ambient_energy;
+                            }
+                        }
+                    }
+                });
+        });
+    }
 }
 
 pub(super) fn render(ui: &mut Ui, session: &mut Session) {

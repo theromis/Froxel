@@ -341,7 +341,7 @@ usage: froxel variants --input <file.vox> --variants <sets.json> --out <dir>
                        [--merge] [--vertex-colors] [--color-atlas]
                        [--export-hidden] [--split-objects]
                        [--ao STRENGTH] [--ao-radius CELLS]
-                       [--ao-target vertex|texture|both]
+                       [--ao-target vertex|texture|both] [--bake JSON|FILE]
 
 Bakes the scripted document once per parameter set and writes <name>.vox and
 <name>.glb for each into --out, then a manifest (default <out>/variants.json)
@@ -393,6 +393,10 @@ fn cli_args(args: &[String]) -> Result<Option<(PathBuf, Value)>, String> {
                 let value = next(&mut index, "--ao-target")?;
                 params["aoTarget"] =
                     json!(crate::bridge::parse_ao_target(Some(value.as_str()))?.name());
+            }
+            "--bake" => {
+                let value = next(&mut index, "--bake")?;
+                params["bake"] = crate::bridge::parse_bake(Some(value.as_str()))?;
             }
             other => return Err(format!("unknown argument `{other}`\n{USAGE}")),
         }

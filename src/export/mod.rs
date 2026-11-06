@@ -15,6 +15,7 @@ use serde_json::{json, Value};
 
 use crate::state::{Cell, Session};
 
+pub mod bake;
 pub mod occlusion;
 mod quads;
 
@@ -46,6 +47,9 @@ pub struct MeshExport {
     /// Where the occlusion goes: vertex colours, the colour atlas texels, or
     /// both. `Auto` is the atlas with `color_atlas`, else vertex colours.
     pub ao_target: AoTarget,
+    /// Light baked by rays into the colour atlas texels, to draw unshaded.
+    /// `None` leaves the export unchanged. Needs `color_atlas`.
+    pub bake: Option<bake::Bake>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -136,6 +140,9 @@ fn check(session: &Session, options: &MeshExport) -> Result<(), String> {
     if options.ao_targets().1 && !options.color_atlas {
         return Err("aoTarget texture and both paint the colour atlas: set colorAtlas.".into());
     }
+    if options.bake.is_some() && !options.color_atlas {
+        return Err("bake paints the colour atlas: set colorAtlas.".into());
+    }
     Ok(())
 }
 
@@ -154,6 +161,8 @@ pub struct Counts {
 /// encoding it: the same meshes, so the same numbers as the glb.
 pub fn counts(session: &Session, options: &MeshExport) -> Result<Counts, String> {
     check(session, options)?;
+    // The bake changes texels, not triangles, and it is the slow part.
+    let options = &without_bake(options);
     if !options.merge && !options.color_atlas {
         // Unmerged, every exposed face is one quad of its own whatever the
         // other options, so counting faces is enough and much faster.
@@ -184,6 +193,13 @@ pub fn counts(session: &Session, options: &MeshExport) -> Result<Counts, String>
         built.indices.len() / 3
     };
     Ok(Counts { triangles, quads })
+}
+
+fn without_bake(options: &MeshExport) -> MeshExport {
+    MeshExport {
+        bake: None,
+        ..options.clone()
+    }
 }
 
 /// Triangles in a `.glb`: the index counts of every primitive, or its
@@ -281,6 +297,8 @@ fn encode(session: &Session, options: &MeshExport) -> Result<Vec<u8>, String> {
     let alpha = if built.blend { "BLEND" } else { "OPAQUE" };
     let material_name = if options.vertex_colors {
         "voxel-vertex-color"
+    } else if options.bake.is_some() {
+        "voxel-baked"
     } else if options.color_atlas {
         "voxel-atlas"
     } else {
@@ -386,6 +404,9 @@ fn encode(session: &Session, options: &MeshExport) -> Result<Vec<u8>, String> {
             }));
     }
     append_shade(&mut root, &mut bin, 0, &built.shade);
+    if let Some(bake) = &options.bake {
+        mark_baked(&mut root, bake.json());
+    }
     crate::state::append_gltf_markers(session, &mut root);
     let json = root;
     let mut json_bytes = serde_json::to_vec(&json).map_err(|err| err.to_string())?;
@@ -1027,6 +1048,14 @@ fn push_anim(
     accessors
 }
 
+/// The texture already holds the light: `KHR_materials_unlit` tells an
+/// importer to draw it unshaded, and `extras.froxelBake` says what was baked.
+fn mark_baked(root: &mut Value, info: Value) {
+    root["materials"][0]["extensions"] = json!({"KHR_materials_unlit": {}});
+    root["materials"][0]["extras"] = json!({ "froxelBake": info });
+    root["extensionsUsed"] = json!(["KHR_materials_unlit"]);
+}
+
 /// A grey `COLOR_0` with the baked occlusion on primitive 0 of `mesh`. glTF
 /// multiplies it with the base colour texture; Godot's importer turns on
 /// vertex colour as albedo for a primitive that has one.
@@ -1229,7 +1258,7 @@ fn accessor_count(accessors: Option<&Vec<Value>>, index: u64) -> u64 {
         .unwrap_or(0)
 }
 
-fn gltf_json(bytes: &[u8]) -> Result<Value, String> {
+pub(crate) fn gltf_json(bytes: &[u8]) -> Result<Value, String> {
     if bytes.len() < 20 || &bytes[0..4] != b"glTF" {
         return Err("not a glb".into());
     }
@@ -1251,7 +1280,7 @@ fn gltf_json(bytes: &[u8]) -> Result<Value, String> {
 /// Write a `.glb` and return the quad count. An empty scene is an error
 /// and does not create the file.
 pub fn export_with(session: &Session, path: &Path, options: &MeshExport) -> Result<u32, String> {
-    let built = build_with(session, options);
+    let built = build_with(session, &without_bake(options));
     let quads = (built.indices.len() / 6) as u32;
     if quads == 0 {
         return Err("Nothing to export.".into());

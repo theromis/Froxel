@@ -160,6 +160,41 @@ impl Mesh {
         Ok(())
     }
 
+    /// The linear colour an unlit material draws: nearest texel times the
+    /// base-colour factor and the vertex colours.
+    pub(crate) fn unlit_color(&self, triangle: &Triangle, bary: [f64; 3]) -> [f64; 4] {
+        let mut out = [0.0; 4];
+        for c in 0..4 {
+            out[c] = (0..3)
+                .map(|k| bary[k] * self.colors[triangle.v[k] as usize][c])
+                .sum::<f64>();
+        }
+        let Some(material) = self.materials.get(triangle.material as usize) else {
+            return out;
+        };
+        for c in 0..4 {
+            out[c] *= material.color[c];
+        }
+        if let Some(texture) = material.texture.and_then(|t| self.textures.get(t)) {
+            let mut uv = [0.0; 2];
+            for k in 0..3 {
+                let at = self.uvs[triangle.v[k] as usize];
+                uv[0] += bary[k] * at[0];
+                uv[1] += bary[k] * at[1];
+            }
+            let x = (uv[0] * f64::from(texture.width)).floor() as i64;
+            let y = (uv[1] * f64::from(texture.height)).floor() as i64;
+            let px = wrap(x, texture.width, texture.wrap[0]);
+            let py = wrap(y, texture.height, texture.wrap[1]);
+            let texel = texture.rgba[py * texture.width as usize + px];
+            for c in 0..3 {
+                out[c] *= to_linear(texel[c]);
+            }
+            out[3] *= f64::from(texel[3]) / 255.0;
+        }
+        out
+    }
+
     fn color_at(&self, triangle: &Triangle, bary: [f64; 3], colors: Colors) -> [f64; 4] {
         let mut out = [1.0; 4];
         let material = self.materials.get(triangle.material as usize);

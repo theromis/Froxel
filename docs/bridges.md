@@ -15,7 +15,9 @@ the options on the Export panel. The headless command uses the defaults
 `docs/mcp.md`), which needs a model without bones. `--ao STRENGTH` (0 to 1)
 and `--ao-radius CELLS` bake ambient occlusion, and `--ao-target
 vertex|texture|both` says where it goes, as the `export_mesh` options
-`aoStrength`, `aoRadius` and `aoTarget`.
+`aoStrength`, `aoRadius` and `aoTarget`. `--bake JSON|FILE` paints ray-traced
+occlusion and a sun with shadows into the atlas (with `--color-atlas`), as the
+`export_mesh` option `bake`; the glb's material is then unlit.
 
 An `evaluate` reruns every object script, then writes the glTF. Hand edits on
 a scripted object are replaced by that run. An object with no script is

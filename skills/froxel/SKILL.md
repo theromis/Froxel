@@ -229,6 +229,14 @@ refused.
   `vertex` (the default without) writes `COLOR_0` and leaves faces that shade
   differently unmerged; `both` writes the two. The reply lists the nodes, meshes, skin, and
   animations: check it before you report success.
+- `bake` (with `colorAtlas`) paints light into the atlas by real rays, for a
+  game to draw unshaded instead of lighting the mesh: `occlusion`, `distance`
+  in cells, `rays`, and a `preset` such as `old_pond` or `sunDirection`,
+  `sunColor`, `sunEnergy`, `ambientColor`, `ambientEnergy`, with `sunSoftness`
+  in degrees for a soft shadow. `{}` is occlusion alone, which only darkens. The
+  material comes out unlit, triangles do not change, and the same input gives
+  the same bytes. Look at the file with `preview` and its `glb` argument: the
+  ordinary preview draws the document, not the bake.
 - `export_models` writes up to 16 `.glb` files, each from its own `.vox`
   `source`, without touching the open document.
 

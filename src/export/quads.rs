@@ -77,6 +77,7 @@ pub(super) fn build(session: &Session) -> Built {
             ao_strength: 0.0,
             ao_radius: 0,
             ao_target: AoTarget::Auto,
+            bake: None,
         },
     )
 }
@@ -183,6 +184,12 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
     if atlas {
         let (width, height, blocks) = pack(&quads);
         let mut pixels = vec![0u8; (width * height * 4) as usize];
+        // One light per texel, in the order the loop below paints them.
+        let baked = options.bake.as_ref().map(|bake| {
+            let faces = atlas_faces(&quads);
+            super::bake::session_light(session, options, bake, &faces)
+        });
+        let mut next_light = 0;
         for (quad, (x0, y0)) in quads.iter().zip(&blocks) {
             let (normal, _, _) = face_axes(quad.face);
             let origin = split_origin(quad);
@@ -206,6 +213,13 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
                         let shade = corners.iter().map(|c| *c as f32).sum::<f32>() / (4.0 * 255.0);
                         for channel in &mut rgba[..3] {
                             *channel = srgb(linear(*channel) * shade);
+                        }
+                    }
+                    if let Some(baked) = &baked {
+                        let light = baked[next_light];
+                        next_light += 1;
+                        for (channel, light) in rgba[..3].iter_mut().zip(light) {
+                            *channel = srgb(linear(*channel) * light);
                         }
                     }
                     let at = (((y0 + j as u32) * width + x0 + i as u32) * 4) as usize;
@@ -308,6 +322,27 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
         built.max = [0.0; 3];
     }
     built
+}
+
+/// The cell face of every atlas texel, quad by quad, row by row.
+pub(super) fn atlas_faces(quads: &[GreedyQuad]) -> Vec<(usize, Cell)> {
+    let mut faces = Vec::new();
+    for quad in quads {
+        let (normal, u_axis, v_axis) = face_axes(quad.face);
+        let origin = split_origin(quad);
+        for j in 0..quad.h {
+            for i in 0..quad.w {
+                let cell = cell_on(
+                    quad.face,
+                    axis_of(quad.cell, normal),
+                    origin[u_axis] + i,
+                    origin[v_axis] + j,
+                );
+                faces.push((quad.face, cell));
+            }
+        }
+    }
+    faces
 }
 
 /// Colour-atlas faces. Instead of cutting a quad where a corner of another

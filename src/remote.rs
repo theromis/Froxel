@@ -430,11 +430,19 @@ fn preview(session: &mut Session, params: &Value) -> Result<Value, String> {
     };
     preview_camera(params, &mut preview)?;
     preview.overlay = overlay_arg(params)?;
-    preview.export = preview_export(params)?;
+    let glb_file = params.get("glb").is_some_and(|value| !value.is_null());
+    preview.export = if glb_file {
+        None
+    } else {
+        preview_export(params)?
+    };
     preview.counts_label = opt_bool(params, "countsLabel")?.unwrap_or(false);
     preview.lighting = preview_lighting(params)?;
     if let Some(background) = preview.lighting.as_ref().and_then(|l| l.background) {
         preview.background = background;
+    }
+    if let Some(glb) = opt_str(params, "glb")? {
+        return preview_glb(params, &glb, &path, preview);
     }
     if sheet {
         let object = match params.get("object") {
@@ -520,6 +528,47 @@ fn preview(session: &mut Session, params: &Value) -> Result<Value, String> {
     Ok(reply)
 }
 
+/// MCP `preview` `glb`: a written file instead of the document, unlit.
+fn preview_glb(
+    params: &Value,
+    glb: &str,
+    path: &str,
+    mut preview: crate::preview::Preview,
+) -> Result<Value, String> {
+    for key in [
+        "inputs",
+        "variants",
+        "reference",
+        "object",
+        "pose",
+        "lighting",
+    ] {
+        if params.get(key).is_some_and(|value| !value.is_null()) {
+            return Err(format!("glb draws the file as it is, without {key}"));
+        }
+    }
+    preview.antialias = opt_bool(params, "antialias")?.unwrap_or(true);
+    if params
+        .get("background")
+        .is_some_and(|value| !value.is_null())
+    {
+        preview.background = background(params)?;
+    }
+    let started = std::time::Instant::now();
+    let frame = crate::preview::write_glb(Path::new(glb), &preview, Path::new(path))?;
+    Ok(json!({
+        "path": path,
+        "glb": glb,
+        "width": preview.width,
+        "height": preview.height,
+        "yaw": preview.yaw,
+        "pitch": preview.pitch,
+        "orthographic": preview.orthographic,
+        "previewTriangles": frame.preview_triangles,
+        "milliseconds": started.elapsed().as_millis() as u64
+    }))
+}
+
 /// MCP `preview` `preset`, `presets`, `view`, `yaw`, `pitch`,
 /// `orthographic`, `margin`, and `fov` onto `preview`. Arguments win over
 /// the preset. `placementYaw` then turns the camera the other way, into the
@@ -592,7 +641,7 @@ pub(crate) fn preview_export(params: &Value) -> Result<Option<crate::export::Mes
         None | Some(Value::Null) | Some(Value::Bool(true)) => Ok(Some(mesh_options(&json!({}))?)),
         Some(Value::Bool(false)) => Ok(None),
         Some(options @ Value::Object(map)) => {
-            const KEYS: [&str; 8] = [
+            const KEYS: [&str; 9] = [
                 "merge",
                 "vertexColors",
                 "exportHidden",
@@ -601,6 +650,7 @@ pub(crate) fn preview_export(params: &Value) -> Result<Option<crate::export::Mes
                 "aoStrength",
                 "aoRadius",
                 "aoTarget",
+                "bake",
             ];
             if let Some(key) = map.keys().find(|key| !KEYS.contains(&key.as_str())) {
                 return Err(format!(
@@ -1124,6 +1174,12 @@ fn export_mesh(session: &Session, params: &Value) -> Result<Value, String> {
         "structure": written["structure"],
         "markers": session.markers_json(),
     }))
+    .map(|mut reply: Value| {
+        if let Some(bake) = &options.bake {
+            reply["bake"] = bake.json();
+        }
+        reply
+    })
 }
 
 fn export_batch(session: &Session, params: &Value) -> Result<Value, String> {
@@ -1280,7 +1336,7 @@ fn write_mesh(
 /// The export fields of [`mesh_options`] for `options`, so the editor's
 /// Export panel can call the batch export with its settings.
 pub fn mesh_params(options: &crate::export::MeshExport) -> Value {
-    json!({
+    let mut params = json!({
         "merge": options.merge,
         "vertexColors": options.vertex_colors,
         "exportHidden": options.export_hidden,
@@ -1289,7 +1345,11 @@ pub fn mesh_params(options: &crate::export::MeshExport) -> Value {
         "aoStrength": options.ao_strength,
         "aoRadius": options.ao_radius,
         "aoTarget": options.ao_target.name(),
-    })
+    });
+    if let Some(bake) = &options.bake {
+        params["bake"] = bake.json();
+    }
+    params
 }
 
 pub(crate) fn mesh_options(params: &Value) -> Result<crate::export::MeshExport, String> {
@@ -1322,6 +1382,7 @@ pub(crate) fn mesh_options(params: &Value) -> Result<crate::export::MeshExport, 
                 .and_then(crate::export::AoTarget::parse)
                 .ok_or_else(|| format!("aoTarget must be {}", crate::export::AoTarget::NAMES))?,
         },
+        bake: crate::export::bake::Bake::parse(params.get("bake"))?,
     })
 }
 
@@ -1403,13 +1464,13 @@ const METHODS: &[(&str, &str, &str)] = &[
     ),
     (
         "mesh.export",
-        "path, merge?, vertexColors?, aoStrength?, aoRadius?",
-        "Write a glTF 2.0 .glb of every object. merge defaults to false. vertexColors defaults to false (palette texture). exportHidden and splitObjects default to false. aoStrength (0..1, default 0) bakes ambient occlusion into COLOR_0; aoRadius (0..8 cells, default 3) is its hemisphere reach; aoTarget is vertex, texture (colour atlas texels, needs colorAtlas) or both. A skeleton writes a rigid skin. Clips become glTF animations.",
+        "path, merge?, vertexColors?, colorAtlas?, aoStrength?, aoRadius?, aoTarget?, bake?",
+        "Write a glTF 2.0 .glb of every object. merge defaults to false. vertexColors defaults to false (palette texture). exportHidden and splitObjects default to false. aoStrength (0..1, default 0) bakes ambient occlusion into COLOR_0; aoRadius (0..8 cells, default 3) is its hemisphere reach; aoTarget is vertex, texture (colour atlas texels, needs colorAtlas) or both. bake (with colorAtlas) paints ray-traced occlusion and a sun with shadows into the atlas, to draw unshaded. A skeleton writes a rigid skin. Clips become glTF animations.",
     ),
     (
         "mesh.export_batch",
         "models",
-        "Write 1 to 16 .glb files. Each model is {path, source?, merge?, vertexColors?, exportHidden?, splitObjects?, colorAtlas?, aoStrength?, aoRadius?, aoTarget?}. source opens that .vox in a separate session, so the open document stays. The reply includes each file's node, mesh, skin and animation structure.",
+        "Write 1 to 16 .glb files. Each model is {path, source?, merge?, vertexColors?, exportHidden?, splitObjects?, colorAtlas?, aoStrength?, aoRadius?, aoTarget?, bake?}. source opens that .vox in a separate session, so the open document stays. The reply includes each file's node, mesh, skin and animation structure.",
     ),
     (
         "script.set",

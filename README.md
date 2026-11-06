@@ -260,10 +260,14 @@ froxel compare --input log.vox --concept log-sheet.png --crop 40,60,520,300 --vi
 the `export_mesh` options as flags: `--merge`, `--vertex-colors`,
 `--color-atlas`, `--export-hidden`, `--split-objects`, and `--ao STRENGTH`
 with `--ao-radius CELLS` and `--ao-target vertex|texture|both` for baked
-ambient occlusion in `COLOR_0` or the colour atlas.
+ambient occlusion in `COLOR_0` or the colour atlas. `--bake JSON|FILE` with
+`--color-atlas` paints ray-traced occlusion and a sun with shadows into the
+atlas, for a game to draw unshaded; `froxel preview --input model.glb` looks at
+the written file.
 
 ```sh
 froxel export --input ruins.vox --output ruins.glb --merge --ao 0.8 --ao-radius 3
+froxel export --input ruins.vox --output lit.glb --color-atlas --bake '{"preset": "old_pond", "distance": 12}'
 ```
 
 `froxel import --mesh tree.glb --output tree.vox --voxel-size 0.08` voxelizes

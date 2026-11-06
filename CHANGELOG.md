@@ -4,6 +4,14 @@
 
 ### Added
 
+- Baked light: the export option `bake` (MCP `export_mesh`, `export_models`,
+  `export_variants`; `--bake` on `froxel export`, `variants`, `preview`, and
+  `bridge`; Bake light in the Export panel) paints occlusion from real rays
+  and a sun with shadows into the colour atlas, one texel per cell face. The
+  material is `KHR_materials_unlit`, off by default, and deterministic. MCP
+  `preview` `glb` and `froxel preview --input file.glb` draw a written file
+  unlit. `examples/stacked_blocks.rhai` is a model to try it on.
+
 - Silhouette tools: MCP `carve_from_views`, Rhai `carve_from_views(views,
   opts)`, `froxel carve`, and the Carve from views section fill the visual
   hull of 2 or 3 orthographic views (PNG crops with a background rule, or
