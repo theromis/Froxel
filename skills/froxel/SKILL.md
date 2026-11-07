@@ -185,8 +185,12 @@ If the tools are missing, the server is not configured. Point the user to
    Compare silhouettes, not heights.
 6. `save_file` with a `path` (a missing folder is created). World cells and markers survive reopening exactly,
    including negative coordinates; local cells may rebase to the model box, so
-   inspect the object position again before making more local edits. Foreign
-   files without Froxel scene-origin metadata still open centred and floored.
+   inspect the object position again before making more local edits. A reopened
+   document exports the same glTF frame and marker values. Foreign files without
+   Froxel scene-origin metadata still open centred and floored; when positions
+   differ from the file's, `open_file` and the exports state `sceneShift`, and
+   colliders from a manifest in the file's frame will not line up until the shift
+   is subtracted from each object's position.
 
 Build each rig part (head, jaw, body segments, limbs, tail) as its own object
 at world `[0, 0, 0]` with `add_object`, so local cells are world cells. Sculpt

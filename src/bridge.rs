@@ -352,6 +352,9 @@ Godot and Blender connect with the session file. See docs/bridges.md."
 fn serve(args: &ServeArgs) -> Result<(), String> {
     let mut session = Session::new();
     session.open_vox(&args.input)?;
+    if let Some(note) = session.scene_shift_note() {
+        eprintln!("{note}");
+    }
     session.export.color_atlas = args.color_atlas;
     session.export.ao_strength = args.ao_strength;
     session.export.ao_radius = args.ao_radius;

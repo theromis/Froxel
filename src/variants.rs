@@ -235,6 +235,9 @@ fn bake(
             .map_err(|err| format!("Could not write {}: {err}", vox.display()))?;
         entry["vox"] = json!(vox.display().to_string());
     }
+    if let Some(shift) = session.scene_shift() {
+        entry["sceneShift"] = json!(shift);
+    }
     if let Some((min, max)) = session.world_bounds() {
         // Mesh units: the cells span min..max + 1.
         let lo = [min.0, min.1, min.2];
@@ -284,9 +287,12 @@ pub fn cli(args: &[String]) -> i32 {
         Ok(None) => 0,
         Ok(Some((input, params))) => {
             let mut session = Session::new();
-            let done = session
-                .open_vox(&input)
-                .and_then(|()| export_variants(&mut session, &params));
+            let done = session.open_vox(&input).and_then(|()| {
+                if let Some(note) = session.scene_shift_note() {
+                    eprintln!("{note}");
+                }
+                export_variants(&mut session, &params)
+            });
             match done {
                 Ok(reply) => {
                     let exported: HashSet<&str> = ["added", "replaced"]
@@ -354,7 +360,8 @@ with that list under \"variants\". A colour is [r, g, b] in whole 0..255, or in
 0..1 when every channel is at most 1 and one has a decimal point: [1, 1, 1] is
 near black, [1.0, 1.0, 1.0] white. Keys and values under a manifest entry's
 \"params\" can be passed back unchanged. The mesh options are those of froxel
-export.";
+export. If the input opens with a scene shift (see froxel export), it is
+printed, and each entry records it as sceneShift.";
 
 fn cli_args(args: &[String]) -> Result<Option<(PathBuf, Value)>, String> {
     let mut input = None;

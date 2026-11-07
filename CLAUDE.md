@@ -34,8 +34,10 @@ Index 0 is empty. Hand sculpting is described in
 session): groups, layers, every animation frame, and `_hidden`. Save writes
 that graph back. Froxel saves also write `MVOR` v1 (the editor-to-file shift),
 so their world cells and markers do not recenter on reopening. Files without
-it retain import centring/floor placement; local cells may still rebase to
-the SIZE corner. Frame 0 is the edited pose. Objects created in the editor
+it retain import centring/floor placement, unless they carry `MVSC` or `MVMK`
+(older Froxel files, which keep their node positions). A nonzero shift is stated
+as `sceneShift` on open and export. Local cells may still rebase to the SIZE
+corner. Frame 0 is the edited pose. Objects created in the editor
 are appended. Hidden objects stay in the file and are omitted from the mesh,
 the tracer, and mesh export.
 

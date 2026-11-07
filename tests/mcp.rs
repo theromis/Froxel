@@ -2804,3 +2804,208 @@ fn bake_scene_writes_one_glb_from_placed_files() {
     assert_eq!(head.ok("inspect_document", json!({}))["objects"], voxels);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Remove top-level chunks from a `.vox`: what an older Froxel or another
+/// editor would have written.
+fn without_chunks(file: &[u8], ids: &[&[u8; 4]]) -> Vec<u8> {
+    let mut out = file[..20].to_vec();
+    let mut at = 20;
+    while at < file.len() {
+        let content = u32::from_le_bytes(file[at + 4..at + 8].try_into().unwrap()) as usize;
+        let children = u32::from_le_bytes(file[at + 8..at + 12].try_into().unwrap()) as usize;
+        let end = at + 12 + content + children;
+        if !ids.iter().any(|id| file[at..at + 4] == id[..]) {
+            out.extend_from_slice(&file[at..end]);
+        }
+        at = end;
+    }
+    let length = (out.len() - 20) as u32;
+    out[16..20].copy_from_slice(&length.to_le_bytes());
+    out
+}
+
+/// The glTF position bounds of a written `.glb`.
+fn glb_position_bounds(path: &std::path::Path) -> Value {
+    let bytes = std::fs::read(path).unwrap();
+    let length = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
+    let root: Value = serde_json::from_slice(&bytes[20..20 + length]).unwrap();
+    let mut low = [f64::MAX; 3];
+    let mut high = [f64::MIN; 3];
+    for mesh in root["meshes"].as_array().unwrap() {
+        for primitive in mesh["primitives"].as_array().unwrap() {
+            let at = primitive["attributes"]["POSITION"].as_u64().unwrap() as usize;
+            let accessor = &root["accessors"][at];
+            for axis in 0..3 {
+                low[axis] = low[axis].min(accessor["min"][axis].as_f64().unwrap());
+                high[axis] = high[axis].max(accessor["max"][axis].as_f64().unwrap());
+            }
+        }
+    }
+    json!({"min": low, "max": high})
+}
+
+/// Export the open document; its mesh bounds and its markers.
+fn exported_frame(head: &mut Headless, path: &std::path::Path) -> (Value, Value) {
+    let reply = head.ok(
+        "export_mesh",
+        json!({"path": path.to_string_lossy(), "merge": true}),
+    );
+    (glb_position_bounds(path), reply["markers"].clone())
+}
+
+/// A scripted document whose cells reach below every axis, so that any
+/// recentring on open moves them.
+fn off_centre_scripted_document() -> Headless {
+    let mut head = Headless::new();
+    head.ok(
+        "set_script",
+        json!({"source": r#"
+            let h = param_int("height", 9, 1, 40);
+            fill_box(-1, -20, -13, 30, -5, h, 2);
+            marker("top", 3, -7, h + 1);
+            collision_box(0, -10, 0, 6, -6, h);
+        "#}),
+    );
+    head.ok("regenerate", json!({}));
+    head
+}
+
+#[test]
+fn a_document_reopened_exports_the_frame_it_exported_before() {
+    let dir = std::env::temp_dir().join("froxel-mcp-frame-round-trip");
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut head = off_centre_scripted_document();
+    let first = exported_frame(&mut head, &dir.join("first.glb"));
+    let vox = dir.join("saved.vox");
+    head.ok("save_file", json!({"path": vox.to_string_lossy()}));
+    for round in 0..2 {
+        let opened = head.ok("open_file", json!({"path": vox.to_string_lossy()}));
+        assert!(opened.get("sceneShift").is_none(), "round {round}");
+        assert_eq!(
+            exported_frame(&mut head, &dir.join("again.glb")),
+            first,
+            "round {round}"
+        );
+        head.ok("save_file", json!({"path": vox.to_string_lossy()}));
+    }
+    // Hand-moved, the frame still survives: a move is not a shift.
+    head.session.objects[0].translation = (19, -13, 6);
+    let moved = exported_frame(&mut head, &dir.join("moved.glb"));
+    head.ok("save_file", json!({"path": vox.to_string_lossy()}));
+    head.ok("open_file", json!({"path": vox.to_string_lossy()}));
+    assert_eq!(exported_frame(&mut head, &dir.join("again.glb")), moved);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_exported_variant_reopens_in_the_frame_of_its_glb_and_manifest() {
+    let dir = std::env::temp_dir().join("froxel-mcp-frame-variants");
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut head = off_centre_scripted_document();
+    let reply = head.ok(
+        "export_variants",
+        json!({"dir": dir.to_string_lossy(), "merge": true,
+            "variants": [{"name": "tall", "params": {"height": 30}}]}),
+    );
+    let entry = &reply["variants"][0];
+    assert!(entry.get("sceneShift").is_none());
+    let written = glb_position_bounds(&dir.join("tall.glb"));
+    assert_eq!(written["min"], json!([-1.0, -13.0, 4.0]));
+    assert_eq!(
+        written["min"],
+        json!(entry["bounds"]["gltf"]["min"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_f64().unwrap())
+            .collect::<Vec<_>>())
+    );
+    head.ok(
+        "open_file",
+        json!({"path": dir.join("tall.vox").to_string_lossy()}),
+    );
+    let (bounds, markers) = exported_frame(&mut head, &dir.join("again.glb"));
+    assert_eq!(bounds, written);
+    assert_eq!(markers, entry["markers"]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_froxel_file_older_than_the_origin_chunk_keeps_its_frame() {
+    let dir = std::env::temp_dir().join("froxel-mcp-frame-legacy");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut head = off_centre_scripted_document();
+    let first = exported_frame(&mut head, &dir.join("first.glb"));
+    let legacy = dir.join("legacy.vox");
+    let saved = head.session.export_bytes().unwrap();
+    std::fs::write(&legacy, without_chunks(&saved, &[b"MVOR"])).unwrap();
+
+    let opened = head.ok("open_file", json!({"path": legacy.to_string_lossy()}));
+    assert!(opened.get("sceneShift").is_none());
+    assert_eq!(head.session.objects[0].translation, (0, 0, 0));
+    assert_eq!(exported_frame(&mut head, &dir.join("open.glb")), first);
+    // Variants of it are in the same frame, and so is their .vox.
+    let reply = head.ok(
+        "export_variants",
+        json!({"dir": dir.join("out").to_string_lossy(), "merge": true,
+            "variants": [{"name": "same", "params": {}}]}),
+    );
+    assert_eq!(reply["variants"][0]["markers"], first.1);
+    assert_eq!(glb_position_bounds(&dir.join("out/same.glb")), first.0);
+    head.ok(
+        "open_file",
+        json!({"path": dir.join("out/same.vox").to_string_lossy()}),
+    );
+    assert_eq!(exported_frame(&mut head, &dir.join("reopen.glb")), first);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_foreign_import_states_its_shift_and_keeps_it_through_a_save() {
+    let dir = std::env::temp_dir().join("froxel-mcp-frame-foreign");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut head = Headless::new();
+    head.ok(
+        "fill_box",
+        json!({"x0": 10, "y0": 10, "z0": 5, "x1": 13, "y1": 13, "z1": 7, "palette": 2}),
+    );
+    let saved = head.session.export_bytes().unwrap();
+    let foreign = dir.join("foreign.vox");
+    std::fs::write(&foreign, without_chunks(&saved, &[b"MVOR"])).unwrap();
+
+    let opened = head.ok("open_file", json!({"path": foreign.to_string_lossy()}));
+    let shift = opened["sceneShift"].clone();
+    assert_eq!(shift[2], -5, "a foreign file stands on its lowest voxel");
+    assert!(opened["sceneShiftNote"]
+        .as_str()
+        .unwrap()
+        .contains("subtract the shift"));
+    assert!(head.session.status.contains("shifted by"));
+    assert_eq!(head.ok("inspect_document", json!({}))["sceneShift"], shift);
+    let path = dir.join("a.glb");
+    let exported = head.ok("export_mesh", json!({"path": path.to_string_lossy()}));
+    assert_eq!(exported["sceneShift"], shift);
+    let first = glb_position_bounds(&path);
+
+    let vox = dir.join("saved.vox");
+    head.ok("save_file", json!({"path": vox.to_string_lossy()}));
+    let reopened = head.ok("open_file", json!({"path": vox.to_string_lossy()}));
+    assert_eq!(reopened["sceneShift"], shift);
+    let (bounds, _) = exported_frame(&mut head, &dir.join("b.glb"));
+    assert_eq!(bounds, first);
+    // The note's remedy returns the file's frame.
+    let offset = [
+        shift[0].as_i64().unwrap() as i32,
+        shift[1].as_i64().unwrap() as i32,
+        shift[2].as_i64().unwrap() as i32,
+    ];
+    let object = &mut head.session.objects[0];
+    object.translation.0 -= offset[0];
+    object.translation.1 -= offset[1];
+    object.translation.2 -= offset[2];
+    let (restored, _) = exported_frame(&mut head, &dir.join("c.glb"));
+    assert_eq!(restored["min"], json!([10.0, 5.0, -14.0]));
+    let _ = std::fs::remove_dir_all(&dir);
+}

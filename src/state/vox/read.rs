@@ -151,6 +151,12 @@ pub(crate) fn load_vox(bytes: &[u8]) -> Result<Loaded, String> {
     if models.is_empty() {
         return Err("file has no models".into());
     }
+    // Only Froxel writes script and marker chunks. A file with one but no
+    // MVOR predates that chunk, and its node positions are the frame its
+    // manifest and glb were written in, so it is not centred as an import.
+    if scene_shift.is_none() && (scripts.is_some() || markers.is_some()) {
+        scene_shift = Some([0, 0, 0]);
+    }
     let (mut objects, shift) = place_models(&models, &nodes, scene_shift)?;
     let skeleton = if let Some((mut skeleton, binds)) = rig {
         // Pivots are world positions: they move with the objects.

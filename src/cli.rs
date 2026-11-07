@@ -62,6 +62,9 @@ pub fn export(args: &[String]) -> i32 {
         Ok(Some((input, output, options))) => {
             let mut session = Session::new();
             let written = session.open_vox(&input).and_then(|()| {
+                if let Some(note) = session.scene_shift_note() {
+                    eprintln!("{note}");
+                }
                 if let Some(parent) = output
                     .parent()
                     .filter(|parent| !parent.as_os_str().is_empty())
@@ -499,7 +502,9 @@ both writes the two. The default is texture with --color-atlas, else vertex.
 face, to draw unshaded (needs --color-atlas). It takes the export_mesh bake
 option as a JSON object or a JSON file: occlusion, distance, rays, preset or
 sunDirection, sunColor, sunEnergy, ambientColor, ambientEnergy, sunSoftness,
-sunRays. --bake '{}' is occlusion alone. See docs/mcp.md.";
+sunRays. --bake '{}' is occlusion alone. See docs/mcp.md.
+If the input opens with a scene shift (world positions differ from its node
+positions: a foreign import's centring, or a save that kept it), it is printed.";
 
 fn export_args(
     args: &[String],

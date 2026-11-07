@@ -1179,8 +1179,17 @@ fn export_mesh(session: &Session, params: &Value) -> Result<Value, String> {
         if let Some(bake) = &options.bake {
             reply["bake"] = bake.json();
         }
+        state_scene_shift(session, &mut reply);
         reply
     })
+}
+
+/// State a nonzero scene shift in a reply, so a moved frame is never silent.
+fn state_scene_shift(session: &Session, reply: &mut Value) {
+    if let (Some(shift), Some(note)) = (session.scene_shift(), session.scene_shift_note()) {
+        reply["sceneShift"] = json!(shift);
+        reply["sceneShiftNote"] = json!(note);
+    }
 }
 
 /// MCP `bake_scene`: `scene` is the JSON, or the path of a file holding it,
@@ -1335,6 +1344,7 @@ fn finish_export(
     if let Some(source) = source {
         body["source"] = json!(source);
     }
+    state_scene_shift(session, &mut body);
     Ok(body)
 }
 
@@ -1572,7 +1582,7 @@ fn open_summary(session: &Session) -> Value {
         .collect();
     let palette = palette_rows(session, false);
     let motion = motion_rows(session);
-    json!({
+    let mut reply = json!({
         "path": session.path.as_ref().map(|p| p.display().to_string()),
         "activeObject": session.selected,
         "objectCount": session.objects.len(),
@@ -1585,7 +1595,9 @@ fn open_summary(session: &Session) -> Value {
         "motionSlots": motion.as_object().map_or(0, |rows| rows.len()),
         "objectNames": names,
         "moreObjects": session.objects.len().saturating_sub(SUMMARY_OBJECT_NAMES),
-    })
+    });
+    state_scene_shift(session, &mut reply);
+    reply
 }
 
 fn inspect(session: &Session, params: &Value) -> Result<Value, String> {
@@ -1614,7 +1626,7 @@ fn inspect(session: &Session, params: &Value) -> Result<Value, String> {
         .iter()
         .map(|object| object.cells.len())
         .sum();
-    Ok(json!({
+    let mut reply = json!({
         "path": session.path.as_ref().map(|p| p.display().to_string()),
         "activeObject": session.selected,
         "objectCount": session.objects.len(),
@@ -1629,7 +1641,9 @@ fn inspect(session: &Session, params: &Value) -> Result<Value, String> {
         "palette": palette_rows(session, full_palette),
         "motion": motion_rows(session),
         "markers": session.markers_json(),
-    }))
+    });
+    state_scene_shift(session, &mut reply);
+    Ok(reply)
 }
 
 /// Palette colours keyed by index: the slots some cell uses, or every slot.

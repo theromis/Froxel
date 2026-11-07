@@ -151,7 +151,7 @@ tracer. A file with no scene graph still loads its first model.
 | Tool | Required arguments | What it does |
 |---|---|---|
 | `new_document` | — | Empty document, default palette, cleared path and undo stack |
-| `open_file` | `path` | Open a `.vox`, replacing the session. The reply is short: `path`, `objectCount`, `voxels`, `bounds`, `activeObject`, `canUndo`, `canRedo`, `bones` (a count), `paletteSlots` (used slots), `motionSlots`, the first 20 `objectNames`, and `moreObjects`. `detail` `full` replies with the `inspect_document` result instead (optional `fullPalette`) |
+| `open_file` | `path` | Open a `.vox`, replacing the session. The reply is short: `path`, `objectCount`, `voxels`, `bounds`, `activeObject`, `canUndo`, `canRedo`, `bones` (a count), `paletteSlots` (used slots), `motionSlots`, the first 20 `objectNames`, and `moreObjects`, plus `sceneShift` and `sceneShiftNote` when world positions differ from the file's (see Saved scene coordinates). `detail` `full` replies with the `inspect_document` result instead (optional `fullPalette`) |
 | `save_file` | — | Write every non-empty object. `path` overwrites the open file when omitted; its folder is created. Replies with `voxels` and `objects` |
 | `inspect_document` | — | Path, counts, world bounds, objects (name and world position), the used palette slots, and the slots with motion. `fullPalette` lists all 256 slots |
 | `get_voxel` | `x`, `y`, `z` | Palette index of one **local** cell of the active object. `0` is empty |
@@ -1470,8 +1470,9 @@ with the `export_mesh` options (`merge`, `colorAtlas`, `aoStrength`,
 `<name>.vox` unless `vox` is false. The manifest JSON lists, per set,
 `requested` (the values given), `params` (every parameter after clamping,
 keyed `object/name`), `markers` (as `list_markers`), `bounds` (`voxel` mesh
-units and `gltf`), `quads`, `voxels`, the file paths, and the mesh
-`options` it was written with. Every set is checked before a file is
+units and `gltf`), `quads`, `voxels`, the file paths, the mesh
+`options` it was written with, and `sceneShift` when the document opened
+with one (see Saved scene coordinates). Every set is checked before a file is
 written; a set that fails stops the call with its name and leaves the
 manifest as it was.
 
@@ -1570,3 +1571,18 @@ without it still open centred horizontally and resting on the lowest voxel. Loca
 cells may be rebased to the model box on load; use the returned object position or
 world/glTF marker coordinates rather than assuming the old local origin. This is
 the shared file path for MCP, the editor and CLI saves; MagicaVoxel ignores MVOR.
+
+So a document exported, saved, reopened, and exported again gives the same glTF
+frame and marker values, and `export_variants` writes each `.vox` in the frame of
+its `.glb` and manifest entry. A Froxel file older than `MVOR` that carries a script
+or markers (`MVSC`, `MVMK`, which only Froxel writes) opens in the frame of its node
+positions, the one its manifest and glb were written in, not centred.
+
+The centring of a foreign import is kept by a later save, so such a document stays
+in that frame. Whenever world positions differ from the file's node positions,
+`open_file`, `inspect_document`, `export_mesh`, and `export_models` state it as
+`sceneShift` `[x, y, z]` (world = file + shift) with `sceneShiftNote`; an
+`export_variants` manifest entry records `sceneShift`; the editor adds it to the
+status line after opening; and `froxel export`, `froxel variants`, and `froxel bridge`
+print it. To return to the file's frame, subtract the shift from each object's
+position.

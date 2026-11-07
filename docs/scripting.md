@@ -1065,4 +1065,5 @@ after opening. Neither of those runs the script.
 Froxel saves also carry an `MVOR` version 1 scene-origin chunk. It preserves the
 chosen world frame for manual and scripted objects alike; it does not run or add
 a script. Foreign VOX imports without this chunk retain automatic centring and
-floor placement. See the saved scene coordinates section in `mcp.md`.
+floor placement; an older Froxel file that carries a script or markers opens in
+the frame of its node positions. See the saved scene coordinates section in `mcp.md`.

@@ -105,6 +105,10 @@ impl Session {
         {
             self.status.push_str(" This file carries a script.");
         }
+        if let Some(note) = self.scene_shift_note() {
+            self.status.push(' ');
+            self.status.push_str(&note);
+        }
         self.remember_path(path);
         Ok(())
     }
@@ -173,6 +177,23 @@ impl Session {
         self.selected_bone = None;
         self.clear_picked();
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// How far world positions are from the node positions in the file, when
+    /// they differ: an import was centred, or a save kept such a centring.
+    pub(crate) fn scene_shift(&self) -> Option<[i32; 3]> {
+        self.graph
+            .as_ref()
+            .map(|graph| graph.shift)
+            .filter(|shift| *shift != [0, 0, 0])
+    }
+
+    /// The scene shift in words, for an open or an export to state plainly.
+    pub(crate) fn scene_shift_note(&self) -> Option<String> {
+        let [x, y, z] = self.scene_shift()?;
+        Some(format!(
+            "World positions, markers, and exports are shifted by ({x}, {y}, {z}) from the node positions in the file, by an import's centring or a save that kept it. A glb or manifest written in the file's own frame will not line up; subtract the shift from each object's position to return to it."
+        ))
     }
 
     pub(crate) fn export_bytes(&self) -> Result<Vec<u8>, String> {
