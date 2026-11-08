@@ -1036,7 +1036,9 @@ texels. The open document is not touched.
 {
   "instances": [
     {"source": "stone.vox", "translation": [2.0, 0.0, -1.0], "yaw": 7, "scale": 0.1},
-    {"source": "stone.vox", "translation": [3.1, 0.2, 0.5], "yaw": -12, "scale": 0.1}
+    {"source": "stone.vox", "translation": [3.1, 0.2, 0.5], "yaw": -12, "scale": 0.1},
+    {"source": "reed.vox", "translation": [1.4, 0.0, 2.2], "yaw": 40, "scale": 0.1,
+     "lean": {"degrees": 12, "toward": 180}}
   ],
   "occluders": [
     {"mesh": "ground.glb", "translation": [0, 0, 0], "yaw": 0, "scale": 1},
@@ -1054,13 +1056,22 @@ whose folder its relative paths start from), `path` (the `.glb`), and optional
 --scene scene.json --output level.glb [--bake JSON|FILE]`.
 
 - **A placement** is the frame of the glb `export_mesh` writes, as a game places
-  it: `world = translation + scale × Ry(yaw) × (x, z, −y)` of a cell corner, Y
-  up, with `yaw` in degrees about +Y counter-clockwise from above (Godot's
-  `rotation.y`) and one uniform `scale` above 0. So a level's transforms copy
-  across, and the file sits where the separate glbs sat. Each defaults to no
-  change. Any yaw works: cells stay on their own lattice, and a ray enters a
-  placement through the inverse transform, so 7 degrees costs what 0 does and
-  nothing is resampled.
+  it: `world = translation + Lean × scale × Ry(yaw) × (x, z, −y)` of a cell
+  corner, Y up, with `yaw` in degrees about +Y counter-clockwise from above
+  (Godot's `rotation.y`, so yaw 0 faces −Z) and one uniform `scale` above 0. So
+  a level's transforms copy across, and the file sits where the separate glbs
+  sat. Each defaults to no change. Any yaw works: cells stay on their own
+  lattice, and a ray enters a placement through the inverse transform, so 7
+  degrees costs what 0 does and nothing is resampled.
+- **`lean`** `{"degrees": a, "toward": y}` tilts a placement (an instance or a
+  `mesh` occluder), as a plant leans toward water: by `a` degrees (−90 to 90)
+  about the horizontal axis square to the direction `y`, so its top moves toward
+  `y` and its base, `translation`, stays put. `y` is a yaw in the same convention
+  as `yaw`: 0 is toward −Z, 90 toward −X, 180 toward +Z. `Lean` is applied after
+  yaw and scale, and its inverse is exact, so a leaned placement keeps its own
+  lattice like any yaw. Both fields are required; without `lean` the placement is
+  upright and the file is byte for byte what it was. The glb's
+  `froxelScene` extras repeat the `lean` of each leaned instance.
 - **Occluders** stop light and are not written. `mesh` is a `.glb`, `.gltf` or
   `.obj` placed like an instance, two-sided. `plane` is solid below that height,
   so a face under it goes dark. `height` is a surface through grid points,

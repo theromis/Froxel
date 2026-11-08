@@ -245,10 +245,12 @@ refused.
   ordinary preview draws the document, not the bake.
 - `bake_scene` bakes a level's placement of many `.vox` files together, so
   stones shade each other and the ground shades them, into one `.glb` with one
-  atlas. `scene` is `{instances: [{source, translation, yaw, scale}], occluders:
-  [{mesh, ...} | {plane} | {height}], bake}`, or a JSON file. Placements are Y up,
-  in the frame of the exported glb, so a level's transforms copy across, and
-  `distance` is in scene units. Triangles add up across placements, so check the
+  atlas. `scene` is `{instances: [{source, translation, yaw, scale, lean}],
+  occluders: [{mesh, ...} | {plane} | {height}], bake}`, or a JSON file.
+  Placements are Y up, in the frame of the exported glb, so a level's transforms
+  copy across, and `distance` is in scene units. `lean: {degrees, toward}` tilts
+  a placement about its base so its top moves toward the yaw `toward` (0 is −Z,
+  like `yaw`), e.g. reeds leaning to water. Triangles add up across placements, so check the
   reply's `triangles` and `memory`.
 - `export_models` writes up to 16 `.glb` files, each from its own `.vox`
   `source`, without touching the open document.

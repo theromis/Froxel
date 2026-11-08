@@ -2,9 +2,12 @@
 //! others and by ground, into one merged mesh with one colour atlas.
 //!
 //! A placement is the frame of a glb that `export_mesh` wrote, as a game
-//! places it: `world = translation + scale × Ry(yaw) × (x, z, −y)` of a cell
-//! corner, Y up, right-handed. Cells stay on their own lattice, so a yaw of
-//! any angle costs nothing: a ray enters an instance through the inverse
+//! places it: `world = translation + Lean × scale × Ry(yaw) × (x, z, −y)` of
+//! a cell corner, Y up, right-handed. `Lean` is the identity unless the
+//! placement has a `lean`: then it tilts by `degrees` about the horizontal
+//! axis square to the yaw `toward`, so the top moves that way, pivoting on
+//! `translation`. Cells stay on their own lattice, so a yaw or a lean of any
+//! angle costs nothing: a ray enters an instance through the inverse
 //! transform and walks that source's one grid. A BVH over the instances and
 //! the occluder triangles finds which to enter.
 
@@ -31,12 +34,49 @@ pub struct Place {
     /// Degrees about +Y, as Godot's `rotation.y`.
     pub yaw: f64,
     pub scale: f64,
+    /// A tilt after yaw and scale; `None` is upright.
+    pub lean: Option<Lean>,
+}
+
+/// A tilt of a placement, pivoting on its translation.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Lean {
+    /// How far the top tilts, in degrees.
+    pub degrees: f64,
+    /// Which way the top moves: a yaw about +Y, as `Place::yaw`, where 0 is
+    /// toward −Z.
+    pub toward: f64,
+}
+
+impl Lean {
+    /// `p` turned by `sign × degrees` about the axis square to `toward`.
+    fn turn(&self, p: [f64; 3], sign: f64) -> [f64; 3] {
+        let (sin_t, cos_t) = self.toward.to_radians().sin_cos();
+        // Toward is (−sin, 0, −cos); the axis is +Y × toward.
+        let axis = [-cos_t, 0.0, sin_t];
+        let (sin, cos) = (sign * self.degrees).to_radians().sin_cos();
+        let dot = axis[0] * p[0] + axis[2] * p[2];
+        let cross = [
+            axis[1] * p[2] - axis[2] * p[1],
+            axis[2] * p[0] - axis[0] * p[2],
+            axis[0] * p[1] - axis[1] * p[0],
+        ];
+        [0, 1, 2].map(|i| p[i] * cos + cross[i] * sin + axis[i] * dot * (1.0 - cos))
+    }
+
+    fn json(&self) -> Value {
+        json!({"degrees": self.degrees, "toward": self.toward})
+    }
 }
 
 impl Place {
     fn rotate(&self, p: [f64; 3]) -> [f64; 3] {
         let (sin, cos) = self.yaw.to_radians().sin_cos();
-        [p[0] * cos + p[2] * sin, p[1], -p[0] * sin + p[2] * cos]
+        let turned = [p[0] * cos + p[2] * sin, p[1], -p[0] * sin + p[2] * cos];
+        match &self.lean {
+            None => turned,
+            Some(lean) => lean.turn(turned, 1.0),
+        }
     }
 
     fn point(&self, p: [f64; 3]) -> [f64; 3] {
@@ -51,6 +91,10 @@ impl Place {
     }
 
     fn local_vector(&self, p: [f64; 3]) -> [f64; 3] {
+        let p = match &self.lean {
+            None => p,
+            Some(lean) => lean.turn(p, -1.0),
+        };
         let (sin, cos) = self.yaw.to_radians().sin_cos();
         [p[0] * cos - p[2] * sin, p[1], p[0] * sin + p[2] * cos]
     }
@@ -116,7 +160,31 @@ fn place_of(item: &Value, what: &str) -> Result<Place, String> {
         translation,
         yaw: number("yaw", 0.0)?,
         scale,
+        lean: lean_of(item.get("lean"), what)?,
     })
+}
+
+fn lean_of(value: Option<&Value>, what: &str) -> Result<Option<Lean>, String> {
+    let value = match value {
+        None | Some(Value::Null) => return Ok(None),
+        Some(value) => value,
+    };
+    let what = format!("{what} lean");
+    only(value, &["degrees", "toward"], &what)?;
+    let number = |key: &str| {
+        value
+            .get(key)
+            .and_then(Value::as_f64)
+            .ok_or_else(|| format!("{what} needs {key}, a number of degrees"))
+    };
+    let degrees = number("degrees")?;
+    if degrees.abs() > 90.0 {
+        return Err(format!("{what} degrees must be within -90..90"));
+    }
+    Ok(Some(Lean {
+        degrees,
+        toward: number("toward")?,
+    }))
 }
 
 fn only(item: &Value, keys: &[&str], what: &str) -> Result<(), String> {
@@ -156,14 +224,20 @@ impl SceneBake {
             .get("instances")
             .and_then(Value::as_array)
             .filter(|list| !list.is_empty())
-            .ok_or("the scene needs instances, a list of {source, translation, yaw, scale}")?;
+            .ok_or(
+                "the scene needs instances, a list of {source, translation, yaw, scale, lean}",
+            )?;
         if list.len() > MAX_INSTANCES {
             return Err(format!("a scene holds at most {MAX_INSTANCES} instances"));
         }
         let mut instances = Vec::with_capacity(list.len());
         for (index, item) in list.iter().enumerate() {
             let what = format!("instance {index}");
-            only(item, &["source", "translation", "yaw", "scale"], &what)?;
+            only(
+                item,
+                &["source", "translation", "yaw", "scale", "lean"],
+                &what,
+            )?;
             let source = item
                 .get("source")
                 .and_then(Value::as_str)
@@ -181,7 +255,15 @@ impl SceneBake {
             let what = format!("occluder {index}");
             only(
                 item,
-                &["mesh", "plane", "height", "translation", "yaw", "scale"],
+                &[
+                    "mesh",
+                    "plane",
+                    "height",
+                    "translation",
+                    "yaw",
+                    "scale",
+                    "lean",
+                ],
                 &what,
             )?;
             if let Some(mesh) = item.get("mesh") {
@@ -710,14 +792,18 @@ pub fn bake_scene(scene: &SceneBake, output: &Path) -> Result<Value, String> {
         }
         let first_index = built.indices.len();
         append_instance(&mut built, source, blocks, place, any_motion);
-        spans.push(json!({
+        let mut span = json!({
             "source": scene.instances[instance].0.display().to_string(),
             "translation": place.translation,
             "yaw": place.yaw,
             "scale": place.scale,
             "firstIndex": first_index,
             "indexCount": built.indices.len() - first_index,
-        }));
+        });
+        if let Some(lean) = &place.lean {
+            span["lean"] = lean.json();
+        }
+        spans.push(span);
     }
 
     let extras = json!({"instances": spans});

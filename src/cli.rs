@@ -100,7 +100,9 @@ neighbours and by ground, into one merged mesh with one colour atlas, to draw
 unshaded (MCP bake_scene). scene.json, with paths relative to its folder:
 
   {\"instances\": [{\"source\": \"stone.vox\", \"translation\": [2, 0, -1],
-                   \"yaw\": 7, \"scale\": 0.1}],
+                   \"yaw\": 7, \"scale\": 0.1},
+                  {\"source\": \"reed.vox\", \"translation\": [1, 0, 2],
+                   \"lean\": {\"degrees\": 12, \"toward\": 180}}],
    \"occluders\": [{\"mesh\": \"ground.glb\", \"translation\": [0, 0, 0]},
                  {\"plane\": 0},
                  {\"height\": {\"origin\": [-4, -4], \"cell\": 1,
@@ -108,8 +110,10 @@ unshaded (MCP bake_scene). scene.json, with paths relative to its folder:
    \"bake\": {\"preset\": \"old_pond\", \"distance\": 2}}
 
 A placement is the frame of the glb froxel export writes, as a game places it:
-world = translation + scale x Ry(yaw) x (x, z, -y) of a cell corner, Y up, with
-yaw in degrees about +Y. Occluders stop light and are not written: mesh is a
+world = translation + Lean x scale x Ry(yaw) x (x, z, -y) of a cell corner, Y
+up, with yaw in degrees about +Y (0 faces -Z). lean {degrees, toward}, on an
+instance or a mesh occluder, tilts it by degrees (-90..90) about its base so its
+top moves toward the yaw toward (0 is -Z, 90 is -X); without it, upright. Occluders stop light and are not written: mesh is a
 .glb, .gltf or .obj, plane is solid below that height, height is y at grid
 points, rows[z][x]. bake is the option of froxel export, with distance in scene
 units, and --bake replaces it. Without either it is occlusion alone. It prints

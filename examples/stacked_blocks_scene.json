@@ -1,11 +1,13 @@
 {
-  "description": "A pile of stacked_blocks on flat ground, some at a small yaw, for froxel bake-scene.",
+  "description": "A pile of stacked_blocks on flat ground, some at a small yaw and one leaning, for froxel bake-scene.",
   "instances": [
     {"source": "stacked_blocks.vox", "translation": [0, 0, 0], "yaw": 0, "scale": 0.1},
     {"source": "stacked_blocks.vox", "translation": [3.1, 0, 0.5], "yaw": 7, "scale": 0.1},
     {"source": "stacked_blocks.vox", "translation": [-3.2, 0, 1.1], "yaw": -12, "scale": 0.08},
     {"source": "stacked_blocks.vox", "translation": [0.6, 0, -2.4], "yaw": 25, "scale": 0.1},
-    {"source": "stacked_blocks.vox", "translation": [1.0, 2.7, 0.1], "yaw": 90, "scale": 0.07}
+    {"source": "stacked_blocks.vox", "translation": [1.0, 2.7, 0.1], "yaw": 90, "scale": 0.07},
+    {"source": "stacked_blocks.vox", "translation": [-1.5, 0, -3.0], "yaw": 40, "scale": 0.08,
+     "lean": {"degrees": 12, "toward": 180}}
   ],
   "occluders": [{"plane": 0}],
   "bake": {"preset": "old_pond", "distance": 2.5, "sunSoftness": 2}

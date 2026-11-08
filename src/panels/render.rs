@@ -126,7 +126,7 @@ pub(super) fn export(ui: &mut Ui, session: &mut Session) {
         }
         if ui
             .button("Bake scene…")
-            .on_hover_text("Bake a placement of many .vox files together from a scene JSON file, each shaded by its neighbours and by ground, into one .glb with one atlas. Bake light's values replace the file's when it is on (MCP bake_scene)")
+            .on_hover_text("Bake a placement of many .vox files together from a scene JSON file (translation, yaw, scale, and lean per instance), each shaded by its neighbours and by ground, into one .glb with one atlas. Bake light's values replace the file's when it is on (MCP bake_scene)")
             .clicked()
         {
             session.bake_scene_dialog();

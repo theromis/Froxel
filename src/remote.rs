@@ -1506,7 +1506,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     (
         "mesh.bake_scene",
         "scene, path, bake?",
-        "Bake a placement of many .vox files together into one .glb with one colour atlas, each shaded by its neighbours and by ground. scene is {instances: [{source, translation?, yaw?, scale?}], occluders?: [{mesh, translation?, yaw?, scale?} | {plane} | {height: {origin?, cell?, rows}}], bake?, exportHidden?} or the path of a JSON file of it. Y up, the frame of the exported glb. bake is the export_mesh option, over the scene's.",
+        "Bake a placement of many .vox files together into one .glb with one colour atlas, each shaded by its neighbours and by ground. scene is {instances: [{source, translation?, yaw?, scale?, lean?: {degrees, toward}}], occluders?: [{mesh, translation?, yaw?, scale?, lean?} | {plane} | {height: {origin?, cell?, rows}}], bake?, exportHidden?} or the path of a JSON file of it. Y up, the frame of the exported glb. bake is the export_mesh option, over the scene's.",
     ),
     (
         "script.set",

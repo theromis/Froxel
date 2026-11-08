@@ -30,6 +30,7 @@ fn at(translation: [f64; 3], yaw: f64, scale: f64) -> Place {
         translation,
         yaw,
         scale,
+        lean: None,
     }
 }
 
@@ -407,6 +408,18 @@ fn a_bad_scene_is_refused_with_its_reason() {
             "extra",
         ),
         (
+            json!({"instances": [{"source": source, "lean": {"degrees": 5}}]}),
+            "toward",
+        ),
+        (
+            json!({"instances": [{"source": source, "lean": {"degrees": 95, "toward": 0}}]}),
+            "-90..90",
+        ),
+        (
+            json!({"instances": [{"source": source, "lean": {"degrees": 5, "toward": 0, "roll": 1}}]}),
+            "roll",
+        ),
+        (
             json!({"instances": [{"source": source}], "occluders": [{}]}),
             "mesh, plane",
         ),
@@ -455,7 +468,7 @@ fn the_example_scene_bakes_through_the_tool_with_paths_from_its_folder() {
         "bake": {"rays": 8, "preset": "old_pond", "distance": 2}
     }))
     .unwrap();
-    assert_eq!(reply["instances"], 5);
+    assert_eq!(reply["instances"], 6);
     assert_eq!(reply["sources"], 1);
     assert_eq!(reply["bake"]["rays"], 8);
     let warnings = reply["structure"]["warnings"].as_array().unwrap();
@@ -510,4 +523,186 @@ fn the_command_lines_take_the_bake() {
     assert_eq!(crate::cli::bake_scene(&args(&["--scene", scene])), 2);
     assert!(crate::bridge::parse_bake(Some("{nope")).is_err());
     assert!(crate::bridge::parse_bake(Some("no-such-file.json")).is_err());
+}
+
+fn leaned(translation: [f64; 3], yaw: f64, scale: f64, degrees: f64, toward: f64) -> Place {
+    Place {
+        lean: Some(Lean { degrees, toward }),
+        ..at(translation, yaw, scale)
+    }
+}
+
+fn close(a: [f64; 3], b: [f64; 3]) -> bool {
+    (0..3).all(|axis| (a[axis] - b[axis]).abs() < 1e-9)
+}
+
+#[test]
+fn a_lean_tilts_the_top_toward_its_yaw_about_the_base() {
+    // Toward 0 is −Z, toward 90 is −X, as yaw turns the glb's −Z.
+    for (toward, way) in [
+        (0.0, [0.0, 0.0, -1.0]),
+        (90.0, [-1.0, 0.0, 0.0]),
+        (-90.0, [1.0, 0.0, 0.0]),
+        (180.0, [0.0, 0.0, 1.0]),
+    ] {
+        let place = leaned([1.0, 2.0, 3.0], 37.0, 0.5, 30.0, toward);
+        // The base stays put, and a point straight up swings toward the way.
+        assert!(close(place.point([0.0; 3]), [1.0, 2.0, 3.0]));
+        let (sin, cos) = 30f64.to_radians().sin_cos();
+        let top = place.point([0.0, 2.0, 0.0]);
+        let want = [0, 1, 2].map(|axis| {
+            [1.0, 2.0, 3.0][axis] + 1.0 * (sin * way[axis] + cos * [0.0, 1.0, 0.0][axis])
+        });
+        assert!(close(top, want), "toward {toward}: {top:?} {want:?}");
+        // The inverse is exact, so rays enter the right cells.
+        for p in [[0.3, 0.7, -0.2], [4.0, -1.0, 2.5]] {
+            assert!(close(place.local_point(place.point(p)), p));
+        }
+    }
+}
+
+#[test]
+fn a_leaned_open_cube_stays_open_and_a_lean_matches_a_tilted_sun() {
+    let bake = Bake::default();
+    for (degrees, toward) in [(3.0, 0.0), (15.0, 40.0), (45.0, -120.0), (90.0, 200.0)] {
+        let place = leaned([10.0, 3.0, -7.0], 25.0, 0.1, degrees, toward);
+        let world = World::new(vec![(cube_grid(), place)], &[]).unwrap();
+        for face in 0..6 {
+            assert_eq!(
+                light(&world, &bake, &place, face, (0, 0, 0))[0],
+                1.0,
+                "lean {degrees} toward {toward} lets a cube shade itself on face {face}"
+            );
+        }
+    }
+    // A step under a sun, against the same step leaned a quarter toward +X
+    // under that sun tilted with it: the same light on every face.
+    let mut cells = block_cells();
+    cells.extend([(0, 0, 4), (1, 0, 4), (0, 1, 4)]);
+    let grid = Arc::new(Grid::new(&cells));
+    let lit = Bake {
+        sun_direction: [-1.0, 0.0, 0.5],
+        sun_energy: 1.0,
+        ambient_energy: 0.0,
+        ..Bake::default()
+    };
+    // Leaning toward +X turns Froxel's +Z to +X and +X to −Z.
+    let tilted = Bake {
+        sun_direction: [0.5, 0.0, 1.0],
+        ..lit.clone()
+    };
+    let (place, quarter) = (
+        at([0.0; 3], 0.0, 1.0),
+        leaned([0.0; 3], 0.0, 1.0, 90.0, -90.0),
+    );
+    let a = World::new(vec![(grid.clone(), place)], &[]).unwrap();
+    let b = World::new(vec![(grid, quarter)], &[]).unwrap();
+    let mut differ = false;
+    for (face, cell) in [
+        (WEST, (0, 1, 2)),
+        (UP, (2, 2, 3)),
+        (SOUTH, (2, 0, 1)),
+        (UP, (0, 0, 4)),
+        (WEST, (0, 0, 4)),
+        (EAST, (1, 0, 4)),
+    ] {
+        let (x, y) = (
+            light(&a, &lit, &place, face, cell),
+            light(&b, &tilted, &quarter, face, cell),
+        );
+        differ |= x[0] != light(&b, &lit, &quarter, face, cell)[0];
+        for c in 0..3 {
+            assert!((x[c] - y[c]).abs() < 0.08, "{face} {cell:?}: {x:?} {y:?}");
+        }
+    }
+    assert!(differ, "the lean changes what the untilted sun reaches");
+}
+
+#[test]
+fn a_leaned_post_stops_shading_its_neighbour() {
+    // A tall post beside a block, between it and the sun; leaned away from
+    // the sun's path, it no longer shades the block's side.
+    let mut cells = Vec::new();
+    for z in 0..12 {
+        cells.push((0, 0, z));
+    }
+    let post = Arc::new(Grid::new(&cells));
+    let place = at([0.0; 3], 0.0, 1.0);
+    let sun = Bake {
+        sun_direction: [1.0, 0.0, 0.0],
+        sun_energy: 1.0,
+        ambient_energy: 0.0,
+        ..Bake::default()
+    };
+    let shaded = |lean: Option<Lean>| {
+        let pole = Place {
+            lean,
+            ..at([6.0, 0.0, 0.0], 0.0, 1.0)
+        };
+        let world = World::new(vec![(block_grid(), place), (post.clone(), pole)], &[]).unwrap();
+        light(&world, &sun, &place, EAST, (3, 0, 2))[0]
+    };
+    assert_eq!(shaded(None), 0.0);
+    // Toward +Z (yaw 180) tilts it off the ray at z −0.5 by y 2.5.
+    let away = Lean {
+        degrees: 30.0,
+        toward: 180.0,
+    };
+    assert_eq!(shaded(Some(away)), 1.0);
+    // Toward −X keeps its foot in the way.
+    let along = Lean {
+        degrees: 30.0,
+        toward: 90.0,
+    };
+    assert_eq!(shaded(Some(along)), 0.0);
+}
+
+#[test]
+fn a_leaned_instance_is_written_tilted_and_no_lean_is_unchanged() {
+    let source = save_block("lean.vox", &[(0, 0, 0)], 1);
+    let source = source.to_str().unwrap();
+    let write = |instance: Value, name: &str| {
+        let scene = SceneBake::parse(
+            &json!({"instances": [instance], "occluders": [{"plane": 0}]}),
+            Path::new(""),
+            None,
+        )
+        .unwrap();
+        let path = temp(name);
+        bake_scene(&scene, &path).unwrap();
+        path
+    };
+    // A unit cube leaned a quarter toward −X: its top lies along −X.
+    let path = write(
+        json!({"source": source, "translation": [1, 2, 3], "lean": {"degrees": 90, "toward": 90}}),
+        "leaned.glb",
+    );
+    let root = glb_json(&path);
+    let (min, max) = (&root["accessors"][0]["min"], &root["accessors"][0]["max"]);
+    let want_min = [0.0, 2.0, 2.0];
+    let want_max = [1.0, 3.0, 3.0];
+    for axis in 0..3 {
+        assert!(
+            (min[axis].as_f64().unwrap() - want_min[axis]).abs() < 1e-5,
+            "{min}"
+        );
+        assert!(
+            (max[axis].as_f64().unwrap() - want_max[axis]).abs() < 1e-5,
+            "{max}"
+        );
+    }
+    assert_eq!(
+        root["scenes"][0]["extras"]["froxelScene"]["instances"][0]["lean"],
+        json!({"degrees": 90.0, "toward": 90.0})
+    );
+    // No lean and a null lean write the same bytes, with no lean in extras.
+    let plain = json!({"source": source, "translation": [1, 2, 3], "yaw": 20});
+    let mut null = plain.clone();
+    null["lean"] = Value::Null;
+    let (a, b) = (write(plain, "plain.glb"), write(null, "null.glb"));
+    assert_eq!(std::fs::read(&a).unwrap(), std::fs::read(&b).unwrap());
+    let root = glb_json(&a);
+    assert!(root["scenes"][0]["extras"]["froxelScene"]["instances"][0]
+        .get("lean")
+        .is_none());
 }
