@@ -1038,7 +1038,7 @@ texels. The open document is not touched.
     {"source": "stone.vox", "translation": [2.0, 0.0, -1.0], "yaw": 7, "scale": 0.1},
     {"source": "stone.vox", "translation": [3.1, 0.2, 0.5], "yaw": -12, "scale": 0.1},
     {"source": "reed.vox", "translation": [1.4, 0.0, 2.2], "yaw": 40, "scale": 0.1,
-     "lean": {"degrees": 12, "toward": 180}}
+     "lean": {"degrees": 12, "toward": 180}, "sway": 1.6}
   ],
   "occluders": [
     {"mesh": "ground.glb", "translation": [0, 0, 0], "yaw": 0, "scale": 1},
@@ -1072,6 +1072,11 @@ whose folder its relative paths start from), `path` (the `.glb`), and optional
   lattice like any yaw. Both fields are required; without `lean` the placement is
   upright and the file is byte for byte what it was. The glb's
   `froxelScene` extras repeat the `lean` of each leaned instance.
+- **`sway`** (instances only, 0 to 4, default 1) multiplies the sway amount of
+  the instance's moving slots (`TEXCOORD_1` x, see `set_palette` `motion`) in
+  the written mesh, so in one baked mesh thin reeds can sway more than a bush and
+  a flat mat not at all. Bob is left as the asset has it, and 1 writes the same
+  bytes as no `sway`. The extras repeat a `sway` other than 1.
 - **Occluders** stop light and are not written. `mesh` is a `.glb`, `.gltf` or
   `.obj` placed like an instance, two-sided. `plane` is solid below that height,
   so a face under it goes dark. `height` is a surface through grid points,

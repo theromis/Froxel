@@ -31,6 +31,7 @@ fn at(translation: [f64; 3], yaw: f64, scale: f64) -> Place {
         yaw,
         scale,
         lean: None,
+        sway: 1.0,
     }
 }
 
@@ -528,6 +529,7 @@ fn the_command_lines_take_the_bake() {
 fn leaned(translation: [f64; 3], yaw: f64, scale: f64, degrees: f64, toward: f64) -> Place {
     Place {
         lean: Some(Lean { degrees, toward }),
+        sway: 1.0,
         ..at(translation, yaw, scale)
     }
 }
@@ -705,4 +707,79 @@ fn a_leaned_instance_is_written_tilted_and_no_lean_is_unchanged() {
     assert!(root["scenes"][0]["extras"]["froxelScene"]["instances"][0]
         .get("lean")
         .is_none());
+}
+
+/// The (sway, bob) pairs of a baked glb, in vertex order.
+fn motion_of(path: &Path) -> Vec<[f32; 2]> {
+    let bytes = std::fs::read(path).unwrap();
+    let root = glb_json(path);
+    let index = root["meshes"][0]["primitives"][0]["attributes"]["TEXCOORD_1"]
+        .as_u64()
+        .expect("TEXCOORD_1") as usize;
+    let accessor = &root["accessors"][index];
+    let view = accessor["bufferView"].as_u64().unwrap() as usize;
+    let count = accessor["count"].as_u64().unwrap() as usize;
+    let offset = root["bufferViews"][view]["byteOffset"].as_u64().unwrap() as usize;
+    let json_len = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
+    let bin = 20 + json_len + 8;
+    (0..count)
+        .map(|i| {
+            let at = bin + offset + i * 8;
+            [
+                f32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()),
+                f32::from_le_bytes(bytes[at + 4..at + 8].try_into().unwrap()),
+            ]
+        })
+        .collect()
+}
+
+#[test]
+fn an_instance_sway_scales_its_sway_and_leaves_bob_and_others() {
+    // Slot 1 sways 1.5, slot 2 bobs 0.5; a cell of each.
+    let mut session = Session::new();
+    session.objects[0].cells.clear();
+    session.objects[0].cells.insert((0, 0, 0), 1);
+    session.objects[0].cells.insert((3, 0, 0), 2);
+    session.materials[1].motion = crate::state::Motion::Sway;
+    session.materials[1].motion_amount = 1.5;
+    session.materials[2].motion = crate::state::Motion::Bob;
+    session.materials[2].motion_amount = 0.5;
+    let source = temp("sway.vox");
+    session.write_vox(&source).unwrap();
+    let source = source.to_str().unwrap();
+    let write = |instances: Value, name: &str| {
+        let scene = SceneBake::parse(
+            &json!({"instances": instances, "occluders": [{"plane": 0}]}),
+            Path::new(""),
+            None,
+        )
+        .unwrap();
+        let path = temp(name);
+        bake_scene(&scene, &path).unwrap();
+        path
+    };
+    // One placement as it is and the same one at sway 0.4: the same vertices,
+    // sway scaled, bob kept.
+    let plain = write(json!([{"source": source, "translation": [1, 0, 2]}]), "swayed_a.glb");
+    let swayed = write(
+        json!([{"source": source, "translation": [1, 0, 2], "sway": 0.4}]),
+        "swayed_b.glb",
+    );
+    let (a, b) = (motion_of(&plain), motion_of(&swayed));
+    assert_eq!(a.len(), b.len());
+    assert!(a.iter().any(|m| m[0] == 1.5) && a.iter().any(|m| m[1] == 0.5));
+    for (a, b) in a.iter().zip(&b) {
+        assert!((b[0] - a[0] * 0.4).abs() < 1e-6, "{a:?} {b:?}");
+        assert_eq!(a[1], b[1], "bob stays the asset's");
+    }
+    let spans = |path: &Path| glb_json(path)["scenes"][0]["extras"]["froxelScene"]["instances"][0].clone();
+    assert!(spans(&plain).get("sway").is_none());
+    assert_eq!(spans(&swayed)["sway"], json!(0.4));
+    // Sway 1 writes the same bytes as none.
+    let plain = write(json!([{"source": source}]), "sway_none.glb");
+    let one = write(json!([{"source": source, "sway": 1}]), "sway_one.glb");
+    assert_eq!(std::fs::read(plain).unwrap(), std::fs::read(one).unwrap());
+    // Out of range is refused.
+    let bad = SceneBake::parse(&json!({"instances": [{"source": source, "sway": 5}]}), Path::new(""), None);
+    assert!(bad.is_err());
 }

@@ -6,7 +6,8 @@
 //! a cell corner, Y up, right-handed. `Lean` is the identity unless the
 //! placement has a `lean`: then it tilts by `degrees` about the horizontal
 //! axis square to the yaw `toward`, so the top moves that way, pivoting on
-//! `translation`. Cells stay on their own lattice, so a yaw or a lean of any
+//! `translation`. An instance's `sway` multiplies the sway of its moving
+//! slots in the written mesh, so kinds of plant sway apart. Cells stay on their own lattice, so a yaw or a lean of any
 //! angle costs nothing: a ray enters an instance through the inverse
 //! transform and walks that source's one grid. A BVH over the instances and
 //! the occluder triangles finds which to enter.
@@ -36,6 +37,10 @@ pub struct Place {
     pub scale: f64,
     /// A tilt after yaw and scale; `None` is upright.
     pub lean: Option<Lean>,
+    /// Multiplies the sway (`TEXCOORD_1` x) of an instance's moving slots,
+    /// so one kind of plant sways more than another in one baked mesh; 1
+    /// keeps the asset's own. Bob is left alone. Not used on occluders.
+    pub sway: f64,
 }
 
 /// A tilt of a placement, pivoting on its translation.
@@ -156,11 +161,16 @@ fn place_of(item: &Value, what: &str) -> Result<Place, String> {
     if scale <= 0.0 {
         return Err(format!("{what} scale must be above 0"));
     }
+    let sway = number("sway", 1.0)?;
+    if !(0.0..=4.0).contains(&sway) {
+        return Err(format!("{what} sway must be within 0..4"));
+    }
     Ok(Place {
         translation,
         yaw: number("yaw", 0.0)?,
         scale,
         lean: lean_of(item.get("lean"), what)?,
+        sway,
     })
 }
 
@@ -225,7 +235,7 @@ impl SceneBake {
             .and_then(Value::as_array)
             .filter(|list| !list.is_empty())
             .ok_or(
-                "the scene needs instances, a list of {source, translation, yaw, scale, lean}",
+                "the scene needs instances, a list of {source, translation, yaw, scale, lean, sway}",
             )?;
         if list.len() > MAX_INSTANCES {
             return Err(format!("a scene holds at most {MAX_INSTANCES} instances"));
@@ -235,7 +245,7 @@ impl SceneBake {
             let what = format!("instance {index}");
             only(
                 item,
-                &["source", "translation", "yaw", "scale", "lean"],
+                &["source", "translation", "yaw", "scale", "lean", "sway"],
                 &what,
             )?;
             let source = item
@@ -803,6 +813,9 @@ pub fn bake_scene(scene: &SceneBake, output: &Path) -> Result<Value, String> {
         if let Some(lean) = &place.lean {
             span["lean"] = lean.json();
         }
+        if place.sway != 1.0 {
+            span["sway"] = json!(place.sway);
+        }
         spans.push(span);
     }
 
@@ -887,7 +900,14 @@ fn append_instance(
             .extend(place.rotate(local).map(|value| value as f32));
     }
     built.extra.extend_from_slice(&own.extra);
-    built.motion.extend_from_slice(&own.motion);
+    if place.sway == 1.0 {
+        built.motion.extend_from_slice(&own.motion);
+    } else {
+        let sway = place.sway as f32;
+        for pair in own.motion.chunks_exact(2) {
+            built.motion.extend_from_slice(&[pair[0] * sway, pair[1]]);
+        }
+    }
     built.indices.extend(own.indices.iter().map(|i| i + first));
 }
 
