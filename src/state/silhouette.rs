@@ -511,6 +511,35 @@ impl Default for DecalPanel {
     }
 }
 
+/// The Orient to views panel: the Carve from views panel's views, and the
+/// options of MCP `orient_to_views`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct OrientPanel {
+    /// Only the 4 turns about up.
+    pub upright: bool,
+    /// Degrees; 0 is no fine steps.
+    pub yaw_step: f32,
+    pub yaw_range: f32,
+    /// Fine steps about X and Y too.
+    pub tilt: bool,
+    /// 0 keep the scale, 1 cells on the longest axis, 2 cells tall.
+    pub size_mode: usize,
+    pub size: i32,
+}
+
+impl Default for OrientPanel {
+    fn default() -> Self {
+        Self {
+            upright: false,
+            yaw_step: 5.0,
+            yaw_range: 45.0,
+            tilt: false,
+            size_mode: 0,
+            size: 64,
+        }
+    }
+}
+
 impl DecalPanel {
     /// The MCP `decal` arguments. `active` is the slot used when the colour
     /// does not come from the image.
@@ -574,6 +603,41 @@ pub struct MeasurePanel {
     pub views: Vec<(String, [u64; 4])>,
 }
 
+impl OrientPanel {
+    /// The search options of MCP `orient_to_views` with the views of
+    /// `carve`: what `import_mesh` `orient` takes too.
+    pub(crate) fn search_args(&self, carve: &CarvePanel) -> Result<Value, String> {
+        let carved = carve.args(1)?;
+        if carved["views"]
+            .as_array()
+            .is_none_or(|views| views.is_empty())
+        {
+            return Err("Orient to views: turn on a view in Carve from views.".into());
+        }
+        let mut args = json!({
+            "views": carved["views"],
+            "turns": if self.upright { "upright" } else { "all" },
+            "yawStep": self.yaw_step.clamp(0.0, 90.0),
+            "yawRange": self.yaw_range.clamp(0.0, 180.0),
+        });
+        if self.tilt {
+            args["fineAxes"] = json!("xyz");
+        }
+        Ok(args)
+    }
+
+    /// The MCP `orient_to_views` arguments.
+    pub(crate) fn args(&self, carve: &CarvePanel) -> Result<Value, String> {
+        let mut args = self.search_args(carve)?;
+        match self.size_mode {
+            1 => args["size"] = json!(self.size.clamp(1, 256)),
+            2 => args["height"] = json!(self.size.clamp(1, 256)),
+            _ => {}
+        }
+        Ok(args)
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SilhouettePanels {
     pub measure: MeasurePanel,
@@ -581,6 +645,7 @@ pub struct SilhouettePanels {
     pub paint: PaintPanel,
     pub decal: DecalPanel,
     pub fit: FitPanel,
+    pub orient: OrientPanel,
     pub compare: ComparePanel,
     pub overlay: Option<SilhouetteOverlay>,
 }
@@ -846,6 +911,23 @@ impl Session {
                     reply["recolored"]
                 )
             }
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// The Orient to views panel's button: MCP `orient_to_views` on the
+    /// active object, with the views of the Carve from views panel.
+    pub fn orient_from_panel(&mut self) {
+        let args = match self.silhouette.orient.args(&self.silhouette.carve) {
+            Ok(args) => args,
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
+        self.status = match crate::remote::apply(self, "voxel.orient_to_views", &args) {
+            Ok(reply) => orient_status(&reply, &reply["rotation"]),
             Err(err) => err,
         };
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
@@ -1135,4 +1217,26 @@ impl Session {
             self.silhouette.compare.mask = path.display().to_string();
         }
     }
+}
+
+/// The status line of an orientation: the score before and after, the
+/// turn, and a warning when the runner-up is close.
+pub(crate) fn orient_status(reply: &Value, rotation: &Value) -> String {
+    let axes: Vec<&str> = rotation["axes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    let mut text = format!(
+        "Oriented: IoU {} → {}; x y z went to {} (yaw {}).",
+        reply["before"]["score"],
+        reply["after"]["score"],
+        axes.join(" "),
+        rotation["yaw"]
+    );
+    if reply["margin"].as_f64().is_some_and(|m| m < 0.01) {
+        text.push_str(" The runner-up turn scores within 0.01: check it.");
+    }
+    text
 }

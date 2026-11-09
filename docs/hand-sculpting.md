@@ -14,7 +14,10 @@ It is how agents should model living things through MCP.
 ## Steps
 
 1. **Block out.** Import a sculpted or generated mesh with `import_mesh`
-   when there is one (see "Start from a mesh"), and clean it with
+   when there is one (see "Start from a mesh"), turned to the views sheet
+   with its `orient` option (or `orient_to_views` afterwards: the
+   axis-aligned turn and fine yaw whose silhouettes match the views best,
+   and a `size`; check `margin`), and clean it with
    `components`: `remove_small` erases floaters, and `delete` or `split`
    with a `seed` on a rider and an `anchor` on the body cuts the rider off
    at its thinnest neck. Otherwise build the large
@@ -187,6 +190,9 @@ bring that mesh in with `import_mesh` and finish it with the voxel tools:
 
 ```
 import_mesh          path="fallen_tree.glb" voxelSize=0.08 anchor="bottom" newObject=true name="fallen_tree"
+                     orient={views: [{view: "front", path: "sheet.png", crop: [40, 60, 520, 300]},
+                                     {view: "side", path: "sheet.png", crop: [620, 60, 180, 300]}],
+                             yawStep: 5}
 components           op="remove_small" minCells=40                  # floaters and foam bits
 preview              path="tree_import.png"
 model_view           path="tree_side.png" view="left"                # compare with the concept

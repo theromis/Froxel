@@ -252,7 +252,7 @@ components("split", #{seed: [13, 5, 5], name: "nub", connectivity: 6});
 }
 
 #[test]
-fn the_cleaned_blockout_example_cuts_the_snail_off_the_same_on_a_rerun() {
+fn the_cleaned_blockout_example_stands_the_boulder_up_and_cuts_the_snail_off() {
     let mut session = Session::new();
     session.replace_empty();
     session
@@ -270,6 +270,16 @@ fn the_cleaned_blockout_example_cuts_the_snail_off_the_same_on_a_rerun() {
     let shell = snail.values().filter(|slot| **slot == 4).count();
     assert!(shell * 10 >= snail.len() * 9, "{shell} of {}", snail.len());
     assert!(boulder.values().filter(|slot| **slot == 4).count() <= 24);
+    // orient_to_views stood the boulder up: its moss is on top.
+    let mean_z = |slot: u8| {
+        let zs: Vec<f64> = boulder
+            .iter()
+            .filter(|(_, s)| **s == slot)
+            .map(|(c, _)| f64::from(c.2))
+            .collect();
+        zs.iter().sum::<f64>() / zs.len() as f64
+    };
+    assert!(mean_z(3) > mean_z(2) + 3.0);
     let first: Vec<usize> = session.objects.iter().map(|o| o.cells.len()).collect();
     session.regenerate_script(0).unwrap();
     let again: Vec<usize> = session.objects.iter().map(|o| o.cells.len()).collect();

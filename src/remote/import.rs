@@ -119,8 +119,19 @@ pub(crate) fn import_plan(
     cells: &HashMap<Cell, u8>,
     palette: &[[u8; 4]; 256],
     used: &[bool; 256],
+    files: bool,
 ) -> Result<ImportPlan, String> {
-    let options = voxelize_options(params, up)?;
+    let mut options = voxelize_options(params, up)?;
+    let oriented = match params.get("orient") {
+        None | Some(Value::Null) => None,
+        Some(orient) if orient.is_object() => Some(
+            orient_mesh(mesh, &mut options, orient, files)
+                .map_err(|err| format!("orient: {err}"))?,
+        ),
+        Some(_) => {
+            return Err("orient must be {views, turns?, yawStep?, yawRange?, resolution?}".into())
+        }
+    };
     let mode = add_mode(params)?;
     let slots = slot_list(params, "slots")?;
     let one = match params.get("palette") {
@@ -223,6 +234,9 @@ pub(crate) fn import_plan(
     if !mesh.warnings.is_empty() {
         reply.insert("warnings".into(), json!(mesh.warnings));
     }
+    if let Some(oriented) = oriented {
+        reply.insert("orientation".into(), Value::Object(oriented));
+    }
     // Only slots a cell lands on are written to the palette.
     let new_slots = new_slots
         .into_iter()
@@ -233,6 +247,35 @@ pub(crate) fn import_plan(
         new_slots,
         reply,
     })
+}
+
+/// The turn of `orient` (`orient_to_views`' search) on a coarse shell of
+/// the mesh, folded into `options.rotation`, so the mesh is voxelized once
+/// already turned. Returns the reply's `orientation`.
+fn orient_mesh(
+    mesh: &Mesh,
+    options: &mut Voxelize,
+    orient: &Value,
+    files: bool,
+) -> Result<Map<String, Value>, String> {
+    let spec = super::silhouette::orient_spec(orient, files)?;
+    let mut coarse = options.clone();
+    coarse.fit = Fit::Cells(f64::from(spec.resolution.clamp(16, 128)));
+    coarse.fill = Fill::Shell;
+    coarse.colors = Colors::None;
+    let voxels = crate::import::voxelize(mesh, &coarse)?;
+    let cells: HashMap<Cell, u8> = voxels.cells.iter().map(|(c, _)| (*c, 1)).collect();
+    let found = crate::tools::orient(&cells, &spec)?;
+    let before = crate::tools::from_euler_xyz(options.rotation);
+    let total = crate::tools::orient::mul(&found.best.turn, &before);
+    options.rotation = crate::tools::euler_xyz(&total);
+    let mut reply = super::silhouette::orient_reply(&spec, &found);
+    reply.insert("rotation".into(), {
+        let mut rotation = reply["rotation"].clone();
+        rotation["applied"] = json!(options.rotation);
+        rotation
+    });
+    Ok(reply)
 }
 
 fn round(value: f64, places: i32) -> f64 {
@@ -279,6 +322,7 @@ pub(super) fn apply_import(session: &mut Session, params: &Value) -> Result<Valu
             &session.active().cells,
             &session.palette,
             &used,
+            true,
         )?;
         let changes: Vec<PaletteChange> = plan
             .new_slots

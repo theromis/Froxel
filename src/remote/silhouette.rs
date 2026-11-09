@@ -1539,3 +1539,193 @@ fn fit_spec(params: &Value, files: bool) -> Result<crate::tools::FitSpec, String
         },
     })
 }
+
+/// The spec of MCP `orient_to_views` (and `import_mesh` `orient`): `views`
+/// as `fit_to_views` takes them (plus `weight`), `turns`, `yawStep`,
+/// `yawRange`, and `resolution`.
+pub(crate) fn orient_spec(params: &Value, files: bool) -> Result<crate::tools::OrientSpec, String> {
+    use crate::tools::{OrientSpec, OrientView, Turns};
+    let list = params
+        .get("views")
+        .and_then(Value::as_array)
+        .filter(|list| (1..=6).contains(&list.len()))
+        .ok_or("views must be a list of 1 to 6 {view, path | rows, ...}")?;
+    let mut images = HashMap::new();
+    let mut views = Vec::with_capacity(list.len());
+    for (i, item) in list.iter().enumerate() {
+        if !item.is_object() {
+            return Err(format!("view {i} must be an object"));
+        }
+        let item = &sheet_keys(params, item);
+        let side =
+            Side::parse(&opt_str(item, "view")?.ok_or_else(|| format!("view {i} needs view"))?)?;
+        let mask = view_mask(item, files, &mut images).map_err(|err| format!("view {i}: {err}"))?;
+        let weight = opt_f64(item, "weight")?.unwrap_or(1.0);
+        if !(0.0..=100.0).contains(&weight) {
+            return Err(format!("view {i}: weight must be 0..=100"));
+        }
+        views.push(OrientView {
+            side,
+            mask,
+            weight: weight as f32,
+        });
+    }
+    let turns = match opt_str(params, "turns")?.as_deref() {
+        None | Some("all") => Turns::All,
+        Some("upright") => Turns::Upright,
+        Some(other) => return Err(format!("turns must be all or upright, not `{other}`")),
+    };
+    let resolution = match opt_f64(params, "resolution")? {
+        None => crate::tools::DEFAULT_ORIENT_RESOLUTION,
+        Some(n) if n.fract() == 0.0 && (8.0..=512.0).contains(&n) => n as u32,
+        Some(_) => return Err("resolution must be a whole number 8..=512".into()),
+    };
+    let fine_axes = match opt_str(params, "fineAxes")? {
+        None => [false, false, true],
+        Some(text) => {
+            let mut axes = [false; 3];
+            for c in text.chars() {
+                match c {
+                    'x' => axes[0] = true,
+                    'y' => axes[1] = true,
+                    'z' => axes[2] = true,
+                    _ => return Err(format!("fineAxes takes x, y, and z, not `{text}`")),
+                }
+            }
+            axes
+        }
+    };
+    Ok(OrientSpec {
+        views,
+        turns,
+        fine_axes,
+        yaw_step: opt_f64(params, "yawStep")?.unwrap_or(0.0),
+        yaw_range: opt_f64(params, "yawRange")?.unwrap_or(45.0),
+        resolution,
+    })
+}
+
+/// The reply's account of an orientation: the score and per-view IoU as
+/// the object was and as turned, the turn, and the best axis-aligned
+/// candidates.
+pub(crate) fn orient_reply(
+    spec: &crate::tools::OrientSpec,
+    found: &crate::tools::Oriented,
+) -> Map<String, Value> {
+    let scored = |c: &crate::tools::Candidate| {
+        json!({
+            "score": round(c.score, 4),
+            "views": spec.views.iter().zip(&c.ious).map(|(view, iou)| {
+                json!({"view": view.side.name(), "iou": round(*iou, 4)})
+            }).collect::<Vec<_>>(),
+        })
+    };
+    let turn = |c: &crate::tools::Candidate| {
+        json!({
+            "euler": crate::tools::euler_xyz(&c.turn),
+            "axes": crate::tools::axis_names(&c.turn),
+            "yaw": c.fine[2],
+            "fine": c.fine,
+            "score": round(c.score, 4),
+        })
+    };
+    let mut reply = Map::new();
+    reply.insert("before".into(), scored(&found.before));
+    reply.insert("after".into(), scored(&found.best));
+    let mut rotation = turn(&found.best);
+    rotation["matrix"] = json!(found
+        .best
+        .turn
+        .map(|row| row.map(|v| (v * 1e6).round() / 1e6)));
+    reply.insert("rotation".into(), rotation);
+    reply.insert(
+        "candidates".into(),
+        json!(found.ranked.iter().take(6).map(turn).collect::<Vec<_>>()),
+    );
+    if let Some(second) = found.ranked.get(1) {
+        reply.insert(
+            "margin".into(),
+            json!(round(found.ranked[0].score - second.score, 4)),
+        );
+    }
+    reply
+}
+
+/// The writes of `orient_to_views` on `cells` and its reply: the best turn,
+/// and with `apply` (default) the object resampled to it, scaled to `size`
+/// cells on its longest axis, `height` cells tall, or by `scale`.
+pub(crate) fn orient_writes(
+    cells: &HashMap<Cell, u8>,
+    params: &Value,
+    files: bool,
+) -> Result<(Writes, Map<String, Value>), String> {
+    let spec = orient_spec(params, files)?;
+    let found = crate::tools::orient(cells, &spec)?;
+    let mut reply = orient_reply(&spec, &found);
+    let turn = found.best.turn;
+    let points = crate::tools::surface_points(cells);
+    let mut lo = [f64::MAX; 3];
+    let mut hi = [f64::MIN; 3];
+    for p in &points {
+        let q = crate::tools::turned(&turn, *p);
+        for a in 0..3 {
+            lo[a] = lo[a].min(q[a]);
+            hi[a] = hi[a].max(q[a]);
+        }
+    }
+    let extent: [f64; 3] = std::array::from_fn(|a| hi[a] - lo[a] + 1.0);
+    let scale = match (
+        opt_f64(params, "size")?,
+        opt_f64(params, "height")?,
+        opt_f64(params, "scale")?,
+    ) {
+        (None, None, None) => 1.0,
+        (Some(size), None, None) => {
+            if !(1.0..=256.0).contains(&size) {
+                return Err("size must be 1..=256 cells".into());
+            }
+            size / extent.iter().copied().fold(0.0, f64::max)
+        }
+        (None, Some(height), None) => {
+            if !(1.0..=256.0).contains(&height) {
+                return Err("height must be 1..=256 cells".into());
+            }
+            height / extent[2]
+        }
+        (None, None, Some(scale)) => scale,
+        _ => return Err("pass one of size, height, and scale".into()),
+    };
+    if !(scale > 0.0 && scale <= 16.0) {
+        return Err("the scale must be above 0 and at most 16".into());
+    }
+    reply.insert("scale".into(), json!(round(scale as f32, 4)));
+    if !opt_bool(params, "apply")?.unwrap_or(true) {
+        reply.insert("applied".into(), json!(false));
+        return Ok((Vec::new(), reply));
+    }
+    let turned = crate::tools::resample(cells, &turn, scale)?;
+    let mut writes: Writes = cells
+        .keys()
+        .filter(|c| !turned.contains_key(c))
+        .map(|c| (c.0, c.1, c.2, 0))
+        .collect();
+    writes.extend(
+        turned
+            .iter()
+            .map(|(c, slot)| (c.0, c.1, c.2, i32::from(*slot))),
+    );
+    reply.insert("applied".into(), json!(true));
+    reply.insert("cells".into(), json!(turned.len()));
+    reply.insert("bounds".into(), super::bounds_json(turned.keys().copied()));
+    Ok((writes, reply))
+}
+
+/// MCP `orient_to_views`: turn (and scale) the active object to best match
+/// a views sheet, one undo step.
+pub(super) fn orient_to_views(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let (writes, mut reply) = orient_writes(&session.active().cells, params, true)?;
+    let changed = session.write_cells(&writes)?;
+    reply.insert("changed".into(), json!(changed));
+    reply.insert("voxels".into(), json!(session.voxel_count()));
+    Ok(Value::Object(reply))
+}

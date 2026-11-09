@@ -586,6 +586,56 @@ pub(super) fn fit(ui: &mut Ui, session: &mut Session) {
     });
 }
 
+/// MCP `orient_to_views`: the active object turned to match the views of
+/// Carve from views.
+pub(super) fn orient(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.editor_mode == EditorMode::Model && !session.active().cells.is_empty();
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Orient to views");
+        ui.label(
+            RichText::new("Uses the views, crops, and background of Carve from views.")
+                .small()
+                .color(DIM),
+        );
+        let panel = &mut session.silhouette.orient;
+        egui::Grid::new("orient-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Turns", "All tries the 24 axis-aligned turns; Upright only the 4 about up, for an object already standing on its base.");
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut panel.upright, false, "All 24");
+                    ui.selectable_value(&mut panel.upright, true, "Upright");
+                });
+                ui.end_row();
+                label(ui, "Fine steps", "Degrees between fine steps about up around the best turn, and how far they go each way. 0 turns them off. Tilt also steps about X and Y.");
+                ui.horizontal(|ui| {
+                    ui.add(egui::DragValue::new(&mut panel.yaw_step).range(0.0..=90.0).speed(0.5).suffix("°"));
+                    ui.add(egui::DragValue::new(&mut panel.yaw_range).range(0.0..=180.0).speed(1.0).prefix("±").suffix("°"));
+                    ui.checkbox(&mut panel.tilt, "Tilt");
+                });
+                ui.end_row();
+                label(ui, "Size", "Keep the scale, or scale to these cells on the longest axis or up.");
+                ui.horizontal(|ui| {
+                    for (index, name) in ["Keep", "Longest", "Height"].into_iter().enumerate() {
+                        ui.selectable_value(&mut panel.size_mode, index, name);
+                    }
+                    if panel.size_mode > 0 {
+                        ui.add(egui::DragValue::new(&mut panel.size).range(1..=256));
+                    }
+                });
+                ui.end_row();
+            });
+        if ui
+            .button("Orient")
+            .on_hover_text("MCP orient_to_views: turn (and scale) the active object to the turn whose silhouettes best match the views. One undo step.")
+            .clicked()
+        {
+            session.orient_from_panel();
+        }
+    });
+}
+
 /// MCP `compare_silhouette`: the model against a concept view, shown over
 /// the viewport.
 pub(super) fn compare(ui: &mut Ui, session: &mut Session) {

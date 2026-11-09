@@ -11,7 +11,9 @@
 //! `project_paint(view, rows, opts)`, and `project_paint(rows, opts)` (with
 //! `yaw` and `pitch`) run `remote::paint_writes`; `fit_to_views(views)` and
 //! `fit_to_views(views, opts)` run `remote::fit_writes` with no other
-//! objects in view, and `reference` names another object the run builds. Colours quantise to the
+//! objects in view, and `reference` names another object the run builds.
+//! `orient_to_views(views)` and `orient_to_views(views, opts)` run
+//! `remote::orient_writes`, turning the object being written. Colours quantise to the
 //! document's palette as it was when the run started, with the run's
 //! `palette` calls on top.
 
@@ -25,6 +27,17 @@ use super::shapes::{json, options, Args, Fallible};
 use super::{runtime, Scratch};
 use crate::remote;
 
+const ORIENT: &[&str] = &[
+    "turns",
+    "yawStep",
+    "yawRange",
+    "fineAxes",
+    "resolution",
+    "size",
+    "height",
+    "scale",
+    "apply",
+];
 const CARVE: &[&str] = &[
     "size",
     "origin",
@@ -168,6 +181,33 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
             });
         } else {
             engine.register_fn("fit_to_views", move |views: Array| run(views, &Map::new()));
+        }
+    }
+    for with_opts in [false, true] {
+        let state = scratch.clone();
+        let run = move |views: Array, opts: &Map| -> Fallible<Map> {
+            let mut args = options(opts, ORIENT, "orient_to_views")?;
+            args.insert("views".into(), json(&Dynamic::from_array(views))?);
+            let mut scratch = state.borrow_mut();
+            scratch.keep_going().map_err(runtime)?;
+            let (writes, reply) =
+                remote::orient_writes(scratch.cells(), &Value::Object(args), false)
+                    .map_err(runtime)?;
+            let changed = scratch.apply(&writes).map_err(runtime)?;
+            let mut out = super::document::dynamic(&Value::Object(reply))
+                .try_cast::<Map>()
+                .unwrap_or_default();
+            out.insert("changed".into(), Dynamic::from_int(changed));
+            Ok(out)
+        };
+        if with_opts {
+            engine.register_fn("orient_to_views", move |views: Array, opts: Map| {
+                run(views, &opts)
+            });
+        } else {
+            engine.register_fn("orient_to_views", move |views: Array| {
+                run(views, &Map::new())
+            });
         }
     }
     for with_opts in [false, true] {

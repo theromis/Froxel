@@ -421,6 +421,7 @@ slot or a list. Options:
 | `period` | `2` | Band or ring size in cells. |
 | `seed` | `0` | Seed of the random pattern. |
 | `mode` | `"replace"` | `"empty"` adds only into empty cells; `"paint"` recolours solid ones. |
+| `orient` | none | `#{views, turns, yawStep, ...}`: turn the mesh to the views first, as `orient_to_views` (views as rows). |
 
 Slot `0` erases the solid cells the sweep covers, for a slanted cut along a
 closed or curved outline (`"empty"` is refused with it), and adds `removed` to
@@ -708,6 +709,24 @@ carve_from_views([
     #{view: "left", rows: side, legend: legend}
 ], #{keepLargest: true, palette: 4});
 ```
+
+### Orient to views
+
+```rhai
+let report = orient_to_views(views);
+let report = orient_to_views(views, #{turns: "upright", yawStep: 5, yawRange: 30, size: 48});
+```
+
+MCP `orient_to_views` on the object being written, with views as
+`fit_to_views` takes them in a script (rows and a legend, `flip`,
+`weight`): the axis-aligned turn and fine steps whose silhouettes best
+match the views, then the object resampled to it. The options are the MCP
+tool's (`turns`, `yawStep`, `yawRange`, `fineAxes`, `resolution`, `size`,
+`height`, `scale`, `apply`), and it returns the MCP reply as a map
+(`before`, `after`, `rotation`, `candidates`, `margin`, `scale`, `bounds`,
+`changed`). `voxelize` takes the same search as its `orient` option.
+`examples/cleaned_blockout.rhai` stands up a boulder that came in on its
+side.
 
 ### Voxelize
 

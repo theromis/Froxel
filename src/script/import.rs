@@ -35,6 +35,7 @@ const VOXELIZE: &[&str] = &[
     "maxNewSlots",
     "tolerance",
     "mode",
+    "orient",
 ];
 
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
@@ -173,6 +174,7 @@ impl Scratch {
             self.cells(),
             &palette,
             &used,
+            false,
         )?;
         for &(slot, rgb) in &plan.new_slots {
             self.palette.push((slot, rgb));

@@ -351,6 +351,19 @@ pub(crate) fn voxelize(mesh: &Mesh, options: &Voxelize) -> Result<Voxels, String
     let [rx, ry, rz] = options.rotation.map(f64::to_radians);
     let rotate =
         DMat3::from_rotation_z(rz) * DMat3::from_rotation_y(ry) * DMat3::from_rotation_x(rx);
+    // Quarter turns are exact, so a face on a cell boundary stays on it.
+    let snap = |v: f64| {
+        if (v - v.round()).abs() < 1e-9 {
+            v.round()
+        } else {
+            v
+        }
+    };
+    let rotate = DMat3::from_cols(
+        rotate.x_axis.map(snap),
+        rotate.y_axis.map(snap),
+        rotate.z_axis.map(snap),
+    );
     let placed: Vec<DVec3> = mesh
         .positions
         .iter()

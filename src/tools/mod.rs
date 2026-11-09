@@ -23,6 +23,7 @@ mod joints;
 mod loft;
 mod mask_edit;
 mod mirror;
+pub(crate) mod orient;
 mod planks;
 mod project;
 mod relief;
@@ -57,6 +58,10 @@ pub use mask_edit::{
     MAX_EXCLUDE as MAX_EXCLUDE_COLORS,
 };
 pub use mirror::{mirrored, Mirror};
+pub use orient::{
+    axis_names, euler_xyz, from_euler_xyz, orient, resample, surface_points, turned, Candidate,
+    OrientSpec, OrientView, Oriented, Turns, DEFAULT_ORIENT_RESOLUTION,
+};
 pub use planks::{planks, PlankAxis, PlankSpec};
 pub use project::{project_paint, PaintSpec, Toward, MAX_PAINT_DEPTH};
 pub use relief::{column_relief, relief_facing, ReliefSpec};

@@ -29,6 +29,8 @@ pub struct ImportPanel {
     /// 0 replace, 1 empty, 2 paint.
     pub mode: usize,
     pub new_object: bool,
+    /// Turn the mesh to the Carve from views views first (MCP `orient`).
+    pub orient: bool,
 }
 
 impl Default for ImportPanel {
@@ -50,6 +52,7 @@ impl Default for ImportPanel {
             tolerance: crate::remote::DEFAULT_TOLERANCE as f32,
             mode: 0,
             new_object: true,
+            orient: false,
         }
     }
 }
@@ -100,7 +103,13 @@ impl Session {
 
     /// The Import mesh panel's button: MCP `import_mesh`.
     pub fn import_from_panel(&mut self) {
-        let args = match self.import.args() {
+        let args = self.import.args().and_then(|mut args| {
+            if self.import.orient {
+                args["orient"] = self.silhouette.orient.search_args(&self.silhouette.carve)?;
+            }
+            Ok(args)
+        });
+        let args = match args {
             Ok(args) => args,
             Err(err) => {
                 self.status = err;
@@ -124,6 +133,13 @@ impl Session {
                 let open = reply["openEdges"].as_u64().unwrap_or(0);
                 if open > 0 {
                     status.push_str(&format!(" The mesh has {open} open edges."));
+                }
+                if let Some(orientation) = reply.get("orientation") {
+                    status.push(' ');
+                    status.push_str(&super::silhouette::orient_status(
+                        orientation,
+                        &orientation["rotation"],
+                    ));
                 }
                 if let Some(warnings) = reply["warnings"].as_array() {
                     for warning in warnings.iter().filter_map(Value::as_str) {

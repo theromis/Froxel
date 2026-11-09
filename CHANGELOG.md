@@ -15,6 +15,15 @@
 
 ### Added
 
+- Orient to views: MCP `orient_to_views`, Rhai `orient_to_views(views,
+  opts)`, the Orient to views section, and `froxel orient` turn an object to
+  the axis-aligned turn (24, or 4 upright) and fine yaw (or tilt) steps whose
+  silhouettes best match a views sheet by IoU, report each view's IoU before
+  and after and the runner-up's margin, and scale it to a size, in one undo
+  step. `import_mesh` (and Rhai `voxelize`, the Import mesh section, and
+  `froxel import --orient`) take the same search as `orient` and voxelize
+  the mesh already turned. Quarter-turn `rotation`s are now exact, so faces
+  on cell boundaries stay there.
 - Components: MCP `components`, Rhai `components(op, opts)`, and the
   Components section list an object's connected parts (6, 18, or 26
   neighbours), keep the largest, remove floaters under `minCells`, and

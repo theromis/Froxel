@@ -113,6 +113,9 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                 label(ui, "Target", "Import into a new object, or into the active one.");
                 ui.checkbox(&mut panel.new_object, "New object");
                 ui.end_row();
+                label(ui, "Orient", "MCP import_mesh orient: turn the mesh to the axis-aligned turn and fine yaw whose silhouettes best match the views of Carve from views (with the Orient to views options) before voxelizing it.");
+                ui.checkbox(&mut panel.orient, "Orient to views");
+                ui.end_row();
             });
         if browse {
             session.import_mesh_dialog();

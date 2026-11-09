@@ -217,6 +217,16 @@ pub fn fit(concept: &Mask, model: &[bool], w: u32, h: u32, align: Align) -> (f32
     }
 }
 
+/// The IoU of `concept` placed over the model mask `model` (`w * h`, row
+/// major) with the scale and offset that fit it best (`Align::Fit`).
+pub fn fit_iou(concept: &Mask, model: &[bool], w: u32, h: u32) -> f32 {
+    if model.is_empty() || concept.count() == 0 {
+        return 0.0;
+    }
+    let (scale, offset) = fit(concept, model, w, h, Align::Fit);
+    iou(counts(&placed(concept, w, h, scale, offset), model))
+}
+
 /// Draw the model with `preview`'s camera and compare its silhouette with
 /// `concept`. The overlay is drawn on `background`.
 pub fn compare(

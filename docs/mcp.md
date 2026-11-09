@@ -206,7 +206,8 @@ tracer. A file with no scene graph still loads its first model.
 | `deform` | `op` | `bend`, `taper`, or `twist` the active object (or the cells of a box `x0`..`z1`) along `axis`, or `displace` its surface with 3D noise. Optional `axis`, `origin`, `length`, `center`, `angle`, `direction`, `start`, `end`, `amplitude`, `scale`, `octaves`, `seed`, `bias`. Slots are kept. Replies with `cells`, `result`, `added`, `removed`. One undo step |
 | `brush` | `op`, `points` | Sculpt brush dabs along **local** points: `inflate`, `deflate` (`dig`), `smooth`, `flatten`, or `grab` (`drag`). Optional `radius`, `strength`, `falloff` (`smooth`, `linear`, `constant`), `only`, `palette`, `vector` (grab), `spacing`. Replies with `dabs`, `added`, `removed`. One undo step |
 | `carve_from_views` | `views` | Fill the visual hull of 2 to 6 orthographic views (front, side, top) of a concept's turnaround sheet into the active object: each view's silhouette is extruded along its depth axis and the cells every view covers are kept. A view's `depth` (or the top-level `depthPath`), a grey depth map with white near, carves away the cells in front of its surface, so a round head is round; one view with depth is enough. See [Depth maps](#depth-maps). A view is a PNG `path` with `crop`, `background` (`auto`, `alpha`, or a key colour with `tolerance`), and `cellsPerPixel` or `size`, or `rows` with a `legend`. Optional `path`, `background`, `tolerance`, `alphaThreshold` (for every view without its own), `depthPath`, `depthTolerance`, `size`, `origin`, `cellsPerPixel`, `palette` or `slots`, `coverage`, `shell`, `smooth`, `mode`. Replies with `cells`, `bounds`, `size`, and each view's `grid`, `covered`, and `depth` (its calibration and the cells it carved). At most 4000000 cells in the box, one undo step. See [Silhouettes](#silhouettes) |
-| `import_mesh` | `path` | Voxelize a `.glb`, `.gltf`, or `.obj` (with its `.mtl` and textures) into the active object, or a new one with `newObject` (and `name`). Optional `size`, `scale`, or `voxelSize`; `upAxis`, `rotation`, `position`, `anchor` (`min`, `center`, `bottom`), `fill` (`solid`, `parity`, `shell`), `colors` (`auto`, `vertex`), `palette` or `slots`, `maxNewSlots`, `tolerance`, `mode`. Replies with `cells`, `shell`, `interior`, `openEdges`, `written`, `changed`, `slots`, `newSlots`, `bounds`, `scale`, `triangles`, `primitives`, `textures`, `warnings`. At most 256 cells per axis and 2000000 cells, one undo step |
+| `orient_to_views` | `views` | Turn the active object to the axis-aligned turn (of 24, or 4 with `turns` `upright`), plus fine steps (`yawStep`, `yawRange`, `fineAxes`), whose silhouettes best match a views sheet by IoU, and scale it (`size`, `height`, or `scale`). Views as `fit_to_views` takes them, with `weight`. Optional `resolution`, `apply` (false only reports). Replies with `before` and `after` (`score`, per-view `iou`), `rotation` (`euler`, `axes`, `yaw`, `fine`, `matrix`), `candidates`, `margin`, `scale`, `cells`, `bounds`. One undo step. See [Turning a mesh to the views](#turning-a-mesh-to-the-views) |
+| `import_mesh` | `path` | Voxelize a `.glb`, `.gltf`, or `.obj` (with its `.mtl` and textures) into the active object, or a new one with `newObject` (and `name`). Optional `size`, `scale`, or `voxelSize`; `upAxis`, `rotation`, `position`, `anchor` (`min`, `center`, `bottom`), `fill` (`solid`, `parity`, `shell`), `colors` (`auto`, `vertex`), `palette` or `slots`, `maxNewSlots`, `tolerance`, `mode`, `orient` (turn the mesh to a views sheet first, see [Turning a mesh to the views](#turning-a-mesh-to-the-views)). Replies with `cells`, `shell`, `interior`, `openEdges`, `written`, `changed`, `slots`, `newSlots`, `bounds`, `scale`, `triangles`, `primitives`, `textures`, `warnings`. At most 256 cells per axis and 2000000 cells, one undo step |
 | `components` | | The connected parts of the active object, for a generated mesh that came with extras. `op` `list` (default), `keep_largest` (`keep`, default 1), `remove_small` (`minCells`), or `delete`, `move` (`offset`), `split` (`name` or `into`, `copy`, `makeActive`, `index`) of the part holding `seed`; with `anchor`, that part is first cut at its thinnest neck from the anchor's. Optional `connectivity` (6, 18, 26, the default), `reach` (default 8), `radius`. Replies with `count`, `largest`, `components`, `selected`, `seed`, `anchor`, `cut`, `changed`, `voxels`. One undo step. See [Cleaning up a generated mesh](#cleaning-up-a-generated-mesh) |
 | `surface_stroke` | `points`, `palette` | Paint a stroke through 2..=1024 **local** points that snaps to the active object's nearest surface cells: seams between shell plates, markings on a curved body. Optional `curve` (`polyline`, `smooth`), `width` (cells across, default 1), `depth` (cells into the solid, default 1), `reach` (default 8), `only`, `mirror`. `palette` `0` cuts a groove. Replies with `cells`, `changed`, `samples`, `missed`, `snap`, `length`, `voxels`. One undo step |
 | `recolor` | `from` and `to`, or `map` | Replace palette slot `from` with `to` (or every pair of `map`, `{"3": 5}` or `[[3, 5]]`) in the active object's solid cells, inside an inclusive box `x0`..`z1` or everywhere (with `mirror`, the box and its mirror). No cell is added; `to` `0` erases. Replies with `matched`, `changed`, `voxels`. One undo step |
@@ -596,6 +597,55 @@ the ones given new colours. Object creation, palette slots, and cells are
 one undo step. Scripts read no files, so `import_mesh` has no script form;
 Rhai `voxelize` runs the same voxelizer and palette mapping on a mesh the
 script builds. `froxel import` is the same import from the command line.
+
+#### Turning a mesh to the views
+
+An image-to-3D mesh arrives turned any way: lying on its side, facing +Y,
+Y-up read as Z-up. `orient_to_views` finds the turn from the views sheet
+instead of guessing it by eye. It takes the sheet's crops as `fit_to_views`
+does (a top-level `path`, `background`, and `tolerance` for all of them;
+`flip`; and a `weight` per view, default 1). Each candidate turn projects
+the object's surface cells onto each view's image axes as `model_view`
+draws them (the model facing −Y with +Z up), places the view's mask over
+the projection with its own scale and offset (the `fit` placement of
+`compare_silhouette`), and scores the weighted mean IoU. The 24
+axis-aligned turns are tried, or the 4 about up with `turns` `upright`.
+With `yawStep` (degrees, default 0, off) fine steps about up within
+`yawRange` (default 45) of each of the six best turns follow; `fineAxes`
+`xyz` adds steps about x and y, one axis at a time, for a mesh tilted off
+its axes (a coordinate search: it can stop short for a large tilt). The
+object is then resampled to the best turn, each new cell taking the
+nearest source cell's slot, and scaled to `size` cells on its longest
+axis, `height` cells up, or by `scale` (default 1), with the bottom centre
+where it was; `apply` `false` only reports.
+
+The reply's `before` and `after` hold the `score` and each view's `iou`;
+`rotation` has `euler` (degrees about x, then y, then z, as `import_mesh`
+`rotation` takes them), `axes` (where the object's x, y, and z went, such
+as `["-x", "-y", "z"]` for a half turn), `yaw`, `fine`, and the `matrix`;
+`candidates` lists the six best axis-aligned turns. Read `margin`, the
+best score minus the runner-up's: a turtle's front and back look alike, so
+a margin under 0.01 means the views barely decide, and a `left` or `back`
+view (or a larger `weight` on the side view) settles it.
+
+`import_mesh` takes the same search as `orient` (`{views, path,
+background, tolerance, turns, yawStep, yawRange, fineAxes, resolution}`):
+a coarse shell of the mesh is scored, and the turn found is folded into
+`rotation` before the mesh is voxelized, so it is voxelized once, already
+turned, and `size` or `voxelSize` apply to the turned mesh. The reply's
+`orientation` is the account above, with the rotation applied.
+
+```json
+{"views": [{"view": "front", "crop": [40, 201, 547, 275]},
+           {"view": "left", "crop": [646, 199, 595, 280]},
+           {"view": "top", "crop": [40, 637, 537, 575]},
+           {"view": "back", "crop": [672, 773, 541, 276]}],
+ "path": "views.png", "background": "#ff00ff", "tolerance": 90,
+ "yawStep": 3, "yawRange": 15, "size": 64}
+```
+
+`froxel orient` runs it on a `.vox` from a JSON file like that one, and
+`froxel import --orient` on a mesh.
 
 #### Cleaning up a generated mesh
 
@@ -2147,7 +2197,8 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `decal` | Decal section: Image…, Flip, Crop, Background, Point (At selection, World), Up, Size, Depth, Reach, Normal limit, Only, Colour from image or the active slot, Mirror, Lay decal |
 | `measure_sheet` | Measure sheet section: Sheet …, Background, Count parts, Measure (views, checks, and parts listed under it), Use crops (into the Carve from views rows) |
 | `compare_silhouette` | Compare silhouette section: Concept Image…, Crop, Background, Flip, Exclude (colours and tolerance), Flood (and its step), Mask (…, Invert), Erase (one rectangle per line), Largest only, Camera (Viewport, Game, Front, Left, Top), Align (Fit, Height, Width), Compare; the overlay shows in the viewport's bottom-right corner until Hide overlay; MCP `compare_silhouette` over the control port shows it there too |
-| `import_mesh` | File > Import Mesh… and the Import mesh section: File, Size, Voxel, or Scale, File is Z-up, Rotation, Position, Anchor, Solid, Parity, or Shell, Texture or Vertex colour, Slots, New slots, Tolerance, Mode, New object |
+| `import_mesh` | File > Import Mesh… and the Import mesh section: File, Size, Voxel, or Scale, File is Z-up, Rotation, Position, Anchor, Solid, Parity, or Shell, Texture or Vertex colour, Slots, New slots, Tolerance, Mode, New object, Orient to views (with the Orient to views options) |
+| `orient_to_views` | Orient to views section (the views of Carve from views): Turns (All 24 or Upright), Fine steps (step, range, Tilt), Size (Keep, Longest, Height), Orient |
 | `carve` | Remove mode with Box, Generator, or Tube |
 | `components` | Components section: Joined by, Keep, Min cells, Seed and Anchor (At selection), Offset, Name; List, Keep largest, Remove small, Delete, Move, Split |
 | `surface_stroke` | Surface stroke section: Points (one per line, Point at selection, World), Smooth, Width, Depth, Reach, Only, Groove, Mirror, Stroke with the active slot |

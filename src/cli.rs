@@ -1848,7 +1848,7 @@ usage: froxel import --mesh <file.glb|.gltf|.obj> --output <file.vox>
                      [--z-up] [--rotation X,Y,Z] [--position X,Y,Z] [--anchor min|center|bottom]
                      [--fill solid|parity|shell | --shell] [--vertex-colors] [--palette SLOT | --slots A,B,...]
                      [--max-new-slots N] [--tolerance D] [--mode replace|empty|paint]
-                     [--new-object] [--name NAME]
+                     [--new-object] [--name NAME] [--orient <orient.json>]
 
 MCP import_mesh from the command line: voxelize the mesh into the first object
 of --input (or a new document), or a new object with --new-object, and save
@@ -1861,7 +1861,11 @@ surface. PNG, JPEG, and WebP textures are read. Colours come from the
 base-colour texture, factor, and vertex colours (--vertex-colors: vertex
 colours only), reuse palette slots within --tolerance (default 12), and add
 at most --max-new-slots (default 32) in slots no cell uses; --slots maps to
-those slots only, --palette paints one. Prints the import report as JSON.";
+those slots only, --palette paints one. --orient reads a views sheet's
+orient_to_views arguments (views, turns, yawStep, ...; paths relative to the
+file) and turns the mesh to the axis-aligned turn and yaw whose silhouettes
+match the views best before voxelizing it. Prints the import report as
+JSON.";
 
 /// `froxel import`: a mesh voxelized into a `.vox` with the `import_mesh`
 /// options.
@@ -1978,6 +1982,7 @@ fn import_args(
                 params["slots"] = json!(slots);
             }
             "--anchor" => params["anchor"] = json!(value()?),
+            "--orient" => params["orient"] = read_views_json(Path::new(value()?))?,
             "--mode" => params["mode"] = json!(value()?),
             "--name" => params["name"] = json!(value()?),
             "--z-up" => params["upAxis"] = json!("z"),
@@ -2152,4 +2157,58 @@ pub fn components(args: &[String]) -> i32 {
             2
         }
     }
+}
+
+const ORIENT_HELP: &str = "\
+usage: froxel orient --args <orient.json> --input <file.vox> --out <file.vox> [--object <index|name>]
+
+MCP orient_to_views on the active object (or --object) of a .vox: the
+24 axis-aligned turns (turns upright: the 4 about up), then fine yaw steps,
+are scored by the silhouette IoU of the object against each view of a
+views sheet, and the object is turned to the best and scaled, then saved;
+the reply (IoU per view before and after, rotation, candidates, margin) is
+printed as JSON. orient.json holds that tool's arguments: {views: [{view,
+path, crop, background, tolerance, flip, weight}, ...], path, background,
+tolerance, turns, yawStep, yawRange, fineAxes, resolution, size | height |
+scale,
+apply}. A relative path is relative to orient.json. froxel import --orient
+runs the same search on a mesh before it is voxelized.";
+
+/// `froxel orient`: MCP `orient_to_views` on a `.vox`.
+pub fn orient(args: &[String]) -> i32 {
+    let parsed = edit_args(args, ORIENT_HELP, &["--args"]).and_then(|found| {
+        let Some((input, output, object, flags)) = found else {
+            return Ok(None);
+        };
+        let file = flags["args"]
+            .as_str()
+            .map(PathBuf::from)
+            .ok_or_else(|| format!("--args is required\n\n{ORIENT_HELP}"))?;
+        Ok(Some((input, output, object, read_views_json(&file)?)))
+    });
+    match parsed {
+        Ok(None) => 0,
+        Ok(Some((input, output, object, params))) => edit_vox(
+            &input,
+            &output,
+            object.as_deref(),
+            "voxel.orient_to_views",
+            &params,
+        ),
+        Err(err) => {
+            eprintln!("{err}");
+            2
+        }
+    }
+}
+
+/// A JSON file of views arguments, its image paths resolved against its
+/// folder.
+fn read_views_json(file: &Path) -> Result<serde_json::Value, String> {
+    let text = std::fs::read_to_string(file)
+        .map_err(|err| format!("Could not read {}: {err}", file.display()))?;
+    let mut params: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|err| format!("{} is not JSON: {err}", file.display()))?;
+    views_relative(&mut params, file.parent().unwrap_or(Path::new("")));
+    Ok(params)
 }
