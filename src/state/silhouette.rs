@@ -403,7 +403,7 @@ impl FitPanel {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ComparePanel {
     pub path: String,
     pub crop: String,
@@ -413,6 +413,40 @@ pub struct ComparePanel {
     pub camera: usize,
     /// 0 fit, 1 height, 2 width.
     pub align: usize,
+    /// Mask edits: colours to drop (#rrggbb, by spaces or commas) and
+    /// their tolerance.
+    pub exclude: String,
+    pub exclude_tolerance: f32,
+    /// Flood the background from the crop's border, with this colour step.
+    pub flood: bool,
+    pub flood_tolerance: f32,
+    /// A mask PNG whose ink keeps the concept's pixels (or drops them).
+    pub mask: String,
+    pub invert_mask: bool,
+    /// Rectangles to erase, `x y w h` per line, in image pixels.
+    pub erase: String,
+    pub keep_largest: bool,
+}
+
+impl Default for ComparePanel {
+    fn default() -> Self {
+        Self {
+            path: String::new(),
+            crop: String::new(),
+            background: BackgroundField::default(),
+            flip: false,
+            camera: 0,
+            align: 0,
+            exclude: String::new(),
+            exclude_tolerance: 40.0,
+            flood: false,
+            flood_tolerance: 24.0,
+            mask: String::new(),
+            invert_mask: false,
+            erase: String::new(),
+            keep_largest: false,
+        }
+    }
 }
 
 /// The last comparison, drawn over the viewport until it is closed.
@@ -537,6 +571,37 @@ impl CarvePanel {
 }
 
 impl ComparePanel {
+    /// The mask edit arguments of the panel's fields.
+    fn write_mask_edits(&self, args: &mut Value) -> Result<(), String> {
+        let colours: Vec<&str> = self
+            .exclude
+            .split(|c: char| c == ',' || c.is_whitespace())
+            .filter(|part| !part.is_empty())
+            .collect();
+        if !colours.is_empty() {
+            args["excludeColors"] = json!(colours);
+            args["excludeTolerance"] = json!(self.exclude_tolerance);
+        }
+        if self.flood {
+            args["flood"] = json!(self.flood_tolerance);
+        }
+        if !self.mask.trim().is_empty() {
+            args["mask"] = json!({"path": self.mask.trim(), "invert": self.invert_mask});
+        }
+        let mut rects = Vec::new();
+        for line in self.erase.lines().filter(|line| !line.trim().is_empty()) {
+            let rect = numbers("Erase", line, 4)?.ok_or("Erase: x y width height per line")?;
+            rects.push(rect);
+        }
+        if !rects.is_empty() {
+            args["erase"] = json!(rects);
+        }
+        if self.keep_largest {
+            args["keepLargest"] = json!(true);
+        }
+        Ok(())
+    }
+
     /// The MCP `compare_silhouette` arguments, writing the overlay to `out`.
     /// The Viewport camera is the window camera's angles and projection.
     pub(crate) fn args(&self, session: &Session, out: &str) -> Result<Value, String> {
@@ -554,6 +619,7 @@ impl ComparePanel {
             args["crop"] = json!(crop);
         }
         self.background.write(&mut args);
+        self.write_mask_edits(&mut args)?;
         match self.camera {
             1 => {
                 args["preset"] = json!("game");
@@ -771,6 +837,13 @@ impl Session {
     pub fn pick_compare_concept(&mut self) {
         if let Some(path) = super::dialog::pick_open("PNG", &["png"]) {
             self.silhouette.compare.path = path.display().to_string();
+        }
+    }
+
+    /// Choose the mask PNG of Compare.
+    pub fn pick_compare_mask(&mut self) {
+        if let Some(path) = super::dialog::pick_open("PNG", &["png"]) {
+            self.silhouette.compare.mask = path.display().to_string();
         }
     }
 }

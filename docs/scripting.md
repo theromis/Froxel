@@ -661,7 +661,20 @@ each of `views` is `#{view, before, after}` and `before` and `after` hold
 fits a boxy blockout to a beetle's front, side, and top rows.
 
 MCP `compare_silhouette` writes a file, so it has no script form; check a
-script's result with it over MCP.
+script's result with it over MCP. The mask edits that need an image
+(`flood`, `mask`) have none either, but a `rows` view (and
+`project_paint`'s rows) takes `excludeColors` (legend `#rrggbb` colours),
+`excludeTolerance`, `erase` (`[[x, y, width, height]]` in characters), and
+`keepLargest`, and `carve_from_views` and `fit_to_views` take
+`excludeColors`, `excludeTolerance`, and `keepLargest` in their options for
+every view:
+
+```rhai
+carve_from_views([
+    #{view: "front", rows: front, legend: legend, erase: [[0, 0, 2, 1]]},
+    #{view: "left", rows: side, legend: legend}
+], #{keepLargest: true, palette: 4});
+```
 
 ### Voxelize
 

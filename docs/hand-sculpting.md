@@ -95,7 +95,11 @@ off the flat views.
    scores it against one concept view: `iou`, the share of the concept
    `missing`, and the model's `excess`, with an overlay PNG that shows
    where. Compare each turnaround view orthographically (`view` `front`,
-   `left`, `top`) and the hero view from `preset` `game`.
+   `left`, `top`) and the hero view from `preset` `game`. A hero view with
+   water, splashes, or a rider in it must be masked first, or its IoU
+   measures the scene: `flood: true` for the water, `keepLargest: true` for
+   splashes apart from the body, `erase` rectangles over a rider, or a
+   painted `mask` PNG (see "Masking a concept" in mcp.md).
 3. **Shape it** with the steps below: the hull fills concave parts (the
    space under an arch, between roots), so `carve` them, grow the thin
    parts with `fill_tube`, and `smooth` it. Compare again after each step,
@@ -140,6 +144,7 @@ carve_from_views     views=[{view: "front", path: "sheet.png", crop: [40, 60, 52
                      depthPath="sheet-depth.png" depthTolerance=0.5
 compare_silhouette   path="front-vs.png" concept="sheet.png" crop=[40, 60, 520, 300] view="front" orthographic=true
 compare_silhouette   path="hero-vs.png" concept="hero.png" preset="game"
+                     flood=true keepLargest=true erase=[[412, 96, 80, 120]]
 project_paint        view="top" path="sheet.png" crop=[40, 420, 520, 180] size=[96, 34, 56]
                      slots=[3, 4, 5] only=[3] normalLimit=60
 fit_to_views         views=[{view: "front", path: "sheet.png", crop: [40, 60, 520, 300]},

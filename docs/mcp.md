@@ -249,7 +249,7 @@ tracer. A file with no scene graph still loads its first model.
 | `model_view` | `path` | Flat model view PNG: each pixel is the palette colour of the first cell hit, no light, no tonemap. Fitted like `render`. `width` and `height` default to 512 (up to 4096). Orthographic by default. Optional `view`, `yaw`, `pitch`, `zoom`, `margin`, `target`, `pixelsPerVoxel`, `distance`, `orthographic`, `background`, `views`, `pose`, `showBones` |
 | `preview` | `path` | Fast lit PNG: the viewport's mesh and light rasterised on the CPU in well under a second, fitted to the model or one object with a margin. `width` and `height` default to 1024 (up to 4096). Optional `view`, `yaw`, `pitch`, `preset` (`game`: orthographic, yaw −135, pitch 32), `presets` (an object or a JSON file; the user's `camera_presets.json` is read too), `placementYaw` (the asset's turn about up where it is placed in a level), `orthographic`, `fov`, `margin`, `object`, `isolate`, `background`, `antialias`, `pose`. `inputs`, `variants`, or `reference` (with `columns`, `labels`) make a labelled contact sheet of several models and a concept image. `overlay` (`true`, or `boxes`, `points`, `connectors`) draws the markers over the model with their names (`overlayLabels`). `lighting` (`old_pond`, or a name from `lightingPresets` or the user's `lighting_presets.json`, or fields: sun direction, colour, and energy, ambient colour and energy, exposure, background, a LUT) lights it as a game does. Replies `previewTriangles` (the unmerged mesh it draws) and `export` (`triangles` and `quads` that `export_mesh` writes with the options in `export`, such as `colorAtlas`); `countsLabel` writes both on the image. See [preview.md](preview.md). `glb` draws a written `.glb` instead of the document, unlit, as a game draws a baked file |
 | `project_paint` | `view` or `yaw` + `pitch`, `path` or `rows` | Recolour the active object's existing surface from one image projected along a view: never adds or removes cells. The image is a PNG `path` with `crop`, `background`, `tolerance`, `alphaThreshold`, `flip`, or `rows` with a `legend`; background pixels leave the surface alone. Optional `origin` and `size` (the box that may be painted; defaults to the object's bounds), `cellsPerPixel` or `imageSize`, `palette` or `slots`, `coverage`, `depth` (cells below the visible surface, default 1), `normalLimit` (degrees; steeper surfaces are skipped), `only` (slots that may be repainted), `mirror` (both sides of a plane). Replies with `cells`, `changed`, `bounds`, `origin`, `size`, `grid`, `covered`, `rays`, and `steep`. One undo step. See [Silhouettes](#silhouettes) |
-| `compare_silhouette` | `path`, `concept` | Compare the model's `preview` silhouette from a camera (`preset`, `presets`, `placementYaw`, `view`, `yaw`, `pitch`, `orthographic`, `fov`, `margin`, `object`, `isolate`, `pose`) with a mask cut from a concept PNG (`crop`, `background`, `tolerance`, `alphaThreshold`, `flip`). `align` `fit` (default), `height`, `width`, or `{scale, offset}` places the concept with one uniform scale. Replies with `iou`, `missing`, `excess`, `pixels`, `align`, `conceptBounds`, `modelBounds`, and `aspect`, and writes an overlay PNG. Optional `width`, `height`, `lighting`, `antialias`. See [Silhouettes](#silhouettes) |
+| `compare_silhouette` | `path`, `concept` | Compare the model's `preview` silhouette from a camera (`preset`, `presets`, `placementYaw`, `view`, `yaw`, `pitch`, `orthographic`, `fov`, `margin`, `object`, `isolate`, `pose`) with a mask cut from a concept PNG (`crop`, `background`, `tolerance`, `alphaThreshold`, `flip`) and cleaned by the [mask edits](#masking-a-concept) (`excludeColors`, `excludeTolerance`, `flood`, `mask`, `erase`, `keepLargest`; the reply's `maskEdits` counts them). `align` `fit` (default), `height`, `width`, or `{scale, offset}` places the concept with one uniform scale. Replies with `iou`, `missing`, `excess`, `pixels`, `align`, `conceptBounds`, `modelBounds`, and `aspect`, and writes an overlay PNG. Optional `width`, `height`, `lighting`, `antialias`. See [Silhouettes](#silhouettes) |
 | `set_view` | — | Move the session camera; connected, the window's. Optional `view`, `yaw`, `pitch`, `preset`, `presets`, `placementYaw`, `frame`, `distance`, `orthographic`, `bones`. Not an edit |
 | `screenshot` | — | PNG of the whole editor window. Connected mode only |
 | `screenshot_viewport` | — | PNG of the 3D viewport, including its mode chips. Connected mode only |
@@ -1752,6 +1752,64 @@ maps included; relative `path`, `depthPath`, and `depth` paths are relative
 to it), and
 `froxel paint` runs `project_paint` from one on a copy of a `.vox`.
 
+### Masking a concept
+
+A turnaround sheet on a flat key colour cuts clean, but a hero view or a
+photo has water, splashes, a rider, or a sky in it, and the background rule
+alone leaves all of that inked: the IoU then measures the scene, not the
+creature. `compare_silhouette`, `project_paint`, and every view of
+`carve_from_views` and `fit_to_views` take mask edits, applied after the
+background rule and before `flip`, in this order:
+
+| Key | Default | Removes |
+|---|---|---|
+| `excludeColors` | none | Pixels within `excludeTolerance` (default 40, RGB distance) of any listed colour (`#rrggbb` or `[r, g, b]`): the water, a splash's white. With `rows`, the legend's `#rrggbb` colours. |
+| `flood` | off | A flood fill from every pixel of the crop's border, stepping to a neighbour within this RGB distance of the pixel it comes from: a gradient sky or photo water reaches the creature's outline and stops. `true` is 24, or a number, or `{tolerance}`. Needs a `path`. |
+| `mask` | none | A mask PNG, `path` or `{path, crop, background, tolerance, alphaThreshold, invert}`: it is cut as a view is and stretched over the crop, and only the pixels under its ink stay; `invert` drops them instead. A mask as large as the image shares the view's `crop`; any other covers the crop whole. Needs a `path`. |
+| `erase` | none | Rectangles `[x, y, width, height]` in image pixels (the frame of `crop`): a rider, a label, a splash on the body. |
+| `keepLargest` | `false` | Every inked region but the largest (8-connected): specks and a splash apart from the body. |
+
+`excludeColors`, `excludeTolerance`, `flood`, and `keepLargest` at the top
+level of `carve_from_views` and `fit_to_views` apply to every view without
+its own (`flood` not to `rows` views); `mask` and `erase` are per view.
+Scripts pass `rows`, so they have `excludeColors`, `erase`, and
+`keepLargest`. `compare_silhouette` replies with `maskEdits`: the inked
+pixels `before`, the ones `excluded`, `flooded`, `masked`, `erased`, and
+`dropped`, and `after`. A call that leaves nothing inked is an error.
+
+How to make a mask:
+
+- **Try the keys first.** Most hero views need only `flood: true` (raise it
+  to 30 to 40 for a noisy photo, lower it to 12 if it leaks into the body),
+  `keepLargest: true` for splashes apart from the body, and an `erase`
+  rectangle over a rider. Read the overlay: cyan is the concept's outline
+  after the edits.
+- **Paint one** when the body touches the water or the rider overlaps it:
+  open the concept in any editor, add a layer, fill the creature in white
+  over black (or paint it opaque on a transparent layer), and export only
+  that layer as a PNG of the same size. Pass it as `mask`; the auto
+  background keys the black border or the transparency, so the white is
+  what stays.
+- **Mask the clutter instead** with `invert: true`: paint only the rider and
+  the splashes, which is quicker when they are small.
+- **From a matting tool:** a background remover (such as rembg or an image
+  generator's alpha output) gives a PNG with transparency; pass it as the
+  concept itself (`background: "alpha"`) or as `mask`.
+- **Check it:** compare with the same `align` before and after; `maskEdits`
+  says how many pixels each edit took, so a `flooded` count near the whole
+  crop means the flood leaked through the outline.
+
+```json
+{"name": "compare_silhouette", "arguments": {"path": "hero-vs.png", "concept": "hero.png",
+  "preset": "game", "flood": true, "keepLargest": true, "erase": [[412, 96, 80, 120]]}}
+{"name": "compare_silhouette", "arguments": {"path": "hero-vs.png", "concept": "hero.png",
+  "preset": "game", "mask": "hero-mask.png"}}
+```
+
+`froxel compare` takes them as `--exclude`, `--exclude-tolerance`,
+`--flood N`, `--mask`, `--invert-mask`, `--erase X,Y,W,H` (repeated), and
+`--keep-largest`.
+
 ### Depth maps
 
 A silhouette says which rays meet the model; a depth map says where along
@@ -1992,7 +2050,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `carve_from_views` | Carve from views section: three view rows (on, side, Image…, crop, Flip, depth map…), Cells / px, Size, Origin (World), Background (Auto, Alpha, Key with tolerance), Colour from views or the active slot, Shell, Smooth, Depth (Hull or Box, Invert, Back, tolerance), Depth parts (Auto curve, Regions, Edge), Depth detail…, Intersect (Keep inside only), Carve |
 | `mode` `intersect` | Intersect section: Shape (Box, Ellipsoid, Rounded box with Radius) inscribed in the selection's box, Keep inside |
 | `project_paint` | Paint from view section: View, Flip, Image…, Crop, Background, Scale (Fit box or Cells / px), Box origin and size, Depth, Normal limit, Only, Colour from image or the active slot, Mirror, Paint |
-| `compare_silhouette` | Compare silhouette section: Concept Image…, Crop, Background, Flip, Camera (Viewport, Game, Front, Left, Top), Align (Fit, Height, Width), Compare; the overlay shows in the viewport's bottom-right corner until Hide overlay; MCP `compare_silhouette` over the control port shows it there too |
+| `compare_silhouette` | Compare silhouette section: Concept Image…, Crop, Background, Flip, Exclude (colours and tolerance), Flood (and its step), Mask (…, Invert), Erase (one rectangle per line), Largest only, Camera (Viewport, Game, Front, Left, Top), Align (Fit, Height, Width), Compare; the overlay shows in the viewport's bottom-right corner until Hide overlay; MCP `compare_silhouette` over the control port shows it there too |
 | `import_mesh` | File > Import Mesh… and the Import mesh section: File, Size, Voxel, or Scale, File is Z-up, Rotation, Position, Anchor, Solid, Parity, or Shell, Texture or Vertex colour, Slots, New slots, Tolerance, Mode, New object |
 | `carve` | Remove mode with Box, Generator, or Tube |
 | `components` | Components section: Joined by, Keep, Min cells, Seed and Anchor (At selection), Offset, Name; List, Keep largest, Remove small, Delete, Move, Split |

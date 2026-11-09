@@ -337,14 +337,24 @@ fn paint_spec(params: &Value, files: bool) -> Result<crate::tools::PaintSpec, St
 }
 
 /// A view's or a concept's mask: `rows` and `legend`, or `path` with
-/// `crop`, `background`, `tolerance`, and `alphaThreshold`. `flip`
-/// mirrors it.
+/// `crop`, `background`, `tolerance`, and `alphaThreshold`, cleaned by the
+/// mask edits (`excludeColors`, `flood`, `mask`, `erase`, `keepLargest`).
+/// `flip` mirrors it.
 pub(crate) fn view_mask(
     item: &Value,
     files: bool,
     images: &mut HashMap<String, crate::sheet::Image>,
 ) -> Result<Mask, String> {
-    let mask = match (item.get("rows"), opt_str(item, "path")?) {
+    view_mask_report(item, files, images).map(|(mask, _)| mask)
+}
+
+/// [`view_mask`] and what its mask edits removed (`None` without edits).
+pub(crate) fn view_mask_report(
+    item: &Value,
+    files: bool,
+    images: &mut HashMap<String, crate::sheet::Image>,
+) -> Result<(Mask, Option<crate::tools::MaskEditReport>), String> {
+    let (mut mask, source) = match (item.get("rows"), opt_str(item, "path")?) {
         (Some(rows), None) => {
             let rows = rows
                 .as_array()
@@ -354,7 +364,7 @@ pub(crate) fn view_mask(
                         .collect::<Option<Vec<_>>>()
                 })
                 .ok_or("rows must be a list of strings")?;
-            crate::tools::mask_from_rows(&rows, &legend(item)?)?
+            (crate::tools::mask_from_rows(&rows, &legend(item)?)?, None)
         }
         (None, Some(path)) => {
             if !files {
@@ -368,21 +378,183 @@ pub(crate) fn view_mask(
                 images.insert(path.clone(), image);
             }
             let image = &images[&path];
-            crate::tools::mask_from_rgba(
+            let crop = crop(item)?;
+            let mask = crate::tools::mask_from_rgba(
                 image.width,
                 image.height,
                 &image.rgba,
-                crop(item)?,
+                crop,
                 background_rule(item)?,
-            )?
+            )?;
+            (
+                mask,
+                Some((path, crop.unwrap_or([0, 0, image.width, image.height]))),
+            )
         }
         (Some(_), Some(_)) => return Err("pass path or rows, not both".into()),
         (None, None) => return Err("needs path (a PNG) or rows".into()),
     };
-    Ok(if opt_bool(item, "flip")?.unwrap_or(false) {
+    let edits = mask_edits(item, files, images, source.as_ref())?;
+    let report = if edits.is_empty() {
+        None
+    } else {
+        let source = source.as_ref().map(|(path, crop)| {
+            let image = &images[path];
+            crate::tools::MaskSource {
+                rgba: &image.rgba,
+                width: image.width,
+                crop: *crop,
+            }
+        });
+        Some(crate::tools::edit_mask(&mut mask, source.as_ref(), &edits)?)
+    };
+    let mask = if opt_bool(item, "flip")?.unwrap_or(false) {
         mask.flipped()
     } else {
         mask
+    };
+    Ok((mask, report))
+}
+
+/// The mask edits of a view or a concept: `excludeColors` (colours) with
+/// `excludeTolerance` (default 40), `flood` (true, a colour step, or
+/// `{tolerance}`; default step 24), `mask` (a path or `{path, crop,
+/// background, tolerance, alphaThreshold, invert}`), `erase` (rectangles
+/// `[x, y, width, height]` in image pixels, as `crop` is), and
+/// `keepLargest`.
+fn mask_edits(
+    item: &Value,
+    files: bool,
+    images: &mut HashMap<String, crate::sheet::Image>,
+    source: Option<&(String, crate::tools::Crop)>,
+) -> Result<crate::tools::MaskEdits, String> {
+    use crate::tools::{MaskEdits, MAX_ERASE, MAX_EXCLUDE_COLORS as MAX_EXCLUDE};
+    let mut edits = MaskEdits {
+        exclude_tolerance: 40.0,
+        ..Default::default()
+    };
+    match item.get("excludeColors") {
+        None | Some(Value::Null) => {}
+        Some(Value::Array(colours)) => {
+            if colours.len() > MAX_EXCLUDE {
+                return Err(format!("excludeColors takes at most {MAX_EXCLUDE} colours"));
+            }
+            for colour in colours {
+                let rgba = super::background(&json!({"background": colour})).map_err(|_| {
+                    "excludeColors must be #rrggbb or [r, g, b] colours".to_string()
+                })?;
+                edits.exclude.push([rgba[0], rgba[1], rgba[2]]);
+            }
+        }
+        Some(_) => return Err("excludeColors must be a list of #rrggbb or [r, g, b]".into()),
+    }
+    if let Some(tolerance) = opt_f64(item, "excludeTolerance")? {
+        if !(0.0..=442.0).contains(&tolerance) {
+            return Err("excludeTolerance must be 0..442".into());
+        }
+        edits.exclude_tolerance = tolerance as f32;
+    }
+    edits.flood = match item.get("flood") {
+        None | Some(Value::Null) | Some(Value::Bool(false)) => None,
+        Some(Value::Bool(true)) => Some(24.0),
+        Some(Value::Number(n)) => Some(n.as_f64().unwrap_or(24.0)),
+        Some(found @ Value::Object(_)) => Some(opt_f64(found, "tolerance")?.unwrap_or(24.0)),
+        Some(_) => return Err("flood must be true, a tolerance, or {tolerance}".into()),
+    }
+    .map(|step| {
+        if (0.0..=442.0).contains(&step) {
+            Ok(step as f32)
+        } else {
+            Err("flood tolerance must be 0..442".to_string())
+        }
+    })
+    .transpose()?;
+    if edits.flood.is_some() && source.is_none() {
+        return Err("flood needs an image (path), not rows".into());
+    }
+    let mask_item = match item.get("mask") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(path)) => Some(json!({"path": path})),
+        Some(found @ Value::Object(_)) => Some(found.clone()),
+        Some(_) => {
+            return Err("mask must be a PNG path or {path, crop, background, invert}".into())
+        }
+    };
+    if let Some(mut mask_item) = mask_item {
+        if !files {
+            return Err("scripts cannot read files: a mask needs MCP".into());
+        }
+        let path = opt_str(&mask_item, "path")?.ok_or("mask needs path (a PNG)")?;
+        edits.invert_mask = opt_bool(&mask_item, "invert")?.unwrap_or(false);
+        if !images.contains_key(&path) {
+            let image =
+                crate::sheet::read_png(Path::new(&path)).map_err(|err| format!("mask: {err}"))?;
+            images.insert(path.clone(), image);
+        }
+        // A mask as large as the view's image shares its crop; any other
+        // mask covers the crop whole.
+        if mask_item.get("crop").is_none() {
+            if let Some((source_path, crop)) = source {
+                let (mw, mh) = (images[&path].width, images[&path].height);
+                let (sw, sh) = (images[source_path].width, images[source_path].height);
+                if (mw, mh) == (sw, sh) {
+                    mask_item["crop"] = json!(crop);
+                }
+            }
+        }
+        let image = &images[&path];
+        let cut = crate::tools::mask_from_rgba(
+            image.width,
+            image.height,
+            &image.rgba,
+            crop(&mask_item)?,
+            background_rule(&mask_item)?,
+        )
+        .map_err(|err| format!("mask: {err}"))?;
+        edits.mask = Some(cut);
+    }
+    match item.get("erase") {
+        None | Some(Value::Null) => {}
+        Some(Value::Array(rects)) => {
+            if rects.len() > MAX_ERASE {
+                return Err(format!("erase takes at most {MAX_ERASE} rectangles"));
+            }
+            let corner = source.map_or([0, 0], |(_, crop)| [crop[0], crop[1]]);
+            for rect in rects {
+                let numbers: Option<Vec<i64>> =
+                    rect.as_array().filter(|r| r.len() == 4).and_then(|r| {
+                        r.iter()
+                            .map(|v| v.as_f64().map(|n| n.round() as i64))
+                            .collect()
+                    });
+                let [x, y, w, h] = numbers
+                    .and_then(|n| <[i64; 4]>::try_from(n).ok())
+                    .ok_or("erase must be a list of [x, y, width, height] in pixels")?;
+                if w < 0 || h < 0 {
+                    return Err("an erase rectangle's width and height must be at least 0".into());
+                }
+                edits
+                    .erase
+                    .push([x - i64::from(corner[0]), y - i64::from(corner[1]), w, h]);
+            }
+        }
+        Some(_) => return Err("erase must be a list of [x, y, width, height] in pixels".into()),
+    }
+    edits.keep_largest = opt_bool(item, "keepLargest")?.unwrap_or(false);
+    Ok(edits)
+}
+
+/// The `maskEdits` of a reply: inked pixels before, removed by each edit,
+/// and after.
+pub(crate) fn mask_report_json(report: &crate::tools::MaskEditReport) -> Value {
+    json!({
+        "before": report.before,
+        "excluded": report.excluded,
+        "flooded": report.flooded,
+        "masked": report.masked,
+        "erased": report.erased,
+        "dropped": report.dropped,
+        "after": report.after,
     })
 }
 
@@ -390,10 +562,21 @@ pub(crate) fn view_mask(
 /// `background`, `tolerance`, `alphaThreshold`) filling its missing ones.
 fn sheet_keys(params: &Value, item: &Value) -> Value {
     let mut item = item.clone();
-    for key in ["path", "background", "tolerance", "alphaThreshold"] {
+    for key in [
+        "path",
+        "background",
+        "tolerance",
+        "alphaThreshold",
+        "excludeColors",
+        "excludeTolerance",
+        "flood",
+        "keepLargest",
+    ] {
         let given = params.get(key).filter(|v| !v.is_null());
         if let (Some(value), Some(map)) = (given, item.as_object_mut()) {
-            if !map.contains_key(key) && !(key == "path" && map.contains_key("rows")) {
+            // Rows have no path to inherit and no background colours to flood.
+            let rows = map.contains_key("rows");
+            if !map.contains_key(key) && !(rows && (key == "path" || key == "flood")) {
                 map.insert(key.into(), value.clone());
             }
         }
@@ -679,8 +862,8 @@ pub(super) fn compare_silhouette(session: &mut Session, params: &Value) -> Resul
     if let Some(map) = item.as_object_mut() {
         map.remove("rows");
     }
-    let concept =
-        view_mask(&item, true, &mut HashMap::new()).map_err(|err| format!("concept: {err}"))?;
+    let (concept, edited) = view_mask_report(&item, true, &mut HashMap::new())
+        .map_err(|err| format!("concept: {err}"))?;
     let max = crate::preview::MAX_SIZE as i32;
     let aspect = concept.width as f32 / concept.height as f32;
     let width = super::opt_i32_range(params, "width", 0, 16, max)?;
@@ -721,7 +904,10 @@ pub(super) fn compare_silhouette(session: &mut Session, params: &Value) -> Resul
     let file = Path::new(&path);
     crate::state::create_parent(file)?;
     crate::trace::write_rgba_png(file, preview.width, preview.height, &compared.rgba)?;
-    let reply = compare_reply(&path, &preview, align, &compared);
+    let mut reply = compare_reply(&path, &preview, align, &compared);
+    if let Some(edited) = edited {
+        reply["maskEdits"] = mask_report_json(&edited);
+    }
     // A window shows the latest comparison over its viewport.
     session.show_silhouette_overlay(
         preview.width,

@@ -20,6 +20,7 @@ mod generate;
 mod growth;
 mod joints;
 mod loft;
+mod mask_edit;
 mod mirror;
 mod planks;
 mod project;
@@ -48,6 +49,10 @@ pub use generate::{foliage, generate, Gen, MAX_GENERATOR_CELLS};
 pub use growth::{grow, Face, GrowthKind, GrowthSpec, Layer};
 pub use joints::{joints, JointPattern, JointSpec};
 pub use loft::{loft, loft_length, Caps, LoftPoint, Section};
+pub use mask_edit::{
+    edit_mask, MaskEditReport, MaskEdits, Source as MaskSource, MAX_ERASE,
+    MAX_EXCLUDE as MAX_EXCLUDE_COLORS,
+};
 pub use mirror::{mirrored, Mirror};
 pub use planks::{planks, PlankAxis, PlankSpec};
 pub use project::{project_paint, PaintSpec, Toward, MAX_PAINT_DEPTH};

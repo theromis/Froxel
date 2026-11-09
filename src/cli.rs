@@ -1526,6 +1526,9 @@ usage: froxel compare --input <file.vox> --concept <concept.png> --out <overlay.
                       [--yaw DEG] [--pitch DEG] [--ortho] [--margin F]
                       [--object INDEX|NAME] [--isolate]
                       [--width PX] [--height PX] [--json]
+                      [--exclude #RRGGBB,...] [--exclude-tolerance N]
+                      [--flood N] [--mask <mask.png>] [--invert-mask]
+                      [--erase X,Y,W,H]... [--keep-largest]
 
 Compares the model's preview silhouette from a camera with a concept mask,
 as MCP compare_silhouette does, and writes an overlay PNG: the preview with
@@ -1538,9 +1541,19 @@ match that extent. --crop cuts one view out of a turnaround sheet.
 --preset game is the gameplay camera; --presets (with the user's
 camera_presets.json or FROXEL_CAMERA_PRESETS) redefines it for a project, and
 --placement-yaw checks an asset placed turned that many degrees about up, as
-froxel preview does.";
+froxel preview does.
 
-fn compare_args(args: &[String]) -> Result<Option<(PathBuf, serde_json::Value, bool)>, String> {
+A hero view with water, splashes, or a rider needs its background masked
+first: --exclude drops pixels near those colours (--exclude-tolerance,
+default 40), --flood N floods the background from the crop's border in
+colour steps of N (a photo or gradient; 24 is a good start), --mask keeps
+only the pixels under a mask PNG's ink (--invert-mask drops them), --erase
+drops a rectangle in image pixels (repeat it), and --keep-largest keeps the
+largest connected region. The reply's maskEdits counts what each removed.";
+
+pub(crate) fn compare_args(
+    args: &[String],
+) -> Result<Option<(PathBuf, serde_json::Value, bool)>, String> {
     use serde_json::json;
     let mut input = None;
     let mut params = json!({});
@@ -1601,6 +1614,44 @@ fn compare_args(args: &[String]) -> Result<Option<(PathBuf, serde_json::Value, b
             "--width" => params["width"] = json!(number(value(&mut index)?, &flag)? as i64),
             "--height" => params["height"] = json!(number(value(&mut index)?, &flag)? as i64),
             "--json" => as_json = true,
+            "--exclude" => {
+                let text = value(&mut index)?;
+                params["excludeColors"] = json!(text
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|part| !part.is_empty())
+                    .collect::<Vec<_>>());
+            }
+            "--exclude-tolerance" => {
+                params["excludeTolerance"] = json!(number(value(&mut index)?, &flag)?)
+            }
+            "--flood" => params["flood"] = json!(number(value(&mut index)?, &flag)?),
+            "--mask" => {
+                let invert = params["mask"]["invert"].as_bool().unwrap_or(false);
+                params["mask"] = json!({"path": value(&mut index)?, "invert": invert});
+            }
+            "--invert-mask" => {
+                if params.get("mask").is_none() {
+                    params["mask"] = json!({});
+                }
+                params["mask"]["invert"] = json!(true);
+            }
+            "--erase" => {
+                let text = value(&mut index)?;
+                let rect: Vec<i64> = text
+                    .split(',')
+                    .map(|part| part.trim().parse::<i64>())
+                    .collect::<Result<_, _>>()
+                    .map_err(|_| format!("--erase needs X,Y,W,H, not `{text}`"))?;
+                if rect.len() != 4 {
+                    return Err(format!("--erase needs X,Y,W,H, not `{text}`"));
+                }
+                if params.get("erase").is_none() {
+                    params["erase"] = json!([]);
+                }
+                params["erase"].as_array_mut().unwrap().push(json!(rect));
+            }
+            "--keep-largest" => params["keepLargest"] = json!(true),
             other => return Err(format!("unknown argument `{other}`\n\n{COMPARE_HELP}")),
         }
         index += 1;

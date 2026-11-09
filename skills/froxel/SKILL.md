@@ -253,7 +253,11 @@ If the tools are missing, the server is not configured. Point the user to
    "game"`, with `presets` and `placementYaw` as in `preview`): `iou`, `missing`, and `excess` say whether it reads like the
    concept, and the overlay shows where (magenta missing, orange excess).
    Reuse the reply's `align` on later calls so a change in size shows.
-   Compare silhouettes, not heights.
+   Compare silhouettes, not heights. A hero view with water, splashes, or a
+   rider scores nothing until masked: add `flood: true` (water, sky),
+   `keepLargest: true` (splashes apart), `erase: [[x, y, w, h]]` (a rider,
+   in image pixels), `excludeColors`, or a painted `mask` PNG (white on
+   black, same size); check `maskEdits` and the cyan outline in the overlay.
 6. `save_file` with a `path` (a missing folder is created). World cells and markers survive reopening exactly,
    including negative coordinates; local cells may rebase to the model box, so
    inspect the object position again before making more local edits. A reopened

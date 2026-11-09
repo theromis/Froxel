@@ -436,6 +436,7 @@ pub(super) fn fit(ui: &mut Ui, session: &mut Session) {
 pub(super) fn compare(ui: &mut Ui, session: &mut Session) {
     section(ui, "Compare silhouette");
     let mut pick = false;
+    let mut pick_mask = false;
     let panel = &mut session.silhouette.compare;
     egui::Grid::new("compare-panel")
         .num_columns(2)
@@ -466,6 +467,49 @@ pub(super) fn compare(ui: &mut Ui, session: &mut Session) {
             label(ui, "Flip", "Mirror the concept left to right.");
             ui.checkbox(&mut panel.flip, "");
             ui.end_row();
+            label(ui, "Exclude", "Colours whose pixels are background too, such as water and splashes: #rrggbb separated by spaces, with their RGB tolerance (MCP excludeColors, excludeTolerance).");
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut panel.exclude)
+                        .hint_text("#3a6ea5 #ffffff")
+                        .desired_width(110.0),
+                );
+                ui.add(egui::DragValue::new(&mut panel.exclude_tolerance).range(0.0..=442.0));
+            });
+            ui.end_row();
+            label(ui, "Flood", "Flood the background from the crop's border, stepping to neighbours within this RGB distance, for a photo-like or gradient background (MCP flood).");
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut panel.flood, "");
+                ui.add_enabled(
+                    panel.flood,
+                    egui::DragValue::new(&mut panel.flood_tolerance).range(0.0..=442.0),
+                );
+            });
+            ui.end_row();
+            label(ui, "Mask", "A mask PNG: only the concept's pixels under its ink stay (transparent or the border colour is empty, so white on black works); Invert drops them instead (MCP mask).");
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut panel.mask)
+                        .hint_text("mask.png")
+                        .desired_width(110.0),
+                );
+                if ui.button("…").on_hover_text("Choose the mask PNG.").clicked() {
+                    pick_mask = true;
+                }
+                ui.checkbox(&mut panel.invert_mask, "Invert");
+            });
+            ui.end_row();
+            label(ui, "Erase", "Rectangles to drop, such as a rider: x y width height per line, in image pixels like Crop (MCP erase).");
+            ui.add(
+                egui::TextEdit::multiline(&mut panel.erase)
+                    .hint_text("x y w h")
+                    .desired_rows(1)
+                    .desired_width(150.0),
+            );
+            ui.end_row();
+            label(ui, "Largest only", "Keep only the largest connected region of the concept, dropping specks and a separate splash (MCP keepLargest).");
+            ui.checkbox(&mut panel.keep_largest, "");
+            ui.end_row();
             label(ui, "Camera", "Viewport is the window's camera now; Game is the gameplay preset, with the Camera section's Camera presets… and Placement turn; Front, Left, and Top are orthographic views like a turnaround sheet.");
             egui::ComboBox::from_id_salt("compare-camera")
                 .selected_text(CAMERAS[panel.camera.min(CAMERAS.len() - 1)])
@@ -485,6 +529,9 @@ pub(super) fn compare(ui: &mut Ui, session: &mut Session) {
         });
     if pick {
         session.pick_compare_concept();
+    }
+    if pick_mask {
+        session.pick_compare_mask();
     }
     ui.horizontal(|ui| {
         if ui

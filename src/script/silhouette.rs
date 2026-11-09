@@ -37,6 +37,9 @@ const CARVE: &[&str] = &[
     "mode",
     "space",
     "depthTolerance",
+    "excludeColors",
+    "excludeTolerance",
+    "keepLargest",
 ];
 
 const FIT: &[&str] = &[
@@ -60,6 +63,9 @@ const FIT: &[&str] = &[
     "roundAxes",
     "reference",
     "depthTolerance",
+    "excludeColors",
+    "excludeTolerance",
+    "keepLargest",
 ];
 
 const PAINT: &[&str] = &[
@@ -82,6 +88,10 @@ const PAINT: &[&str] = &[
     "only",
     "space",
     "mirror",
+    "excludeColors",
+    "excludeTolerance",
+    "erase",
+    "keepLargest",
 ];
 
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
