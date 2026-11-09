@@ -607,7 +607,14 @@ impl Session {
         }
     }
 
-    pub(super) fn write_preview(&mut self, base: HashMap<Cell, u8>, edits: Vec<(Cell, u8)>) {
+    pub(crate) fn write_preview(&mut self, base: HashMap<Cell, u8>, mut edits: Vec<(Cell, u8)>) {
+        if let Some(mirror) = self.edit.viewport_mirror.plane(&base) {
+            let mirrored: Vec<(Cell, u8)> = edits
+                .iter()
+                .map(|(cell, slot)| (mirror.cell(*cell), *slot))
+                .collect();
+            edits.extend(mirrored);
+        }
         let mut next = base.clone();
         let mode = if self.tool == Tool::Mutator {
             ToolMode::Add
@@ -743,6 +750,7 @@ impl Session {
             ToolMode::Remove => 0,
             ToolMode::Add | ToolMode::Paint => self.active_slot,
         };
+        let mirror = self.edit.viewport_mirror.plane(&self.active().cells);
         let mut changed = false;
         for (u, v, w) in footprint(self.brush_size, self.brush_shape, self.brush_3d) {
             let (dx, dy, dz) = match axis {
@@ -752,6 +760,9 @@ impl Session {
             };
             let cell = (base.0 + dx, base.1 + dy, base.2 + dz);
             changed |= self.write_cell(cell, slot);
+            if let Some(mirror) = mirror {
+                changed |= self.write_cell(mirror.cell(cell), slot);
+            }
         }
         if changed {
             self.mesh_epoch = self.mesh_epoch.wrapping_add(1);

@@ -138,12 +138,12 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |cells: Array, opts: &Map| -> Fallible<INT> {
-            let mut args = options(opts, &["space"], "set_voxels")?;
+            let mut args = options(opts, &["space", "mirror"], "set_voxels")?;
             args.insert("cells".into(), json(&Dynamic::from_array(cells))?);
             let mut scratch = state.borrow_mut();
             scratch.keep_going().map_err(runtime)?;
             let (args, _) = scratch.localize("voxel.set_many", args).map_err(runtime)?;
-            let writes = remote::cell_writes(&args).map_err(runtime)?;
+            let (writes, _) = remote::set_many_writes(scratch.cells(), &args).map_err(runtime)?;
             scratch.apply(&writes).map_err(runtime)
         };
         if with_opts {

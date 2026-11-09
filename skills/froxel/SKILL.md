@@ -85,6 +85,12 @@ If the tools are missing, the server is not configured. Point the user to
   `palette` (0 cuts a groove), `width`, `depth`, `only`. Each sample snaps
   to the nearest surface cell; do not guess a `fill_tube` radius in paint
   mode.
+- Symmetric features (cheeks, eyes, flippers, horns, side stripes): draw one
+  side and pass `mirror: true` (x about the object's centre), an axis, or
+  `{axis, at}` to `set_voxels`, the fills (not mode intersect), `recolor`,
+  `surface_stroke`, or `project_paint`. The far side is done on its own
+  surface, mirrored, in the same undo step; `mirrored` in the reply counts
+  its cells. Do not place the second side by hand.
 - To empty an object and start it again, call `clear_object` (index or
   name; default the active one): no box limit, the object, its position,
   and its bone stay. Do not erase with `fill_box` palette 0, which stops at

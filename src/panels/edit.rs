@@ -8,6 +8,31 @@ use egui::{RichText, Ui};
 use super::{section, DIM};
 use crate::state::{EditorMode, Session, INTERSECT_SHAPES};
 
+/// The Mirror row (MCP `mirror`): on, the axis, and the plane.
+pub(super) fn mirror_row(ui: &mut Ui, id: &str, field: &mut crate::state::MirrorField) {
+    label(ui, "Mirror", "Paint both sides in one step: the tool runs again on the far side of a plane across the axis, on that side's own surface, with the picture mirrored. The plane is the object's centre unless At gives its coordinate in cells (a multiple of 0.5; cell c spans c..c+1, so 16 swaps cells 15 and 16).");
+    ui.horizontal(|ui| {
+        ui.checkbox(&mut field.on, "");
+        ui.add_enabled_ui(field.on, |ui| {
+            egui::ComboBox::from_id_salt(id)
+                .width(40.0)
+                .selected_text(["X", "Y", "Z"][field.axis.min(2)])
+                .show_ui(ui, |ui| {
+                    for (index, name) in ["X", "Y", "Z"].iter().enumerate() {
+                        ui.selectable_value(&mut field.axis, index, *name);
+                    }
+                });
+            ui.add(
+                egui::TextEdit::singleline(&mut field.at)
+                    .hint_text("centre")
+                    .desired_width(55.0),
+            )
+            .on_hover_text("The plane's coordinate along the axis in cells; empty is the middle of the object's bounds.");
+        });
+    });
+    ui.end_row();
+}
+
 fn label(ui: &mut Ui, text: &str, tip: &str) {
     ui.label(RichText::new(text).small().color(DIM))
         .on_hover_text(tip);
@@ -106,6 +131,7 @@ pub(super) fn recolor(ui: &mut Ui, session: &mut Session) {
                         .desired_width(120.0),
                 );
                 ui.end_row();
+                mirror_row(ui, "recolor-mirror", &mut session.edit.recolor.mirror);
             });
         if ui
             .button("Recolor")
@@ -217,6 +243,7 @@ pub(super) fn stroke(ui: &mut Ui, session: &mut Session) {
                 label(ui, "Groove", "Erase the stroke's cells instead of painting the active slot: a seam cut Depth cells deep.");
                 ui.checkbox(&mut panel.groove, "Groove");
                 ui.end_row();
+                mirror_row(ui, "stroke-mirror", &mut panel.mirror);
             });
         if ui
             .button("Stroke")

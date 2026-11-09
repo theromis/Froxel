@@ -311,6 +311,7 @@ pub(crate) fn slot_field(what: &str, text: &str) -> Result<Vec<u8>, String> {
 pub struct RecolorPanel {
     /// Pairs such as `3>5 4>6`, separated by spaces or commas.
     pub map: String,
+    pub mirror: MirrorField,
 }
 
 impl RecolorPanel {
@@ -345,6 +346,7 @@ impl RecolorPanel {
                 args[*key] = json!(value);
             }
         }
+        self.mirror.write(&mut args)?;
         Ok(args)
     }
 }
@@ -382,6 +384,56 @@ impl IntersectPanel {
     }
 }
 
+/// The Mirror row of the paint and edit sections (MCP `mirror`): off, or
+/// an axis and a plane, the object's centre when `at` is empty.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MirrorField {
+    pub on: bool,
+    /// 0 x, 1 y, 2 z.
+    pub axis: usize,
+    /// The plane's coordinate in cells; empty is the object's centre.
+    pub at: String,
+}
+
+impl MirrorField {
+    /// The MCP `mirror` argument, or `None` when off.
+    pub(crate) fn arg(&self) -> Result<Option<Value>, String> {
+        if !self.on {
+            return Ok(None);
+        }
+        let axis = ["x", "y", "z"][self.axis.min(2)];
+        let at = self.at.trim();
+        if at.is_empty() {
+            return Ok(Some(json!({ "axis": axis })));
+        }
+        let value: f64 = at
+            .parse()
+            .map_err(|_| format!("Mirror: `{at}` is not a number"))?;
+        crate::tools::Mirror::at(self.axis.min(2), value)?;
+        Ok(Some(json!({ "axis": axis, "at": value })))
+    }
+
+    /// Put the argument into `args` when on.
+    pub(crate) fn write(&self, args: &mut Value) -> Result<(), String> {
+        if let Some(mirror) = self.arg()? {
+            args["mirror"] = mirror;
+        }
+        Ok(())
+    }
+
+    /// The plane for a viewport edit of `cells`: `at`, or their centre.
+    pub(crate) fn plane(&self, cells: &HashMap<Cell, u8>) -> Option<crate::tools::Mirror> {
+        if !self.on {
+            return None;
+        }
+        let axis = self.axis.min(2);
+        match self.at.trim().parse::<f64>() {
+            Ok(at) => crate::tools::Mirror::at(axis, at).ok(),
+            Err(_) => crate::tools::Mirror::about_centre(axis, cells.keys().copied()),
+        }
+    }
+}
+
 /// The Surface stroke section: a stroke through points that snaps to the
 /// active object's surface.
 #[derive(Clone, Debug, PartialEq)]
@@ -398,6 +450,7 @@ pub struct StrokePanel {
     pub only: String,
     /// The points are world cells (MCP `space: "world"`).
     pub world: bool,
+    pub mirror: MirrorField,
 }
 
 impl Default for StrokePanel {
@@ -411,6 +464,7 @@ impl Default for StrokePanel {
             groove: false,
             only: String::new(),
             world: false,
+            mirror: MirrorField::default(),
         }
     }
 }
@@ -457,7 +511,16 @@ impl StrokePanel {
         if self.world {
             args["space"] = json!("world");
         }
+        self.mirror.write(&mut args)?;
         Ok(args)
+    }
+}
+
+/// `, N on the mirrored side` when a reply has `mirrored`.
+pub(crate) fn mirrored_note(reply: &Value) -> String {
+    match reply.get("mirrored").and_then(Value::as_u64) {
+        Some(count) => format!(", {count} more on the mirrored side"),
+        None => String::new(),
     }
 }
 
@@ -468,6 +531,8 @@ pub struct EditPanels {
     pub recolor: RecolorPanel,
     pub intersect: IntersectPanel,
     pub stroke: StrokePanel,
+    /// Mirror of the viewport's brush and shape tools.
+    pub viewport_mirror: MirrorField,
     /// The palette dock's hex field for the active slot.
     pub hex: String,
     /// The Bones panel's joint snap, an index of none, corner, center, half.
@@ -488,8 +553,10 @@ impl Session {
         };
         self.status = match crate::remote::apply(self, "voxel.recolor", &args) {
             Ok(reply) => format!(
-                "Recoloured {} of {} matching cells.",
-                reply["changed"], reply["matched"]
+                "Recoloured {} of {} matching cells{}.",
+                reply["changed"],
+                reply["matched"],
+                mirrored_note(&reply)
             ),
             Err(err) => err,
         };
@@ -523,8 +590,10 @@ impl Session {
         self.status = match crate::remote::apply(self, "voxel.surface_stroke", &args) {
             Ok(reply) => {
                 let mut text = format!(
-                    "Stroked {} cells ({} changed).",
-                    reply["cells"], reply["changed"]
+                    "Stroked {} cells ({} changed){}.",
+                    reply["cells"],
+                    reply["changed"],
+                    mirrored_note(&reply)
                 );
                 if reply["missed"].as_u64().unwrap_or(0) > 0 {
                     text.push_str(&format!(

@@ -163,6 +163,7 @@ pub struct PaintPanel {
     pub only: String,
     /// Colour from the image; off paints the active slot.
     pub colour_image: bool,
+    pub mirror: super::edit::MirrorField,
 }
 
 impl Default for PaintPanel {
@@ -182,6 +183,7 @@ impl Default for PaintPanel {
             normal_limit: 90.0,
             only: String::new(),
             colour_image: true,
+            mirror: super::edit::MirrorField::default(),
         }
     }
 }
@@ -238,6 +240,7 @@ impl PaintPanel {
         if !self.colour_image {
             args["palette"] = json!(active.max(1));
         }
+        self.mirror.write(&mut args)?;
         Ok(args)
     }
 }
@@ -612,8 +615,11 @@ impl Session {
         self.status = match crate::remote::apply(self, "voxel.project_paint", &args) {
             Ok(reply) => {
                 let mut text = format!(
-                    "Painted {} cells ({} changed) from the {} grid.",
-                    reply["cells"], reply["changed"], reply["grid"]
+                    "Painted {} cells ({} changed) from the {} grid{}.",
+                    reply["cells"],
+                    reply["changed"],
+                    reply["grid"],
+                    super::edit::mirrored_note(&reply)
                 );
                 if reply["steep"].as_u64().unwrap_or(0) > 0 {
                     text.push_str(&format!(

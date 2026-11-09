@@ -1277,7 +1277,8 @@ Recolours the active object's visible surface from one image projected
 along a view, as MCP project_paint does, and saves the .vox. Cells are never
 added or removed. paint.json holds that tool's arguments: {view | yaw +
 pitch, path, crop, background, tolerance, flip, cellsPerPixel | imageSize,
-origin, size, palette | slots, coverage, depth, normalLimit, only}. A
+origin, size, palette | slots, coverage, depth, normalLimit, only, mirror}.
+mirror (true, an axis, or {axis, at}) paints both sides of a plane. A
 relative path is relative to paint.json.";
 
 fn paint_args(args: &[String]) -> Result<Option<(PathBuf, PathBuf, serde_json::Value)>, String> {

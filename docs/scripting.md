@@ -252,6 +252,28 @@ carve_tube([[-1, 0, 4], [12, 1, 4]], #{radius: 2.5});
 `carve_box`, `carve_ellipsoid`, and `carve_rounded_box` also take a trailing
 map with `space` (see World cells).
 
+### Mirror
+
+`set_voxels`, the fills (any `mode` but `intersect`), `recolor`,
+`surface_stroke`, and `project_paint` take `mirror` in their options map,
+as over MCP and on the same code path: `true` (across x), `"x"`, `"y"`, or
+`"z"`, or `#{axis: "x", at: 16.0}` with the plane's coordinate in cells (a
+multiple of 0.5; cell `c` spans `c..c+1`). Without `at` the plane is the
+middle of the object's bounds along the axis. The call runs again on the
+object reflected across the plane and its writes are reflected back, so
+the far side's own surface is painted and a picture comes out mirrored.
+`surface_stroke`'s and `project_paint`'s reports then carry `mirrored`, the
+cells only the far side wrote.
+
+```rhai
+surface_stroke([[1, 8, 12], [3, 1, 13]], 3, #{width: 1.5, only: [2], mirror: true});
+fill_tube([[9, 12, 21, 2.0], [4, 12, 27, 1.0]], 6, #{mirror: "x"});
+set_voxels([[4, 2, 15, 7]], #{mirror: #{axis: "x", at: 12.0}});
+```
+
+`examples/mirrored_markings.rhai` paints a made-up critter's stripes,
+spots, belly, and horns on its left half and mirrors each one.
+
 ### Surface stroke
 
 ```rhai
@@ -271,8 +293,10 @@ of it and `depth` cells into the solid take the slot (`0` cuts a groove).
 | `reach` | `8` | How far a point may be from the surface it snaps to, 0..=64. |
 | `only` | every slot | Slots that may change. |
 | `space` | `"local"` | `"world"` takes world cells (see World cells). |
+| `mirror` | off | The stroke again across a plane (see Mirror). |
 
-It returns `#{changed, cells, samples, missed, snap}`.
+It returns `#{changed, cells, samples, missed, snap, mirrored}` (`mirrored`
+with a mirror only).
 
 ### Recolor
 
@@ -284,8 +308,8 @@ let report = recolor([[3, 6], [4, 6]], #{x0: 0, y0: 0, z0: 0, x1: 21, y1: 27, z1
 MCP `recolor` on the object being written: cells of a mapped slot take the
 new slot, and the shape stays (a target of `0` erases). The pairs apply to
 the cells as they were, so `[[3, 4], [4, 3]]` swaps. Options are the box
-corners `x0`..`z1` (all six, or none for the whole object) and `space`. It
-returns `#{changed, matched}`.
+corners `x0`..`z1` (all six, or none for the whole object), `space`, and
+`mirror` (the box and its mirror). It returns `#{changed, matched}`.
 
 ### Smooth
 
@@ -564,6 +588,7 @@ or `yaw` and `pitch` in the options for an oblique projection. Options:
 | `depth` | `1` | Solid cells painted per ray from the visible surface, 1..64. |
 | `normalLimit` | none | Degrees, 0..90: skip a surface turned further than this from the view. |
 | `only` | every slot | Slots that may be repainted; others keep theirs and still hide what is behind. |
+| `mirror` | off | Paint again across a plane, the image mirrored (see Mirror). |
 
 It returns `#{changed, cells, covered, rays, steep, bounds: #{min, max}}`;
 `bounds` is `()` when nothing is painted. `examples/painted_shell.rhai`

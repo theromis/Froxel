@@ -51,7 +51,8 @@ pub(crate) fn is_world(params: &Value) -> Result<bool, String> {
 /// The arguments of `method` with world cells turned into local cells of an
 /// object at `offset`, and `space` removed. Corners `x0..z1`, cells `x`,
 /// `y`, `z`, `points` and `cells` (lists or maps; a list's first three
-/// numbers), `origin`, `boxes`, and `exclude` move; everything else stays.
+/// numbers), `origin`, `boxes`, `exclude`, and a `mirror`'s `at` move;
+/// everything else stays.
 pub(crate) fn to_local(method: &str, params: &Value, offset: Cell) -> Result<Value, String> {
     if !WORLD_METHODS.contains(&method) {
         return Err("space world is not taken by this tool; pass local cells".into());
@@ -78,6 +79,17 @@ pub(crate) fn to_local(method: &str, params: &Value, offset: Cell) -> Result<Val
     }
     if let Some(origin @ Value::Array(_)) = map.get_mut("origin") {
         shift_point(origin, by, -1, "origin")?;
+    }
+    // A mirror plane given at a world coordinate.
+    if let Some(Value::Object(mirror)) = map.get_mut("mirror") {
+        let axis = match mirror.get("axis").and_then(Value::as_str) {
+            Some("y" | "Y") => 1,
+            Some("z" | "Z") => 2,
+            _ => 0,
+        };
+        if let Some(at) = mirror.get("at").and_then(Value::as_f64) {
+            mirror.insert("at".into(), json!(at - f64::from(by[axis])));
+        }
     }
     for key in ["boxes", "exclude"] {
         match map.get_mut(key) {

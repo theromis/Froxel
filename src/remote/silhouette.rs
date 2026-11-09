@@ -235,19 +235,32 @@ pub(crate) fn paint_writes(
     files: bool,
 ) -> Result<(Writes, Map<String, Value>), String> {
     let spec = paint_spec(params, files)?;
-    let painted = crate::tools::project_paint(cells, &spec, palette)?;
-    let writes: Writes = painted
-        .cells
-        .iter()
-        .map(|(cell, slot)| (cell.0, cell.1, cell.2, i32::from(*slot)))
-        .collect();
+    let mirror = super::edit::mirror_arg(cells, params)?;
+    let (writes, painted, mirrored) = crate::tools::mirrored(cells, mirror, |cells| {
+        let painted = crate::tools::project_paint(cells, &spec, palette)?;
+        let writes: Writes = painted
+            .cells
+            .iter()
+            .map(|(cell, slot)| (cell.0, cell.1, cell.2, i32::from(*slot)))
+            .collect();
+        Ok((writes, painted))
+    })?;
     let mut reply = Map::new();
-    reply.insert("cells".into(), json!(painted.cells.len()));
+    if mirror.is_some() {
+        reply.insert("mirrored".into(), json!(mirrored));
+    }
+    reply.insert("cells".into(), json!(writes.len()));
     reply.insert(
         "bounds".into(),
-        match painted.bounds {
-            Some((min, max)) => json!({"min": [min.0, min.1, min.2], "max": [max.0, max.1, max.2]}),
-            None => Value::Null,
+        if mirror.is_some() {
+            super::bounds_json(writes.iter().map(|w| (w.0, w.1, w.2)))
+        } else {
+            match painted.bounds {
+                Some((min, max)) => {
+                    json!({"min": [min.0, min.1, min.2], "max": [max.0, max.1, max.2]})
+                }
+                None => Value::Null,
+            }
         },
     );
     reply.insert(

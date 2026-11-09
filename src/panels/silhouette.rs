@@ -301,6 +301,7 @@ pub(super) fn paint(ui: &mut Ui, session: &mut Session) {
                 label(ui, "Colour", "From the image: each pixel quantised to the nearest palette slot. Off paints the active slot where the image is inked.");
                 ui.checkbox(&mut panel.colour_image, "From image");
                 ui.end_row();
+                super::edit::mirror_row(ui, "paint-mirror", &mut panel.mirror);
             });
         if ui
             .button("Paint")

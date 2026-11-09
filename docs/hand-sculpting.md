@@ -33,7 +33,12 @@ It is how agents should model living things through MCP.
    to the nearest surface cells, `width` cells across and `depth` cells
    deep (`palette` `0` cuts a groove), so no tube radius is guessed. To change a whole slot (the blockout's slot
    to the shell's, the belly to a paler one), call `recolor` with `from` and
-   `to` or a `map`, in a box or everywhere: the shape stays as it is.
+   `to` or a `map`, in a box or everywhere: the shape stays as it is. A
+   symmetric creature is painted once: `mirror: true` on `set_voxels`, the
+   fills, `recolor`, `surface_stroke`, and `project_paint` repeats the call
+   across the object's centre plane (or `{axis, at}`), on the far side's own
+   surface, with the picture mirrored, so the two cheeks, eyes, or flippers
+   match without placing each by hand.
 4. **Repeat** steps 2 and 3. Render after every step and compare again. A
    first blockout is never the result.
 5. **Save.** `save_file`. Froxel saves retain world voxel and marker positions

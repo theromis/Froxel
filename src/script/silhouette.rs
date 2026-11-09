@@ -81,6 +81,7 @@ const PAINT: &[&str] = &[
     "normalLimit",
     "only",
     "space",
+    "mirror",
 ];
 
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {

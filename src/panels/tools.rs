@@ -237,6 +237,34 @@ pub(super) fn options(ui: &mut Ui, session: &mut Session) {
         }
         _ => {}
     }
+    ui.separator();
+    viewport_mirror(ui, &mut session.edit.viewport_mirror);
+}
+
+/// Mirror of the brush and shape tools: every cell a stroke writes is
+/// written again across a plane, as MCP `set_voxels` and the fills do with
+/// `mirror`.
+fn viewport_mirror(ui: &mut Ui, field: &mut crate::state::MirrorField) {
+    row(ui, |ui| {
+        ui.toggle_value(&mut field.on, "Mirror")
+            .on_hover_text("Write every cell of a stroke again across a plane, so one stroke edits both sides (MCP mirror on set_voxels and the fills). The plane is the active object's centre unless At gives it.");
+        ui.add_enabled_ui(field.on, |ui| {
+            egui::ComboBox::from_id_salt("viewport-mirror")
+                .width(40.0)
+                .selected_text(["X", "Y", "Z"][field.axis.min(2)])
+                .show_ui(ui, |ui| {
+                    for (index, name) in ["X", "Y", "Z"].iter().enumerate() {
+                        ui.selectable_value(&mut field.axis, index, *name);
+                    }
+                });
+            ui.add(
+                egui::TextEdit::singleline(&mut field.at)
+                    .hint_text("centre")
+                    .desired_width(50.0),
+            )
+            .on_hover_text("The plane's coordinate along the axis in local cells, a multiple of 0.5; empty is the middle of the object's bounds.");
+        });
+    });
 }
 
 /// The Tube tool: MCP `fill_tube` by drag. A drag runs a tube from the

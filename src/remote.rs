@@ -19,7 +19,7 @@ mod space;
 mod stone;
 pub(crate) use batch::{batch_items, batch_tool_names, MAX_BATCH_ITEMS};
 pub(crate) use collision::{collision_build, finish_reply as collision_reply};
-pub(crate) use edit::{recolor_writes, stroke_writes};
+pub(crate) use edit::{mirror_prop, recolor_writes, stroke_writes, MIRROR_METHODS};
 pub(crate) use import::{
     import_plan, used_slots, DEFAULT_IMPORT_SIZE, DEFAULT_MAX_NEW_SLOTS, DEFAULT_TOLERANCE,
 };
@@ -873,9 +873,13 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
             Ok(json!({"x": x, "y": y, "z": z, "palette": palette, "changed": changed}))
         }
         "voxel.set_many" => {
-            let writes = cell_writes(&params)?;
+            let (writes, mirrored) = set_many_writes(&session.active().cells, &params)?;
             let changed = session.write_cells(&writes)?;
-            Ok(json!({"changed": changed, "voxels": session.voxel_count()}))
+            let mut reply = json!({"changed": changed, "voxels": session.voxel_count()});
+            if let Some(mirrored) = mirrored {
+                reply["mirrored"] = json!(mirrored);
+            }
+            Ok(reply)
         }
         "voxel.fill" => sculpt_fill(session, &params, Sculpt::Box),
         "voxel.ellipsoid" => sculpt_fill(session, &params, Sculpt::Ellipsoid),
@@ -1514,11 +1518,11 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.batch", "operations", "Apply a list of {tool, arguments} editing tools in order as one undo step. Stops at the first error, names the item, and leaves the document as it was. Tools that write files are refused"),
     ("voxel.get", "x, y, z", "Palette index of one local cell. 0 is empty"),
     ("voxel.set", "x, y, z, palette", "Write one cell. One undo step"),
-    ("voxel.set_many", "cells", "Write up to 200000 cells as one undo step"),
-    ("voxel.fill", "x0, y0, z0, x1, y1, z1, palette, mode?", "Fill an inclusive box, at most 2000000 cells"),
-    ("voxel.ellipsoid", "x0, y0, z0, x1, y1, z1, palette, mode?", "Fill an ellipsoid inside an inclusive box, at most 2000000 cells checked"),
-    ("voxel.rounded", "x0, y0, z0, x1, y1, z1, palette, radius, mode?", "Fill a box with rounded edges. radius 0 is the full box"),
-    ("voxel.tube", "points, radius?, curve?, palette | palettes, pattern?, period?, sectors?, seed?, mode?", "Fill a tapered tube through 2..=1024 points, at most 2000000 cells"),
+    ("voxel.set_many", "cells, mirror?", "Write up to 200000 cells as one undo step"),
+    ("voxel.fill", "x0, y0, z0, x1, y1, z1, palette, mode?, mirror?", "Fill an inclusive box, at most 2000000 cells"),
+    ("voxel.ellipsoid", "x0, y0, z0, x1, y1, z1, palette, mode?, mirror?", "Fill an ellipsoid inside an inclusive box, at most 2000000 cells checked"),
+    ("voxel.rounded", "x0, y0, z0, x1, y1, z1, palette, radius, mode?, mirror?", "Fill a box with rounded edges. radius 0 is the full box"),
+    ("voxel.tube", "points, radius?, curve?, palette | palettes, pattern?, period?, sectors?, seed?, mode?, mirror?", "Fill a tapered tube through 2..=1024 points, at most 2000000 cells"),
     ("voxel.carve", "shape, x0..z1 | points, radius?, curve?", "Remove the cells inside a box, ellipsoid, rounded_box, or tube (sweep with palette 0 removes a cross-section along a path; trim_outline removes everything outside a surface)"),
     ("voxel.break", "point, normal, depth?, splinters? | density?, length?, thickness?, taper?, rimBias?, bark?, sapwood?, tips?, seed?", "Jagged fracture across a plane with splinters"),
     ("voxel.scatter", "x0, y0, z0, x1, y1, z1, palettes, count?, kinds?, size?, seed?, floor?, clump?, exclude?", "Drop small pieces that settle into a heap"),
@@ -1538,7 +1542,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.loft", "points, radius? | rx? + ry?, roll?, flatTop?, noise?, frequency?, curve?, caps?, palette | palettes, pattern?, period?, sectors?, seed?, mode?", "Fill a solid along a curve whose elliptical, flattened, noisy section changes per point"),
     ("voxel.brush", "op, points, radius?, strength?, falloff?, only?, palette?, vector?, spacing?", "Sculpt brush dabs along points: inflate, deflate, smooth, flatten, or grab"),
     ("voxel.carve_from_views", "views, size?, origin?, cellsPerPixel?, palette? | slots?, coverage?, shell?, smooth?, mode?", "Fill the visual hull of 2 or 3 orthographic views (front, side, top): each a PNG path or rows, with crop, cellsPerPixel or size, and a background rule"),
-    ("voxel.project_paint", "view | yaw + pitch, path + crop? | rows + legend?, background?, cellsPerPixel? | imageSize?, origin?, size?, palette? | slots?, coverage?, depth?, normalLimit?, only?", "Recolour the active object's visible surface from one image projected along a view: never adds or removes cells"),
+    ("voxel.project_paint", "view | yaw + pitch, path + crop? | rows + legend?, background?, cellsPerPixel? | imageSize?, origin?, size?, palette? | slots?, coverage?, depth?, normalLimit?, only?, mirror?", "Recolour the active object's visible surface from one image projected along a view: never adds or removes cells"),
     ("voxel.fit_to_views", "views, path?, background?, tolerance?, alphaThreshold?, align?, slots?, coverage?, iterations?, seed?, margin?, maskWeight?, colorWeight?, depthWeight?, smoothWeight?, shape?, recolor?, normalLimit?, keep?, sharedScale?, roundWeight?, roundness?, roundAxes?, reference?, isolate?", "Refine the active object so its orthographic views match a views sheet: clears excess rays, fills missing ones, follows a reference's depth, and recolours the visible cells from the slots. One undo step"),
     ("render.compare_silhouette", "path, concept, crop?, background?, tolerance?, alphaThreshold?, flip?, align?, preset?, view?, yaw?, pitch?, orthographic?, fov?, margin?, object?, isolate?, width?, height?, lighting?, pose?", "Compare the model's preview silhouette with a concept mask: IoU, missing and excess shares, and an overlay PNG"),
     ("mesh.import", "path, size? | scale? | voxelSize?, upAxis?, rotation?, position?, anchor?, fill?, colors?, palette? | slots?, maxNewSlots?, tolerance?, mode?, newObject?, name?", "Voxelize a .glb, .gltf, or .obj into the active object or a new one, colours quantized into the palette. One undo step"),
@@ -1553,8 +1557,8 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("object.add", "name?, position?, size?, make_active?", "Empty object at a world position. Active unless make_active is false"),
     ("object.set", "index, name?, position?, hidden?", "Rename, move, or hide. position is world voxels; local cells stay put"),
     ("object.remove", "index", "Remove an object and its voxels. Later indices shift. The last object stays"),
-    ("voxel.recolor", "from + to | map, x0..z1?", "Replace palette slots of the active object's cells (one, or a map of several), in a box or everywhere, with no shape change. One undo step"),
-    ("voxel.surface_stroke", "points, palette, curve?, width?, depth?, reach?, only?", "Paint (or groove with palette 0) a stroke through points that snaps to the active object's nearest surface cells, width cells wide and depth cells deep. One undo step"),
+    ("voxel.recolor", "from + to | map, x0..z1?, mirror?", "Replace palette slots of the active object's cells (one, or a map of several), in a box or everywhere, with no shape change. One undo step"),
+    ("voxel.surface_stroke", "points, palette, curve?, width?, depth?, reach?, only?, mirror?", "Paint (or groove with palette 0) a stroke through points that snaps to the active object's nearest surface cells, width cells wide and depth cells deep. One undo step"),
     ("object.clear", "index?", "Empty an object (index or name; default the active one) with no box limit. Name, position, bone, and script stay. One undo step"),
     ("object.split", "boxes? | slots?, index?, invert?, copy?, into? | name?, makeActive?", "Move or copy the cells of an object inside boxes or of some slots into a new or existing object, keeping their world positions. One undo step"),
     ("object.mirror", "index, axis, name, position?, mirrorBones?", "Copy an object mirrored across x, y, or z. mirrorBones copies the bound subtree and swaps _l/_r"),
@@ -1972,9 +1976,33 @@ pub(crate) enum Sculpt {
 }
 
 fn sculpt_fill(session: &mut Session, params: &Value, sculpt: Sculpt) -> Result<Value, String> {
-    let writes = fill_writes(&session.active().cells, params, sculpt)?;
+    let (writes, mirrored) = fill_writes_mirrored(&session.active().cells, params, sculpt)?;
     let changed = session.write_cells(&writes)?;
-    Ok(json!({"changed": changed, "voxels": session.voxel_count()}))
+    let mut reply = json!({"changed": changed, "voxels": session.voxel_count()});
+    if let Some(mirrored) = mirrored {
+        reply["mirrored"] = json!(mirrored);
+    }
+    Ok(reply)
+}
+
+/// [`fill_writes`] with `mirror`: the shape again across the plane, kept by
+/// `mode` against the cells there. Not with mode intersect. Also the count
+/// only the mirror wrote. Rhai scripts call this.
+pub(crate) fn fill_writes_mirrored(
+    cells: &HashMap<Cell, u8>,
+    params: &Value,
+    sculpt: Sculpt,
+) -> Result<(Vec<(i32, i32, i32, i32)>, Option<usize>), String> {
+    let mirror = edit::mirror_arg(cells, params)?;
+    if mirror.is_some() && fill_mode(params)? == FillMode::Intersect {
+        return Err(
+            "mirror does not take mode intersect: intersect with each shape in turn".into(),
+        );
+    }
+    let (writes, _, mirrored) = crate::tools::mirrored(cells, mirror, |cells| {
+        Ok((fill_writes(cells, params, sculpt)?, ()))
+    })?;
+    Ok((writes, mirror.map(|_| mirrored)))
 }
 
 /// The writes of a fill tool against `cells`, from its arguments: the
@@ -2616,7 +2644,22 @@ fn box_corners(params: &Value) -> Result<(i32, i32, i32, i32, i32, i32), String>
     ))
 }
 
-/// The writes of MCP `set_voxels` from its `cells`. Rhai scripts call this.
+/// The writes of MCP `set_voxels` against `cells`: its `cells`, and with
+/// `mirror` each one again across the plane (a cell written on both sides
+/// keeps the slot given for it). Also the count only the mirror wrote. Rhai
+/// scripts call this.
+pub(crate) fn set_many_writes(
+    cells: &HashMap<Cell, u8>,
+    params: &Value,
+) -> Result<(Vec<(i32, i32, i32, i32)>, Option<usize>), String> {
+    let writes = cell_writes(params)?;
+    let mirror = edit::mirror_arg(cells, params)?;
+    let (writes, _, mirrored) =
+        crate::tools::mirrored(cells, mirror, |_| Ok((writes.clone(), ())))?;
+    Ok((writes, mirror.map(|_| mirrored)))
+}
+
+/// The writes of MCP `set_voxels` from its `cells`.
 pub(crate) fn cell_writes(params: &Value) -> Result<Vec<(i32, i32, i32, i32)>, String> {
     let cells = params
         .get("cells")

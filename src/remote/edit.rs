@@ -1,5 +1,6 @@
 //! MCP handlers of the whole-object edits: `split_object`,
-//! `clear_object`, `recolor`, and `surface_stroke`.
+//! `clear_object`, `recolor`, and `surface_stroke`, and the `mirror`
+//! argument of the paint and edit tools.
 //!
 //! Rhai records `split_object` and `clear_object(object)` as document calls and runs it through this
 //! same handler after its voxels are written; its `recolor` runs
@@ -209,7 +210,17 @@ pub(crate) fn recolor_map(params: &Value) -> Result<[Option<u8>; 256], String> {
 /// in the map takes its new slot, inside the inclusive box `x0..z1` when
 /// one is given. No shape changes unless a slot maps to 0. Also returns how
 /// many cells matched.
+/// With `mirror` the box is mirrored too; `matched` counts the first side,
+/// and the last number is the cells only the mirrored side wrote.
 pub(crate) fn recolor_writes(
+    cells: &HashMap<Cell, u8>,
+    params: &Value,
+) -> Result<(Vec<(i32, i32, i32, i32)>, usize, usize), String> {
+    let mirror = mirror_arg(cells, params)?;
+    crate::tools::mirrored(cells, mirror, |cells| recolor_pass(cells, params))
+}
+
+fn recolor_pass(
     cells: &HashMap<Cell, u8>,
     params: &Value,
 ) -> Result<(Vec<(i32, i32, i32, i32)>, usize), String> {
@@ -248,9 +259,80 @@ pub(crate) fn recolor_writes(
 
 /// MCP `recolor`: replace palette slots in the active object, one undo step.
 pub(super) fn recolor(session: &mut Session, params: &Value) -> Result<Value, String> {
-    let (writes, matched) = recolor_writes(&session.active().cells, params)?;
+    let (writes, matched, mirrored) = recolor_writes(&session.active().cells, params)?;
     let changed = session.write_cells(&writes)?;
-    Ok(json!({"matched": matched, "changed": changed, "voxels": session.voxel_count()}))
+    let mut reply =
+        json!({"matched": matched, "changed": changed, "voxels": session.voxel_count()});
+    if params
+        .get("mirror")
+        .is_some_and(|m| !m.is_null() && m != &json!(false))
+    {
+        reply["mirrored"] = json!(mirrored);
+    }
+    Ok(reply)
+}
+
+/// The methods that take `mirror`.
+pub(crate) const MIRROR_METHODS: &[&str] = &[
+    "voxel.set_many",
+    "voxel.fill",
+    "voxel.ellipsoid",
+    "voxel.rounded",
+    "voxel.tube",
+    "voxel.recolor",
+    "voxel.surface_stroke",
+    "voxel.project_paint",
+];
+
+/// The schema property of `mirror`.
+pub(crate) fn mirror_prop() -> Value {
+    json!({"type": ["boolean", "string", "object"], "description": "Do it on both sides of a plane in one call: true (x), an axis x, y, or z, or {axis?: x, at?: the plane's coordinate in local cells (world with space world), a multiple of 0.5; cell c spans c..c+1, so at 16 swaps cells 15 and 16}. Without at the plane is the middle of the object's bounds along the axis. The tool runs again on the object reflected across the plane and its writes are reflected back, so the far side's own surface is painted and a picture comes out mirrored (a left eye for a right one); a cell both sides write keeps the first side's slot. The reply adds mirrored, the cells only the far side wrote."})
+}
+
+/// `mirror` of the paint and edit tools: `true` (x about the object's
+/// centre), an axis `"x"`, `"y"`, or `"z"` (about the centre), or
+/// `{axis?, at?}` with the plane's coordinate `at` in local cells (a
+/// multiple of 0.5; cell c spans c..c+1, so at 16 swaps cells 15 and 16).
+/// The centre is the middle of the object's bounds along the axis.
+pub(crate) fn mirror_arg(
+    cells: &HashMap<Cell, u8>,
+    params: &Value,
+) -> Result<Option<crate::tools::Mirror>, String> {
+    let axis_of = |text: &str| match text {
+        "x" | "X" => Ok(0),
+        "y" | "Y" => Ok(1),
+        "z" | "Z" => Ok(2),
+        other => Err(format!("mirror axis must be x, y, or z, not `{other}`")),
+    };
+    let (axis, at) = match params.get("mirror") {
+        None | Some(Value::Null) | Some(Value::Bool(false)) => return Ok(None),
+        Some(Value::Bool(true)) => (0, None),
+        Some(Value::String(text)) => (axis_of(text)?, None),
+        Some(Value::Object(map)) => {
+            let axis = match map.get("axis") {
+                None | Some(Value::Null) => 0,
+                Some(Value::String(text)) => axis_of(text)?,
+                Some(_) => return Err("mirror axis must be x, y, or z".into()),
+            };
+            let at = match map.get("at") {
+                None | Some(Value::Null) => None,
+                Some(found) => Some(found.as_f64().ok_or("mirror at must be a number")?),
+            };
+            for key in map.keys() {
+                if key != "axis" && key != "at" {
+                    return Err(format!("mirror takes axis and at, not `{key}`"));
+                }
+            }
+            (axis, at)
+        }
+        Some(_) => return Err("mirror must be true, an axis x, y, or z, or {axis, at}".into()),
+    };
+    match at {
+        Some(at) => crate::tools::Mirror::at(axis, at).map(Some),
+        None => crate::tools::Mirror::about_centre(axis, cells.keys().copied())
+            .map(Some)
+            .ok_or_else(|| "mirror about the centre needs cells: pass mirror {axis, at}".into()),
+    }
 }
 
 /// The stroke of MCP `surface_stroke`: `points` (`[x, y, z]` or `{x, y, z}`),
@@ -310,12 +392,27 @@ pub(crate) fn stroke_spec(params: &Value) -> Result<crate::tools::StrokeSpec, St
 
 /// The writes of `surface_stroke` against `cells` and its counts. Rhai
 /// scripts call this with their options map.
+/// With `mirror` the stroke runs again on the far side, mirrored.
 pub(crate) fn stroke_writes(
     cells: &HashMap<Cell, u8>,
     params: &Value,
 ) -> Result<(Vec<(i32, i32, i32, i32)>, Value), String> {
     let spec = stroke_spec(params)?;
-    let stroked = crate::tools::surface_stroke(cells, &spec)?;
+    let mirror = mirror_arg(cells, params)?;
+    let (writes, mut counts, mirrored) =
+        crate::tools::mirrored(cells, mirror, |cells| stroke_pass(cells, &spec))?;
+    if mirror.is_some() {
+        counts["cells"] = json!(writes.len());
+        counts["mirrored"] = json!(mirrored);
+    }
+    Ok((writes, counts))
+}
+
+fn stroke_pass(
+    cells: &HashMap<Cell, u8>,
+    spec: &crate::tools::StrokeSpec,
+) -> Result<(Vec<(i32, i32, i32, i32)>, Value), String> {
+    let stroked = crate::tools::surface_stroke(cells, spec)?;
     let counts = json!({
         "cells": stroked.writes.len(),
         "samples": stroked.samples,

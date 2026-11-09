@@ -18,15 +18,17 @@ use serde_json::Value;
 use super::{axis, coord, runtime, slot_index, Scratch};
 use crate::remote::{self, Sculpt};
 
-const FILL: &[&str] = &["mode", "space"];
+const FILL: &[&str] = &["mode", "space", "mirror"];
 const CARVE: &[&str] = &["space"];
 const TUBE_SHAPE: &[&str] = &["radius", "curve", "aspect", "roll", "profile", "space"];
 const TUBE: &[&str] = &[
     "mode", "radius", "curve", "aspect", "roll", "profile", "pattern", "period", "sectors", "seed",
-    "space",
+    "space", "mirror",
 ];
-const STROKE: &[&str] = &["curve", "width", "depth", "reach", "only", "space"];
-const RECOLOR: &[&str] = &["x0", "y0", "z0", "x1", "y1", "z1", "space"];
+const STROKE: &[&str] = &[
+    "curve", "width", "depth", "reach", "only", "space", "mirror",
+];
+const RECOLOR: &[&str] = &["x0", "y0", "z0", "x1", "y1", "z1", "space", "mirror"];
 const SMOOTH: &[&str] = &["iterations", "fillAt", "removeAt", "space"];
 const BREAK: &[&str] = &[
     "depth",
@@ -358,7 +360,7 @@ impl Scratch {
             Sculpt::Tube => "voxel.tube",
         };
         let (args, _) = self.localize(method, args)?;
-        let writes = remote::fill_writes(self.cells(), &args, sculpt)?;
+        let (writes, _) = remote::fill_writes_mirrored(self.cells(), &args, sculpt)?;
         self.apply(&writes)
     }
 
@@ -414,7 +416,7 @@ impl Scratch {
     fn recolor(&mut self, args: Args) -> Result<Map, String> {
         self.keep_going()?;
         let (args, _) = self.localize("voxel.recolor", args)?;
-        let (writes, matched) = remote::recolor_writes(self.cells(), &args)?;
+        let (writes, matched, _) = remote::recolor_writes(self.cells(), &args)?;
         let changed = self.apply(&writes)?;
         Ok(reply([("changed", changed), ("matched", matched as INT)]))
     }
