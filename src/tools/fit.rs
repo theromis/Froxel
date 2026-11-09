@@ -69,6 +69,9 @@ pub struct FitView {
     pub align: Align,
     /// The view's colours recolour cells; off uses it for the shape only.
     pub color: bool,
+    /// The view's depth map: the depth target of its rays, in place of a
+    /// reference object's front.
+    pub depth: Option<super::depth::Depth>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -117,6 +120,8 @@ pub struct FitSpec {
     /// sections) and z (plan) by default. An x section runs along a
     /// creature facing −Y, through its neck, so its ellipse cuts the face.
     pub round_axes: [bool; 3],
+    /// Cells in front of a depth map's surface that still count as on it.
+    pub depth_tolerance: f32,
 }
 
 impl Default for FitSpec {
@@ -140,6 +145,7 @@ impl Default for FitSpec {
             round_weight: 0.0,
             roundness: 2.5,
             round_axes: [false, true, true],
+            depth_tolerance: 0.0,
         }
     }
 }
@@ -174,6 +180,8 @@ pub struct FitViewReport {
     pub offset: [f32; 2],
     pub before: ViewScore,
     pub after: ViewScore,
+    /// The depth map's calibration.
+    pub depth: Option<super::depth::Calibration>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -213,6 +221,7 @@ struct ViewGrid {
     offset: [f32; 2],
     /// Its colours count in the colour pass.
     paints: bool,
+    depth_cal: Option<super::depth::Calibration>,
 }
 
 struct Fit<'a> {
@@ -1003,6 +1012,78 @@ fn refit_offset(
     (scale, best.1)
 }
 
+/// Each depth view's target: its map placed like its mask, calibrated
+/// against the hull of the views' targets in the fit box, sets the front
+/// (and with `back` the back) of every ray it covers, in place of a
+/// reference object's.
+fn depth_targets(fit: &mut Fit, spec: &FitSpec) {
+    use super::depth;
+    let sides: Vec<Side> = spec.views.iter().map(|view| view.side).collect();
+    for (vi, view) in spec.views.iter().enumerate() {
+        let Some(map) = &view.depth else {
+            continue;
+        };
+        let (w, h, steps) = (fit.views[vi].w, fit.views[vi].h, fit.views[vi].depth);
+        let (scale, offset) = (f64::from(fit.views[vi].scale), fit.views[vi].offset);
+        let (mw, mh) = (f64::from(view.mask.width), f64::from(view.mask.height));
+        let mut n = vec![None; w * h];
+        let mut hull = vec![None; w * h];
+        for row in 0..h {
+            for col in 0..w {
+                let p = row * w + col;
+                if !fit.views[vi].inside[p] {
+                    continue;
+                }
+                let x = |c: usize| (c as f64 - f64::from(offset[0])) / scale / mw;
+                let y = |r: usize| (r as f64 - f64::from(offset[1])) / scale / mh;
+                n[p] = map
+                    .map
+                    .sample(x(col), x(col + 1), y(row), y(row + 1))
+                    .map(|grey| map.shaped(grey));
+                hull[p] = (0..steps)
+                    .find(|step| fit.inside_others(vi, fit.cell_on(vi, p, *step)))
+                    .map(|step| step as f32);
+            }
+        }
+        let [(u, _), (v, _), (d, _)] = view.side.axes();
+        let lines = [depth::measured(&sides, v, d), depth::measured(&sides, u, d)];
+        // The middle of the targets' hull along the view.
+        let (mut lo, mut hi) = (usize::MAX, 0usize);
+        for p in 0..w * h {
+            if !fit.views[vi].inside[p] {
+                continue;
+            }
+            for step in 0..steps {
+                if fit.inside_others(vi, fit.cell_on(vi, p, step)) {
+                    lo = lo.min(step);
+                    hi = hi.max(step);
+                }
+            }
+        }
+        let middle = if lo == usize::MAX {
+            steps as f32 / 2.0
+        } else {
+            (lo + hi + 1) as f32 / 2.0
+        };
+        let cal = depth::calibrate(map, &n, &hull, w, h, steps, lines, middle);
+        let last = steps as f32 - 1.0;
+        for (p, value) in n.iter().enumerate() {
+            let Some(value) = value else {
+                continue;
+            };
+            let (lo, hi) = depth::kept_span(map, &cal, *value, spec.depth_tolerance);
+            let front = (lo - 0.5).ceil().clamp(0.0, last);
+            let back = if hi.is_finite() {
+                (hi - 0.5).floor().clamp(front, last)
+            } else {
+                last
+            };
+            fit.views[vi].reference[p] = Some((front as u32, back as u32));
+        }
+        fit.views[vi].depth_cal = Some(cal);
+    }
+}
+
 /// Fit `cells` to `spec.views`. `context` cells (other objects, in the
 /// same local frame) cover and hide but never change; `reference` cells
 /// give the depth target. `palette` is the document's colours.
@@ -1053,6 +1134,16 @@ pub fn fit_to_views(
     }
     if !(0.0..=100.0).contains(&spec.round_weight) {
         return Err("roundWeight must be 0..100".into());
+    }
+    if !(0.0..=64.0).contains(&spec.depth_tolerance) {
+        return Err("depthTolerance must be 0..64 cells".into());
+    }
+    for view in &spec.views {
+        if let Some(depth) = &view.depth {
+            depth
+                .check()
+                .map_err(|err| format!("{} view: {err}", view.side.name()))?;
+        }
     }
     if !(1.0..=16.0).contains(&spec.roundness) {
         return Err("roundness must be 1..16".into());
@@ -1171,6 +1262,7 @@ pub fn fit_to_views(
             scale: 1.0,
             offset: [0.0, 0.0],
             paints: view.color,
+            depth_cal: None,
         });
         let vi = fit.views.len() - 1;
         let model: Vec<bool> = (0..w * h).map(|p| fit.first(vi, p).is_some()).collect();
@@ -1239,6 +1331,7 @@ pub fn fit_to_views(
         grid.scale = scale;
         grid.offset = offset;
     }
+    depth_targets(&mut fit, spec);
     fit.build_prior(&refs);
     fit.recompute();
     let energy_before = fit.total();
@@ -1318,6 +1411,7 @@ pub fn fit_to_views(
             offset: grid.offset,
             before: before[v],
             after: fit.score(v),
+            depth: grid.depth_cal,
         })
         .collect();
     Ok(Fitted {

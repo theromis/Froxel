@@ -111,7 +111,17 @@ If the tools are missing, the server is not configured. Point the user to
    `carve_from_views`: the front, side, and top views as PNG crops of the
    sheet (`crop`, `cellsPerPixel` or a box `size`, a background rule) fill
    their visual hull, coloured from the nearest view. Do not copy cells from
-   the flat views by hand. To round the boxy hull, intersect it: `fill_ellipsoid`
+   the flat views by hand. When a grey depth pass of the sheet exists (white
+   near; an image generator's, or Depth Anything V2 run on the sheet with
+   grayscale output), pass it as `depthPath` beside the sheet's `path` and
+   crops: the cells in front of each view's depth surface are carved away,
+   so heads and shells come out round. Keep `calibrate` at its default
+   `hull` (it scales each relative map so its nearest pixel per row meets
+   the silhouettes), read each view's `depth.residual` in the reply (under 1
+   cell is good), use `depthTolerance` 0.5 to 1 for a noisy map, and
+   `back: true` on a view's `depth` when its opposite view has no map.
+   `fit_to_views` takes the same `depthPath` and `depth` as its depth
+   target. To round the boxy hull, intersect it: `fill_ellipsoid`
    (or `fill_rounded_box`, `fill_box`, `fill_tube`) with `mode: "intersect"`
    keeps only the cells inside the shape (a dome over a shell), and
    `carve_from_views` `mode: "intersect"` cuts an existing form to the

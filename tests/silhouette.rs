@@ -252,7 +252,7 @@ fn bad_views_are_explained() {
         crate::remote::apply(&mut empty_session(), "voxel.carve_from_views", &params).unwrap_err()
     };
     let one = json!({"views": [{"view": "front", "rows": ["#"]}], "cellsPerPixel": 1});
-    assert!(err(one).contains("2 or 3"));
+    assert!(err(one).contains("2 to 6"));
     let uncovered = json!({"views": [
         {"view": "front", "rows": ["#"]}, {"view": "back", "rows": ["#"]}
     ], "cellsPerPixel": 1, "palette": 1});

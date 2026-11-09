@@ -81,7 +81,12 @@ pub(crate) fn hull_writes(
             .map(|view| json!({
                 "view": view.side.name(),
                 "grid": view.grid,
-                "covered": view.covered
+                "covered": view.covered,
+                "depth": view.depth.as_ref().map(|(cal, carved)| {
+                    let mut out = calibration_reply(cal);
+                    out["carved"] = json!(carved);
+                    out
+                })
             }))
             .collect::<Vec<_>>()),
     );
@@ -100,9 +105,11 @@ fn carve_spec(params: &Value, files: bool) -> Result<CarveSpec, String> {
         if !item.is_object() {
             return Err(format!("view {i} must be an object"));
         }
+        let item = &sheet_keys(params, item);
         let side =
             Side::parse(&opt_str(item, "view")?.ok_or_else(|| format!("view {i} needs view"))?)?;
-        let mask = view_mask(item, files, &mut images).map_err(|err| format!("view {i}: {err}"))?;
+        let (mask, depth) = view_mask_depth(item, params, files, &mut images)
+            .map_err(|err| format!("view {i}: {err}"))?;
         let scale = match (item.get("size"), opt_f64(item, "cellsPerPixel")?) {
             (Some(size), None) if !size.is_null() => {
                 let pair = size
@@ -121,7 +128,12 @@ fn carve_spec(params: &Value, files: bool) -> Result<CarveSpec, String> {
                 None => Scale::Fit,
             },
         };
-        views.push(View { side, mask, scale });
+        views.push(View {
+            side,
+            mask,
+            scale,
+            depth,
+        });
     }
     let size = box_size(params)?;
     let origin = super::opt_ivec3(params, "origin")?.unwrap_or([0, 0, 0]);
@@ -143,6 +155,7 @@ fn carve_spec(params: &Value, files: bool) -> Result<CarveSpec, String> {
         coverage: opt_f64(params, "coverage")?.unwrap_or(0.5) as f32,
         shell: passes("shell")?.filter(|n| *n > 0),
         smooth: passes("smooth")?.unwrap_or(0),
+        depth_tolerance: opt_f64(params, "depthTolerance")?.unwrap_or(0.0) as f32,
     })
 }
 
@@ -358,6 +371,167 @@ pub(crate) fn view_mask(
     } else {
         mask
     })
+}
+
+/// A view with the sheet-wide keys at the top level (`path`,
+/// `background`, `tolerance`, `alphaThreshold`) filling its missing ones.
+fn sheet_keys(params: &Value, item: &Value) -> Value {
+    let mut item = item.clone();
+    for key in ["path", "background", "tolerance", "alphaThreshold"] {
+        let given = params.get(key).filter(|v| !v.is_null());
+        if let (Some(value), Some(map)) = (given, item.as_object_mut()) {
+            if !map.contains_key(key) && !(key == "path" && map.contains_key("rows")) {
+                map.insert(key.into(), value.clone());
+            }
+        }
+    }
+    item
+}
+
+/// A view's mask and depth map. A view with `depth` and no `path` or
+/// `rows` takes its silhouette from the depth map.
+pub(crate) fn view_mask_depth(
+    item: &Value,
+    params: &Value,
+    files: bool,
+    images: &mut HashMap<String, crate::sheet::Image>,
+) -> Result<(Mask, Option<crate::tools::Depth>), String> {
+    let colour = item.get("rows").is_some_and(|v| !v.is_null())
+        || item.get("path").is_some_and(|v| !v.is_null());
+    let depth =
+        view_depth(item, params, files, images, colour).map_err(|err| format!("depth: {err}"))?;
+    let mask = match (&depth, colour) {
+        (Some(depth), false) => depth.map.mask(),
+        _ => view_mask(item, files, images)?,
+    };
+    Ok((mask, depth))
+}
+
+/// A view's `depth`: `true` (the call's `depthPath`), a PNG path, or
+/// `{path | values, crop, background, tolerance, alphaThreshold, invert,
+/// gamma, near, far, calibrate, back}`; `false` or left out without
+/// `depthPath` is none. `crop` defaults to the view's. With a colour image
+/// the map's pixels all hold values (the silhouette is the colour
+/// image's) unless `background` is given; without one the map keys its
+/// background as a view does.
+fn view_depth(
+    item: &Value,
+    params: &Value,
+    files: bool,
+    images: &mut HashMap<String, crate::sheet::Image>,
+    colour: bool,
+) -> Result<Option<crate::tools::Depth>, String> {
+    use crate::tools::{Calibrate, Depth};
+    let sheet = opt_str(params, "depthPath")?;
+    let mut d = match item.get("depth") {
+        None | Some(Value::Null) if sheet.is_none() => return Ok(None),
+        None | Some(Value::Null) | Some(Value::Bool(true)) => json!({}),
+        Some(Value::Bool(false)) => return Ok(None),
+        Some(Value::String(path)) => json!({ "path": path }),
+        Some(found @ Value::Object(_)) => found.clone(),
+        Some(_) => {
+            return Err("must be true, false, a PNG path, or {path | values, ...}".into());
+        }
+    };
+    let has = |d: &Value, key: &str| d.get(key).is_some_and(|v| !v.is_null());
+    if !has(&d, "path") && !has(&d, "values") {
+        match &sheet {
+            Some(path) => d["path"] = json!(path),
+            None => return Err("needs path or values, or depthPath on the call".into()),
+        }
+    }
+    let mut inherited = vec!["crop"];
+    if !colour {
+        inherited.extend(["background", "tolerance", "alphaThreshold"]);
+    }
+    for key in inherited {
+        if !has(&d, key) && has(item, key) {
+            d[key] = item[key].clone();
+        }
+    }
+    let map = match (
+        d.get("values").filter(|v| !v.is_null()),
+        opt_str(&d, "path")?,
+    ) {
+        (Some(values), None) => {
+            let rows = values
+                .as_array()
+                .and_then(|rows| {
+                    rows.iter()
+                        .map(|row| {
+                            row.as_array()?
+                                .iter()
+                                .map(|v| match v {
+                                    Value::Null => Some(None),
+                                    found => found.as_f64().map(|n| Some(n as f32)),
+                                })
+                                .collect::<Option<Vec<_>>>()
+                        })
+                        .collect::<Option<Vec<_>>>()
+                })
+                .ok_or("values must be rows of numbers 0..1 (1 nearest) or null")?;
+            crate::tools::depth_from_values(&rows)?
+        }
+        (None, Some(path)) => {
+            if !files {
+                return Err(
+                    "scripts cannot read files: pass depth values, or call over MCP".into(),
+                );
+            }
+            if !images.contains_key(&path) {
+                let image = crate::sheet::read_png(Path::new(&path))?;
+                images.insert(path.clone(), image);
+            }
+            let image = &images[&path];
+            let background = match d.get("background") {
+                Some(Value::String(text)) if text == "none" => None,
+                None | Some(Value::Null) if colour => None,
+                _ => Some(background_rule(&d)?),
+            };
+            crate::tools::depth_from_rgba(
+                image.width,
+                image.height,
+                &image.rgba,
+                crop(&d)?,
+                background,
+            )?
+        }
+        (Some(_), Some(_)) => return Err("pass path or values, not both".into()),
+        (None, None) => unreachable!("set above"),
+    };
+    let map = if opt_bool(item, "flip")?.unwrap_or(false) {
+        map.flipped()
+    } else {
+        map
+    };
+    let mut depth = Depth::new(map);
+    depth.invert = opt_bool(&d, "invert")?.unwrap_or(false);
+    depth.gamma = opt_f64(&d, "gamma")?.unwrap_or(1.0) as f32;
+    depth.back = opt_bool(&d, "back")?.unwrap_or(false);
+    depth.near_far = match (opt_f64(&d, "near")?, opt_f64(&d, "far")?) {
+        (Some(near), Some(far)) => Some([near as f32, far as f32]),
+        (None, None) => None,
+        _ => return Err("pass near and far together".into()),
+    };
+    if let Some(name) = opt_str(&d, "calibrate")? {
+        depth.calibrate = Calibrate::parse(&name)?;
+    }
+    depth.check()?;
+    Ok(Some(depth))
+}
+
+fn calibration_reply(cal: &crate::tools::Calibration) -> Value {
+    let mut out = json!({
+        "calibrate": cal.mode,
+        "near": round(cal.near, 2),
+        "far": round(cal.far, 2),
+        "rim": round(cal.rim, 2)
+    });
+    if let Some(residual) = cal.residual {
+        out["pairs"] = json!(cal.pairs);
+        out["residual"] = json!(round(residual, 3));
+    }
+    out
 }
 
 fn legend(item: &Value) -> Result<HashMap<char, Ink>, String> {
@@ -687,7 +861,8 @@ pub(crate) fn fit_writes(
                     "offset": [round(view.offset[0], 2), round(view.offset[1], 2)]
                 },
                 "before": score(&view.before),
-                "after": score(&view.after)
+                "after": score(&view.after),
+                "depth": view.depth.as_ref().map(calibration_reply)
             }))
             .collect::<Vec<_>>()),
     );
@@ -734,20 +909,11 @@ fn fit_spec(params: &Value, files: bool) -> Result<crate::tools::FitSpec, String
         if !item.is_object() {
             return Err(format!("view {i} must be an object"));
         }
-        // Sheet-wide keys at the top level fill a view's missing ones.
-        let mut item = item.clone();
-        for key in ["path", "background", "tolerance", "alphaThreshold"] {
-            let given = params.get(key).filter(|v| !v.is_null());
-            if let (Some(value), Some(map)) = (given, item.as_object_mut()) {
-                if !map.contains_key(key) && !(key == "path" && map.contains_key("rows")) {
-                    map.insert(key.into(), value.clone());
-                }
-            }
-        }
-        let item = &item;
+        let item = &sheet_keys(params, item);
         let side =
             Side::parse(&opt_str(item, "view")?.ok_or_else(|| format!("view {i} needs view"))?)?;
-        let mask = view_mask(item, files, &mut images).map_err(|err| format!("view {i}: {err}"))?;
+        let (mask, depth) = view_mask_depth(item, params, files, &mut images)
+            .map_err(|err| format!("view {i}: {err}"))?;
         let align = match item.get("align") {
             None | Some(Value::Null) => default_align,
             Some(_) => align_arg(item).map_err(|err| format!("view {i}: {err}"))?,
@@ -758,6 +924,7 @@ fn fit_spec(params: &Value, files: bool) -> Result<crate::tools::FitSpec, String
             mask,
             align,
             color,
+            depth,
         });
     }
     let whole = |key: &str| -> Result<Option<u64>, String> {
@@ -790,6 +957,7 @@ fn fit_spec(params: &Value, files: bool) -> Result<crate::tools::FitSpec, String
         normal_limit: opt_f64(params, "normalLimit")?.map_or(defaults.normal_limit, |n| n as f32),
         keep: slot_list(params, "keep")?.unwrap_or_default(),
         shared_scale: opt_bool(params, "sharedScale")?.unwrap_or(true),
+        depth_tolerance: opt_f64(params, "depthTolerance")?.unwrap_or(0.0) as f32,
         round_weight: weight("roundWeight", defaults.round_weight)?,
         roundness: weight("roundness", defaults.roundness)?,
         round_axes: match opt_str(params, "roundAxes")? {

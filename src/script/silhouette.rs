@@ -1,7 +1,9 @@
 //! MCP `carve_from_views`, `project_paint`, and `fit_to_views` in Rhai: the
 //! visual hull of two or three views, each a map of rows and a legend, one
 //! image of rows painted onto the surface a view sees, and the object
-//! refined to match its views, since a script reads no files.
+//! refined to match its views, since a script reads no files. A view's
+//! `depth` is then `#{values: [[...]]}`, rows of numbers 0..1 (1 nearest)
+//! with `()` for background, plus the MCP depth options.
 //!
 //! `carve_from_views(views)` and `carve_from_views(views, opts)` run
 //! `remote::hull_writes` on the object being written, as the MCP handler
@@ -34,6 +36,7 @@ const CARVE: &[&str] = &[
     "smooth",
     "mode",
     "space",
+    "depthTolerance",
 ];
 
 const FIT: &[&str] = &[
@@ -56,6 +59,7 @@ const FIT: &[&str] = &[
     "roundness",
     "roundAxes",
     "reference",
+    "depthTolerance",
 ];
 
 const PAINT: &[&str] = &[
@@ -260,7 +264,8 @@ impl Scratch {
     }
 
     /// The hull on the object being written. The reply holds `changed`,
-    /// `cells`, and `bounds` as `#{min, max}` (unit when nothing is carved).
+    /// `cells`, `bounds` as `#{min, max}` (unit when nothing is carved),
+    /// `size`, and `views` (each view's grid, covered, and depth).
     fn carve_views(&mut self, args: Args) -> Result<Map, String> {
         self.keep_going()?;
         let palette = self.run_palette();
@@ -276,6 +281,7 @@ impl Scratch {
         );
         reply.insert("bounds".into(), bounds_map(&counts["bounds"]));
         reply.insert("size".into(), corner(&counts["size"]));
+        reply.insert("views".into(), super::document::dynamic(&counts["views"]));
         Ok(reply)
     }
 }

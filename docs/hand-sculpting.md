@@ -69,6 +69,15 @@ off the flat views.
    flat views give a boxy hull; round it with `fill_ellipsoid` (or
    `fill_rounded_box`) in `mode` `intersect`, which keeps only the cells
    inside the shape, so a turtle's shell becomes a dome in one call.
+   Better, give each view a depth map (`depthPath`: a grey depth pass of
+   the same sheet, white near, from the image generator or from Depth
+   Anything V2 run on the sheet): the cells in front of each view's depth
+   surface go, so a head is round and a shell domed from the sheet itself.
+   The maps are relative, and the default `calibrate: "hull"` scales each
+   one so its nearest pixel per row meets the silhouettes; check the reply's
+   `residual` and see [mcp.md](mcp.md#depth-maps). Front, side, and top
+   cannot see the back-right-bottom corner: add `back: true` to their
+   depth, or draw back views too.
    `carve_from_views` in `mode` `intersect` does the reverse: it cuts an
    existing form to the views.
 2. **Measure it.** `compare_silhouette` draws the model from a camera and
@@ -108,7 +117,8 @@ off the flat views.
    colouring from both gives four. A round part (a head) comes out of the
    visual hull as a box, since no axis view sees its diagonal corners:
    fit it with `roundWeight: 0.3` and they go while every view stays the
-   same. Then refine by hand: the fit matches
+   same, or pass the views' depth maps (`depthPath`, `depth`), which say
+   where the surface is instead of guessing. Then refine by hand: the fit matches
    views, not the sides no view sees.
 
 ```
@@ -116,6 +126,7 @@ carve_from_views     views=[{view: "front", path: "sheet.png", crop: [40, 60, 52
                             {view: "side",  path: "sheet.png", crop: [620, 60, 180, 300]},
                             {view: "top",   path: "sheet.png", crop: [40, 420, 520, 180]}]
                      size=[96, 34, 56] slots=[3, 4, 5, 6] smooth=1
+                     depthPath="sheet-depth.png" depthTolerance=0.5
 compare_silhouette   path="front-vs.png" concept="sheet.png" crop=[40, 60, 520, 300] view="front" orthographic=true
 compare_silhouette   path="hero-vs.png" concept="hero.png" preset="game"
 project_paint        view="top" path="sheet.png" crop=[40, 420, 520, 180] size=[96, 34, 56]
@@ -132,7 +143,9 @@ a level from that same camera, in `preview` too ([preview.md](preview.md)).
 
 `examples/carved_stump.rhai` does the same in a script, with the views as
 rows, `examples/painted_shell.rhai` paints a shell's plates from a top
-view, and `examples/fitted_beetle.rhai` fits a boxy blockout to its views.
+view, `examples/fitted_beetle.rhai` fits a boxy blockout to its views,
+and `examples/depth_head.rhai` carves a round head from three views with a
+depth map each (its `depth` parameter at 0 shows the boxy hull without).
 In the editor, the Carve from views, Paint from view, Fit to views (on the
 Carve from views section's views), and Compare silhouette sections hold the
 same fields, and the comparison shows over the viewport.

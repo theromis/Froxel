@@ -184,7 +184,7 @@ tracer. A file with no scene graph still loads its first model.
 | `loft` | `points`, `palette` or `palettes` | Fill a solid along 2..=1024 **local** points whose cross-section changes per point: an ellipse (`rx`, `ry`) turned by `roll`, cut flat by `flatTop`, with outline `noise` and `frequency`. Optional `radius` and the section fields as defaults, `curve` (`polyline`, `smooth`), `caps` (`flat`, `round`), `pattern` (`rings`, `stripes`, `random`), `period`, `sectors`, `seed`, `mode`. `palette` `0` erases the solid cells it covers instead, for a slanted cut along a closed or curved outline (`mode` `empty` is refused with it). Replies with `cells` and `length`, and `removed` when erasing. At most 2000000 cells, one undo step |
 | `deform` | `op` | `bend`, `taper`, or `twist` the active object (or the cells of a box `x0`..`z1`) along `axis`, or `displace` its surface with 3D noise. Optional `axis`, `origin`, `length`, `center`, `angle`, `direction`, `start`, `end`, `amplitude`, `scale`, `octaves`, `seed`, `bias`. Slots are kept. Replies with `cells`, `result`, `added`, `removed`. One undo step |
 | `brush` | `op`, `points` | Sculpt brush dabs along **local** points: `inflate`, `deflate` (`dig`), `smooth`, `flatten`, or `grab` (`drag`). Optional `radius`, `strength`, `falloff` (`smooth`, `linear`, `constant`), `only`, `palette`, `vector` (grab), `spacing`. Replies with `dabs`, `added`, `removed`. One undo step |
-| `carve_from_views` | `views` | Fill the visual hull of 2 or 3 orthographic views (front, side, top) of a concept's turnaround sheet into the active object: each view's silhouette is extruded along its depth axis and the cells every view covers are kept. A view is a PNG `path` with `crop`, `background` (`auto`, `alpha`, or a key colour with `tolerance`), and `cellsPerPixel` or `size`, or `rows` with a `legend`. Optional `size`, `origin`, `cellsPerPixel`, `palette` or `slots`, `coverage`, `shell`, `smooth`, `mode`. Replies with `cells`, `bounds`, `size`, and each view's `grid` and `covered`. At most 4000000 cells in the box, one undo step. See [Silhouettes](#silhouettes) |
+| `carve_from_views` | `views` | Fill the visual hull of 2 to 6 orthographic views (front, side, top) of a concept's turnaround sheet into the active object: each view's silhouette is extruded along its depth axis and the cells every view covers are kept. A view's `depth` (or the top-level `depthPath`), a grey depth map with white near, carves away the cells in front of its surface, so a round head is round; one view with depth is enough. See [Depth maps](#depth-maps). A view is a PNG `path` with `crop`, `background` (`auto`, `alpha`, or a key colour with `tolerance`), and `cellsPerPixel` or `size`, or `rows` with a `legend`. Optional `path`, `background`, `tolerance`, `alphaThreshold` (for every view without its own), `depthPath`, `depthTolerance`, `size`, `origin`, `cellsPerPixel`, `palette` or `slots`, `coverage`, `shell`, `smooth`, `mode`. Replies with `cells`, `bounds`, `size`, and each view's `grid`, `covered`, and `depth` (its calibration and the cells it carved). At most 4000000 cells in the box, one undo step. See [Silhouettes](#silhouettes) |
 | `import_mesh` | `path` | Voxelize a `.glb`, `.gltf`, or `.obj` (with its `.mtl` and textures) into the active object, or a new one with `newObject` (and `name`). Optional `size`, `scale`, or `voxelSize`; `upAxis`, `rotation`, `position`, `anchor` (`min`, `center`, `bottom`), `fill` (`solid`, `shell`), `colors` (`auto`, `vertex`), `palette` or `slots`, `maxNewSlots`, `tolerance`, `mode`. Replies with `cells`, `shell`, `interior`, `written`, `changed`, `slots`, `newSlots`, `bounds`, `scale`, `triangles`, `primitives`, `textures`, `warnings`. At most 256 cells per axis and 2000000 cells, one undo step |
 | `surface_stroke` | `points`, `palette` | Paint a stroke through 2..=1024 **local** points that snaps to the active object's nearest surface cells: seams between shell plates, markings on a curved body. Optional `curve` (`polyline`, `smooth`), `width` (cells across, default 1), `depth` (cells into the solid, default 1), `reach` (default 8), `only`. `palette` `0` cuts a groove. Replies with `cells`, `changed`, `samples`, `missed`, `snap`, `length`, `voxels`. One undo step |
 | `recolor` | `from` and `to`, or `map` | Replace palette slot `from` with `to` (or every pair of `map`, `{"3": 5}` or `[[3, 5]]`) in the active object's solid cells, inside an inclusive box `x0`..`z1` or everywhere. No cell is added; `to` `0` erases. Replies with `matched`, `changed`, `voxels`. One undo step |
@@ -1443,7 +1443,7 @@ paints one view's pattern onto it, `fit_to_views` refines a blockout until
 its views match the sheet, and `compare_silhouette` measures it.
 
 `carve_from_views` turns a turnaround sheet into the rough form. Each of
-2 or 3 views is extruded through a box along its depth axis, and the cells
+2 to 6 views is extruded through a box along its depth axis, and the cells
 every view covers are kept (a visual hull). Views are named as
 `model_view` names them, for a model facing −Y with +Z up:
 
@@ -1485,7 +1485,10 @@ corner is `origin` (default `[0, 0, 0]`).
 ```
 
 The hull is the outer limit of the form: a concave part (the gap between
-two legs seen from the side) stays filled until `carve` cuts it. Shape it
+two legs seen from the side) stays filled until `carve` cuts it, and three
+axis silhouettes cannot tell a sphere from the intersection of three
+cylinders (its diagonal corners stay). A depth map per view fixes both; see
+[Depth maps](#depth-maps). Shape it
 from there with `carve`, `fill_tube`, `smooth`, and `set_voxels`. `mode`
 `intersect` turns the call around: nothing is filled, and the object's solid
 cells outside the hull are erased, so an existing form (a dome, an imported
@@ -1644,8 +1647,99 @@ aspect. Use an orthographic named `view` for a turnaround view and
 project's own camera and `placementYaw` for an asset placed turned in a level
 (see [preview.md](preview.md)). It writes a
 file, so scripts do not have it. `froxel compare` is the same from the
-command line, `froxel carve` runs `carve_from_views` from a JSON file, and
+command line, `froxel carve` runs `carve_from_views` from a JSON file (depth
+maps included; relative `path`, `depthPath`, and `depth` paths are relative
+to it), and
 `froxel paint` runs `project_paint` from one on a copy of a `.vox`.
+
+### Depth maps
+
+A silhouette says which rays meet the model; a depth map says where along
+each ray the surface lies. A view of `carve_from_views` or `fit_to_views`
+takes one as `depth`:
+
+- `true`: the top-level `depthPath` at the view's crop. With `depthPath`
+  given every view takes its depth from it unless it says `depth: false`.
+- a PNG path, at the view's crop;
+- `{path | values, crop, background, tolerance, alphaThreshold, invert,
+  gamma, near, far, calibrate, back}`.
+
+The map is grey (its luma), white near the viewer and black far, placed
+exactly as the view is: same crop (its own `crop` when the depth sheet is
+laid out differently; a crop of another size is stretched over the view's),
+same `flip`, same `cellsPerPixel` or `size`. When the view has a colour
+image (`path` or `rows`) the silhouette is the colour image's and every
+pixel of the map holds a value, since a depth model's background is some
+grey, not the key colour; give the map a `background` to key it as well. A
+view with `depth` and no `path` or `rows` takes its silhouette from the map,
+keyed by the view's background rule (pass `palette`, or give another view a
+colour image, for its colour). `values` is the map as rows of numbers 0..1
+(1 nearest) with `null` for background, as a Rhai script passes it.
+
+The depth is relative, so each view's map is calibrated to cells: shaped
+grey `n` (after `invert` and `gamma`, `n^gamma`) lies at `near + (far -
+near) * (1 - n)` cells from the camera side of the box.
+
+- `calibrate: "hull"` (the default) fits `near` and `far` by least squares
+  from the silhouette hull: in each image row the nearest pixel lies where
+  the hull is nearest in that row, because the view that looks along the
+  row (a side view for a front view's rows, a top view for its columns)
+  measures exactly that. Rows shorter than half the longest are left out,
+  since a mean over a steep surface near a pole is far from its nearest
+  point. So a sphere's rim lands on its middle plane, not on the box's
+  back. The reply gives the `pairs` fitted and their RMS `residual` in
+  cells.
+- `calibrate: "box"`: the map's lightest and darkest inked pixels span the
+  box along the view's axis, for a relief on a flat back. Hull falls back
+  to it when no view measures the map's rows or columns (a single view).
+- `near` and `far` (both): the cells where white and black land; the reply
+  of an earlier call gives them, to hold a calibration still.
+
+A cell stays when its centre is at or behind every depth surface less
+`depthTolerance` cells (default 0); raise it to 0.5 to 1 for a noisy map.
+`back: true` also removes the cells behind the surface mirrored about the
+middle of the hull along the view (where a round body's rim lies), for a
+view whose opposite has no map: three views (front, left, top) cannot see
+the octant toward back, right, and bottom, and `back` closes it. Each
+view's reply holds `depth` `{calibrate, near, far, rim, pairs, residual,
+carved}`.
+
+In `fit_to_views` a view's map is placed with the view's `align` and
+calibrated against the hull of the views' targets in the fit box; it gives
+that view's depth target (in place of a `reference` object's front), so
+`depthWeight` pulls each ray's first cell to the map and `depthError`
+reports the mean distance.
+
+Making the maps:
+
+- **An image generator** (ChatGPT, Codex): ask for the approved views sheet
+  again as a depth pass, same layout and framing, flat grey, white nearest,
+  black farthest, no lighting, background black or the sheet's key colour.
+  Check that its crops line up with the colour sheet's; give `depth.crop`
+  where they do not. Its grey is only roughly linear: keep `calibrate:
+  "hull"` and look at `residual` (under 1 cell is good); a curved response
+  takes `gamma` (above 1 pushes mid greys back).
+- **Depth Anything V2** (relative, monocular): run it on the colour sheet
+  itself, so the crops are identical, and save grayscale (`--grayscale` in
+  its `run.py`; the default output is a coloured palette, which does not
+  read as depth). Its output is relative inverse depth, white near, so no
+  `invert`. Pass it as `depthPath` beside the colour sheet's `path` and
+  crops, and leave `calibrate` at hull; the model's background is a grey
+  ramp, which the colour sheet's key colour masks out. On a flat-shaded
+  sheet the model sees outlines and shading, not true depth, so check the
+  carve with `preview` from three quarters and raise `depthTolerance` if
+  thin parts lose cells.
+
+```json
+{"path": "views.png", "depthPath": "depth-views.png", "background": "#ff00ff",
+ "cellsPerPixel": 0.1042,
+ "views": [
+   {"view": "front", "crop": [40, 201, 547, 275]},
+   {"view": "left", "crop": [646, 199, 595, 280]},
+   {"view": "top", "crop": [40, 637, 537, 575]},
+   {"view": "back", "crop": [672, 773, 541, 276]}],
+ "depthTolerance": 0.5}
+```
 
 ### Markers
 
@@ -1763,7 +1857,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `fill_tube` | Tube tool: drag from the start radius to the end radius; Chain adds a point per drag and Smooth curves through them until Finish; Flatten, Roll, and Blade shape it; Solid, Rings, Stripes, or Random with a second slot |
 | `sweep` | Sweep section: Points (one per line, Point at selection adds the selection's centre), Smooth, Rectangle (Width, Height, Radius) or Polygon, Palettes, Bands, Rings, or Random, Period, Mode, Seed |
 | `trim_outline` | Trim section: Outline (one point per line, Point at selection adds the selection's centre), Smooth, Inset, Only, New skin, Slot, Thickness; Trim inside the selection's box or on the whole object |
-| `carve_from_views` | Carve from views section: three view rows (on, side, Image…, crop, Flip), Cells / px, Size, Origin (World), Background (Auto, Alpha, Key with tolerance), Colour from views or the active slot, Shell, Smooth, Intersect (Keep inside only), Carve |
+| `carve_from_views` | Carve from views section: three view rows (on, side, Image…, crop, Flip, depth map…), Cells / px, Size, Origin (World), Background (Auto, Alpha, Key with tolerance), Colour from views or the active slot, Shell, Smooth, Depth (Hull or Box, Invert, Back, tolerance), Intersect (Keep inside only), Carve |
 | `mode` `intersect` | Intersect section: Shape (Box, Ellipsoid, Rounded box with Radius) inscribed in the selection's box, Keep inside |
 | `project_paint` | Paint from view section: View, Flip, Image…, Crop, Background, Scale (Fit box or Cells / px), Box origin and size, Depth, Normal limit, Only, Colour from image or the active slot, Paint |
 | `compare_silhouette` | Compare silhouette section: Concept Image…, Crop, Background, Flip, Camera (Viewport, Game, Front, Left, Top), Align (Fit, Height, Width), Compare; the overlay shows in the viewport's bottom-right corner until Hide overlay; MCP `compare_silhouette` over the control port shows it there too |

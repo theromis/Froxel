@@ -65,6 +65,8 @@ pub struct ViewRow {
     /// `x y w h` in pixels; empty is the whole image.
     pub crop: String,
     pub flip: bool,
+    /// A grey depth map of the same crop (white near); empty is none.
+    pub depth: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -84,6 +86,14 @@ pub struct CarvePanel {
     pub smooth: i32,
     /// MCP `mode: "intersect"`: keep the cells inside the hull only.
     pub intersect: bool,
+    /// Depth maps: black is near.
+    pub depth_invert: bool,
+    /// Depth maps: 0 hull, 1 box calibration.
+    pub depth_calibrate: usize,
+    /// Depth maps: mirror the surface for the far side.
+    pub depth_back: bool,
+    /// Depth maps: `depthTolerance` cells.
+    pub depth_tolerance: f32,
 }
 
 impl Default for CarvePanel {
@@ -94,6 +104,7 @@ impl Default for CarvePanel {
             path: String::new(),
             crop: String::new(),
             flip: false,
+            depth: String::new(),
         };
         Self {
             views: [row(0, true), row(2, true), row(4, false)],
@@ -106,6 +117,10 @@ impl Default for CarvePanel {
             shell: 0,
             smooth: 0,
             intersect: false,
+            depth_invert: false,
+            depth_calibrate: 0,
+            depth_back: false,
+            depth_tolerance: 0.0,
         }
     }
 }
@@ -300,6 +315,7 @@ impl FitPanel {
         let align = ["fit", "height", "width"][self.align.min(2)];
         let mut args = json!({
             "views": carved["views"],
+            "depthTolerance": carved.get("depthTolerance").cloned().unwrap_or(json!(0)),
             "align": align,
             "iterations": self.iterations.max(0),
             "seed": self.seed.max(0),
@@ -433,19 +449,36 @@ impl CarvePanel {
     /// when the colour does not come from the views.
     pub(crate) fn args(&self, active: u8) -> Result<Value, String> {
         let mut views = Vec::new();
+        let mut depths = false;
         for row in self.views.iter().filter(|row| row.on) {
-            if row.path.trim().is_empty() {
-                return Err(format!("{}: choose an image.", SIDES[row.side].0));
+            let (path, depth) = (row.path.trim(), row.depth.trim());
+            if path.is_empty() && depth.is_empty() {
+                return Err(format!(
+                    "{}: choose an image or a depth map.",
+                    SIDES[row.side].0
+                ));
             }
             let mut view = json!({
                 "view": SIDES[row.side.min(SIDES.len() - 1)].1,
-                "path": row.path.trim(),
                 "flip": row.flip
             });
+            if !path.is_empty() {
+                view["path"] = json!(path);
+            }
             if let Some(crop) = numbers("Crop", &row.crop, 4)? {
                 view["crop"] = json!(crop);
             }
             self.background.write(&mut view);
+            if !depth.is_empty() {
+                depths = true;
+                let calibrate = ["hull", "box"][self.depth_calibrate.min(1)];
+                view["depth"] = json!({
+                    "path": depth,
+                    "invert": self.depth_invert,
+                    "calibrate": calibrate,
+                    "back": self.depth_back
+                });
+            }
             views.push(view);
         }
         let mut args = json!({
@@ -470,6 +503,9 @@ impl CarvePanel {
         }
         if self.intersect {
             args["mode"] = json!("intersect");
+        }
+        if depths && self.depth_tolerance > 0.0 {
+            args["depthTolerance"] = json!(self.depth_tolerance);
         }
         Ok(args)
     }
@@ -676,6 +712,15 @@ impl Session {
         if let Some(path) = super::dialog::pick_open("PNG", &["png"]) {
             if let Some(view) = self.silhouette.carve.views.get_mut(row) {
                 view.path = path.display().to_string();
+            }
+        }
+    }
+
+    /// Choose the depth map of Carve from views row `row`.
+    pub fn pick_carve_depth(&mut self, row: usize) {
+        if let Some(path) = super::dialog::pick_open("PNG", &["png"]) {
+            if let Some(view) = self.silhouette.carve.views.get_mut(row) {
+                view.depth = path.display().to_string();
             }
         }
     }

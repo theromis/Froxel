@@ -487,7 +487,7 @@ let report = carve_from_views([
 let report = carve_from_views(views, #{cellsPerPixel: 1, origin: [0, 0, 0], shell: 2, smooth: 1});
 ```
 
-MCP `carve_from_views`: the visual hull of 2 or 3 orthographic views. Each
+MCP `carve_from_views`: the visual hull of 2 to 6 orthographic views. Each
 view's silhouette is extruded through a box along its depth axis, and the
 cells every view covers are kept: the rough form of a turnaround sheet in
 3D. A script reads no files, so each view is a map of `rows` (strings; `.`
@@ -498,7 +498,13 @@ on this same code path. `view` is `front` (seen from −Y, image right is
 +X), `back`, `left` or `side` (from +X: image right is +Y, so the model's
 front is on the image's left), `right`, `top` (from +Z, image down is −Y),
 or `bottom`; `flip: true` mirrors one. A view may also carry its own
-`cellsPerPixel` or `size: [across, down]`. Options:
+`cellsPerPixel` or `size: [across, down]`, and a `depth` map: `#{values:
+[[...]]}`, rows of numbers 0..1 (1 nearest) with `()` for background, plus
+`invert`, `gamma`, `near` and `far`, `calibrate` (`"hull"` or `"box"`), and
+`back`, as over MCP ([mcp.md](mcp.md#depth-maps)). The cells in front of
+its surface are carved away, so a round form is round; a view with `depth`
+and no `rows` takes its silhouette from the values, and one such view is
+enough. Options:
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -511,12 +517,21 @@ or `bottom`; `flip: true` mirrors one. A view may also carry its own
 | `shell` | solid | Keep only cells within this many cells of the outside, 1..64. |
 | `smooth` | `0` | Smooth passes over the hull, 0..64. |
 | `mode` | `"replace"` | `"empty"` adds only into empty cells; `"paint"` recolours solid ones; `"intersect"` keeps only the object's cells inside the hull and erases the rest. |
+| `depthTolerance` | `0` | Cells in front of a depth surface that still stay, 0..64. |
+
+```rhai
+// A dome from a top view's depth: grey 1 at the crown, 0.25 at the rim.
+let depth = #{values: [[(), 0.5, ()], [0.5, 1.0, 0.5], [(), 0.5, ()]], calibrate: "box"};
+carve_from_views([#{view: "top", depth: depth}], #{palette: 3, cellsPerPixel: 4, size: [12, 12, 4]});
+```
 
 A view smaller than the box is centred across and stands on the box's
 bottom. Each cell takes the colour of the view whose visible surface is
 nearest it, so the sides of a stump are bark and its top shows the rings.
-It returns `#{changed, cells, bounds: #{min, max}, size}`; `bounds` is `()`
-when nothing is carved. `examples/carved_stump.rhai` carves a stump with
+It returns `#{changed, cells, bounds: #{min, max}, size, views}`; `bounds` is `()`
+when nothing is carved, and each of `views` holds `grid`, `covered`, and
+`depth` (`calibrate`, `near`, `far`, `rim`, `carved`) for a depth view. `examples/depth_head.rhai` carves a round head from front, side,
+and top rows with a depth map each. `examples/carved_stump.rhai` carves a stump with
 roots from front, side, and top rows.
 
 ### Project paint
@@ -562,8 +577,9 @@ let report = fit_to_views(views, #{reference: "mesh", depthWeight: 1.0});
 
 MCP `fit_to_views`: the object being written is refined so that its
 orthographic views match `views` (1 to 6, one per side, each a map of
-`view`, `rows`, `legend`, `flip`, `align`, and `color` (`false` shapes
-only), as `carve_from_views` takes them; over MCP a view may be a PNG crop, on this same code path). One row
+`view`, `rows`, `legend`, `flip`, `align`, `color` (`false` shapes
+only), and `depth` (that view's depth target, as `carve_from_views` takes
+it), as `carve_from_views` takes them; over MCP a view may be a PNG crop, on this same code path). One row
 character is one column of cells. Each view is placed once over the
 object's projection (`align`: `"fit"`, `"height"`, `"width"`, or
 `#{scale, offset}`), then shape moves (excess rays cleared, missing rays
@@ -583,7 +599,8 @@ covers only the object being written. Options:
 | `margin` | 15% of the extent, at least 4 | Empty cells around the bounds the fit may fill, 0..64. |
 | `maskWeight` | `1` | Cost of a missing or excess view pixel. |
 | `colorWeight` | `1` | Cost of a colour 255 RGB apart. |
-| `depthWeight` | `0.5` | Cost of a first cell 8 or more cells from the reference's. |
+| `depthWeight` | `0.5` | Cost of a first cell 8 or more cells from the reference's or the depth map's. |
+| `depthTolerance` | `0` | Cells in front of a depth surface that still count as on it. |
 | `smoothWeight` | `0.1` | Cost of each exposed cell face. |
 | `shape`, `recolor` | `true` | Add and remove cells; recolour the seen cells. |
 | `normalLimit` | `60` | Degrees: a view recolours only cells facing it within this angle. |

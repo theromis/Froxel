@@ -45,11 +45,12 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
     ui.add_enabled_ui(enabled, |ui| {
         section(ui, "Carve from views");
         let mut pick = None;
+        let mut pick_depth = None;
         let panel = &mut session.silhouette.carve;
         for (row, view) in panel.views.iter_mut().enumerate() {
             ui.horizontal(|ui| {
                 ui.checkbox(&mut view.on, "")
-                    .on_hover_text("Use this view. Carve needs 2 or 3.");
+                    .on_hover_text("Use this view. Carve needs 2 or 3, or 1 with a depth map.");
                 egui::ComboBox::from_id_salt(("carve-side", row))
                     .width(90.0)
                     .selected_text(SIDES[view.side.min(SIDES.len() - 1)].0)
@@ -79,6 +80,17 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
                         .desired_width(90.0),
                 )
                 .on_hover_text("The view's rectangle in the image, in pixels: x y width height. Empty is the whole image.");
+            });
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut view.depth)
+                        .hint_text("depth.png (optional)")
+                        .desired_width(150.0),
+                )
+                .on_hover_text("A grey depth map of the same crop, white near and black far (an image generator's depth pass, or Depth Anything V2 with grayscale output). Cells in front of its surface are carved away, so a round form comes out round. With no view image the map's silhouette is used.");
+                if ui.button("…").on_hover_text("Choose the depth PNG.").clicked() {
+                    pick_depth = Some(row);
+                }
             });
         }
         egui::Grid::new("carve-panel")
@@ -120,6 +132,29 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
                 label(ui, "Smooth", "Smooth passes over the hull.");
                 ui.add(egui::DragValue::new(&mut panel.smooth).range(0..=crate::tools::MAX_CARVE_PASSES as i32));
                 ui.end_row();
+                label(ui, "Depth", "How the depth maps are read. Hull places each image row's nearest pixel where the silhouettes are nearest in that row; Box spreads the map over the box, for a relief. Invert: black is near. Back: mirror the surface for the far side, when the opposite view has no map. Tolerance: cells in front of the surface that stay.");
+                ui.horizontal(|ui| {
+                    egui::ComboBox::from_id_salt("carve-depth-calibrate")
+                        .width(60.0)
+                        .selected_text(["Hull", "Box"][panel.depth_calibrate.min(1)])
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut panel.depth_calibrate, 0, "Hull")
+                                .on_hover_text("Calibrate each map against the silhouette hull.");
+                            ui.selectable_value(&mut panel.depth_calibrate, 1, "Box")
+                                .on_hover_text("The map's range spans the box along the view.");
+                        });
+                    ui.checkbox(&mut panel.depth_invert, "Invert")
+                        .on_hover_text("Black is near.");
+                    ui.checkbox(&mut panel.depth_back, "Back")
+                        .on_hover_text("Mirror the near surface about the hull's middle for the far side.");
+                    ui.add(
+                        egui::DragValue::new(&mut panel.depth_tolerance)
+                            .range(0.0..=64.0)
+                            .speed(0.05),
+                    )
+                    .on_hover_text("Tolerance: cells in front of a depth surface that stay.");
+                });
+                ui.end_row();
                 label(ui, "Intersect", "MCP mode intersect: keep only the active object's cells inside the hull, as they are, and erase the rest, instead of filling the hull.");
                 ui.checkbox(&mut panel.intersect, "Keep inside only");
                 ui.end_row();
@@ -133,6 +168,9 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
         }
         if let Some(row) = pick {
             session.pick_carve_view(row);
+        }
+        if let Some(row) = pick_depth {
+            session.pick_carve_depth(row);
         }
     });
 }

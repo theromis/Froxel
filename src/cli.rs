@@ -1178,12 +1178,17 @@ pub fn carve(args: &[String]) -> i32 {
 const CARVE_HELP: &str = "\
 usage: froxel carve --views <views.json> --out <file.vox> [--input <base.vox>]
 
-Fills the visual hull of 2 or 3 orthographic views (front, side, top) into
+Fills the visual hull of 2 to 6 orthographic views (front, side, top) into
 the active object, as MCP carve_from_views does, and saves the .vox.
 views.json holds that tool's arguments: {views: [{view, path, crop,
-cellsPerPixel | size, background, tolerance, flip}, ...], size, origin,
-cellsPerPixel, palette | slots, coverage, shell, smooth, mode}. A relative
-view path is relative to views.json. --input carves into a copy of that
+cellsPerPixel | size, background, tolerance, flip, depth}, ...], path,
+depthPath, size, origin, cellsPerPixel, palette | slots, coverage, shell,
+smooth, mode, depthTolerance}. A view's depth is a grey depth map (white
+near) of the same crop, true for the crop of depthPath, or {path | values,
+crop, background, invert, gamma, near, far, calibrate: hull | box, back}:
+cells in front of its surface are carved away, so a round head is round,
+not a box. One view with depth is enough for a relief. A relative path
+is relative to views.json. --input carves into a copy of that
 .vox; without it the document is empty with the default palette.";
 
 fn carve_args(
@@ -1216,16 +1221,7 @@ fn carve_args(
         .map_err(|err| format!("Could not read {}: {err}", views.display()))?;
     let mut params: serde_json::Value = serde_json::from_str(&text)
         .map_err(|err| format!("{} is not JSON: {err}", views.display()))?;
-    let base = views.parent().unwrap_or(Path::new(""));
-    if let Some(list) = params.get_mut("views").and_then(|v| v.as_array_mut()) {
-        for view in list {
-            if let Some(path) = view.get("path").and_then(|p| p.as_str()) {
-                if Path::new(path).is_relative() {
-                    view["path"] = serde_json::json!(base.join(path).display().to_string());
-                }
-            }
-        }
-    }
+    views_relative(&mut params, views.parent().unwrap_or(Path::new("")));
     Ok(Some((input, output, params)))
 }
 
@@ -1382,12 +1378,12 @@ views sheet, as MCP fit_to_views does, saves the .vox, and prints the reply
 (per-view IoU, missing, excess, and colour error before and after, the
 cells added, removed, and recoloured, and the palette used). fit.json holds
 that tool's arguments: {views: [{view, path, crop, background, tolerance,
-flip, align, color}, ...], path, background, tolerance (for every view
-without its own), align, slots, coverage, iterations, seed, margin,
-maskWeight, colorWeight, depthWeight, smoothWeight, shape, recolor,
+flip, align, color, depth}, ...], path, background, tolerance (for every view
+without its own), depthPath, align, slots, coverage, iterations, seed,
+margin, maskWeight, colorWeight, depthWeight, smoothWeight, shape, recolor,
 normalLimit, keep, sharedScale, roundWeight, roundness, roundAxes,
-reference,
-isolate}. Fit a part with a
+reference, isolate, depthTolerance}. A view's depth (as in froxel carve)
+is that view's depth target, in place of a reference object's front. Fit a part with a
 hand-set face with recolor false, so the front and side views do not
 paint its eyes twice.
 A relative path is relative to fit.json.";
@@ -1424,22 +1420,42 @@ fn fit_args(args: &[String]) -> Result<Option<FitArgs>, String> {
         .map_err(|err| format!("Could not read {}: {err}", file.display()))?;
     let mut params: serde_json::Value = serde_json::from_str(&text)
         .map_err(|err| format!("{} is not JSON: {err}", file.display()))?;
-    let base = file.parent().unwrap_or(Path::new(""));
+    views_relative(&mut params, file.parent().unwrap_or(Path::new("")));
+    Ok(Some((input, output, object, params)))
+}
+
+/// Resolve the image paths of `carve_from_views` and `fit_to_views`
+/// arguments against `base`: `path` and `depthPath` at the top, and each
+/// view's `path` and `depth` (a path, or an object with one).
+fn views_relative(params: &mut serde_json::Value, base: &Path) {
+    let fix = |value: &mut serde_json::Value| {
+        if let Some(path) = value.as_str() {
+            if Path::new(path).is_relative() {
+                *value = serde_json::json!(base.join(path).display().to_string());
+            }
+        }
+    };
+    for key in ["path", "depthPath"] {
+        if let Some(value) = params.get_mut(key) {
+            fix(value);
+        }
+    }
     if let Some(list) = params.get_mut("views").and_then(|v| v.as_array_mut()) {
         for view in list {
-            if let Some(path) = view.get("path").and_then(|p| p.as_str()) {
-                if Path::new(path).is_relative() {
-                    view["path"] = serde_json::json!(base.join(path).display().to_string());
+            if let Some(value) = view.get_mut("path") {
+                fix(value);
+            }
+            match view.get_mut("depth") {
+                Some(depth @ serde_json::Value::String(_)) => fix(depth),
+                Some(serde_json::Value::Object(depth)) => {
+                    if let Some(value) = depth.get_mut("path") {
+                        fix(value);
+                    }
                 }
+                _ => {}
             }
         }
     }
-    if let Some(path) = params.get("path").and_then(|p| p.as_str()) {
-        if Path::new(path).is_relative() {
-            params["path"] = serde_json::json!(base.join(path).display().to_string());
-        }
-    }
-    Ok(Some((input, output, object, params)))
 }
 
 /// `froxel compare`: MCP `compare_silhouette` on a `.vox`.

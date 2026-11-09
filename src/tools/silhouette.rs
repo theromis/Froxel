@@ -297,6 +297,8 @@ pub struct View {
     pub side: Side,
     pub mask: Mask,
     pub scale: Scale,
+    /// Where the surface lies along each ray: cells in front of it go.
+    pub depth: Option<super::depth::Depth>,
 }
 
 /// The colour of the carved cells.
@@ -323,6 +325,8 @@ pub struct CarveSpec {
     pub shell: Option<u32>,
     /// Passes of the `smooth` majority filter over the hull.
     pub smooth: u32,
+    /// Cells in front of a depth surface that still stay.
+    pub depth_tolerance: f32,
 }
 
 /// One view's part of a carve.
@@ -333,6 +337,8 @@ pub struct ViewReport {
     pub grid: [u32; 2],
     /// Grid cells the mask covers.
     pub covered: usize,
+    /// The depth map's calibration, and the hull cells it carved.
+    pub depth: Option<(super::depth::Calibration, usize)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -458,6 +464,121 @@ impl Grid {
     }
 }
 
+/// Remove the hull cells in front of each view's depth surface. Every map
+/// is calibrated against the silhouette hull first, so the order of the
+/// views does not matter.
+fn carve_depths(
+    spec: &CarveSpec,
+    grids: &[Grid],
+    size: [u32; 3],
+    solid: &mut [bool],
+    reports: &mut [ViewReport],
+) {
+    use super::depth;
+    let sides: Vec<Side> = spec.views.iter().map(|view| view.side).collect();
+    let [sx, sy, _] = size.map(|n| n as usize);
+    let index = |p: [usize; 3]| (p[2] * sy + p[1]) * sx + p[0];
+    let mut plans = Vec::new();
+    for (vi, (view, grid)) in spec.views.iter().zip(grids).enumerate() {
+        let Some(map) = &view.depth else {
+            continue;
+        };
+        let [(u, _), (v, _), (d, toward)] = view.side.axes();
+        let (nu, nv, nd) = (size[u] as usize, size[v] as usize, size[d] as usize);
+        // The map per grid cell, then per ray of the box face.
+        let (cols, rows) = (grid.cols as f64, grid.rows as f64);
+        let mut n = vec![None; nu * nv];
+        let mut hull = vec![None; nu * nv];
+        for b in 0..nv {
+            for a in 0..nu {
+                let Some(cell) = grid.at(view.side, [a as i64, b as i64]) else {
+                    continue;
+                };
+                if !grid.inside[cell] {
+                    continue;
+                }
+                let (col, row) = (
+                    (cell % grid.cols as usize) as f64,
+                    (cell / grid.cols as usize) as f64,
+                );
+                n[b * nu + a] = map
+                    .map
+                    .sample(
+                        col / cols,
+                        (col + 1.0) / cols,
+                        row / rows,
+                        (row + 1.0) / rows,
+                    )
+                    .map(|grey| map.shaped(grey));
+                hull[b * nu + a] = (0..nd)
+                    .find(|step| {
+                        let mut p = [0usize; 3];
+                        p[u] = a;
+                        p[v] = b;
+                        p[d] = if toward > 0 { nd - 1 - step } else { *step };
+                        solid[index(p)]
+                    })
+                    .map(|step| step as f32);
+            }
+        }
+        let lines = [depth::measured(&sides, v, d), depth::measured(&sides, u, d)];
+        let middle = hull_middle(solid, size, d);
+        let cal = depth::calibrate(map, &n, &hull, nu, nv, nd, lines, middle(toward));
+        plans.push((vi, cal, n));
+    }
+    for (vi, cal, n) in plans {
+        let view = &spec.views[vi];
+        let map = view.depth.as_ref().expect("a depth view");
+        let [(u, _), (v, _), (d, toward)] = view.side.axes();
+        let (nu, nd) = (size[u] as usize, size[d] as usize);
+        let mut carved = 0;
+        for (ray, value) in n.iter().enumerate() {
+            let Some(value) = value else {
+                continue;
+            };
+            let (lo, hi) = depth::kept_span(map, &cal, *value, spec.depth_tolerance);
+            for step in 0..nd {
+                let centre = step as f32 + 0.5;
+                if centre >= lo && centre <= hi {
+                    continue;
+                }
+                let mut p = [0usize; 3];
+                p[u] = ray % nu;
+                p[v] = ray / nu;
+                p[d] = if toward > 0 { nd - 1 - step } else { step };
+                let i = index(p);
+                if solid[i] {
+                    solid[i] = false;
+                    carved += 1;
+                }
+            }
+        }
+        reports[vi].depth = Some((cal, carved));
+    }
+}
+
+/// The middle of the solid cells along axis `d`, in steps from the camera
+/// side of a view whose camera is on side `toward`; the box's middle when
+/// nothing is solid.
+fn hull_middle(solid: &[bool], size: [u32; 3], d: usize) -> impl Fn(i32) -> f32 {
+    let [sx, sy, _] = size.map(|n| n as usize);
+    let (mut lo, mut hi) = (usize::MAX, 0usize);
+    for (i, on) in solid.iter().enumerate() {
+        if *on {
+            let p = [i % sx, (i / sx) % sy, i / (sx * sy)];
+            lo = lo.min(p[d]);
+            hi = hi.max(p[d]);
+        }
+    }
+    let n = size[d] as f32;
+    let middle = if lo == usize::MAX {
+        n / 2.0
+    } else {
+        (lo + hi + 1) as f32 / 2.0
+    };
+    move |toward: i32| if toward > 0 { n - middle } else { middle }
+}
+
 /// The nearest of `slots` to a colour.
 pub(super) fn quantize(color: [u8; 3], palette: &[[u8; 3]; 256], slots: &[u8]) -> u8 {
     slots
@@ -473,8 +594,21 @@ pub(super) fn quantize(color: [u8; 3], palette: &[[u8; 3]; 256], slots: &[u8]) -
 
 /// Fill the visual hull of `spec.views`. `palette` quantises image colours.
 pub fn carve_from_views(spec: &CarveSpec, palette: &[[u8; 3]; 256]) -> Result<Carved, String> {
-    if !(2..=6).contains(&spec.views.len()) {
-        return Err("carve_from_views takes 2 or 3 views (at most one per side)".into());
+    let depths = spec.views.iter().any(|view| view.depth.is_some());
+    if !((if depths { 1 } else { 2 })..=6).contains(&spec.views.len()) {
+        return Err(
+            "carve_from_views takes 2 to 6 views (at most one per side), or 1 with depth".into(),
+        );
+    }
+    if !(0.0..=64.0).contains(&spec.depth_tolerance) {
+        return Err("depthTolerance must be 0..64 cells".into());
+    }
+    for view in &spec.views {
+        if let Some(depth) = &view.depth {
+            depth
+                .check()
+                .map_err(|err| format!("{} view: {err}", view.side.name()))?;
+        }
     }
     for (i, view) in spec.views.iter().enumerate() {
         if spec.views[..i].iter().any(|other| other.side == view.side) {
@@ -497,11 +631,21 @@ pub fn carve_from_views(spec: &CarveSpec, palette: &[[u8; 3]; 256]) -> Result<Ca
         if spec
             .views
             .iter()
-            .any(|view| view.mask.pixels.contains(&Some(Ink::Plain)))
+            .any(|view| view.depth.is_none() && view.mask.pixels.contains(&Some(Ink::Plain)))
         {
             return Err(
                 "a rows character has no legend entry: add it to legend or pass palette".into(),
             );
+        }
+        if spec.views.iter().all(|view| {
+            !view
+                .mask
+                .pixels
+                .iter()
+                .flatten()
+                .any(|ink| *ink != Ink::Plain)
+        }) {
+            return Err("no view has a colour image: pass palette, or path on a view".into());
         }
     }
     // Each view's grid size, before the box is known for `Fit`.
@@ -585,6 +729,7 @@ pub fn carve_from_views(spec: &CarveSpec, palette: &[[u8; 3]; 256]) -> Result<Ca
             side: view.side,
             grid: [cols, rows],
             covered: grid.inside.iter().filter(|inside| **inside).count(),
+            depth: None,
         });
         built.push(grid);
     }
@@ -603,6 +748,7 @@ pub fn carve_from_views(spec: &CarveSpec, palette: &[[u8; 3]; 256]) -> Result<Ca
             }
         }
     }
+    carve_depths(spec, &built, size, &mut solid, &mut reports);
     if spec.smooth > 0 {
         let cells: HashMap<Cell, u8> = (0..sx * sy * sz)
             .filter(|i| solid[*i])
@@ -699,6 +845,7 @@ pub fn carve_from_views(spec: &CarveSpec, palette: &[[u8; 3]; 256]) -> Result<Ca
                             let Some(ink) = grid
                                 .at(view.side, [p[u], p[v]])
                                 .and_then(|cell| grid.ink[cell])
+                                .filter(|ink| *ink != Ink::Plain)
                             else {
                                 continue;
                             };
