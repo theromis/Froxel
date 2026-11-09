@@ -119,6 +119,7 @@ set(x, y, z, slot);
 fill_box(x0, y0, z0, x1, y1, z1, slot);
 let slot = get(x, y, z); // 0 when the cell is empty
 clear();                 // empty the object currently being written
+let removed = clear_object(); // the same, returning how many cells it removed
 ```
 
 `get_voxels` and `set_voxels` are MCP `get_voxels` and `set_voxels` on the
@@ -988,6 +989,7 @@ index or a name.
 ```rhai
 set_object(object, #{name: "arm_r", position: [0, 0, 4], hidden: false});
 remove_object(object);                       // not the script's own object
+clear_object(object);                        // empty another object, no box limit
 mirror_object(object, "x", "arm_l");         // axis "x", "y", or "z"
 mirror_object(object, "x", "arm_l", #{position: [-6, 0, 0], mirrorBones: true});
 split_object(object, #{boxes: [[0, 30, 6, 23, 41, 20]], name: "head"});

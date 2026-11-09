@@ -208,6 +208,7 @@ tracer. A file with no scene graph still loads its first model.
 | `set_object` | `index` | Optional `name`, world `position`, `hidden`. Moving changes the scene-graph translation, so voxels move in the world. One undo step |
 | `remove_object` | `index` | Remove the object and its voxels. Its bone stays; the binding goes. Later indices decrease by one. Refuses the last object. One undo step |
 | `mirror_object` | `index`, `axis`, `name` | Copy the object mirrored across `x`, `y`, or `z` through the origin. Optional world `position` and `mirrorBones` (default false). Replies with the copy's `index`, `name`, `bones`, and world `position`. One undo step |
+| `clear_object` | — | Empty an object (`index`, an index or a name; default the active one) of every cell, with no box limit. Its name, position, bone, script, and markers stay. Replies with `index`, `name`, `removed`, `voxels`. One undo step; an empty object adds none |
 | `split_object` | `boxes` or `slots` | Move (or `copy`) the cells of an object (`index`, an index or a name; default the active one) inside one or more inclusive local boxes, or of some `slots`, or both, into a new object (`name`) or an existing one (`into`), each cell keeping its world position. `invert` takes the rest. `makeActive` selects the target. Replies with `target`, `name`, `created`, `cells`, `replaced`, `position`, `sourceVoxels`, `targetVoxels`, `bounds`. One undo step |
 | `add_bone` | `name`, `pivot` | Add a bone. `pivot` is a fractional world coordinate `[x, y, z]`. Optional `parent` (omit or null for a root) and `rotation` quaternion `[x, y, z, w]` (default identity `[0, 0, 0, 1]`). One undo step |
 | `set_bone` | `name` | Optional `parent` (null makes a root; omit leaves it), world `pivot`, `rotation` `[x, y, z, w]`, `rename`. One undo step |
@@ -1216,6 +1217,12 @@ limb remains on the spine. The pivot's component on the axis is negated
 axes that are not the mirror axis. The new bone name must not already
 exist. Objects and bones are one undo step.
 
+`clear_object` empties an object at once, whatever its size: `fill_box`
+with palette `0` refuses a box of more than 2000000 cells, and a 256-cell
+object can hold more. The object stays where it is, with its name, bone,
+script, and markers, ready to be carved or filled again; `remove_object`
+deletes it instead. It runs in `batch`.
+
 `split_object` cuts one object into parts: a `carve_from_views` blockout of
 a creature into its head, flippers, and tail, without carving each part
 again and erasing its complement. It takes the cells of the source
@@ -1724,6 +1731,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `set_palette` | Palette dock (colour and alpha) and the Material section (motion) |
 | `set_active_object`, `add_object`, `set_object`, `remove_object` | Objects tree and the Object inspector |
 | `mirror_object` | Object inspector: Mirror X, Y, Z and Mirror bones too |
+| `clear_object` | Clear object section: Clear empties the active object |
 | `split_object` | Split object section: Boxes (one per line), World cells, Slots, Invert, Copy, Into (New object with a Name, or an existing object), Split |
 | `space` | World cells in Split object, World beside Origin in Carve from views and beside Box in Paint from view; the viewport tools pick cells in place, so they need none |
 | `add_bone`, `set_bone`, `remove_bone`, `bind_object`, `list_bones` | Bones tree, the Bone inspector, the Object inspector's Bone |

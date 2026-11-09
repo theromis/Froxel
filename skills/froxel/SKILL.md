@@ -26,7 +26,7 @@ If the tools are missing, the server is not configured. Point the user to
   (`fill_tube`, `carve_*`, `recolor`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` with its image as rows and a legend, `fit_to_views` with views as rows and a legend, and `marker`,
   `collision_box`, `connector`, `collision_from_voxels`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
-  tools (`mirror_object`, `split_object`, `add_bone`, `bind_object`, `set_clip_keys`,
+  tools (`mirror_object`, `split_object`, `clear_object`, `add_bone`, `bind_object`, `set_clip_keys`,
   `set_palette`, …). The document tools apply after the script in order;
   guard `add_bone`, `add_clip`, and `mirror_object` with `has_bone`,
   `has_clip`, and `has_object` so a rerun does not fail. Only file-writing
@@ -78,6 +78,10 @@ If the tools are missing, the server is not configured. Point the user to
   overwriting; `mode: "paint"` recolours only existing cells.
 - `set_voxels` takes `[x, y, z, palette]` rows, up to 200000 per call. Batch
   detail into few calls.
+- To empty an object and start it again, call `clear_object` (index or
+  name; default the active one): no box limit, the object, its position,
+  and its bone stay. Do not erase with `fill_box` palette 0, which stops at
+  2000000 cells.
 - To swap palette slots with no shape change (a blockout slot to the shell
   slot, two shades into one, a belly re-tinted), call `recolor` (`from`/`to`
   or `map`, optional box): do not fake it with `weather` or a `mode: "paint"`

@@ -1,5 +1,5 @@
-//! Whole-object edits: MCP `split_object`, and the fields of the Object
-//! edits section, whose buttons build the MCP arguments and run the MCP
+//! Whole-object edits: MCP `split_object` and `clear_object`, and the
+//! fields of the Object edits section, whose buttons build the MCP arguments and run the MCP
 //! handler.
 
 use std::collections::HashMap;
@@ -42,6 +42,40 @@ pub struct Split {
     pub cells: usize,
     /// Cells of the target that held another slot before.
     pub replaced: usize,
+}
+
+impl Session {
+    /// Empty one object, whatever its size: no box limit. Its name,
+    /// position, bone, script, and markers stay. One undo step; an empty
+    /// object is no step. Returns how many cells were removed.
+    pub fn clear_object(&mut self, index: usize) -> Result<usize, String> {
+        let count = self.objects.len();
+        let object = self
+            .objects
+            .get(index)
+            .ok_or_else(|| format!("object index {index} is out of range ({count} objects)"))?;
+        let removed = object.cells.len();
+        if removed == 0 {
+            return Ok(0);
+        }
+        self.commit();
+        self.checkpoint();
+        self.objects[index].cells.clear();
+        self.clear_picked();
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+        self.commit();
+        Ok(removed)
+    }
+
+    /// The Clear object button: MCP `clear_object` on the active object.
+    pub fn clear_from_panel(&mut self) {
+        let args = json!({"index": self.selected});
+        self.status = match crate::remote::apply(self, "object.clear", &args) {
+            Ok(reply) => format!("Cleared {} cells of {}.", reply["removed"], reply["name"]),
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
 }
 
 impl SplitSpec {

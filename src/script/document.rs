@@ -197,6 +197,33 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     );
     let state = scratch.clone();
     engine.register_fn(
+        "clear_object",
+        move |ctx: NativeCallContext, object: Dynamic| -> Fallible<()> {
+            let index = object_ref(&state, &object, false)?;
+            if object_ref(&state, &object, true).is_err() {
+                return Err(runtime(
+                    "clear_object() empties the object being written; clear_object(object) is for another one",
+                ));
+            }
+            record(
+                &state,
+                &ctx,
+                "clear_object",
+                "object.clear",
+                json!({"index": index}),
+            )
+        },
+    );
+    let state = scratch.clone();
+    engine.register_fn("clear_object", move || -> INT {
+        let mut scratch = state.borrow_mut();
+        let cells = scratch.cells_mut();
+        let removed = cells.len() as INT;
+        cells.clear();
+        removed
+    });
+    let state = scratch.clone();
+    engine.register_fn(
         "split_object",
         move |ctx: NativeCallContext, object: Dynamic, opts: Map| -> Fallible<()> {
             let mut args = options(

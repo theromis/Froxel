@@ -15,6 +15,10 @@
 
 ### Added
 
+- Clear object: MCP `clear_object`, Rhai `clear_object()` and
+  `clear_object(object)`, and the Clear object section empty an object of
+  every cell in one undo step, with no 2000000-cell box limit; its name,
+  position, bone, script, and markers stay. It runs in `batch`.
 - Recolor: MCP `recolor`, Rhai `recolor(from, to, opts)` and
   `recolor(pairs, opts)`, and the Recolor section replace one palette slot
   with another, or a map of several (a swap included), in a box or the whole

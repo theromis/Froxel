@@ -3,8 +3,9 @@
 // carve_from_views blockout would come out. recolor gives the underside
 // its own slot with no shape change, and split_object moves the cells
 // inside boxes into one object per part. Each cell keeps its world
-// position, so nothing is carved twice. On a rerun the parts exist, and the
-// cut goes into them (into) instead of making more.
+// position, so nothing is carved twice. On a rerun the parts exist:
+// clear_object empties each one and the cut goes into it (into) instead of
+// making more.
 //
 // Parameters
 //   length   the shell's length in cells (along +Y, the head end)
@@ -47,6 +48,8 @@ let parts = [
 for part in parts {
     let name = part[0];
     if has_object(name) {
+        // Empty the old part first, so a smaller turtle leaves nothing behind.
+        clear_object(name);
         split_object(0, #{boxes: part[1], into: name});
     } else {
         split_object(0, #{boxes: part[1], name: name});

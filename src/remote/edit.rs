@@ -1,6 +1,7 @@
-//! MCP handlers of the whole-object edits: `split_object` and `recolor`.
+//! MCP handlers of the whole-object edits: `split_object`,
+//! `clear_object`, and `recolor`.
 //!
-//! Rhai records `split_object` as a document call and runs it through this
+//! Rhai records `split_object` and `clear_object(object)` as document calls and runs it through this
 //! same handler after its voxels are written; its `recolor` runs
 //! [`recolor_writes`] on the object being written.
 
@@ -134,6 +135,19 @@ pub(super) fn split_object(session: &mut Session, params: &Value) -> Result<Valu
         "targetVoxels": session.objects[split.target].cells.len(),
         "bounds": super::bounds_json(session.objects[split.target].cells.keys().copied()),
         "activeObject": session.selected,
+    }))
+}
+
+/// MCP `clear_object`: empty an object (by index or name; default the
+/// active one) with no box limit, one undo step.
+pub(super) fn clear_object(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let index = object_arg(session, params, "index")?.unwrap_or(session.selected);
+    let removed = session.clear_object(index)?;
+    Ok(json!({
+        "index": index,
+        "name": session.objects[index].name,
+        "removed": removed,
+        "voxels": session.voxel_count(),
     }))
 }
 

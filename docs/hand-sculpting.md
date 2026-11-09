@@ -461,6 +461,11 @@ only `width` (up to 4096) and the height follows its shape.
 **Mirror.** Sculpt one side of a paired part and copy it with
 `mirror_object`; `mirrorBones` copies its bones too.
 
+**Start a part again.** `clear_object` empties an object (the active one,
+or one by index or name) of every cell, however large: a `fill_box` with
+palette `0` stops at 2000000 cells. The object keeps its name, position,
+bone, and markers, so a new `carve_from_views` lands where the old one was.
+
 **Split into rig parts.** A creature carved in one piece from its views
 (`carve_from_views`) is cut into its parts with `split_object`: the cells
 inside boxes, or of some slots, move into a new object (or `into` an

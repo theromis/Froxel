@@ -1,5 +1,6 @@
 //! Inspector sections of the whole-object edits: Split object (MCP
-//! `split_object`) and Recolor (MCP `recolor`).
+//! `split_object`), Clear object (MCP `clear_object`), and Recolor (MCP
+//! `recolor`).
 
 use egui::{RichText, Ui};
 
@@ -111,6 +112,21 @@ pub(super) fn recolor(ui: &mut Ui, session: &mut Session) {
             .clicked()
         {
             session.recolor_from_panel();
+        }
+    });
+}
+
+/// MCP `clear_object`: the active object emptied, whatever its size.
+pub(super) fn clear(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.editor_mode == EditorMode::Model && !session.active().cells.is_empty();
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Clear object");
+        if ui
+            .button("Clear")
+            .on_hover_text("MCP clear_object: remove every cell of the active object, with no box limit. Its name, position, bone, script, and markers stay. One undo step.")
+            .clicked()
+        {
+            session.clear_from_panel();
         }
     });
 }

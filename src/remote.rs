@@ -1054,6 +1054,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
             Ok(json!({"name": name}))
         }
         "object.split" => edit::split_object(session, &params),
+        "object.clear" => edit::clear_object(session, &params),
         "object.mirror" => {
             let index = req_i32(&params, "index")?;
             if index < 0 {
@@ -1511,6 +1512,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("object.set", "index, name?, position?, hidden?", "Rename, move, or hide. position is world voxels; local cells stay put"),
     ("object.remove", "index", "Remove an object and its voxels. Later indices shift. The last object stays"),
     ("voxel.recolor", "from + to | map, x0..z1?", "Replace palette slots of the active object's cells (one, or a map of several), in a box or everywhere, with no shape change. One undo step"),
+    ("object.clear", "index?", "Empty an object (index or name; default the active one) with no box limit. Name, position, bone, and script stay. One undo step"),
     ("object.split", "boxes? | slots?, index?, invert?, copy?, into? | name?, makeActive?", "Move or copy the cells of an object inside boxes or of some slots into a new or existing object, keeping their world positions. One undo step"),
     ("object.mirror", "index, axis, name, position?, mirrorBones?", "Copy an object mirrored across x, y, or z. mirrorBones copies the bound subtree and swaps _l/_r"),
     ("edit.undo", "", "Undo the last edit"),

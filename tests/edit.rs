@@ -182,6 +182,28 @@ fn the_turtle_parts_example_cuts_the_same_parts_on_a_rerun() {
     session.regenerate_script(0).unwrap();
     let again: Vec<usize> = session.objects.iter().map(|o| o.cells.len()).collect();
     assert_eq!(again, first);
+    // A shorter turtle leaves no stale cells in its parts.
+    let index = 0;
+    session
+        .set_script_params(
+            index,
+            &[(
+                "length".into(),
+                crate::script::ParamValue::Int {
+                    value: 20,
+                    min: 16,
+                    max: 64,
+                },
+            )],
+        )
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    let head = &session.objects[1].cells;
+    assert!(
+        head.keys().all(|c| c.1 >= 20),
+        "a head cell is left from the longer turtle"
+    );
+    assert_eq!(slots(&session, 0)[4] > 0, true);
 }
 
 #[test]
@@ -432,4 +454,79 @@ fn recolor_runs_from_a_script_a_batch_and_the_panel() {
     session.edit.recolor.map = "2>8, 3>8".into();
     session.recolor_from_panel();
     assert_eq!(slots(&session, 0)[8], 4, "{}", session.status);
+}
+
+#[test]
+fn clear_object_empties_any_object_with_no_box_limit() {
+    let mut session = Session::new();
+    session.replace_empty();
+    // 256 x 256 x 40 cells is more than one fill_box may erase.
+    for z in 0..40 {
+        apply(
+            &mut session,
+            "voxel.fill",
+            &json!({"x0": 0, "y0": 0, "z0": z, "x1": 255, "y1": 255, "z1": z, "palette": 2}),
+        )
+        .unwrap();
+    }
+    let err = apply(
+        &mut session,
+        "voxel.fill",
+        &json!({"x0": 0, "y0": 0, "z0": 0, "x1": 255, "y1": 255, "z1": 39, "palette": 0}),
+    )
+    .unwrap_err();
+    assert!(err.contains("2000000"), "{err}");
+    apply(
+        &mut session,
+        "object.set",
+        &json!({"index": 0, "name": "big", "position": [3, 4, 5]}),
+    )
+    .unwrap();
+    let reply = apply(&mut session, "object.clear", &json!({"index": "big"})).unwrap();
+    assert_eq!(reply["removed"], 256 * 256 * 40);
+    assert_eq!(reply["voxels"], 0);
+    assert_eq!(session.objects[0].translation, (3, 4, 5));
+    assert_eq!(session.objects[0].name, "big");
+    // One undo step brings every cell back; clearing an empty object is none.
+    apply(&mut session, "edit.undo", &json!({})).unwrap();
+    assert_eq!(session.voxel_count(), 256 * 256 * 40);
+    apply(&mut session, "edit.redo", &json!({})).unwrap();
+    let reply = apply(&mut session, "object.clear", &json!({})).unwrap();
+    assert_eq!(reply["removed"], 0);
+}
+
+#[test]
+fn clear_object_runs_from_a_script_a_batch_and_the_panel() {
+    let mut session = bar([0, 0, 0]);
+    apply(
+        &mut session,
+        "object.split",
+        &json!({"slots": 5, "name": "tail"}),
+    )
+    .unwrap();
+    session
+        .set_script(
+            0,
+            "fill_box(0, 0, 0, 3, 0, 0, 3);\nif clear_object() != 4 { throw \"clear\"; }\nset(0, 0, 0, 2);\nclear_object(\"tail\");",
+        )
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    assert_eq!(session.objects[0].cells.len(), 1);
+    assert!(session.objects[1].cells.is_empty());
+    let err = session
+        .set_script(0, "clear_object(0);")
+        .and_then(|_| session.regenerate_script(0))
+        .unwrap_err();
+    assert!(err.contains("object being written"), "{err}");
+    session.set_script(0, "").unwrap();
+    let reply = apply(
+        &mut session,
+        "voxel.batch",
+        &json!({"operations": [{"tool": "clear_object", "arguments": {}}]}),
+    )
+    .unwrap();
+    assert_eq!(reply["changed"], 1);
+    apply(&mut session, "edit.undo", &json!({})).unwrap();
+    session.clear_from_panel();
+    assert!(session.objects[0].cells.is_empty(), "{}", session.status);
 }
