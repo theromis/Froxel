@@ -24,7 +24,10 @@ edit-mode mesh. `trace/` is the CPU path tracer. `trace_gpu.rs` plus
 (MCP `import_mesh`, `remote/import.rs`; Rhai `voxelize`, `script/import.rs`;
 fixtures and their generator in `tests/fixtures/mesh`). `preview.rs` is the fast lit CPU raster of the viewport mesh behind MCP
 `preview` and `froxel preview` (`docs/preview.md`). `export/` writes glTF. `native_menu.rs` is the macOS menu. `skills/froxel` is the agent skill for the MCP tools. `mcp.rs`,
-`remote.rs`, and `control.rs` are the MCP server and the `--control` port.
+`remote.rs`, and `control.rs` are the MCP server and the `--control` port;
+`mcp/reload.rs` is MCP `reload` and `froxel mcp --watch` (the server
+re-executes a rebuilt binary in place, keeps the document, and sends
+`notifications/tools/list_changed`).
 `bridge.rs` is the Godot/Blender loopback server (`froxel bridge` and
 `--bridge`). Its `evaluate` runs inside `Session::transaction`: one undo step,
 and the document is restored if a value or a script fails. The clients live in `godot/addons/froxel_bridge` and
@@ -123,6 +126,10 @@ The bridge clients have their own checks:
 python3 tests/bridge_protocol.py
 cargo build && python3 tests/bridge_live.py
 ```
+
+`python3 tests/mcp_reload.py` (after `cargo build`) reloads a running
+`froxel mcp` by the tool and by `--watch` and checks the document and the
+`tools/list_changed` notification survive.
 
 `bridge_live.py` starts `target/debug/froxel bridge` (or `FROXEL_BIN`) on the
 frog and asks for a glb. `bridge_godot.py` bakes the lily pad through the Godot node

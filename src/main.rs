@@ -715,7 +715,7 @@ fn parse_gui(args: &[String]) -> Result<GuiArgs, String> {
                     "\
 usage: froxel [--control PORT] [--bridge PORT] [file.vox]
        froxel bridge --input <file.vox> [--port PORT]
-       froxel mcp [--connect HOST:PORT] [--launch]
+       froxel mcp [--connect HOST:PORT] [--launch] [--watch]
        froxel render --input <file.vox> --output <file.png>
        froxel preview --input <file.vox> --out <file.png> (--help for its flags)
        froxel export --input <file.vox> --output <file.glb>

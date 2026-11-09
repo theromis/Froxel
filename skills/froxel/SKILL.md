@@ -13,6 +13,14 @@ If the tools are missing, the server is not configured. Point the user to
 `docs/mcp.md` in the Froxel repository: `froxel mcp` runs headless, and
 `froxel mcp --connect 127.0.0.1:7979 --launch` drives the editor window.
 
+If a tool that Froxel's docs or a recent commit mention is missing, the
+server is older than the binary: call `reload` (the server re-executes the
+rebuilt binary in place, keeps the open document, and sends
+`notifications/tools/list_changed`, after which the tool list refreshes).
+`reloaded: false` means the binary has not changed (rebuild it first, or
+`force: true`); an error means the new build cannot resume and the old
+server is still running. A server started with `--watch` reloads by itself.
+
 ## Choose an approach
 
 - **Hand sculpting** for one specific shape that must match a reference: a

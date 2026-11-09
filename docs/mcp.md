@@ -105,6 +105,54 @@ Newline-delimited JSON-RPC 2.0: one message per line, 16 MiB limit,
 `initialize` first, `ping` before that, tool failures as `isError: true`.
 The default revision is `2025-06-18`.
 `2026-07-28`, `2025-03-26`, and `2024-11-05` are accepted and echoed back.
+The server declares `capabilities.tools.listChanged: true` and sends
+`notifications/tools/list_changed` after a reload.
+
+### Reloading the server
+
+A client lists the tools once, when it starts the server, so a tool added
+by a rebuild of `froxel` stays invisible to a running agent until the server
+restarts, and usually only the user can restart it. `reload` restarts it
+from inside:
+
+```json
+{"name": "reload", "arguments": {}}
+```
+
+1. Without `force`, nothing happens unless the binary on disk changed since
+   the server started (its size or time): the reply is `reloaded: false`
+   with the reason.
+2. The new binary is asked `froxel mcp --reload-check`. A build without
+   reload, a broken binary, or one still being written does not answer
+   `froxel-mcp-resume 1`, so the call fails and this server keeps running.
+3. The open document is written to a temporary `.vox` with a small state
+   file (its path, the active object, each object's frame, unsaved changes,
+   the protocol version, and any input already read past the request).
+   Connected to an editor (`--connect`), the document stays in the window.
+4. The reply goes out (`reloaded: true`), then the server re-executes the
+   binary in place (`exec`): the same process and PID, the same stdin and
+   stdout, so the client's connection is not broken.
+5. The new server reopens the document, answers as an initialized server,
+   and sends `notifications/tools/list_changed`; a request sent right after
+   `reload` is answered by the new server.
+
+Kept: every object's cells in its own local frame, the palette, materials,
+bones, clips, markers, scripts, the file path, the active object, and the
+unsaved state. Not kept: undo history and a preview pose.
+
+`froxel mcp --watch` does the same by itself before the first request after
+the binary changes: start the server with it in the client's configuration
+(`"args": ["mcp", "--watch"]`) and a `cargo build` is all a new tool needs.
+
+What the client must do: honour `listChanged`, that is, ask `tools/list`
+again when `notifications/tools/list_changed` arrives, and keep the same
+stdio pipes (it does nothing else). A client that ignores the notification
+keeps working with its old list: the reloaded server still runs the old
+tools, but the new ones appear only after the client reconnects to the
+server (in Claude Code, `/mcp` and reconnect), which is still no restart by
+hand. Reload needs Unix (`exec`); on Windows the tool says to restart.
+`python3 tests/mcp_reload.py` (after `cargo build`) checks a reload by the
+tool, by `--watch`, and the refusal of a broken binary.
 
 ### Coordinates
 
@@ -256,6 +304,7 @@ tracer. A file with no scene graph still loads its first model.
 | `decal` | `point` or `ray`, `size`, `path` or `rows` | Lay one picture onto the active object's curved surface around a point, so it keeps its size and shape on a round head: the surface is unrolled around the point and each surface cell takes the picture's ink under it. `ray` `{origin, direction}` takes the first solid cell instead. Optional `up` (default +Z), `crop`, `background`, `tolerance`, `flip`, `legend`, `palette` or `slots`, `coverage`, `depth` (cells into the solid, default 1), `reach` (default 8), `normalLimit` (degrees from the point's normal, default 90), `only`, `mirror`. Never adds or removes cells. Replies with `cells`, `changed`, `bounds`, `centre`, `normal`, `grid`, `covered`, `missed`, `reached`. One undo step. See [Silhouettes](#silhouettes) |
 | `compare_silhouette` | `path`, `concept` | Compare the model's `preview` silhouette from a camera (`preset`, `presets`, `placementYaw`, `view`, `yaw`, `pitch`, `orthographic`, `fov`, `margin`, `object`, `isolate`, `pose`) with a mask cut from a concept PNG (`crop`, `background`, `tolerance`, `alphaThreshold`, `flip`) and cleaned by the [mask edits](#masking-a-concept) (`excludeColors`, `excludeTolerance`, `flood`, `mask`, `erase`, `keepLargest`; the reply's `maskEdits` counts them). `align` `fit` (default), `height`, `width`, or `{scale, offset}` places the concept with one uniform scale. Replies with `iou`, `missing`, `excess`, `pixels`, `align`, `conceptBounds`, `modelBounds`, and `aspect`, and writes an overlay PNG. Optional `width`, `height`, `lighting`, `antialias`. See [Silhouettes](#silhouettes) |
 | `measure_sheet` | `path` | Read a views sheet image, writing nothing: each view's tight `crop` (connected inked regions under the background rule and the mask edits, merged within `gap` pixels, regions under `minShare` of the largest in `ignored`), the 2 x 2 `layout` names (front, side, top, back), the cube pitch per view (`pitchX`, `pitchY`, `strength`, `cubes`, `square`) from the autocorrelation of the cube seams, `checks` (front height = side height, front width = top width, side length = top length, in percent of pixels and of cubes, `ok` within `checkTolerance`), `fitViews` for `carve_from_views` and `fit_to_views`, and with `parts` the top view's parts sticking out of its body. See [Measuring a sheet](#measuring-a-sheet) |
+| `reload` | — | Restart this server on the rebuilt binary in place, keeping the connection and the open document, then send `notifications/tools/list_changed`. `force` reloads an unchanged binary. See [Reloading the server](#reloading-the-server) |
 | `set_view` | — | Move the session camera; connected, the window's. Optional `view`, `yaw`, `pitch`, `preset`, `presets`, `placementYaw`, `frame`, `distance`, `orthographic`, `bones`. Not an edit |
 | `screenshot` | — | PNG of the whole editor window. Connected mode only |
 | `screenshot_viewport` | — | PNG of the 3D viewport, including its mode chips. Connected mode only |
@@ -2277,7 +2326,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `bake_scene` | Export section's Bake scene…: pick a scene JSON file and a `.glb`; Bake light's values replace the file's when it is on |
 
 The screenshot, `ui_inspect`, and `ui_click` tools drive the window and have
-no control of their own.
+no control of their own, and `reload` restarts this server, not the window.
 
 ### What this server does not do
 

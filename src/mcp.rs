@@ -6,11 +6,13 @@
 //! Screenshots exist only on the connected window. `render` path-traces a PNG
 //! in this process. The window path-traces in Render mode on the GPU.
 
-use std::io::{self, BufRead, Write};
+use std::io::{self, Write};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
+
+mod reload;
 
 use crate::control::ControlClient;
 use crate::remote::{self, apply};
@@ -67,7 +69,7 @@ pub fn parse_shot(params: &Value) -> Result<(ShotRegion, Option<String>), String
 pub fn run(args: &[String]) -> i32 {
     match parse_args(args) {
         Ok(None) => 0,
-        Ok(Some(mode)) => serve(mode),
+        Ok(Some(options)) => serve(options, args),
         Err(err) => {
             eprintln!("{err}");
             2
@@ -80,9 +82,19 @@ enum Mode {
     Remote { addr: String },
 }
 
-fn parse_args(args: &[String]) -> Result<Option<Mode>, String> {
+struct Options {
+    mode: Mode,
+    /// Reload before a request when the binary on disk has changed.
+    watch: bool,
+    /// The state file of a reload to resume.
+    resume: Option<std::path::PathBuf>,
+}
+
+fn parse_args(args: &[String]) -> Result<Option<Options>, String> {
     let mut connect: Option<String> = None;
     let mut launch = false;
+    let mut watch = false;
+    let mut resume = None;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -90,6 +102,16 @@ fn parse_args(args: &[String]) -> Result<Option<Mode>, String> {
                 print_help();
                 return Ok(None);
             }
+            reload::CHECK_FLAG => {
+                println!("{}", reload::CHECK_REPLY);
+                return Ok(None);
+            }
+            reload::RESUME_FLAG => {
+                i += 1;
+                let path = args.get(i).ok_or("--resume needs a state file")?;
+                resume = Some(std::path::PathBuf::from(path));
+            }
+            "--watch" => watch = true,
             "--launch" => launch = true,
             "--connect" => {
                 i += 1;
@@ -115,15 +137,20 @@ fn parse_args(args: &[String]) -> Result<Option<Mode>, String> {
     if launch && connect.is_none() {
         return Err("--launch needs --connect HOST:PORT".into());
     }
-    match connect {
-        None => Ok(Some(Mode::Headless)),
+    let mode = match connect {
+        None => Mode::Headless,
         Some(addr) => {
             if let Err(err) = prepare_remote(&addr, launch) {
                 return Err(err.to_string());
             }
-            Ok(Some(Mode::Remote { addr }))
+            Mode::Remote { addr }
         }
-    }
+    };
+    Ok(Some(Options {
+        mode,
+        watch,
+        resume,
+    }))
 }
 
 fn prepare_remote(addr: &str, launch: bool) -> io::Result<()> {
@@ -168,13 +195,15 @@ fn probe(addr: &str) -> bool {
     std::net::TcpStream::connect_timeout(&sock, Duration::from_millis(200)).is_ok()
 }
 
-fn serve(mode: Mode) -> i32 {
-    let stdin = io::stdin();
+fn serve(options: Options, args: &[String]) -> i32 {
     let mut stdout = io::stdout();
-    let mut state = Proto::default();
+    let mut state = Proto {
+        headless: matches!(options.mode, Mode::Headless),
+        ..Proto::default()
+    };
     let mut session = Session::new();
     session.replace_empty();
-    let mut remote = match &mode {
+    let mut remote = match &options.mode {
         Mode::Headless => None,
         Mode::Remote { addr } => match ControlClient::connect(addr) {
             Ok(client) => Some(client),
@@ -184,14 +213,49 @@ fn serve(mode: Mode) -> i32 {
             }
         },
     };
-    for line in stdin.lock().lines() {
-        let line = match line {
-            Ok(line) => line,
+    let mut pending = Vec::new();
+    if let Some(path) = &options.resume {
+        match reload::resume(path, &mut session) {
+            Ok(resumed) => {
+                state.initialized = true;
+                state.version = resumed.version;
+                pending = resumed.pending;
+                eprintln!(
+                    "froxel mcp: reloaded from {} with {} objects",
+                    state.exe.display(),
+                    resumed.objects
+                );
+                let note = json!({"jsonrpc": "2.0", "method": "notifications/tools/list_changed"});
+                if writeln!(stdout, "{note}").is_err() || stdout.flush().is_err() {
+                    return 0;
+                }
+            }
+            Err(err) => eprintln!("froxel mcp: {err}; starting with an empty document"),
+        }
+    }
+    let mut lines = reload::Lines::stdin(pending);
+    loop {
+        let line = match lines.next_line() {
+            Ok(Some(line)) => line,
+            Ok(None) => return 0,
             Err(err) => {
                 eprintln!("stdin: {err}");
                 return 1;
             }
         };
+        if options.watch && state.initialized {
+            if let Some(plan) = state.watch_reload(&mut session) {
+                // The new binary answers this request: it goes first in the
+                // input handed over.
+                let mut handed = line.clone();
+                handed.push(b'\n');
+                handed.extend_from_slice(lines.rest());
+                let _ = stdout.flush();
+                let err = reload::exec(&plan, args, &handed);
+                eprintln!("froxel mcp: {err}");
+                plan.clean_up();
+            }
+        }
         if line.len() > 16 * 1024 * 1024 {
             let _ = writeln!(
                 stdout,
@@ -200,6 +264,14 @@ fn serve(mode: Mode) -> i32 {
             let _ = stdout.flush();
             continue;
         }
+        let Ok(line) = String::from_utf8(line) else {
+            let _ = writeln!(
+                stdout,
+                r#"{{"jsonrpc":"2.0","id":null,"error":{{"code":-32700,"message":"input is not UTF-8"}}}}"#
+            );
+            let _ = stdout.flush();
+            continue;
+        };
         if line.trim().is_empty() {
             continue;
         }
@@ -219,17 +291,103 @@ fn serve(mode: Mode) -> i32 {
                 return 0;
             }
         }
+        if let Some(plan) = state.reload.take() {
+            let err = reload::exec(&plan, args, lines.rest());
+            // Still here: the new binary did not start. Keep serving.
+            eprintln!("froxel mcp: {err}");
+            plan.clean_up();
+        }
     }
-    0
 }
 
 struct Proto {
     initialized: bool,
+    /// The protocol version `initialize` agreed, kept across a reload.
+    version: String,
+    /// The document lives in this process (no `--connect`).
+    headless: bool,
+    /// This binary and its stamp when the server started.
+    exe: std::path::PathBuf,
+    stamp: Option<reload::Stamp>,
+    /// A binary `--watch` found unable to resume, not asked again.
+    refused: Option<reload::Stamp>,
+    /// A `reload` to carry out once its reply is written.
+    reload: Option<reload::Plan>,
 }
 
 impl Default for Proto {
     fn default() -> Self {
-        Self { initialized: false }
+        let exe = reload::exe().unwrap_or_default();
+        let stamp = reload::stamp(&exe);
+        Self {
+            initialized: false,
+            version: PROTOCOL.to_string(),
+            headless: true,
+            exe,
+            stamp,
+            refused: None,
+            reload: None,
+        }
+    }
+}
+
+impl Proto {
+    /// `--watch`: a plan when the binary on disk changed and can resume.
+    fn watch_reload(&mut self, session: &mut Session) -> Option<reload::Plan> {
+        let now = reload::stamp(&self.exe);
+        if now.is_none() || now == self.stamp || now == self.refused {
+            return None;
+        }
+        if let Err(err) = reload::check(&self.exe) {
+            eprintln!("froxel mcp: {err}");
+            self.refused = now;
+            return None;
+        }
+        match reload::save(session, self.headless, &self.version) {
+            Ok(plan) => Some(plan),
+            Err(err) => {
+                eprintln!("froxel mcp: reload: {err}");
+                self.refused = now;
+                None
+            }
+        }
+    }
+
+    /// MCP `reload`: plan the re-exec when the binary changed (or `force`).
+    fn reload_tool(&mut self, session: &mut Session, args: &Value) -> Result<Value, String> {
+        let force = match args.get("force") {
+            None | Some(Value::Null) => false,
+            Some(Value::Bool(b)) => *b,
+            Some(_) => return Err("force must be true or false".into()),
+        };
+        let exe = reload::exe().map_err(|err| format!("this server's binary: {err}"))?;
+        let changed = reload::stamp(&exe) != self.stamp;
+        if !changed && !force {
+            return Ok(json!({
+                "reloaded": false,
+                "binary": exe.display().to_string(),
+                "reason": "the binary has not changed since this server started; pass force: true to reload anyway"
+            }));
+        }
+        if !cfg!(unix) {
+            return Err("reload re-executes the server in place, which needs Unix; restart the server instead".into());
+        }
+        reload::check(&exe)?;
+        let plan = reload::save(session, self.headless, &self.version)?;
+        let document = if self.headless {
+            "kept: reopened from a temporary .vox with its path, active object, and unsaved state; undo history and the preview pose are not kept"
+        } else {
+            "in the connected editor, unchanged"
+        };
+        let reply = json!({
+            "reloaded": true,
+            "binary": exe.display().to_string(),
+            "changed": changed,
+            "document": document,
+            "next": "the server restarts after this reply and sends notifications/tools/list_changed; a client that honours listChanged asks tools/list again"
+        });
+        self.reload = Some(plan);
+        Ok(reply)
     }
 }
 
@@ -273,13 +431,14 @@ fn dispatch(
             PROTOCOL
         };
         state.initialized = true;
+        state.version = version.to_string();
         return Some(rpc_ok(
             id,
             json!({
                 "protocolVersion": version,
-                "capabilities": {"tools": {"listChanged": false}},
+                "capabilities": {"tools": {"listChanged": true}},
                 "serverInfo": {"name": "Froxel", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "Edits apply to the active object, in that object's local cells; space world on the fills, carve, set_voxels, get_voxels, smooth, loft, brush, carve_from_views, project_paint, decal, and split_object takes world cells instead and subtracts the object's position, so parts moved by a save and reopen or a mirror_object copy need no recomputed boxes. batch applies a list of editing tools in order as one undo step, stopping at the first error with the document as it was: use it instead of dozens of single fill_box and carve calls, and keep render and export calls outside it. Every tool that writes a file (save_file, render, model_view, preview, compare_silhouette, export_mesh, export_models, export_variants, bake_scene, screenshots) creates the missing folders of its path first. Export's bake option (with colorAtlas) paints ray-traced occlusion and a sun with shadows into the atlas, for a game to draw unshaded; preview with glb looks at the written file. bake_scene bakes a placement of many .vox files together, shaded by each other and by ground, into one merged glb and atlas; an instance's lean tilts it about its base, and its sway multiplies how far its moving slots sway. render path-traces a PNG in this process. preview writes a fast lit PNG (the viewport mesh and light, rasterised, well under a second) framed on the model or one object; use it to look after every step. Its preset game is the gameplay camera (a project redefines it with presets, an object or a JSON file, or the user's camera_presets.json), placementYaw sees an asset turned that much about up in a level from that camera, lighting (old_pond, or a project's lightingPresets) shows colour under a game's sun and ambient instead of the viewport light, overlay draws collision boxes, points, and connectors over the model, and inputs, variants, and reference make one labelled contact sheet of several models beside a concept image. Its previewTriangles is the unmerged mesh it draws, not the game's: its export counts (with export set to the game's options, e.g. colorAtlas) are what export_mesh writes. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. set_palette takes a slot's color as #rrggbb or #rrggbbaa (or r, g, b), so a concept's hex codes go in as they are. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, grow limbs and roots with fill_tube, cut hollows with carve, soften with smooth, round a boxy blockout with a fill in mode intersect (only the cells inside the shape stay, so a hull becomes a dome), refine with set_voxels, draw seams, markings, and grooves that follow a curved surface with surface_stroke (points snap to the nearest surface cells), paint a whole shell's plates (a central plate, rings of plates, an outer band, and a rim, with painted or grooved seams that follow the dome, mirrored left to right) with one shell_plates call, swap one palette slot for another (in a box or everywhere, no shape change) with recolor, and render after every step. For a symmetric creature draw one side: mirror (true for x about the object's centre, an axis, or {axis, at}) on set_voxels, the fills, recolor, surface_stroke, project_paint, and decal repeats the call across the plane on the far side's own surface, mirrored, in the same undo step. clear_object empties an object of any size in one step (fill_box with palette 0 stops at 2000000 cells), to start a part again. For a unique organic asset with a mesh sculpted in Blender or made by an image-to-3D tool, import_mesh voxelizes the .glb, .gltf, or .obj (PNG, JPEG, or WebP textures and vertex colours quantized into the palette; fill solid fills a double-walled or open mesh, sealing its openings at their rims, so check interior and openEdges in the reply) as the blockout (its orient option, or orient_to_views afterwards, turns it to the views sheet's turn by silhouette IoU over the 24 axis-aligned turns and fine yaw, and scales it, so rotation and size are not guessed by eye); components then removes what the generator added (keep_largest, remove_small floaters, or a rider cut off the body at its thinnest neck between seed and anchor and deleted or split out), and the tools below finish it. Organic forms (trunks, roots, limbs, rocks) should not read as pipes or boxes: loft builds a trunk or limb whose elliptical, flattened, knobbly section changes along a curve; deform bends, tapers, twists, or displaces (lumps, burls) an object or a box; brush inflates, deflates, smooths, flattens, or grabs the surface along a path of points to refine the silhouette (examples/fallen_tree.rhai). Stone surfaces: column_relief breaks a cliff face into columns of uneven width, relief, and height, joints cuts real joint gaps (columns, courses, cracks), weather chips edges, dents pits, and adds colour noise, and moss, algae, and vines grow plants on exposed faces (the caller gives the slots and their motion); moss style cushions grows separate cushions where the surface faces up, with drapes from overhangs, never one band. Wood surfaces: build the wood in one slot, then bark cuts plates along its grain (the same points as its fill_tube, or an axis on a flat deck or plank) split by fissures with dirt at the bottom, instead of painted stripes, and cavity_tint darkens fissures, crevices, and root crooks (and lightens ridges) by neighbour occupancy, making the shades itself; it gives rock depth too. examples/barked_trunk.rhai uses them. Decks, floors, and docks: planks lays separate boards over a rectangle at a height, with real gaps down to a dirt cell, end joints staggered between neighbouring rows, a tone per board, and optional ragged ends, nails, and knots, instead of dozens of fill_box and carve calls or painted stripes (examples/plank_dock.rhai). Tree crowns: foliage packs many separate leaf clumps over ellipsoids (or re-clusters an existing crown's slots) with lit tops, dark undersides, and a dark core in the gaps, leaving the wood alone, instead of one blob of fill_ellipsoid calls (examples/clustered_tree.rhai). Their exclude boxes (and scatter's, bark's, planks', and cavity_tint's) keep walking surfaces whole, with no refill afterwards. sweep fills a cross-section along a curve for curved walls, banks, and ledges, and with palette 0 erases one, for a slanted cut along a curved outline. trim_outline reshapes a finished form from outside: state a closed plan outline and [z, inset] pairs once, and every solid cell outside that surface goes, with a new skin along the cut if asked, so a hull narrows toward its keel with no tubes fitted by hand (examples/trimmed_hull.rhai). For a unique organic asset from a concept's turnaround sheet, measure_sheet first reads the sheet (each view's crop as fitViews, the cube pitch per view, front/side/top agreement in percent, and with parts the top view's flippers, head, and tail) and writes no file, so never measure a sheet with scripts; carve_from_views fills the visual hull of its front, side, and top silhouettes (PNG crops) as the rough form, and with a depth map per view (depthPath: a grey depth pass of the sheet, white near, from an image generator or Depth Anything V2, calibrated to the hull by default) carves away the cells in front of each view's surface, so heads and domes come out round, project_paint then recolours the surface one view sees from a single image (a shell's plates from the top view, markings from the front) without adding or removing cells, decal lays an eye, a mouth, or a badge onto a curved part around a point (or a ray from the camera) so it keeps its size and shape where a projection smears it on the slopes (mirror for the pair of eyes), fit_to_views refines a blockout (from carve_from_views or import_mesh) so its orthographic views match the sheet's views (excess and missing rays, an optional reference object's depth, and colours from the object's slots), replying with each view's IoU and colour error before and after, and compare_silhouette scores the model against a concept view from a preview camera (IoU, missing, excess) and writes an overlay PNG; check it after every step instead of comparing heights. A hero view with water, splashes, or a rider needs its background masked first (excludeColors, flood, mask, erase, keepLargest, on compare_silhouette and every view), or its IoU means nothing. split_object then cuts that one blockout into its rig parts (head, flippers, tail): the cells inside boxes, or of some slots, move into a new or existing object and keep their world positions. After bind_object, place_joints puts each bone's pivot where its part meets its parent's part (contact faces, overlap, or the middle of the gap), so pivots are never placed by eye. set_marker names points, collision boxes, and connectors that the .vox keeps and the glb carries as nodes; collision_from_voxels builds the collision boxes from an object's solid cells within a tolerance (holeSize, layer or zBands, minFeature, only, exclude, maxBoxes), keeps hollows open, replaces its own earlier boxes, and replies with how much solid is covered and how much empty is wrongly filled, so colliders never drift from the model (check them with preview overlay boxes); export_variants writes a .vox and .glb per parameter set and merges them by name into a manifest of parameters, markers, and bounds (replace: true starts it fresh). examples/gorge_wall.rhai uses them all. A Rhai script (set_script) can call the same sculpt, voxel, object, rig, clip, and palette tools, with the MCP options in a trailing map, for a family of organic pieces (docs/scripting.md, examples/hollow_log.rhai)."
+                "instructions": "Edits apply to the active object, in that object's local cells; space world on the fills, carve, set_voxels, get_voxels, smooth, loft, brush, carve_from_views, project_paint, decal, and split_object takes world cells instead and subtracts the object's position, so parts moved by a save and reopen or a mirror_object copy need no recomputed boxes. batch applies a list of editing tools in order as one undo step, stopping at the first error with the document as it was: use it instead of dozens of single fill_box and carve calls, and keep render and export calls outside it. Every tool that writes a file (save_file, render, model_view, preview, compare_silhouette, export_mesh, export_models, export_variants, bake_scene, screenshots) creates the missing folders of its path first. Export's bake option (with colorAtlas) paints ray-traced occlusion and a sun with shadows into the atlas, for a game to draw unshaded; preview with glb looks at the written file. bake_scene bakes a placement of many .vox files together, shaded by each other and by ground, into one merged glb and atlas; an instance's lean tilts it about its base, and its sway multiplies how far its moving slots sway. render path-traces a PNG in this process. preview writes a fast lit PNG (the viewport mesh and light, rasterised, well under a second) framed on the model or one object; use it to look after every step. Its preset game is the gameplay camera (a project redefines it with presets, an object or a JSON file, or the user's camera_presets.json), placementYaw sees an asset turned that much about up in a level from that camera, lighting (old_pond, or a project's lightingPresets) shows colour under a game's sun and ambient instead of the viewport light, overlay draws collision boxes, points, and connectors over the model, and inputs, variants, and reference make one labelled contact sheet of several models beside a concept image. Its previewTriangles is the unmerged mesh it draws, not the game's: its export counts (with export set to the game's options, e.g. colorAtlas) are what export_mesh writes. model_view writes the flat model view (palette colours, no light) for comparing with a turnaround sheet. set_view moves the window camera before screenshot_viewport. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server started with --connect. The window path-traces in Render mode. set_palette takes a slot's color as #rrggbb or #rrggbbaa (or r, g, b), so a concept's hex codes go in as they are. Hand sculpting (docs/hand-sculpting.md) models a creature or a unique asset without a script: block out with fill_box, fill_rounded_box, and fill_ellipsoid, grow limbs and roots with fill_tube, cut hollows with carve, soften with smooth, round a boxy blockout with a fill in mode intersect (only the cells inside the shape stay, so a hull becomes a dome), refine with set_voxels, draw seams, markings, and grooves that follow a curved surface with surface_stroke (points snap to the nearest surface cells), paint a whole shell's plates (a central plate, rings of plates, an outer band, and a rim, with painted or grooved seams that follow the dome, mirrored left to right) with one shell_plates call, swap one palette slot for another (in a box or everywhere, no shape change) with recolor, and render after every step. For a symmetric creature draw one side: mirror (true for x about the object's centre, an axis, or {axis, at}) on set_voxels, the fills, recolor, surface_stroke, project_paint, and decal repeats the call across the plane on the far side's own surface, mirrored, in the same undo step. clear_object empties an object of any size in one step (fill_box with palette 0 stops at 2000000 cells), to start a part again. For a unique organic asset with a mesh sculpted in Blender or made by an image-to-3D tool, import_mesh voxelizes the .glb, .gltf, or .obj (PNG, JPEG, or WebP textures and vertex colours quantized into the palette; fill solid fills a double-walled or open mesh, sealing its openings at their rims, so check interior and openEdges in the reply) as the blockout (its orient option, or orient_to_views afterwards, turns it to the views sheet's turn by silhouette IoU over the 24 axis-aligned turns and fine yaw, and scales it, so rotation and size are not guessed by eye); components then removes what the generator added (keep_largest, remove_small floaters, or a rider cut off the body at its thinnest neck between seed and anchor and deleted or split out), and the tools below finish it. Organic forms (trunks, roots, limbs, rocks) should not read as pipes or boxes: loft builds a trunk or limb whose elliptical, flattened, knobbly section changes along a curve; deform bends, tapers, twists, or displaces (lumps, burls) an object or a box; brush inflates, deflates, smooths, flattens, or grabs the surface along a path of points to refine the silhouette (examples/fallen_tree.rhai). Stone surfaces: column_relief breaks a cliff face into columns of uneven width, relief, and height, joints cuts real joint gaps (columns, courses, cracks), weather chips edges, dents pits, and adds colour noise, and moss, algae, and vines grow plants on exposed faces (the caller gives the slots and their motion); moss style cushions grows separate cushions where the surface faces up, with drapes from overhangs, never one band. Wood surfaces: build the wood in one slot, then bark cuts plates along its grain (the same points as its fill_tube, or an axis on a flat deck or plank) split by fissures with dirt at the bottom, instead of painted stripes, and cavity_tint darkens fissures, crevices, and root crooks (and lightens ridges) by neighbour occupancy, making the shades itself; it gives rock depth too. examples/barked_trunk.rhai uses them. Decks, floors, and docks: planks lays separate boards over a rectangle at a height, with real gaps down to a dirt cell, end joints staggered between neighbouring rows, a tone per board, and optional ragged ends, nails, and knots, instead of dozens of fill_box and carve calls or painted stripes (examples/plank_dock.rhai). Tree crowns: foliage packs many separate leaf clumps over ellipsoids (or re-clusters an existing crown's slots) with lit tops, dark undersides, and a dark core in the gaps, leaving the wood alone, instead of one blob of fill_ellipsoid calls (examples/clustered_tree.rhai). Their exclude boxes (and scatter's, bark's, planks', and cavity_tint's) keep walking surfaces whole, with no refill afterwards. sweep fills a cross-section along a curve for curved walls, banks, and ledges, and with palette 0 erases one, for a slanted cut along a curved outline. trim_outline reshapes a finished form from outside: state a closed plan outline and [z, inset] pairs once, and every solid cell outside that surface goes, with a new skin along the cut if asked, so a hull narrows toward its keel with no tubes fitted by hand (examples/trimmed_hull.rhai). For a unique organic asset from a concept's turnaround sheet, measure_sheet first reads the sheet (each view's crop as fitViews, the cube pitch per view, front/side/top agreement in percent, and with parts the top view's flippers, head, and tail) and writes no file, so never measure a sheet with scripts; carve_from_views fills the visual hull of its front, side, and top silhouettes (PNG crops) as the rough form, and with a depth map per view (depthPath: a grey depth pass of the sheet, white near, from an image generator or Depth Anything V2, calibrated to the hull by default) carves away the cells in front of each view's surface, so heads and domes come out round, project_paint then recolours the surface one view sees from a single image (a shell's plates from the top view, markings from the front) without adding or removing cells, decal lays an eye, a mouth, or a badge onto a curved part around a point (or a ray from the camera) so it keeps its size and shape where a projection smears it on the slopes (mirror for the pair of eyes), fit_to_views refines a blockout (from carve_from_views or import_mesh) so its orthographic views match the sheet's views (excess and missing rays, an optional reference object's depth, and colours from the object's slots), replying with each view's IoU and colour error before and after, and compare_silhouette scores the model against a concept view from a preview camera (IoU, missing, excess) and writes an overlay PNG; check it after every step instead of comparing heights. A hero view with water, splashes, or a rider needs its background masked first (excludeColors, flood, mask, erase, keepLargest, on compare_silhouette and every view), or its IoU means nothing. split_object then cuts that one blockout into its rig parts (head, flippers, tail): the cells inside boxes, or of some slots, move into a new or existing object and keep their world positions. After bind_object, place_joints puts each bone's pivot where its part meets its parent's part (contact faces, overlap, or the middle of the gap), so pivots are never placed by eye. set_marker names points, collision boxes, and connectors that the .vox keeps and the glb carries as nodes; collision_from_voxels builds the collision boxes from an object's solid cells within a tolerance (holeSize, layer or zBands, minFeature, only, exclude, maxBoxes), keeps hollows open, replaces its own earlier boxes, and replies with how much solid is covered and how much empty is wrongly filled, so colliders never drift from the model (check them with preview overlay boxes); export_variants writes a .vox and .glb per parameter set and merges them by name into a manifest of parameters, markers, and bounds (replace: true starts it fresh). examples/gorge_wall.rhai uses them all. If a tool the docs mention is missing, this server is older than the froxel binary on disk: reload re-executes the rebuilt binary in place, keeping the connection and the open document, and sends notifications/tools/list_changed (--watch does it by itself). A Rhai script (set_script) can call the same sculpt, voxel, object, rig, clip, and palette tools, with the MCP options in a trailing map, for a family of organic pieces (docs/scripting.md, examples/hollow_log.rhai)."
             }),
         ));
     }
@@ -288,6 +447,14 @@ fn dispatch(
     }
     let result = match method {
         "tools/list" => json!({"tools": tools()}),
+        "tools/call" if params.get("name").and_then(Value::as_str) == Some("reload") => {
+            let args = params.get("arguments").cloned().unwrap_or(json!({}));
+            match known_arguments("reload", &args).and_then(|()| state.reload_tool(session, &args))
+            {
+                Ok(value) => tool_ok(value),
+                Err(err) => tool_error(&err),
+            }
+        }
         "tools/call" => call_tool(session, remote, &params),
         "resources/list" => json!({"resources": []}),
         "resources/templates/list" => json!({"resourceTemplates": []}),
@@ -385,6 +552,8 @@ fn known_arguments_in(tools: &[Value], name: &str, args: &Value) -> Result<(), S
 fn map_tool(name: &str, args: &Value) -> Result<(String, Value), String> {
     let method = match name {
         "batch" => "voxel.batch",
+        // Handled by this server before mapping: it restarts the server.
+        "reload" => "server.reload",
         "new_document" => "document.new",
         "open_file" => "document.open",
         "save_file" => "document.save",
@@ -1327,6 +1496,9 @@ fn tools() -> Vec<Value> {
             "antialias": {"type": "boolean", "description": "2x2 supersampling up to 2048x2048 output pixels. Default true."},
             "pose": {"type": "object", "description": "Temporary preview pose for this still. Bone name to a quaternion [x, y, z, w] or {rotation, scale}, on top of the bind pose. The document pose is restored afterwards.", "additionalProperties": {"anyOf": [{"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}, {"type": "object", "properties": {"rotation": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}, "scale": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3}}, "additionalProperties": false}]}}
         })), &["path"]),
+        tool("reload", "Restart this MCP server on the froxel binary now on disk, so tools added by a rebuild appear without the user restarting the server: the server re-executes itself in place (same process, same stdin and stdout), after asking the new binary whether it can resume (froxel mcp --reload-check; a broken or older build is refused and this server keeps running). The open document is kept: written to a temporary .vox and reopened, with its path, active object, and unsaved state (undo history and the preview pose are not kept); connected to an editor (--connect), the document stays in the window. After this reply the new server sends notifications/tools/list_changed; a client that honours listChanged (this server declares it) asks tools/list again, and one that does not keeps its old list until it reconnects. Without force nothing happens when the binary has not changed since the server started. Started with --watch, the server does this by itself before the first request after a rebuild. Unix only. Replies with reloaded, binary, changed, document, and next, or reloaded false and the reason.", json!({
+            "force": {"type": "boolean", "description": "Reload even when the binary has not changed. Default false."}
+        }), &[]),
         tool("set_view", "Move the session camera. Connected to a window, that is the editor's camera, so the next screenshot_viewport shows an exact view. Not an edit and not undoable. The edit viewport stays lit; use model_view for palette-exact colours.", json!({
             "view": view_prop(),
             "yaw": num_prop("Orbit yaw in degrees. 0 puts the camera on +X, looking toward -X. Omit to keep the current yaw."),
@@ -1459,6 +1631,7 @@ fn hints(name: &str) -> [bool; 3] {
             [true, false, true]
         }
         "set_active_object" | "set_view" => [false, false, true],
+        "reload" => [false, false, false],
         "add_object" | "mirror_object" | "add_bone" | "add_clip" => [false, false, false],
         "remove_object" | "split_object" | "undo" | "redo" | "ui_click" | "regenerate"
         | "import_mesh" | "batch" => [false, true, false],
@@ -1642,7 +1815,7 @@ fn xyz_props() -> Value {
 fn print_help() {
     eprintln!(
         "\
-usage: froxel mcp [--connect HOST:PORT] [--launch]
+usage: froxel mcp [--connect HOST:PORT] [--launch] [--watch]
 
 Model Context Protocol on stdin/stdout, one JSON-RPC message per line.
 Without --connect the session is in-process and has no window.
@@ -1652,6 +1825,11 @@ Screenshots need the editor:
   froxel mcp --connect 127.0.0.1:7979
 
 --launch opens the editor with that control port when nothing is listening.
+reload (a tool) restarts this server on a rebuilt froxel binary in place:
+the client keeps its connection and the open document is reopened, and the
+server sends notifications/tools/list_changed so the client lists the new
+tools. --watch reloads by itself before the first request after the binary
+changes. The client must honour tools/list_changed to see new tools.
 render path-traces a PNG in this process. The window path-traces in Render mode.
 
 Organic shaping: loft (a section that changes along a curve), deform (bend,

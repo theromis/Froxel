@@ -590,6 +590,12 @@ impl Session {
 
     /// Remember the current document as saved. The preview pose is not saved
     /// in the file, so it does not count as a change.
+    /// Count the document as edited since its last save, as a reloaded MCP
+    /// server's document that had unsaved changes is.
+    pub(crate) fn mark_unsaved(&mut self) {
+        self.clean = None;
+    }
+
     pub(super) fn mark_clean(&mut self) {
         let mut snapshot = self.snapshot();
         snapshot.pose.clear();

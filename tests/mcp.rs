@@ -3040,3 +3040,128 @@ fn the_tools_that_take_world_space_list_it() {
     }
     assert!(known_arguments("fill_box", &json!({"space": "world"})).is_ok());
 }
+
+#[test]
+fn the_server_declares_list_changed_and_reload_refuses_or_waits() {
+    let mut state = Proto::default();
+    let mut session = Session::new();
+    session.replace_empty();
+    let init = dispatch(
+        &mut state,
+        &mut session,
+        None,
+        &json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-03-26"}}),
+    )
+    .unwrap();
+    assert_eq!(init["result"]["capabilities"]["tools"]["listChanged"], true);
+    assert_eq!(state.version, "2025-03-26");
+    let list = dispatch(
+        &mut state,
+        &mut session,
+        None,
+        &json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+    )
+    .unwrap();
+    assert!(list["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["name"] == "reload"));
+    // The test binary has not changed: nothing happens.
+    let reply = dispatch(
+        &mut state,
+        &mut session,
+        None,
+        &json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "reload", "arguments": {}}}),
+    )
+    .unwrap();
+    assert_eq!(reply["result"]["isError"], false);
+    assert!(reply["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("\"reloaded\": false"));
+    assert!(state.reload.is_none());
+    // Forced, the test binary does not answer --reload-check, so it is
+    // refused and this server keeps running.
+    let reply = dispatch(
+        &mut state,
+        &mut session,
+        None,
+        &json!({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "reload", "arguments": {"force": true}}}),
+    )
+    .unwrap();
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+    assert!(reply["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("keeps running"));
+    assert!(state.reload.is_none());
+    let reply = dispatch(
+        &mut state,
+        &mut session,
+        None,
+        &json!({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "reload", "arguments": {"forse": true}}}),
+    )
+    .unwrap();
+    assert_eq!(reply["result"]["isError"], true);
+}
+
+#[test]
+fn a_reload_state_reopens_the_document_in_its_own_frame() {
+    let mut session = Session::new();
+    session.replace_empty();
+    crate::remote::apply(
+        &mut session,
+        "object.set",
+        &json!({"index": 0, "position": [5, -3, 2]}),
+    )
+    .unwrap();
+    crate::remote::apply(
+        &mut session,
+        "voxel.set",
+        &json!({"x": 2, "y": 3, "z": 4, "palette": 9}),
+    )
+    .unwrap();
+    crate::remote::apply(&mut session, "object.add", &json!({"name": "head"})).unwrap();
+    crate::remote::apply(
+        &mut session,
+        "voxel.set",
+        &json!({"x": -1, "y": 0, "z": 0, "palette": 4}),
+    )
+    .unwrap();
+    session.path = Some(std::path::PathBuf::from("/tmp/turtle.vox"));
+    let plan = reload::save(&mut session, true, "2025-03-26").unwrap();
+    // The handed-over input is kept as bytes.
+    let text = std::fs::read_to_string(&plan.state).unwrap();
+    let mut state: Value = serde_json::from_str(&text).unwrap();
+    state["pending"] = json!(b"{\"x\":1}\n".to_vec());
+    std::fs::write(&plan.state, state.to_string()).unwrap();
+    let mut next = Session::new();
+    next.replace_empty();
+    let resumed = reload::resume(&plan.state, &mut next).unwrap();
+    assert_eq!(resumed.version, "2025-03-26");
+    assert_eq!(resumed.pending, b"{\"x\":1}\n");
+    assert_eq!(resumed.objects, 2);
+    assert_eq!(next.objects[0].cells.get(&(2, 3, 4)), Some(&9));
+    assert_eq!(next.objects[0].translation, (5, -3, 2));
+    assert_eq!(next.objects[1].cells.get(&(-1, 0, 0)), Some(&4));
+    assert_eq!(next.selected, 1);
+    assert_eq!(next.path, Some(std::path::PathBuf::from("/tmp/turtle.vox")));
+    assert!(next.has_unsaved_changes());
+    // The state and the document are gone.
+    assert!(!plan.state.exists());
+    assert!(!plan.document.as_ref().unwrap().exists());
+}
+
+#[test]
+fn stdin_lines_keep_what_is_read_past_a_line() {
+    let input = b"one\r\ntwo\nthree".to_vec();
+    let mut lines = reload::Lines::from(Box::new(std::io::Cursor::new(input)), b"zero\n".to_vec());
+    assert_eq!(lines.next_line().unwrap().unwrap(), b"zero");
+    assert_eq!(lines.next_line().unwrap().unwrap(), b"one");
+    // Everything the reader took in after the line it returned.
+    assert_eq!(lines.rest(), b"two\nthree");
+    assert_eq!(lines.next_line().unwrap().unwrap(), b"two");
+    assert_eq!(lines.next_line().unwrap().unwrap(), b"three");
+    assert!(lines.next_line().unwrap().is_none());
+}
