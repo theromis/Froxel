@@ -1,7 +1,7 @@
 //! Inspector sections of the whole-object edits: Split object (MCP
 //! `split_object`), Clear object (MCP `clear_object`), Recolor (MCP
-//! `recolor`), Intersect (the fills' `mode: "intersect"`), and Surface
-//! stroke (MCP `surface_stroke`).
+//! `recolor`), Intersect (the fills' `mode: "intersect"`), Surface
+//! stroke (MCP `surface_stroke`), and Components (MCP `components`).
 
 use egui::{RichText, Ui};
 
@@ -254,6 +254,96 @@ pub(super) fn stroke(ui: &mut Ui, session: &mut Session) {
         }
         if point {
             session.stroke_point_at_selection();
+        }
+    });
+}
+
+/// MCP `components`: connected parts of the active object.
+pub(super) fn components(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.editor_mode == EditorMode::Model && !session.active().cells.is_empty();
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Components");
+        let mut run: Option<&str> = None;
+        let mut pick: Option<bool> = None;
+        let panel = &mut session.edit.components;
+        egui::Grid::new("components-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Joined by", "Which neighbours join cells into one part: faces (6), faces and edges (18), or faces, edges, and corners (26).");
+                egui::ComboBox::from_id_salt("components-connectivity")
+                    .width(110.0)
+                    .selected_text(match panel.connectivity {
+                        6 => "Faces (6)",
+                        18 => "Edges (18)",
+                        _ => "Corners (26)",
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut panel.connectivity, 6, "Faces (6)");
+                        ui.selectable_value(&mut panel.connectivity, 18, "Edges (18)");
+                        ui.selectable_value(&mut panel.connectivity, 26, "Corners (26)");
+                    });
+                ui.end_row();
+                label(ui, "Keep", "Keep largest leaves this many of the largest parts.");
+                ui.add(egui::DragValue::new(&mut panel.keep).range(1..=1024));
+                ui.end_row();
+                label(ui, "Min cells", "Remove small erases every part with fewer cells: floaters, foam bits.");
+                ui.add(egui::DragValue::new(&mut panel.min_cells).range(1..=1_000_000));
+                ui.end_row();
+                label(ui, "Seed", "A cell x y z of the part Delete, Move, and Split act on, in local cells; it snaps to the nearest solid cell.");
+                ui.horizontal(|ui| {
+                    ui.add(egui::TextEdit::singleline(&mut panel.seed).hint_text("x y z").desired_width(90.0));
+                    if ui.button("At selection").on_hover_text("The selection's centre.").clicked() {
+                        pick = Some(false);
+                    }
+                });
+                ui.end_row();
+                label(ui, "Anchor", "Optional: a cell of the part that stays. The seed's part is first cut from it at the thinnest neck between them, so a rider touching a shell comes off. Empty: no cut.");
+                ui.horizontal(|ui| {
+                    ui.add(egui::TextEdit::singleline(&mut panel.anchor).hint_text("none").desired_width(90.0));
+                    if ui.button("At selection").on_hover_text("The selection's centre.").clicked() {
+                        pick = Some(true);
+                    }
+                });
+                ui.end_row();
+                label(ui, "Offset", "Move shifts the part by these whole cells.");
+                ui.horizontal(|ui| {
+                    for value in panel.offset.iter_mut() {
+                        ui.add(egui::DragValue::new(value).range(-256..=256));
+                    }
+                });
+                ui.end_row();
+                label(ui, "Name", "Name of the object Split makes; empty is <object>_part.");
+                ui.add(egui::TextEdit::singleline(&mut panel.name).desired_width(120.0));
+                ui.end_row();
+            });
+        ui.horizontal(|ui| {
+            if ui.button("List").on_hover_text("MCP components op list: count the parts and their sizes, with no change.").clicked() {
+                run = Some("list");
+            }
+            if ui.button("Keep largest").on_hover_text("MCP components op keep_largest: erase every part but the largest Keep. One undo step.").clicked() {
+                run = Some("keep_largest");
+            }
+            if ui.button("Remove small").on_hover_text("MCP components op remove_small: erase the parts with fewer than Min cells. One undo step.").clicked() {
+                run = Some("remove_small");
+            }
+        });
+        ui.horizontal(|ui| {
+            if ui.button("Delete").on_hover_text("MCP components op delete: erase the seed's part (cut at the neck from the anchor, if set). One undo step.").clicked() {
+                run = Some("delete");
+            }
+            if ui.button("Move").on_hover_text("MCP components op move: shift the seed's part by Offset. One undo step.").clicked() {
+                run = Some("move");
+            }
+            if ui.button("Split").on_hover_text("MCP components op split: move the seed's part into a new object, keeping its world position. One undo step.").clicked() {
+                run = Some("split");
+            }
+        });
+        if let Some(anchor) = pick {
+            session.components_cell_at_selection(anchor);
+        }
+        if let Some(op) = run {
+            session.components_from_panel(op);
         }
     });
 }

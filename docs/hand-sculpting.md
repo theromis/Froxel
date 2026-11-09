@@ -14,7 +14,10 @@ It is how agents should model living things through MCP.
 ## Steps
 
 1. **Block out.** Import a sculpted or generated mesh with `import_mesh`
-   when there is one (see "Start from a mesh"). Otherwise build the large
+   when there is one (see "Start from a mesh"), and clean it with
+   `components`: `remove_small` erases floaters, and `delete` or `split`
+   with a `seed` on a rider and an `anchor` on the body cuts the rider off
+   at its thinnest neck. Otherwise build the large
    forms with `fill_box`,
    `fill_rounded_box`, and `fill_ellipsoid`. Grow limbs, roots, branches,
    tails, and twigs with `fill_tube`. Cut hollows, tunnels, and pits with
@@ -167,6 +170,7 @@ bring that mesh in with `import_mesh` and finish it with the voxel tools:
 
 ```
 import_mesh          path="fallen_tree.glb" voxelSize=0.08 anchor="bottom" newObject=true name="fallen_tree"
+components           op="remove_small" minCells=40                  # floaters and foam bits
 preview              path="tree_import.png"
 model_view           path="tree_side.png" view="left"                # compare with the concept
 smooth               x0=-40 y0=-12 z0=0 x1=40 y1=12 z1=20 iterations=1

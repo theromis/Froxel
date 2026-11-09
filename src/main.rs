@@ -253,6 +253,9 @@ fn main(
     if args.first().is_some_and(|arg| arg == "bake-scene") {
         std::process::exit(cli::bake_scene(&args[1..]));
     }
+    if args.first().is_some_and(|arg| arg == "components") {
+        std::process::exit(cli::components(&args[1..]));
+    }
     if args.first().is_some_and(|arg| arg == "import") {
         std::process::exit(cli::import(&args[1..]));
     }
@@ -716,6 +719,7 @@ usage: froxel [--control PORT] [--bridge PORT] [file.vox]
        froxel fit --args <fit.json> --input <base.vox> --out <file.vox> (--help for its flags)
        froxel compare --input <file.vox> --concept <concept.png> --out <overlay.png> (--help for its flags)
        froxel import --mesh <file.glb|.obj> --output <file.vox> (--help for its flags)
+       froxel components --input <file.vox> --out <file.vox> --op <op> (--help for its flags)
        froxel variants --input <file.vox> --variants <sets.json> --out <dir>
        froxel voxrt --input <file.vox> [--dump]"
                 );

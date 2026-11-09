@@ -205,6 +205,7 @@ tracer. A file with no scene graph still loads its first model.
 | `brush` | `op`, `points` | Sculpt brush dabs along **local** points: `inflate`, `deflate` (`dig`), `smooth`, `flatten`, or `grab` (`drag`). Optional `radius`, `strength`, `falloff` (`smooth`, `linear`, `constant`), `only`, `palette`, `vector` (grab), `spacing`. Replies with `dabs`, `added`, `removed`. One undo step |
 | `carve_from_views` | `views` | Fill the visual hull of 2 to 6 orthographic views (front, side, top) of a concept's turnaround sheet into the active object: each view's silhouette is extruded along its depth axis and the cells every view covers are kept. A view's `depth` (or the top-level `depthPath`), a grey depth map with white near, carves away the cells in front of its surface, so a round head is round; one view with depth is enough. See [Depth maps](#depth-maps). A view is a PNG `path` with `crop`, `background` (`auto`, `alpha`, or a key colour with `tolerance`), and `cellsPerPixel` or `size`, or `rows` with a `legend`. Optional `path`, `background`, `tolerance`, `alphaThreshold` (for every view without its own), `depthPath`, `depthTolerance`, `size`, `origin`, `cellsPerPixel`, `palette` or `slots`, `coverage`, `shell`, `smooth`, `mode`. Replies with `cells`, `bounds`, `size`, and each view's `grid`, `covered`, and `depth` (its calibration and the cells it carved). At most 4000000 cells in the box, one undo step. See [Silhouettes](#silhouettes) |
 | `import_mesh` | `path` | Voxelize a `.glb`, `.gltf`, or `.obj` (with its `.mtl` and textures) into the active object, or a new one with `newObject` (and `name`). Optional `size`, `scale`, or `voxelSize`; `upAxis`, `rotation`, `position`, `anchor` (`min`, `center`, `bottom`), `fill` (`solid`, `parity`, `shell`), `colors` (`auto`, `vertex`), `palette` or `slots`, `maxNewSlots`, `tolerance`, `mode`. Replies with `cells`, `shell`, `interior`, `openEdges`, `written`, `changed`, `slots`, `newSlots`, `bounds`, `scale`, `triangles`, `primitives`, `textures`, `warnings`. At most 256 cells per axis and 2000000 cells, one undo step |
+| `components` | | The connected parts of the active object, for a generated mesh that came with extras. `op` `list` (default), `keep_largest` (`keep`, default 1), `remove_small` (`minCells`), or `delete`, `move` (`offset`), `split` (`name` or `into`, `copy`, `makeActive`, `index`) of the part holding `seed`; with `anchor`, that part is first cut at its thinnest neck from the anchor's. Optional `connectivity` (6, 18, 26, the default), `reach` (default 8), `radius`. Replies with `count`, `largest`, `components`, `selected`, `seed`, `anchor`, `cut`, `changed`, `voxels`. One undo step. See [Cleaning up a generated mesh](#cleaning-up-a-generated-mesh) |
 | `surface_stroke` | `points`, `palette` | Paint a stroke through 2..=1024 **local** points that snaps to the active object's nearest surface cells: seams between shell plates, markings on a curved body. Optional `curve` (`polyline`, `smooth`), `width` (cells across, default 1), `depth` (cells into the solid, default 1), `reach` (default 8), `only`, `mirror`. `palette` `0` cuts a groove. Replies with `cells`, `changed`, `samples`, `missed`, `snap`, `length`, `voxels`. One undo step |
 | `recolor` | `from` and `to`, or `map` | Replace palette slot `from` with `to` (or every pair of `map`, `{"3": 5}` or `[[3, 5]]`) in the active object's solid cells, inside an inclusive box `x0`..`z1` or everywhere (with `mirror`, the box and its mirror). No cell is added; `to` `0` erases. Replies with `matched`, `changed`, `voxels`. One undo step |
 | `carve` | `shape` | Remove the solid cells inside a `box`, `ellipsoid`, `rounded_box`, or `tube`, given as for the fill tools. To cut a polygon or rounded rectangle along a path, call `sweep` with `palette` `0`. Replies with `removed`. One undo step |
@@ -591,6 +592,45 @@ the ones given new colours. Object creation, palette slots, and cells are
 one undo step. Scripts read no files, so `import_mesh` has no script form;
 Rhai `voxelize` runs the same voxelizer and palette mapping on a mesh the
 script builds. `froxel import` is the same import from the command line.
+
+#### Cleaning up a generated mesh
+
+An image-to-3D tool models what the concept shows, so a creature comes
+with what sits on it or flies around it: a frog riding the shell, moss
+tufts, foam splashes. `components` finds the connected parts of the active
+object (cells joined by faces with `connectivity` 6, faces and edges with
+18, and faces, edges, and corners with 26, the default) and removes or
+separates them:
+
+- `op` `list` (the default) changes nothing and replies with `count`,
+  `largest`, and `components`, up to 32 parts largest first with `cells`,
+  `min`, `max`, and a `seed` cell of each.
+- `keep_largest` erases every part but the `keep` largest (default 1).
+- `remove_small` erases the parts with fewer than `minCells` cells: the
+  floaters.
+- `delete`, `move` (by whole cells `offset`), and `split` act on the part
+  holding `seed`, which snaps to the nearest solid cell within `reach`
+  (default 8). `split` moves it into a new object (`name`, default
+  `<object>_part`) or an existing one (`into`), keeping world positions as
+  `split_object` does; `copy` leaves it in the source too, `index` names
+  the source. A split changes the document, so it is not a `batch` item.
+
+A rider usually touches the body, so it is in the body's part. Give
+`anchor`, a cell of the part that stays, and the seed's part is first cut
+at its neck: the fewest cells whose removal separates the seed from the
+anchor, a minimum vertex cut found by max flow. Cells within `radius`
+geodesic steps of either point (default 0.3 of their geodesic distance)
+are never cut, so the cut is not the few cells around the seed itself.
+The cut cells stay with the anchor, and `cut` reports how many there were;
+a part with no neck thinner than 65536 cells is refused.
+
+```json
+{"op": "remove_small", "minCells": 40}
+{"op": "split", "seed": [30, 22, 41], "anchor": [30, 22, 10], "name": "frog"}
+```
+
+`examples/cleaned_blockout.rhai` cleans a boulder that came with a snail
+and foam bits.
 
 `column_relief` breaks a cliff face into columns for a fractured cliff.
 `facing` is the face's outward direction along x or y (`+x`, `-x`, `+y`,
@@ -1955,6 +1995,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `compare_silhouette` | Compare silhouette section: Concept Image…, Crop, Background, Flip, Camera (Viewport, Game, Front, Left, Top), Align (Fit, Height, Width), Compare; the overlay shows in the viewport's bottom-right corner until Hide overlay; MCP `compare_silhouette` over the control port shows it there too |
 | `import_mesh` | File > Import Mesh… and the Import mesh section: File, Size, Voxel, or Scale, File is Z-up, Rotation, Position, Anchor, Solid, Parity, or Shell, Texture or Vertex colour, Slots, New slots, Tolerance, Mode, New object |
 | `carve` | Remove mode with Box, Generator, or Tube |
+| `components` | Components section: Joined by, Keep, Min cells, Seed and Anchor (At selection), Offset, Name; List, Keep largest, Remove small, Delete, Move, Split |
 | `surface_stroke` | Surface stroke section: Points (one per line, Point at selection, World), Smooth, Width, Depth, Reach, Only, Groove, Mirror, Stroke with the active slot |
 | `recolor` | Recolor section: Slots (pairs `from>to`), Mirror, Recolor over the selection's box or the whole object |
 | `mirror` | Mirror row (on, X/Y/Z, At; empty At is the object's centre) in Paint from view, Surface stroke, and Recolor, and Mirror under the tool options for the viewport's brush and shape tools (`set_voxels` and the fills) |

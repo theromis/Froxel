@@ -1769,3 +1769,159 @@ fn import_args(
         _ => Err(IMPORT_USAGE.into()),
     }
 }
+
+/// Open `input`, make `object` active, run one MCP method on it, save
+/// `output`, and print the reply.
+fn edit_vox(
+    input: &Path,
+    output: &Path,
+    object: Option<&str>,
+    method: &str,
+    params: &serde_json::Value,
+) -> i32 {
+    let mut session = Session::new();
+    let done = session
+        .open_vox(input)
+        .and_then(|()| {
+            if let Some(object) = object {
+                session.selected = crate::preview::find_object(&session, object)?;
+            }
+            crate::remote::apply(&mut session, method, params)
+        })
+        .and_then(|reply| {
+            if let Some(parent) = output
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+            {
+                std::fs::create_dir_all(parent)
+                    .map_err(|err| format!("Could not create {}: {err}", parent.display()))?;
+            }
+            session.write_vox(output)?;
+            Ok(reply)
+        });
+    match done {
+        Ok(reply) => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&reply).unwrap_or_default()
+            );
+            eprintln!("wrote {}", output.display());
+            0
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            1
+        }
+    }
+}
+
+/// The flags every `.vox` edit command takes, and its own ones as MCP
+/// arguments: `--flag value` becomes `flag` in camel case, a number or a
+/// list `a,b,c` of numbers when it parses as one, else a string.
+type EditArgs = (PathBuf, PathBuf, Option<String>, serde_json::Value);
+
+fn edit_args(args: &[String], help: &str, flags: &[&str]) -> Result<Option<EditArgs>, String> {
+    use serde_json::json;
+    let (mut input, mut output, mut object) = (None, None, None);
+    let mut params = json!({});
+    let mut index = 0;
+    while index < args.len() {
+        let flag = args[index].as_str();
+        if flag == "-h" || flag == "--help" {
+            eprintln!("{help}");
+            return Ok(None);
+        }
+        index += 1;
+        let value = args
+            .get(index)
+            .cloned()
+            .ok_or_else(|| format!("{flag} needs a value"))?;
+        match flag {
+            "--input" => input = Some(PathBuf::from(value)),
+            "--out" | "--output" => output = Some(PathBuf::from(value)),
+            "--object" => object = Some(value),
+            _ if flags.contains(&flag) => {
+                let mut key = String::new();
+                let mut upper = false;
+                for c in flag.trim_start_matches("--").chars() {
+                    if c == '-' {
+                        upper = true;
+                    } else if upper {
+                        key.extend(c.to_uppercase());
+                        upper = false;
+                    } else {
+                        key.push(c);
+                    }
+                }
+                let number = |text: &str| -> Option<serde_json::Value> {
+                    let n: f64 = text.trim().parse().ok()?;
+                    Some(if n.fract() == 0.0 && n.abs() < 1e15 {
+                        json!(n as i64)
+                    } else {
+                        json!(n)
+                    })
+                };
+                params[key] = if value.contains(',') {
+                    value
+                        .split(',')
+                        .map(number)
+                        .collect::<Option<Vec<_>>>()
+                        .map(serde_json::Value::from)
+                        .ok_or_else(|| format!("{flag} must be numbers separated by commas"))?
+                } else {
+                    number(&value).unwrap_or(json!(value))
+                };
+            }
+            other => return Err(format!("unknown argument `{other}`\n\n{help}")),
+        }
+        index += 1;
+    }
+    let input = input.ok_or_else(|| format!("--input is required\n\n{help}"))?;
+    let output = output.ok_or_else(|| format!("--out is required\n\n{help}"))?;
+    Ok(Some((input, output, object, params)))
+}
+
+const COMPONENTS_HELP: &str = "\
+usage: froxel components --input <file.vox> --out <file.vox> [--object <index|name>]
+                         [--op list|keep_largest|remove_small|delete|move|split]
+                         [--connectivity 6|18|26] [--keep N] [--min-cells N]
+                         [--seed X,Y,Z] [--anchor X,Y,Z] [--reach R] [--radius R]
+                         [--offset DX,DY,DZ] [--name NAME] [--into OBJECT]
+
+MCP components on the active object (or --object) of a .vox, saved to
+--out, with the reply printed as JSON: list the connected parts, keep the
+largest, remove the parts under --min-cells (floaters), or delete, move,
+or split into a new object the part holding --seed, first cut at its
+thinnest neck from --anchor (a cell of the part that stays). Seeds are the
+object's local cells.";
+
+/// `froxel components`: MCP `components` on a `.vox`.
+pub fn components(args: &[String]) -> i32 {
+    let flags = [
+        "--op",
+        "--connectivity",
+        "--keep",
+        "--min-cells",
+        "--seed",
+        "--anchor",
+        "--reach",
+        "--radius",
+        "--offset",
+        "--name",
+        "--into",
+    ];
+    match edit_args(args, COMPONENTS_HELP, &flags) {
+        Ok(None) => 0,
+        Ok(Some((input, output, object, params))) => edit_vox(
+            &input,
+            &output,
+            object.as_deref(),
+            "voxel.components",
+            &params,
+        ),
+        Err(err) => {
+            eprintln!("{err}");
+            2
+        }
+    }
+}

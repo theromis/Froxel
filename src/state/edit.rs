@@ -27,6 +27,8 @@ pub struct SplitSpec {
     pub source: usize,
     pub boxes: Vec<(Cell, Cell)>,
     pub slots: Option<Vec<u8>>,
+    /// Only these cells (MCP `components` with op `split`).
+    pub cells: Option<std::collections::HashSet<Cell>>,
     pub invert: bool,
     /// Leave the cells in the source too.
     pub copy: bool,
@@ -91,7 +93,11 @@ impl SplitSpec {
             .slots
             .as_ref()
             .is_none_or(|slots| slots.contains(&slot));
-        (in_box && in_slots) != self.invert
+        let in_cells = self
+            .cells
+            .as_ref()
+            .is_none_or(|cells| cells.contains(&cell));
+        (in_box && in_slots && in_cells) != self.invert
     }
 }
 
@@ -108,7 +114,7 @@ impl Session {
                 spec.source
             ));
         }
-        if spec.boxes.is_empty() && spec.slots.is_none() {
+        if spec.boxes.is_empty() && spec.slots.is_none() && spec.cells.is_none() {
             return Err("pass boxes, slots, or both: the cells to split off".into());
         }
         let new_name = match &spec.into {
@@ -524,9 +530,86 @@ pub(crate) fn mirrored_note(reply: &Value) -> String {
     }
 }
 
+/// The Components section: connected parts of the active object.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ComponentsPanel {
+    /// 6, 18, or 26.
+    pub connectivity: u8,
+    pub keep: u32,
+    pub min_cells: u32,
+    /// `x y z` of the part to act on, and of the part that stays.
+    pub seed: String,
+    pub anchor: String,
+    pub offset: [i32; 3],
+    /// Name of the object Split makes.
+    pub name: String,
+}
+
+impl Default for ComponentsPanel {
+    fn default() -> Self {
+        Self {
+            connectivity: 26,
+            keep: 1,
+            min_cells: 8,
+            seed: String::new(),
+            anchor: String::new(),
+            offset: [0, 0, 0],
+            name: String::new(),
+        }
+    }
+}
+
+/// A point `x y z` typed in a panel, or `None` when the field is empty.
+fn point_field(what: &str, text: &str) -> Result<Option<Vec<f64>>, String> {
+    let parts: Vec<&str> = text
+        .split(|c: char| c == ',' || c.is_whitespace())
+        .filter(|part| !part.is_empty())
+        .collect();
+    if parts.is_empty() {
+        return Ok(None);
+    }
+    if parts.len() != 3 {
+        return Err(format!("{what}: a cell is x y z, not `{}`", text.trim()));
+    }
+    parts
+        .iter()
+        .map(|part| {
+            part.parse::<f64>()
+                .map_err(|_| format!("{what}: `{part}` is not a number"))
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(Some)
+}
+
+impl ComponentsPanel {
+    /// The MCP `components` arguments of `op`.
+    pub(crate) fn args(&self, op: &str) -> Result<Value, String> {
+        let mut args = json!({"op": op, "connectivity": self.connectivity});
+        match op {
+            "keep_largest" => args["keep"] = json!(self.keep.max(1)),
+            "remove_small" => args["minCells"] = json!(self.min_cells),
+            "move" => args["offset"] = json!(self.offset),
+            _ => {}
+        }
+        if matches!(op, "delete" | "move" | "split") {
+            let seed = point_field("Seed", &self.seed)?
+                .ok_or("Components: set a seed cell of the part first (Seed at selection).")?;
+            args["seed"] = json!(seed);
+            if let Some(anchor) = point_field("Anchor", &self.anchor)? {
+                args["anchor"] = json!(anchor);
+            }
+        }
+        if op == "split" && !self.name.trim().is_empty() {
+            args["name"] = json!(self.name.trim());
+        }
+        Ok(args)
+    }
+}
+
 /// The fields of the Object edits sections.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct EditPanels {
+    pub components: ComponentsPanel,
     pub split: SplitPanel,
     pub recolor: RecolorPanel,
     pub intersect: IntersectPanel,
@@ -576,6 +659,73 @@ impl Session {
             Err(err) => err,
         };
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// A Components button: MCP `components` with `op` on the active object.
+    pub fn components_from_panel(&mut self, op: &str) {
+        let args = match self.edit.components.args(op) {
+            Ok(args) => args,
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
+        self.status = match crate::remote::apply(self, "voxel.components", &args) {
+            Ok(reply) => {
+                let sizes: Vec<String> = reply["components"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .take(6)
+                    .map(|part| part["cells"].to_string())
+                    .collect();
+                let mut text = format!(
+                    "{} parts ({}{}).",
+                    reply["count"],
+                    sizes.join(", "),
+                    if reply["count"].as_u64().unwrap_or(0) > 6 {
+                        ", ..."
+                    } else {
+                        ""
+                    }
+                );
+                match op {
+                    "list" => {}
+                    "split" => text.push_str(&format!(
+                        " Split {} cells into {}.",
+                        reply["selected"], reply["name"]
+                    )),
+                    _ => text.push_str(&format!(" {} cells changed.", reply["changed"])),
+                }
+                if reply.get("cut").is_some() {
+                    text.push_str(&format!(" Neck cut: {} cells.", reply["cut"]));
+                }
+                text
+            }
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// Set the Components seed (or anchor) to the selection's centre.
+    pub fn components_cell_at_selection(&mut self, anchor: bool) {
+        let Some((min, max)) = cell_bounds(self.picked.iter().copied()) else {
+            self.status = "Components: select cells first.".into();
+            return;
+        };
+        let centre = |a: i32, b: i32| (a + b).div_euclid(2);
+        let line = format!(
+            "{} {} {}",
+            centre(min.0, max.0),
+            centre(min.1, max.1),
+            centre(min.2, max.2)
+        );
+        let panel = &mut self.edit.components;
+        if anchor {
+            panel.anchor = line;
+        } else {
+            panel.seed = line;
+        }
     }
 
     /// The Stroke button: MCP `surface_stroke` on the active object.

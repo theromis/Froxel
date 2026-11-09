@@ -15,6 +15,12 @@
 
 ### Added
 
+- Components: MCP `components`, Rhai `components(op, opts)`, and the
+  Components section list an object's connected parts (6, 18, or 26
+  neighbours), keep the largest, remove floaters under `minCells`, and
+  delete, move, or split out the part holding a `seed`, first cut at its
+  thinnest neck from an `anchor` (a minimum cut by max flow), in one undo
+  step: a rider, moss tufts, and foam bits off an image-to-3D blockout.
 - Hex palette colours: MCP `set_palette` (and its `entries`, and Rhai
   `set_palette`) takes `color` as `"#rrggbb"` or `"#rrggbbaa"`, or
   `[r, g, b, a?]`, besides `r`, `g`, `b`, as `background` and legends take

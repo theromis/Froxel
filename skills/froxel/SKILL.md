@@ -23,7 +23,7 @@ If the tools are missing, the server is not configured. Point the user to
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` with its image as rows and a legend, `fit_to_views` with views as rows and a legend, and `marker`,
+  (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `components`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` with its image as rows and a legend, `fit_to_views` with views as rows and a legend, and `marker`,
   `collision_box`, `connector`, `collision_from_voxels`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `split_object`, `clear_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -165,7 +165,11 @@ If the tools are missing, the server is not configured. Point the user to
    onto your bark, stone, or moss slots; PNG, JPEG, and WebP textures are
    read, and the default `fill` `solid` fills a double-walled or open mesh,
    sealing openings at their rims: check `interior` and `openEdges` in the
-   reply) and finish it with the tools below;
+   reply) and finish it with the tools below; first clean it with
+   `components`: `list` the parts, `remove_small` (`minCells`) the floaters
+   and foam, and `delete` or `split` a rider sitting on the body with a
+   `seed` on the rider and an `anchor` on the body (the cut is the thinnest
+   neck between them; check `cut` and `selected`);
    tubes and boxes alone make such an asset read as pipes. Otherwise block
    out the large forms with `fill_rounded_box` and
    `fill_ellipsoid`. Grow limbs, roots, branches, and twigs with `fill_tube`

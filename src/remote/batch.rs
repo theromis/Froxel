@@ -29,6 +29,7 @@ pub(crate) const BATCH_TOOLS: &[(&str, &str)] = &[
     ("carve", "voxel.carve"),
     ("recolor", "voxel.recolor"),
     ("surface_stroke", "voxel.surface_stroke"),
+    ("components", "voxel.components"),
     ("clear_object", "object.clear"),
     ("trim_outline", "voxel.trim_outline"),
     ("smooth", "voxel.smooth"),
@@ -104,6 +105,12 @@ pub(crate) fn batch_items(params: &Value) -> Result<Vec<BatchItem<'_>>, String> 
                     ))
                 }
             };
+            if *tool == "components" && arguments.get("op").and_then(Value::as_str) == Some("split")
+            {
+                return Err(format!(
+                    "batch item {index}: components with op split changes the document; call it outside the batch"
+                ));
+            }
             Ok(BatchItem {
                 tool,
                 method,

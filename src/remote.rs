@@ -19,7 +19,9 @@ mod space;
 mod stone;
 pub(crate) use batch::{batch_items, batch_tool_names, MAX_BATCH_ITEMS};
 pub(crate) use collision::{collision_build, finish_reply as collision_reply};
-pub(crate) use edit::{mirror_prop, recolor_writes, stroke_writes, MIRROR_METHODS};
+pub(crate) use edit::{
+    components_run, components_spec, mirror_prop, recolor_writes, stroke_writes, MIRROR_METHODS,
+};
 pub(crate) use import::{
     import_plan, used_slots, DEFAULT_IMPORT_SIZE, DEFAULT_MAX_NEW_SLOTS, DEFAULT_TOLERANCE,
 };
@@ -888,6 +890,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "voxel.carve" => carve(session, &params),
         "voxel.recolor" => edit::recolor(session, &params),
         "voxel.surface_stroke" => edit::surface_stroke(session, &params),
+        "voxel.components" => edit::components(session, &params),
         "voxel.smooth" => smooth(session, &params),
         "voxel.break" => break_end(session, &params),
         "voxel.scatter" => scatter(session, &params),
@@ -1558,6 +1561,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("object.set", "index, name?, position?, hidden?", "Rename, move, or hide. position is world voxels; local cells stay put"),
     ("object.remove", "index", "Remove an object and its voxels. Later indices shift. The last object stays"),
     ("voxel.recolor", "from + to | map, x0..z1?, mirror?", "Replace palette slots of the active object's cells (one, or a map of several), in a box or everywhere, with no shape change. One undo step"),
+    ("voxel.components", "op?, connectivity?, keep?, minCells?, seed?, anchor?, reach?, radius?, offset?, index?, name? | into?, copy?, makeActive?", "List the active object's connected parts, keep the largest, remove floaters smaller than minCells, or delete, move, or split out the part holding seed, cut first from anchor at the thinnest neck. One undo step"),
     ("voxel.surface_stroke", "points, palette, curve?, width?, depth?, reach?, only?, mirror?", "Paint (or groove with palette 0) a stroke through points that snaps to the active object's nearest surface cells, width cells wide and depth cells deep. One undo step"),
     ("object.clear", "index?", "Empty an object (index or name; default the active one) with no box limit. Name, position, bone, and script stay. One undo step"),
     ("object.split", "boxes? | slots?, index?, invert?, copy?, into? | name?, makeActive?", "Move or copy the cells of an object inside boxes or of some slots into a new or existing object, keeping their world positions. One undo step"),

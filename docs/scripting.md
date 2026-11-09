@@ -298,6 +298,24 @@ of it and `depth` cells into the solid take the slot (`0` cuts a groove).
 It returns `#{changed, cells, samples, missed, snap, mirrored}` (`mirrored`
 with a mirror only).
 
+### Components
+
+```rhai
+let parts = components("list");
+components("remove_small", #{minCells: 12});
+components("delete", #{seed: [0, 0, 14], anchor: [0, 0, 2]});
+components("split", #{seed: [0, 0, 14], anchor: [0, 0, 2], name: "snail"});
+```
+
+MCP `components` on the object being written: `list`, `keep_largest`,
+`remove_small`, `delete`, `move`, and `split` of its connected parts, with
+the options of the MCP tool (`connectivity`, `keep`, `minCells`, `seed`,
+`anchor`, `reach`, `radius`, `offset`, and for `split` `name`, `into`, and
+`copy`). Every op but `split` changes the cells at once and returns
+`#{count, largest, components, selected, cut, changed}`. `split` changes
+the document, so it runs after the voxels are written, on the cells as
+the script left them, like `split_object`, and returns an empty map.
+
 ### Recolor
 
 ```rhai

@@ -222,6 +222,71 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
         cells.clear();
         removed
     });
+    for with_opts in [false, true] {
+        let state = scratch.clone();
+        let run = move |ctx: &NativeCallContext, op: &str, opts: &Map| -> Fallible<Map> {
+            let mut args = options(
+                opts,
+                &[
+                    "connectivity",
+                    "keep",
+                    "minCells",
+                    "seed",
+                    "anchor",
+                    "reach",
+                    "radius",
+                    "offset",
+                    "name",
+                    "into",
+                    "copy",
+                ],
+                "components",
+            )?;
+            args.insert("op".into(), op.into());
+            if op == "split" {
+                // A split changes the document: it runs after the voxels
+                // are written, on the object being written.
+                let index = {
+                    let scratch = state.borrow();
+                    match &scratch.built[scratch.current].key {
+                        BuiltKey::Index(index) => json!(index),
+                        BuiltKey::Name(name) => json!(name),
+                    }
+                };
+                args.insert("index".into(), index);
+                remote::components_spec(&Value::Object(args.clone())).map_err(runtime)?;
+                record(
+                    &state,
+                    ctx,
+                    "components",
+                    "voxel.components",
+                    Value::Object(args),
+                )?;
+                return Ok(Map::new());
+            }
+            let mut scratch = state.borrow_mut();
+            scratch.keep_going().map_err(runtime)?;
+            let (found, reply) =
+                remote::components_run(scratch.cells(), &Value::Object(args)).map_err(runtime)?;
+            let changed = scratch.apply(&found.writes).map_err(runtime)?;
+            let mut out = match dynamic(&reply).try_cast::<Map>() {
+                Some(map) => map,
+                None => Map::new(),
+            };
+            out.insert("changed".into(), Dynamic::from_int(changed));
+            Ok(out)
+        };
+        if with_opts {
+            engine.register_fn(
+                "components",
+                move |ctx: NativeCallContext, op: &str, opts: Map| run(&ctx, op, &opts),
+            );
+        } else {
+            engine.register_fn("components", move |ctx: NativeCallContext, op: &str| {
+                run(&ctx, op, &Map::new())
+            });
+        }
+    }
     let state = scratch.clone();
     engine.register_fn(
         "split_object",

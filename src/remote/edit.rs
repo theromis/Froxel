@@ -1,6 +1,6 @@
 //! MCP handlers of the whole-object edits: `split_object`,
-//! `clear_object`, `recolor`, and `surface_stroke`, and the `mirror`
-//! argument of the paint and edit tools.
+//! `clear_object`, `recolor`, `surface_stroke`, and `components`, and the
+//! `mirror` argument of the paint and edit tools.
 //!
 //! Rhai records `split_object` and `clear_object(object)` as document calls and runs it through this
 //! same handler after its voxels are written; its `recolor` runs
@@ -113,6 +113,7 @@ pub(super) fn split_object(session: &mut Session, params: &Value) -> Result<Valu
         source,
         boxes,
         slots,
+        cells: None,
         invert: opt_bool(params, "invert")?.unwrap_or(false),
         copy: opt_bool(params, "copy")?.unwrap_or(false),
         into,
@@ -430,6 +431,172 @@ pub(super) fn surface_stroke(session: &mut Session, params: &Value) -> Result<Va
     let changed = session.write_cells(&writes)?;
     reply["changed"] = json!(changed);
     reply["voxels"] = json!(session.voxel_count());
+    Ok(reply)
+}
+
+/// A point `[x, y, z]` or `{x, y, z}` under `key`.
+fn opt_point(params: &Value, key: &str) -> Result<Option<[f64; 3]>, String> {
+    let bad = || format!("{key} must be [x, y, z] or {{x, y, z}}");
+    let at: Vec<f64> = match params.get(key) {
+        None | Some(Value::Null) => return Ok(None),
+        Some(Value::Array(values)) if values.len() == 3 => values
+            .iter()
+            .map(Value::as_f64)
+            .collect::<Option<_>>()
+            .ok_or_else(bad)?,
+        Some(point @ Value::Object(_)) => ["x", "y", "z"]
+            .iter()
+            .map(|axis| point.get(*axis).and_then(Value::as_f64))
+            .collect::<Option<_>>()
+            .ok_or_else(bad)?,
+        Some(_) => return Err(bad()),
+    };
+    if at.iter().any(|v| !v.is_finite()) {
+        return Err(bad());
+    }
+    Ok(Some([at[0], at[1], at[2]]))
+}
+
+/// The spec of MCP `components`: `op`, `connectivity`, `keep`, `minCells`,
+/// `seed`, `anchor`, `reach`, `radius`, and `offset`.
+pub(crate) fn components_spec(params: &Value) -> Result<crate::tools::ComponentSpec, String> {
+    use crate::tools::ComponentOp;
+    let count = |key: &str, default: Option<usize>| -> Result<usize, String> {
+        match params.get(key) {
+            None | Some(Value::Null) => default.ok_or_else(|| format!("{key} is required")),
+            Some(value) => value
+                .as_u64()
+                .map(|v| v.min(u64::from(u32::MAX)) as usize)
+                .ok_or_else(|| format!("{key} must be a whole number")),
+        }
+    };
+    let op = match opt_str(params, "op")?.as_deref() {
+        None | Some("list") => ComponentOp::List,
+        Some("keep_largest") => ComponentOp::KeepLargest {
+            keep: count("keep", Some(1))?,
+        },
+        Some("remove_small") => ComponentOp::RemoveSmall {
+            min: count("minCells", None)?,
+        },
+        Some("delete") => ComponentOp::Delete,
+        Some("move") => {
+            let offset = super::opt_ivec3(params, "offset")?
+                .ok_or("offset [dx, dy, dz] is required with op move")?;
+            ComponentOp::Move {
+                offset: (offset[0], offset[1], offset[2]),
+            }
+        }
+        Some("split") => ComponentOp::Split,
+        Some(other) => {
+            return Err(format!(
+                "op must be list, keep_largest, remove_small, delete, move, or split, not `{other}`"
+            ))
+        }
+    };
+    let connectivity = match params.get("connectivity") {
+        None | Some(Value::Null) => 26,
+        Some(value) => match value.as_u64() {
+            Some(n @ (6 | 18 | 26)) => n as u8,
+            _ => return Err("connectivity must be 6, 18, or 26".into()),
+        },
+    };
+    Ok(crate::tools::ComponentSpec {
+        op,
+        connectivity,
+        seed: opt_point(params, "seed")?,
+        anchor: opt_point(params, "anchor")?,
+        reach: opt_f64(params, "reach")?.unwrap_or(8.0),
+        radius: opt_f64(params, "radius")?,
+    })
+}
+
+/// The run of `components` on `cells`: the tool's result and the reply's
+/// counts. Rhai scripts call this with their options map.
+pub(crate) fn components_run(
+    cells: &HashMap<Cell, u8>,
+    params: &Value,
+) -> Result<(crate::tools::Components, Value), String> {
+    let spec = components_spec(params)?;
+    let found = crate::tools::components(cells, &spec)?;
+    let point = |c: Cell| json!([c.0, c.1, c.2]);
+    let listed: Vec<Value> = found
+        .components
+        .iter()
+        .take(crate::tools::LISTED_COMPONENTS)
+        .map(|part| {
+            json!({
+                "cells": part.cells,
+                "min": point(part.min),
+                "max": point(part.max),
+                "seed": point(part.seed),
+            })
+        })
+        .collect();
+    let mut reply = json!({
+        "count": found.components.len(),
+        "largest": found.components.first().map_or(0, |part| part.cells),
+        "components": listed,
+        "selected": found.selected.len(),
+        "connectivity": spec.connectivity,
+    });
+    if let Some(seed) = found.seed {
+        reply["seed"] = point(seed);
+    }
+    if let Some(anchor) = found.anchor {
+        reply["anchor"] = point(anchor);
+        reply["cut"] = json!(found.cut);
+    }
+    Ok((found, reply))
+}
+
+/// MCP `components`: list, clean up, or select the connected parts of the
+/// active object (or `index`, for op split), one undo step.
+pub(super) fn components(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let split = opt_str(params, "op")?.as_deref() == Some("split");
+    let source = object_arg(session, params, "index")?.unwrap_or(session.selected);
+    if !split && source != session.selected {
+        return Err("index is taken by op split; the other ops edit the active object".into());
+    }
+    let (found, mut reply) = components_run(&session.objects[source].cells, params)?;
+    if !split {
+        let changed = session.write_cells(&found.writes)?;
+        reply["changed"] = json!(changed);
+        reply["voxels"] = json!(session.voxel_count());
+        return Ok(reply);
+    }
+    if found.selected.is_empty() {
+        return Err("the seed selects no cell".into());
+    }
+    let into = match (
+        object_arg(session, params, "into")?,
+        opt_str(params, "name")?,
+    ) {
+        (Some(_), Some(_)) => return Err("pass into or name, not both".into()),
+        (Some(target), None) => SplitInto::Object(target),
+        (None, name) => {
+            SplitInto::New(name.unwrap_or_else(|| format!("{}_part", session.objects[source].name)))
+        }
+    };
+    let spec = SplitSpec {
+        source,
+        boxes: Vec::new(),
+        slots: None,
+        cells: Some(found.selected.iter().copied().collect()),
+        invert: false,
+        copy: opt_bool(params, "copy")?.unwrap_or(false),
+        into,
+    };
+    let done = session.split_object(&spec)?;
+    if opt_bool(params, "makeActive")?.unwrap_or(false) {
+        session.select_object(done.target);
+    }
+    let target = &session.objects[done.target];
+    reply["target"] = json!(done.target);
+    reply["name"] = json!(target.name);
+    reply["created"] = json!(done.created);
+    reply["sourceVoxels"] = json!(session.objects[source].cells.len());
+    reply["targetVoxels"] = json!(session.objects[done.target].cells.len());
+    reply["activeObject"] = json!(session.selected);
     Ok(reply)
 }
 
