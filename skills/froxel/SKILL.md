@@ -119,7 +119,12 @@ If the tools are missing, the server is not configured. Point the user to
    `hull` (it scales each relative map so its nearest pixel per row meets
    the silhouettes), read each view's `depth.residual` in the reply (under 1
    cell is good), use `depthTolerance` 0.5 to 1 for a noisy map, and
-   `back: true` on a view's `depth` when its opposite view has no map.
+   `back: true` on a view's `depth` when its opposite view has no map. A
+   generated map that normalises each part like shading (a head drawn
+   nearer than the shell) takes `regions: true` (`edge` 0.03 to 0.1 splits
+   parts; read `regionResidual`); Depth Anything's takes `gamma: "auto"`,
+   and the generated map as its `detail` gives each part its roundness while
+   Depth Anything keeps their order.
    `fit_to_views` takes the same `depthPath` and `depth` as its depth
    target. To round the boxy hull, intersect it: `fill_ellipsoid`
    (or `fill_rounded_box`, `fill_box`, `fill_tube`) with `mode: "intersect"`

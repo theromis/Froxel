@@ -94,6 +94,15 @@ pub struct CarvePanel {
     pub depth_back: bool,
     /// Depth maps: `depthTolerance` cells.
     pub depth_tolerance: f32,
+    /// Depth maps: `gamma: "auto"`, the curve fitted to the contour.
+    pub depth_auto_curve: bool,
+    /// Depth maps: calibrate each region on its own.
+    pub depth_regions: bool,
+    /// Depth maps: the grey step between regions.
+    pub depth_edge: f32,
+    /// A detail sheet laid out as the views (its crops are theirs): each
+    /// region's curvature; empty is none.
+    pub depth_detail: String,
 }
 
 impl Default for CarvePanel {
@@ -121,6 +130,10 @@ impl Default for CarvePanel {
             depth_calibrate: 0,
             depth_back: false,
             depth_tolerance: 0.0,
+            depth_auto_curve: false,
+            depth_regions: false,
+            depth_edge: 0.06,
+            depth_detail: String::new(),
         }
     }
 }
@@ -476,8 +489,17 @@ impl CarvePanel {
                     "path": depth,
                     "invert": self.depth_invert,
                     "calibrate": calibrate,
-                    "back": self.depth_back
+                    "back": self.depth_back,
+                    "regions": self.depth_regions,
+                    "edge": self.depth_edge
                 });
+                if self.depth_auto_curve {
+                    view["depth"]["gamma"] = json!("auto");
+                }
+                let detail = self.depth_detail.trim();
+                if !detail.is_empty() {
+                    view["depth"]["detail"] = json!({"path": detail, "edge": self.depth_edge});
+                }
             }
             views.push(view);
         }
@@ -722,6 +744,13 @@ impl Session {
             if let Some(view) = self.silhouette.carve.views.get_mut(row) {
                 view.depth = path.display().to_string();
             }
+        }
+    }
+
+    /// Choose the detail depth sheet of Carve from views.
+    pub fn pick_carve_detail(&mut self) {
+        if let Some(path) = super::dialog::pick_open("PNG", &["png"]) {
+            self.silhouette.carve.depth_detail = path.display().to_string();
         }
     }
 

@@ -1160,6 +1160,10 @@ pub fn carve(args: &[String]) -> i32 {
                         reply["size"],
                         reply["bounds"]
                     );
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&reply).unwrap_or_default()
+                    );
                     0
                 }
                 Err(err) => {
@@ -1179,13 +1183,15 @@ const CARVE_HELP: &str = "\
 usage: froxel carve --views <views.json> --out <file.vox> [--input <base.vox>]
 
 Fills the visual hull of 2 to 6 orthographic views (front, side, top) into
-the active object, as MCP carve_from_views does, and saves the .vox.
+the active object, as MCP carve_from_views does, saves the .vox, and
+prints the reply (each view's grid, covered cells, and depth calibration).
 views.json holds that tool's arguments: {views: [{view, path, crop,
 cellsPerPixel | size, background, tolerance, flip, depth}, ...], path,
 depthPath, size, origin, cellsPerPixel, palette | slots, coverage, shell,
 smooth, mode, depthTolerance}. A view's depth is a grey depth map (white
 near) of the same crop, true for the crop of depthPath, or {path | values,
-crop, background, invert, gamma, near, far, calibrate: hull | box, back}:
+crop, background, invert, gamma (or auto), near, far, calibrate: hull |
+box, back, regions, edge, detail}:
 cells in front of its surface are carved away, so a round head is round,
 not a box. One view with depth is enough for a relief. A relative path
 is relative to views.json. --input carves into a copy of that
@@ -1424,6 +1430,22 @@ fn fit_args(args: &[String]) -> Result<Option<FitArgs>, String> {
     Ok(Some((input, output, object, params)))
 }
 
+/// Resolve a view's `depth` path, and its `detail` map's.
+fn fix_depth(depth: &mut serde_json::Value, fix: &dyn Fn(&mut serde_json::Value)) {
+    match depth {
+        serde_json::Value::String(_) => fix(depth),
+        serde_json::Value::Object(map) => {
+            if let Some(value) = map.get_mut("path") {
+                fix(value);
+            }
+            if let Some(detail) = map.get_mut("detail") {
+                fix_depth(detail, fix);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Resolve the image paths of `carve_from_views` and `fit_to_views`
 /// arguments against `base`: `path` and `depthPath` at the top, and each
 /// view's `path` and `depth` (a path, or an object with one).
@@ -1445,14 +1467,8 @@ fn views_relative(params: &mut serde_json::Value, base: &Path) {
             if let Some(value) = view.get_mut("path") {
                 fix(value);
             }
-            match view.get_mut("depth") {
-                Some(depth @ serde_json::Value::String(_)) => fix(depth),
-                Some(serde_json::Value::Object(depth)) => {
-                    if let Some(value) = depth.get_mut("path") {
-                        fix(value);
-                    }
-                }
-                _ => {}
+            if let Some(depth) = view.get_mut("depth") {
+                fix_depth(depth, &fix);
             }
         }
     }

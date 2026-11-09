@@ -46,6 +46,7 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
         section(ui, "Carve from views");
         let mut pick = None;
         let mut pick_depth = None;
+        let mut pick_detail = false;
         let panel = &mut session.silhouette.carve;
         for (row, view) in panel.views.iter_mut().enumerate() {
             ui.horizontal(|ui| {
@@ -155,6 +156,32 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
                     .on_hover_text("Tolerance: cells in front of a depth surface that stay.");
                 });
                 ui.end_row();
+                label(ui, "Depth parts", "Auto curve: fit the map's curve (gamma) to the silhouette contour, for a map not linear in depth such as Depth Anything's. Regions: calibrate each part of the map (one peak each, apart where the grey jumps or dips by more than Edge) on its own against the silhouettes, for a map that normalises each part like shading, as an image generator draws it.");
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut panel.depth_auto_curve, "Auto curve")
+                        .on_hover_text("gamma auto: the exponent whose calibration meets the silhouette contour best.");
+                    ui.checkbox(&mut panel.depth_regions, "Regions")
+                        .on_hover_text("Calibrate each region of the depth map on its own against the silhouettes.");
+                    ui.add(
+                        egui::DragValue::new(&mut panel.depth_edge)
+                            .range(0.005..=1.0)
+                            .speed(0.002),
+                    )
+                    .on_hover_text("Edge: the grey step (0..1) between two regions, a jump or a valley between two peaks.");
+                });
+                ui.end_row();
+                label(ui, "Depth detail", "A second depth sheet laid out as the views: its regions give the curvature inside each part, and each row's depth map gives their order and offsets. Use the image generator's sheet here and Depth Anything's as the rows' maps.");
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut panel.depth_detail)
+                            .hint_text("detail.png (optional)")
+                            .desired_width(150.0),
+                    );
+                    if ui.button("…").on_hover_text("Choose the detail depth PNG.").clicked() {
+                        pick_detail = true;
+                    }
+                });
+                ui.end_row();
                 label(ui, "Intersect", "MCP mode intersect: keep only the active object's cells inside the hull, as they are, and erase the rest, instead of filling the hull.");
                 ui.checkbox(&mut panel.intersect, "Keep inside only");
                 ui.end_row();
@@ -171,6 +198,9 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
         }
         if let Some(row) = pick_depth {
             session.pick_carve_depth(row);
+        }
+        if pick_detail {
+            session.pick_carve_detail();
         }
     });
 }

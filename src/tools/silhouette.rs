@@ -485,10 +485,11 @@ fn carve_depths(
         };
         let [(u, _), (v, _), (d, toward)] = view.side.axes();
         let (nu, nv, nd) = (size[u] as usize, size[v] as usize, size[d] as usize);
-        // The map per grid cell, then per ray of the box face.
+        // Each ray's footprint on the view's image, and the hull's front.
         let (cols, rows) = (grid.cols as f64, grid.rows as f64);
-        let mut n = vec![None; nu * nv];
+        let mut rects = vec![None; nu * nv];
         let mut hull = vec![None; nu * nv];
+        let mut hull_back = vec![None; nu * nv];
         for b in 0..nv {
             for a in 0..nu {
                 let Some(cell) = grid.at(view.side, [a as i64, b as i64]) else {
@@ -501,42 +502,48 @@ fn carve_depths(
                     (cell % grid.cols as usize) as f64,
                     (cell / grid.cols as usize) as f64,
                 );
-                n[b * nu + a] = map
-                    .map
-                    .sample(
-                        col / cols,
-                        (col + 1.0) / cols,
-                        row / rows,
-                        (row + 1.0) / rows,
-                    )
-                    .map(|grey| map.shaped(grey));
-                hull[b * nu + a] = (0..nd)
-                    .find(|step| {
-                        let mut p = [0usize; 3];
-                        p[u] = a;
-                        p[v] = b;
-                        p[d] = if toward > 0 { nd - 1 - step } else { *step };
-                        solid[index(p)]
-                    })
-                    .map(|step| step as f32);
+                rects[b * nu + a] = Some([
+                    col / cols,
+                    (col + 1.0) / cols,
+                    row / rows,
+                    (row + 1.0) / rows,
+                ]);
+                let on = |step: &usize| {
+                    let mut p = [0usize; 3];
+                    p[u] = a;
+                    p[v] = b;
+                    p[d] = if toward > 0 { nd - 1 - step } else { *step };
+                    solid[index(p)]
+                };
+                hull[b * nu + a] = (0..nd).find(on).map(|step| step as f32);
+                hull_back[b * nu + a] = (0..nd).rev().find(on).map(|step| step as f32);
             }
         }
-        let lines = [depth::measured(&sides, v, d), depth::measured(&sides, u, d)];
         let middle = hull_middle(solid, size, d);
-        let cal = depth::calibrate(map, &n, &hull, nu, nv, nd, lines, middle(toward));
-        plans.push((vi, cal, n));
+        let rays = depth::Rays {
+            w: nu,
+            h: nv,
+            steps: nd,
+            lines: [depth::measured(&sides, v, d), depth::measured(&sides, u, d)],
+            middle: middle(toward),
+            hull: &hull,
+            hull_back: &hull_back,
+            rects: &rects,
+        };
+        let (surface, cal) = depth::surfaces(map, &rays);
+        plans.push((vi, cal, surface));
     }
-    for (vi, cal, n) in plans {
+    for (vi, cal, surface) in plans {
         let view = &spec.views[vi];
         let map = view.depth.as_ref().expect("a depth view");
         let [(u, _), (v, _), (d, toward)] = view.side.axes();
         let (nu, nd) = (size[u] as usize, size[d] as usize);
         let mut carved = 0;
-        for (ray, value) in n.iter().enumerate() {
-            let Some(value) = value else {
+        for (ray, s) in surface.iter().enumerate() {
+            let Some(s) = s else {
                 continue;
             };
-            let (lo, hi) = depth::kept_span(map, &cal, *value, spec.depth_tolerance);
+            let (lo, hi) = depth::kept_span(map.back, cal.rim, *s, spec.depth_tolerance);
             for step in 0..nd {
                 let centre = step as f32 + 0.5;
                 if centre >= lo && centre <= hi {

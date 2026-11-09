@@ -75,7 +75,10 @@ off the flat views.
    surface go, so a head is round and a shell domed from the sheet itself.
    The maps are relative, and the default `calibrate: "hull"` scales each
    one so its nearest pixel per row meets the silhouettes; check the reply's
-   `residual` and see [mcp.md](mcp.md#depth-maps). Front, side, and top
+   `residual` and see [mcp.md](mcp.md#depth-maps). A generated map that
+   draws each part with its own range takes `regions: true`; Depth
+   Anything's takes `gamma: "auto"`, and the generated map as its `detail`
+   for the roundness inside each part. Front, side, and top
    cannot see the back-right-bottom corner: add `back: true` to their
    depth, or draw back views too.
    `carve_from_views` in `mode` `intersect` does the reverse: it cuts an

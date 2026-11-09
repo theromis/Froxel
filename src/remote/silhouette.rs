@@ -421,7 +421,7 @@ fn view_depth(
     images: &mut HashMap<String, crate::sheet::Image>,
     colour: bool,
 ) -> Result<Option<crate::tools::Depth>, String> {
-    use crate::tools::{Calibrate, Depth};
+    use crate::tools::{Calibrate, Depth, Gamma};
     let sheet = opt_str(params, "depthPath")?;
     let mut d = match item.get("depth") {
         None | Some(Value::Null) if sheet.is_none() => return Ok(None),
@@ -506,8 +506,16 @@ fn view_depth(
     };
     let mut depth = Depth::new(map);
     depth.invert = opt_bool(&d, "invert")?.unwrap_or(false);
-    depth.gamma = opt_f64(&d, "gamma")?.unwrap_or(1.0) as f32;
+    depth.gamma = match d.get("gamma") {
+        None | Some(Value::Null) => Gamma::Fixed(1.0),
+        Some(Value::String(text)) if text == "auto" => Gamma::Auto,
+        Some(found) => Gamma::Fixed(found.as_f64().ok_or("gamma must be a number or auto")? as f32),
+    };
     depth.back = opt_bool(&d, "back")?.unwrap_or(false);
+    depth.regions = opt_bool(&d, "regions")?.unwrap_or(false);
+    if let Some(edge) = opt_f64(&d, "edge")? {
+        depth.edge = edge as f32;
+    }
     depth.near_far = match (opt_f64(&d, "near")?, opt_f64(&d, "far")?) {
         (Some(near), Some(far)) => Some([near as f32, far as f32]),
         (None, None) => None,
@@ -515,6 +523,31 @@ fn view_depth(
     };
     if let Some(name) = opt_str(&d, "calibrate")? {
         depth.calibrate = Calibrate::parse(&name)?;
+    }
+    match d.get("detail") {
+        None | Some(Value::Null) => {}
+        Some(found) => {
+            // The detail map reads as a depth map of its own, with the
+            // view's crop and colour rule.
+            let mut detail = match found {
+                Value::String(path) => json!({ "path": path }),
+                Value::Object(_) => found.clone(),
+                _ => return Err("detail must be a PNG path or {path | values, ...}".into()),
+            };
+            if let Some(map) = detail.as_object_mut() {
+                for key in ["detail", "near", "far", "calibrate", "back", "regions"] {
+                    if map.remove(key).is_some() {
+                        return Err(format!("detail takes no {key}: give it to the depth map"));
+                    }
+                }
+            }
+            let mut view = item.clone();
+            view["depth"] = detail;
+            let inner = view_depth(&view, &json!({}), files, images, colour)
+                .map_err(|err| format!("detail: {err}"))?
+                .expect("an object depth");
+            depth.detail = Some(Box::new(inner));
+        }
     }
     depth.check()?;
     Ok(Some(depth))
@@ -525,11 +558,18 @@ fn calibration_reply(cal: &crate::tools::Calibration) -> Value {
         "calibrate": cal.mode,
         "near": round(cal.near, 2),
         "far": round(cal.far, 2),
+        "gamma": round(cal.gamma, 2),
         "rim": round(cal.rim, 2)
     });
     if let Some(residual) = cal.residual {
         out["pairs"] = json!(cal.pairs);
         out["residual"] = json!(round(residual, 3));
+    }
+    if cal.regions > 0 {
+        out["regions"] = json!(cal.regions);
+    }
+    if let Some(residual) = cal.region_residual {
+        out["regionResidual"] = json!(round(residual, 3));
     }
     out
 }

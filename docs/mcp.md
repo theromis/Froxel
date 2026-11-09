@@ -1662,38 +1662,70 @@ takes one as `depth`:
   given every view takes its depth from it unless it says `depth: false`.
 - a PNG path, at the view's crop;
 - `{path | values, crop, background, tolerance, alphaThreshold, invert,
-  gamma, near, far, calibrate, back}`.
+  gamma, near, far, calibrate, back, regions, edge, detail}`.
 
 The map is grey (its luma), white near the viewer and black far, placed
 exactly as the view is: same crop (its own `crop` when the depth sheet is
 laid out differently; a crop of another size is stretched over the view's),
-same `flip`, same `cellsPerPixel` or `size`. When the view has a colour
-image (`path` or `rows`) the silhouette is the colour image's and every
-pixel of the map holds a value, since a depth model's background is some
-grey, not the key colour; give the map a `background` to key it as well. A
-view with `depth` and no `path` or `rows` takes its silhouette from the map,
-keyed by the view's background rule (pass `palette`, or give another view a
-colour image, for its colour). `values` is the map as rows of numbers 0..1
-(1 nearest) with `null` for background, as a Rhai script passes it.
+same `flip`, same `cellsPerPixel` or `size`. Coloured pixels (saturation of
+48 or more: a magenta background and its fringe) hold no depth. When the
+view has a colour image (`path` or `rows`) the silhouette is the colour
+image's and every grey pixel of the map holds a value; give the map a
+`background` to key it as well. A view with `depth` and no `path` or
+`rows` takes its silhouette from the map, keyed by the view's background
+rule (pass `palette`, or give another view a colour image, for its
+colour). `values` is the map as rows of numbers 0..1 (1 nearest) with
+`null` for background, as a Rhai script passes it. Each ray reads the
+median grey of its footprint, so outlines, eyes, and specks do not move it.
 
 The depth is relative, so each view's map is calibrated to cells: shaped
-grey `n` (after `invert` and `gamma`, `n^gamma`) lies at `near + (far -
-near) * (1 - n)` cells from the camera side of the box.
+grey `n` (after `invert`, then `n^gamma`) lies at `near + (far - near) *
+(1 - n)` cells from the camera side of the box.
 
 - `calibrate: "hull"` (the default) fits `near` and `far` by least squares
   from the silhouette hull: in each image row the nearest pixel lies where
   the hull is nearest in that row, because the view that looks along the
   row (a side view for a front view's rows, a top view for its columns)
-  measures exactly that. Rows shorter than half the longest are left out,
-  since a mean over a steep surface near a pole is far from its nearest
-  point. So a sphere's rim lands on its middle plane, not on the box's
-  back. The reply gives the `pairs` fitted and their RMS `residual` in
-  cells.
-- `calibrate: "box"`: the map's lightest and darkest inked pixels span the
-  box along the view's axis, for a relief on a flat back. Hull falls back
-  to it when no view measures the map's rows or columns (a single view).
+  measures exactly that. Rows shorter than half the longest are left out
+  (unless the long ones all meet one flat part), since a footprint on a
+  steep surface near a pole is far from its nearest point. So a sphere's
+  rim lands on its middle plane, not on the box's back. The reply gives
+  the `pairs` fitted and their RMS `residual` in cells.
+- `gamma: "auto"` picks the curve as well, from 0.25 to 4: the rows'
+  nearest pixels cover only the near end of the map, so the curve is
+  judged on the view's own silhouette contour, where a round body turns
+  away at the middle of the hull along the ray; of the exponents within a
+  tenth of a cell of the best, the one closest to linear wins. The reply's
+  `gamma` is the one used. For a map that is not linear in depth, such as
+  Depth Anything's inverse depth.
+- `calibrate: "box"`: the map's lightest and darkest pixels span the box
+  along the view's axis, for a relief on a flat back. Hull falls back to it
+  when no view measures the map's rows or columns (a single view).
 - `near` and `far` (both): the cells where white and black land; the reply
   of an earlier call gives them, to hold a calibration still.
+
+A map that normalises each part on its own, as an image generator draws
+depth like shading (a head as bright as the nearest point although it lies
+behind the shell's flank), takes `regions: true`. The map is cut into
+regions, one per peak (a part's nearest point) with the pixels that climb
+to it, apart where neighbouring pixels jump by more than `edge` (default
+0.06 of the grey range) or where the valley between two peaks is deeper
+than `edge` below the lower one; a region under 6 rays joins the
+neighbouring region whose value is closest. Each region is then calibrated
+by the same row and column pairs, restricted to its own rays, so its
+extent along the axis comes from the other views' silhouettes; a region
+the lines cannot fit keeps the view's scale and meets the hull at its
+nearest ray. The reply gives `regions` (calibrated on their own) and their
+RMS `regionResidual`.
+
+`detail` combines two maps: a path, or `{path | values, crop, invert,
+gamma, edge}` read as a depth map at the view's crop. The view's own map
+is calibrated as above and gives the order and offsets: each region of the
+detail map is placed at the mean of that surface over the region. The
+detail map gives the curvature: its scale is fitted per region against the
+hull. So Depth Anything's map (right in order, flat inside each part) with
+an image generator's (round inside each part, wrong in order) as its
+detail gives one surface.
 
 A cell stays when its centre is at or behind every depth surface less
 `depthTolerance` cells (default 0); raise it to 0.5 to 1 for a noisy map.
@@ -1701,8 +1733,8 @@ A cell stays when its centre is at or behind every depth surface less
 middle of the hull along the view (where a round body's rim lies), for a
 view whose opposite has no map: three views (front, left, top) cannot see
 the octant toward back, right, and bottom, and `back` closes it. Each
-view's reply holds `depth` `{calibrate, near, far, rim, pairs, residual,
-carved}`.
+view's reply holds `depth` `{calibrate, near, far, gamma, rim, pairs,
+residual, regions, regionResidual, carved}`.
 
 In `fit_to_views` a view's map is placed with the view's `align` and
 calibrated against the hull of the views' targets in the fit box; it gives
@@ -1714,32 +1746,32 @@ Making the maps:
 
 - **An image generator** (ChatGPT, Codex): ask for the approved views sheet
   again as a depth pass, same layout and framing, flat grey, white nearest,
-  black farthest, no lighting, background black or the sheet's key colour.
-  Check that its crops line up with the colour sheet's; give `depth.crop`
-  where they do not. Its grey is only roughly linear: keep `calibrate:
-  "hull"` and look at `residual` (under 1 cell is good); a curved response
-  takes `gamma` (above 1 pushes mid greys back).
+  black farthest, no lighting, on the sheet's key colour. Check that its
+  crops line up with the colour sheet's; give `depth.crop` where they do
+  not. Such maps tend to normalise each part on its own: use `regions:
+  true`, and lower `edge` (0.03 to 0.04) if parts merge, raise it if moss
+  and blocks become parts of their own. Read `regionResidual`.
 - **Depth Anything V2** (relative, monocular): run it on the colour sheet
   itself, so the crops are identical, and save grayscale (`--grayscale` in
   its `run.py`; the default output is a coloured palette, which does not
   read as depth). Its output is relative inverse depth, white near, so no
-  `invert`. Pass it as `depthPath` beside the colour sheet's `path` and
-  crops, and leave `calibrate` at hull; the model's background is a grey
-  ramp, which the colour sheet's key colour masks out. On a flat-shaded
-  sheet the model sees outlines and shading, not true depth, so check the
-  carve with `preview` from three quarters and raise `depthTolerance` if
-  thin parts lose cells.
+  `invert`, and `gamma: "auto"` for its curve. On a flat-shaded sheet it
+  sees parts and their order, not the roundness inside each: give it an
+  image generator's map as `detail`.
 
 ```json
-{"path": "views.png", "depthPath": "depth-views.png", "background": "#ff00ff",
- "cellsPerPixel": 0.1042,
+{"path": "views.png", "background": "#ff00ff", "cellsPerPixel": 0.1042,
  "views": [
    {"view": "front", "crop": [40, 201, 547, 275]},
    {"view": "left", "crop": [646, 199, 595, 280]},
    {"view": "top", "crop": [40, 637, 537, 575]},
    {"view": "back", "crop": [672, 773, 541, 276]}],
- "depthTolerance": 0.5}
+ "depthPath": "depth-da.png", "depthTolerance": 0.5}
 ```
+
+with each view's `depth` set to `{"gamma": "auto", "detail":
+"depth-generated.png"}` (the path comes from `depthPath`) for the combined
+map, or to `{"regions": true}` with `depthPath` naming the generated map.
 
 ### Markers
 
@@ -1857,7 +1889,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `fill_tube` | Tube tool: drag from the start radius to the end radius; Chain adds a point per drag and Smooth curves through them until Finish; Flatten, Roll, and Blade shape it; Solid, Rings, Stripes, or Random with a second slot |
 | `sweep` | Sweep section: Points (one per line, Point at selection adds the selection's centre), Smooth, Rectangle (Width, Height, Radius) or Polygon, Palettes, Bands, Rings, or Random, Period, Mode, Seed |
 | `trim_outline` | Trim section: Outline (one point per line, Point at selection adds the selection's centre), Smooth, Inset, Only, New skin, Slot, Thickness; Trim inside the selection's box or on the whole object |
-| `carve_from_views` | Carve from views section: three view rows (on, side, Image…, crop, Flip, depth map…), Cells / px, Size, Origin (World), Background (Auto, Alpha, Key with tolerance), Colour from views or the active slot, Shell, Smooth, Depth (Hull or Box, Invert, Back, tolerance), Intersect (Keep inside only), Carve |
+| `carve_from_views` | Carve from views section: three view rows (on, side, Image…, crop, Flip, depth map…), Cells / px, Size, Origin (World), Background (Auto, Alpha, Key with tolerance), Colour from views or the active slot, Shell, Smooth, Depth (Hull or Box, Invert, Back, tolerance), Depth parts (Auto curve, Regions, Edge), Depth detail…, Intersect (Keep inside only), Carve |
 | `mode` `intersect` | Intersect section: Shape (Box, Ellipsoid, Rounded box with Radius) inscribed in the selection's box, Keep inside |
 | `project_paint` | Paint from view section: View, Flip, Image…, Crop, Background, Scale (Fit box or Cells / px), Box origin and size, Depth, Normal limit, Only, Colour from image or the active slot, Paint |
 | `compare_silhouette` | Compare silhouette section: Concept Image…, Crop, Background, Flip, Camera (Viewport, Game, Front, Left, Top), Align (Fit, Height, Width), Compare; the overlay shows in the viewport's bottom-right corner until Hide overlay; MCP `compare_silhouette` over the control port shows it there too |

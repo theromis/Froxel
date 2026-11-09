@@ -500,8 +500,10 @@ front is on the image's left), `right`, `top` (from +Z, image down is −Y),
 or `bottom`; `flip: true` mirrors one. A view may also carry its own
 `cellsPerPixel` or `size: [across, down]`, and a `depth` map: `#{values:
 [[...]]}`, rows of numbers 0..1 (1 nearest) with `()` for background, plus
-`invert`, `gamma`, `near` and `far`, `calibrate` (`"hull"` or `"box"`), and
-`back`, as over MCP ([mcp.md](mcp.md#depth-maps)). The cells in front of
+`invert`, `gamma` (a number or `"auto"`), `near` and `far`, `calibrate`
+(`"hull"` or `"box"`), `back`, `regions` and `edge` (calibrate each part of
+the map on its own), and `detail` (a second map of `values` for the
+curvature inside each part), as over MCP ([mcp.md](mcp.md#depth-maps)). The cells in front of
 its surface are carved away, so a round form is round; a view with `depth`
 and no `rows` takes its silhouette from the values, and one such view is
 enough. Options:

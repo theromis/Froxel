@@ -1026,8 +1026,9 @@ fn depth_targets(fit: &mut Fit, spec: &FitSpec) {
         let (w, h, steps) = (fit.views[vi].w, fit.views[vi].h, fit.views[vi].depth);
         let (scale, offset) = (f64::from(fit.views[vi].scale), fit.views[vi].offset);
         let (mw, mh) = (f64::from(view.mask.width), f64::from(view.mask.height));
-        let mut n = vec![None; w * h];
+        let mut rects = vec![None; w * h];
         let mut hull = vec![None; w * h];
+        let mut hull_back = vec![None; w * h];
         for row in 0..h {
             for col in 0..w {
                 let p = row * w + col;
@@ -1036,13 +1037,10 @@ fn depth_targets(fit: &mut Fit, spec: &FitSpec) {
                 }
                 let x = |c: usize| (c as f64 - f64::from(offset[0])) / scale / mw;
                 let y = |r: usize| (r as f64 - f64::from(offset[1])) / scale / mh;
-                n[p] = map
-                    .map
-                    .sample(x(col), x(col + 1), y(row), y(row + 1))
-                    .map(|grey| map.shaped(grey));
-                hull[p] = (0..steps)
-                    .find(|step| fit.inside_others(vi, fit.cell_on(vi, p, *step)))
-                    .map(|step| step as f32);
+                rects[p] = Some([x(col), x(col + 1), y(row), y(row + 1)]);
+                let on = |step: &usize| fit.inside_others(vi, fit.cell_on(vi, p, *step));
+                hull[p] = (0..steps).find(on).map(|step| step as f32);
+                hull_back[p] = (0..steps).rev().find(on).map(|step| step as f32);
             }
         }
         let [(u, _), (v, _), (d, _)] = view.side.axes();
@@ -1065,13 +1063,23 @@ fn depth_targets(fit: &mut Fit, spec: &FitSpec) {
         } else {
             (lo + hi + 1) as f32 / 2.0
         };
-        let cal = depth::calibrate(map, &n, &hull, w, h, steps, lines, middle);
+        let rays = depth::Rays {
+            w,
+            h,
+            steps,
+            lines,
+            middle,
+            hull: &hull,
+            hull_back: &hull_back,
+            rects: &rects,
+        };
+        let (surface, cal) = depth::surfaces(map, &rays);
         let last = steps as f32 - 1.0;
-        for (p, value) in n.iter().enumerate() {
-            let Some(value) = value else {
+        for (p, s) in surface.iter().enumerate() {
+            let Some(s) = s else {
                 continue;
             };
-            let (lo, hi) = depth::kept_span(map, &cal, *value, spec.depth_tolerance);
+            let (lo, hi) = depth::kept_span(map.back, cal.rim, *s, spec.depth_tolerance);
             let front = (lo - 0.5).ceil().clamp(0.0, last);
             let back = if hi.is_finite() {
                 (hi - 0.5).floor().clamp(front, last)

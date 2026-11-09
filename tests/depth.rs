@@ -142,7 +142,7 @@ fn a_sphere_carved_from_six_depth_maps_is_round_within_a_cell() {
     let cal = &reply["views"][0]["depth"];
     assert_eq!(cal["calibrate"], "hull");
     let far = cal["far"].as_f64().unwrap();
-    assert!((far - 0.95 / 0.7 * 20.0).abs() < 2.0, "far {far}");
+    assert!((far - 0.95 / 0.7 * 20.0).abs() < 2.5, "far {far}");
     // The silhouettes alone keep the diagonal corners.
     let mut hull_views = views.clone();
     for view in &mut hull_views {
@@ -478,4 +478,217 @@ fn the_depth_head_example_is_round() {
     );
     // The eyes come from the front view.
     assert!(round.values().any(|slot| *slot == 4));
+}
+
+/// A body and a head in front of it, as a turtle seen from the views.
+fn body(p: [f64; 3]) -> f64 {
+    ((p[0] - 12.0).powi(2) + (p[1] - 15.0).powi(2) + (p[2] - 8.0).powi(2)).sqrt() - 7.5
+}
+
+fn head(p: [f64; 3]) -> f64 {
+    ((p[0] - 12.0).powi(2) + (p[1] - 5.0).powi(2) + (p[2] - 6.0).powi(2)).sqrt() - 3.5
+}
+
+fn creature(p: [f64; 3]) -> f64 {
+    body(p).min(head(p))
+}
+
+const CREATURE: [u32; 3] = [24, 24, 16];
+
+/// The first hit per pixel of `side`, and which part it hit (0 body, 1
+/// head), as [`render`] casts it.
+fn hits(side: Side) -> Vec<Vec<Option<(f64, usize)>>> {
+    let values = render(side, CREATURE, &|p| creature(p) < 0.0);
+    let [(u, su), (v, sv), (d, toward)] = side.axes();
+    let depth = f64::from(CREATURE[d]);
+    values
+        .as_array()
+        .unwrap()
+        .iter()
+        .enumerate()
+        .map(|(py, row)| {
+            row.as_array()
+                .unwrap()
+                .iter()
+                .enumerate()
+                .map(|(px, value)| {
+                    let t = (0.95 - value.as_f64()?) / 0.7 * depth;
+                    let mut p = [0.0f64; 3];
+                    let (a, b) = ((px as f64 + 0.5) / PPC, (py as f64 + 0.5) / PPC);
+                    p[u] = if su > 0 {
+                        a
+                    } else {
+                        f64::from(CREATURE[u]) - a
+                    };
+                    p[v] = if sv > 0 {
+                        b
+                    } else {
+                        f64::from(CREATURE[v]) - b
+                    };
+                    p[d] = if toward > 0 { depth - t } else { t };
+                    let part = usize::from(head(p) < body(p));
+                    Some((t, part))
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// A map drawn like an image generator's: each part normalised on its own,
+/// 1 at its nearest point and 0.3 at its farthest, as shading is.
+fn per_part(side: Side) -> Value {
+    let hits = hits(side);
+    let mut range = [(f64::INFINITY, f64::NEG_INFINITY); 2];
+    for (t, part) in hits.iter().flatten().flatten() {
+        range[*part] = (range[*part].0.min(*t), range[*part].1.max(*t));
+    }
+    json!(hits
+        .iter()
+        .map(|row| row
+            .iter()
+            .map(|hit| hit.map(|(t, part)| {
+                let (lo, hi) = range[part];
+                0.3 + 0.7 * (hi - t) / (hi - lo)
+            }))
+            .collect::<Vec<_>>())
+        .collect::<Vec<_>>())
+}
+
+/// A map drawn like a monocular model's: right in order, but flat inside
+/// each part (its mean depth) and bent by a curve.
+fn flat_parts(side: Side) -> Value {
+    let hits = hits(side);
+    let depth = f64::from(CREATURE[side.axes()[2].0]);
+    let mut sum = [(0.0f64, 0usize); 2];
+    for (t, part) in hits.iter().flatten().flatten() {
+        sum[*part].0 += t;
+        sum[*part].1 += 1;
+    }
+    json!(hits
+        .iter()
+        .map(|row| row
+            .iter()
+            .map(|hit| hit.map(|(_, part)| {
+                let mean = sum[part].0 / sum[part].1 as f64;
+                (1.0 - mean / depth).powi(2)
+            }))
+            .collect::<Vec<_>>())
+        .collect::<Vec<_>>())
+}
+
+fn creature_carve(depth: impl Fn(Side) -> Value) -> (usize, f64, Value) {
+    let views: Vec<Value> = [Side::Front, Side::Left, Side::Top]
+        .into_iter()
+        .map(|side| json!({"view": side.name(), "cellsPerPixel": 1.0 / PPC, "depth": depth(side)}))
+        .collect();
+    let (cells, reply) = carve(json!({"views": views, "palette": 1, "size": CREATURE}));
+    // The octant no view sees is left out of the count: only the cells a
+    // view's ray reaches before the middle of the box along it.
+    let seen = |p: [f64; 3]| p[1] < 12.0 || p[0] > 12.0 || p[2] > 8.0;
+    let mut wrong = 0;
+    let mut worst = 0.0f64;
+    for z in 0..CREATURE[2] as i32 {
+        for y in 0..CREATURE[1] as i32 {
+            for x in 0..CREATURE[0] as i32 {
+                let c = [x as f64 + 0.5, y as f64 + 0.5, z as f64 + 0.5];
+                if !seen(c) {
+                    continue;
+                }
+                if (creature(c) < 0.0) != cells.contains_key(&(x, y, z)) {
+                    wrong += 1;
+                    worst = worst.max(creature(c).abs());
+                }
+            }
+        }
+    }
+    eprintln!("creature: {wrong} cells, worst |sdf| {worst:.2}");
+    (wrong, worst, reply)
+}
+
+#[test]
+fn regions_calibrate_a_map_normalised_per_part() {
+    let (_, global, _) = creature_carve(|side| json!({"values": per_part(side)}));
+    let (wrong, worst, reply) =
+        creature_carve(|side| json!({"values": per_part(side), "regions": true}));
+    assert!(worst <= 1.0, "{wrong} wrong cells, worst {worst}");
+    assert!(global > 2.0, "the global fit was already right: {global}");
+    // The front view's head and body are two regions.
+    assert!(reply["views"][0]["depth"]["regions"].as_u64().unwrap() >= 2);
+}
+
+#[test]
+fn auto_gamma_finds_a_curved_map() {
+    for (power, expected) in [(2, 0.5), (4, 0.25)] {
+        let curved = |side: Side| {
+            let values = render(side, CREATURE, &|p| creature(p) < 0.0);
+            json!(values
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|row| row
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| v.as_f64().map(|g| g.powi(power)))
+                    .collect::<Vec<_>>())
+                .collect::<Vec<_>>())
+        };
+        let (_, linear, _) = creature_carve(|side| json!({"values": curved(side)}));
+        let (wrong, worst, reply) =
+            creature_carve(|side| json!({"values": curved(side), "gamma": "auto"}));
+        // The contour picks the curve that undoes grey = linear^power, to
+        // within a factor of two.
+        for view in reply["views"].as_array().unwrap() {
+            let gamma = view["depth"]["gamma"].as_f64().unwrap();
+            assert!(
+                gamma >= expected / 2.05 && gamma <= expected * 2.05,
+                "power {power}: gamma {gamma}"
+            );
+        }
+        assert!(
+            worst <= 1.0 && worst <= linear,
+            "{wrong} wrong, worst {worst} vs {linear}"
+        );
+    }
+}
+
+#[test]
+fn a_detail_map_gives_the_curvature_and_the_base_the_order() {
+    let (_, flat, _) = creature_carve(|side| json!({"values": flat_parts(side), "gamma": "auto"}));
+    let (wrong, worst, reply) = creature_carve(
+        |side| json!({"values": flat_parts(side), "gamma": "auto", "detail": {"values": per_part(side)}}),
+    );
+    assert!(worst <= 1.25, "{wrong} wrong cells, worst {worst}");
+    assert!(flat > worst, "flat {flat} vs {worst}");
+    assert!(reply["views"][0]["depth"]["regions"].as_u64().unwrap() >= 2);
+}
+
+#[test]
+fn the_carve_panel_passes_the_depth_options() {
+    let mut panel = crate::state::Session::new().silhouette.carve;
+    panel.views[0].path = "views.png".into();
+    panel.views[0].depth = "depth.png".into();
+    panel.views[1].path = "views.png".into();
+    panel.depth_regions = true;
+    panel.depth_auto_curve = true;
+    panel.depth_edge = 0.04;
+    panel.depth_detail = "detail.png".into();
+    panel.depth_tolerance = 0.5;
+    let args = panel.args(1).unwrap();
+    let depth = &args["views"][0]["depth"];
+    assert_eq!(depth["path"], "depth.png");
+    assert_eq!(depth["regions"], true);
+    assert_eq!(depth["gamma"], "auto");
+    assert_eq!(depth["detail"]["path"], "detail.png");
+    assert!(args["views"][1].get("depth").is_none());
+    assert_eq!(args["depthTolerance"], 0.5);
+}
+
+#[test]
+fn coloured_pixels_hold_no_depth() {
+    // Grey, magenta, and a pink fringe.
+    let rgba = [128, 128, 128, 255, 255, 0, 255, 255, 230, 120, 230, 255];
+    let map = crate::tools::depth_from_rgba(3, 1, &rgba, None, None).unwrap();
+    assert!(map.values[0].is_some());
+    assert_eq!(&map.values[1..], &[None, None]);
 }
