@@ -15,6 +15,13 @@
 
 ### Added
 
+- Surface stroke: MCP `surface_stroke`, Rhai `surface_stroke(points, slot,
+  opts)`, and the Surface stroke section paint a stroke through points that
+  snaps to the object's nearest surface cells, with a `width`, a `depth`,
+  `only` slots, and a smooth curve, or cut a groove with slot 0, in one undo
+  step: seams between shell plates and markings on curved bodies, without a
+  tube radius guessed to reach the surface. It takes `space` and runs in
+  `batch`.
 - Intersect mode: `mode: "intersect"` on MCP `fill_box`, `fill_ellipsoid`,
   `fill_rounded_box`, `fill_tube`, and `carve_from_views` (and their Rhai
   options) keeps only the object's solid cells inside the shape and erases

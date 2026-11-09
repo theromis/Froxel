@@ -28,7 +28,10 @@ It is how agents should model living things through MCP.
    and knock off single-cell spikes. Then use `set_voxels` to cut, add, and
    recolour single cells: the
    face, eyes, fins, scales, colour breaks. One `set_voxels` call takes many
-   cells and is one undo step. To change a whole slot (the blockout's slot
+   cells and is one undo step. Seams between shell plates and markings on a
+   curved body are `surface_stroke`: the path through a few points snaps
+   to the nearest surface cells, `width` cells across and `depth` cells
+   deep (`palette` `0` cuts a groove), so no tube radius is guessed. To change a whole slot (the blockout's slot
    to the shell's, the belly to a paler one), call `recolor` with `from` and
    `to` or a `map`, in a box or everywhere: the shape stays as it is.
 4. **Repeat** steps 2 and 3. Render after every step and compare again. A

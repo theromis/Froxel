@@ -186,6 +186,7 @@ tracer. A file with no scene graph still loads its first model.
 | `brush` | `op`, `points` | Sculpt brush dabs along **local** points: `inflate`, `deflate` (`dig`), `smooth`, `flatten`, or `grab` (`drag`). Optional `radius`, `strength`, `falloff` (`smooth`, `linear`, `constant`), `only`, `palette`, `vector` (grab), `spacing`. Replies with `dabs`, `added`, `removed`. One undo step |
 | `carve_from_views` | `views` | Fill the visual hull of 2 or 3 orthographic views (front, side, top) of a concept's turnaround sheet into the active object: each view's silhouette is extruded along its depth axis and the cells every view covers are kept. A view is a PNG `path` with `crop`, `background` (`auto`, `alpha`, or a key colour with `tolerance`), and `cellsPerPixel` or `size`, or `rows` with a `legend`. Optional `size`, `origin`, `cellsPerPixel`, `palette` or `slots`, `coverage`, `shell`, `smooth`, `mode`. Replies with `cells`, `bounds`, `size`, and each view's `grid` and `covered`. At most 4000000 cells in the box, one undo step. See [Silhouettes](#silhouettes) |
 | `import_mesh` | `path` | Voxelize a `.glb`, `.gltf`, or `.obj` (with its `.mtl` and textures) into the active object, or a new one with `newObject` (and `name`). Optional `size`, `scale`, or `voxelSize`; `upAxis`, `rotation`, `position`, `anchor` (`min`, `center`, `bottom`), `fill` (`solid`, `shell`), `colors` (`auto`, `vertex`), `palette` or `slots`, `maxNewSlots`, `tolerance`, `mode`. Replies with `cells`, `shell`, `interior`, `written`, `changed`, `slots`, `newSlots`, `bounds`, `scale`, `triangles`, `primitives`, `textures`, `warnings`. At most 256 cells per axis and 2000000 cells, one undo step |
+| `surface_stroke` | `points`, `palette` | Paint a stroke through 2..=1024 **local** points that snaps to the active object's nearest surface cells: seams between shell plates, markings on a curved body. Optional `curve` (`polyline`, `smooth`), `width` (cells across, default 1), `depth` (cells into the solid, default 1), `reach` (default 8), `only`. `palette` `0` cuts a groove. Replies with `cells`, `changed`, `samples`, `missed`, `snap`, `length`, `voxels`. One undo step |
 | `recolor` | `from` and `to`, or `map` | Replace palette slot `from` with `to` (or every pair of `map`, `{"3": 5}` or `[[3, 5]]`) in the active object's solid cells, inside an inclusive box `x0`..`z1` or everywhere. No cell is added; `to` `0` erases. Replies with `matched`, `changed`, `voxels`. One undo step |
 | `carve` | `shape` | Remove the solid cells inside a `box`, `ellipsoid`, `rounded_box`, or `tube`, given as for the fill tools. To cut a polygon or rounded rectangle along a path, call `sweep` with `palette` `0`. Replies with `removed`. One undo step |
 | `break_end` | `point`, `normal` | Break the active object across a plane: a jagged face, bark on its rim, sapwood inside, and tapered splinters out along the normal. Optional `depth`, `splinters` or `density`, `length`, `thickness`, `taper`, `rimBias`, `bark`, `sapwood`, `tips`, `seed`. One undo step |
@@ -271,6 +272,25 @@ is solid when its centre lies inside the shape. The ellipsoid is centred on
 the box and touches the middle of each face. `fill_rounded_box` measures
 the distance from the cell centre to the box inset by `radius`. Both refuse
 a box larger than 2000000 cells before writing, and both are one undo step.
+
+`surface_stroke` draws on the surface instead of through space, so a seam or
+a marking on a curved body needs no tube radius guessed to reach it. The
+path through `points` (straight, or a Catmull-Rom curve with `curve`
+`smooth`) is sampled every half cell, and each sample snaps to the nearest
+surface cell, a solid cell with an empty face neighbour, within `reach`
+cells (default 8): the points may float above the shell or sink into it.
+Where two snapped cells do not touch, as on a steep side, the cells between
+them snap too, so the line has no gap. Every solid cell within `width / 2`
+of a snapped cell (`width` 1, the default, is a one-cell line) and at most
+`depth` cells into the solid (1, the default, is the surface alone) takes
+`palette`; `palette` `0` erases them, a groove `depth` deep. `only` limits
+it to cells of those slots, so a seam on the shell stops at the skin.
+Nothing is added. `missed` counts samples with no surface within reach and
+`snap` is the farthest a sample moved.
+
+```json
+{"points": [[2, 14, 9], [11, 14, 11], [20, 14, 9]], "curve": "smooth", "palette": 5, "width": 1, "only": [3]}
+```
 
 `recolor` changes slots, never the shape: every solid cell whose slot is in
 the map takes its new slot, so a blockout slot becomes the shell slot or two
@@ -1741,6 +1761,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `compare_silhouette` | Compare silhouette section: Concept Image…, Crop, Background, Flip, Camera (Viewport, Game, Front, Left, Top), Align (Fit, Height, Width), Compare; the overlay shows in the viewport's bottom-right corner until Hide overlay; MCP `compare_silhouette` over the control port shows it there too |
 | `import_mesh` | File > Import Mesh… and the Import mesh section: File, Size, Voxel, or Scale, File is Z-up, Rotation, Position, Anchor, Solid or Shell, Texture or Vertex colour, Slots, New slots, Tolerance, Mode, New object |
 | `carve` | Remove mode with Box, Generator, or Tube |
+| `surface_stroke` | Surface stroke section: Points (one per line, Point at selection, World), Smooth, Width, Depth, Reach, Only, Groove, Stroke with the active slot |
 | `recolor` | Recolor section: Slots (pairs `from>to`), Recolor over the selection's box or the whole object |
 | `loft` | Loft section: Points (one per line, x y z then optional rx ry roll flatTop noise frequency; Point at selection adds the selection's centre), Smooth, Round ends, Radii, Roll, Flat top, Noise, Lumps, Palettes, Rings, Stripes, or Random, Period, Mode, Seed |
 | `deform` | Deform section: Bend, Taper, Twist, or Displace; Axis, Origin, Length; Angle and Toward, Start and End, or Amplitude, Scale, Octaves, Bias, Seed; over the selection's box or the whole object |

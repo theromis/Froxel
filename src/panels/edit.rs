@@ -1,6 +1,7 @@
 //! Inspector sections of the whole-object edits: Split object (MCP
 //! `split_object`), Clear object (MCP `clear_object`), Recolor (MCP
-//! `recolor`), and Intersect (the fills' `mode: "intersect"`).
+//! `recolor`), Intersect (the fills' `mode: "intersect"`), and Surface
+//! stroke (MCP `surface_stroke`).
 
 use egui::{RichText, Ui};
 
@@ -163,6 +164,69 @@ pub(super) fn intersect(ui: &mut Ui, session: &mut Session) {
             .clicked()
         {
             session.intersect_from_panel();
+        }
+    });
+}
+
+/// MCP `surface_stroke`: a stroke that snaps to the surface.
+pub(super) fn stroke(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Surface stroke");
+        let mut point = false;
+        let panel = &mut session.edit.stroke;
+        egui::Grid::new("stroke-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Points", "One point x y z per line, in the active object's local cells (or world cells with World). They may float above or sink below the surface: each sample snaps to the nearest surface cell.");
+                ui.vertical(|ui| {
+                    ui.add(
+                        egui::TextEdit::multiline(&mut panel.points)
+                            .hint_text("4 0 8\n10 6 9")
+                            .desired_rows(3)
+                            .desired_width(150.0),
+                    );
+                    ui.horizontal(|ui| {
+                        if ui.button("Point at selection").on_hover_text("Add the selection's centre as the next point.").clicked() {
+                            point = true;
+                        }
+                        ui.checkbox(&mut panel.world, "World");
+                    });
+                });
+                ui.end_row();
+                label(ui, "Path", "Smooth passes a curve through the points; off joins them straight.");
+                ui.checkbox(&mut panel.smooth, "Smooth");
+                ui.end_row();
+                label(ui, "Width", "Width across the surface in cells; 1 is a one-cell line.");
+                ui.add(egui::DragValue::new(&mut panel.width).range(0.5..=crate::tools::MAX_STROKE_WIDTH as f32).speed(0.1));
+                ui.end_row();
+                label(ui, "Depth", "Cells into the solid; 1 is the surface alone.");
+                ui.add(egui::DragValue::new(&mut panel.depth).range(1..=crate::tools::MAX_STROKE_DEPTH as i32));
+                ui.end_row();
+                label(ui, "Reach", "How far a point may be from the surface it snaps to, in cells.");
+                ui.add(egui::DragValue::new(&mut panel.reach).range(0.0..=crate::tools::MAX_STROKE_REACH as f32).speed(0.1));
+                ui.end_row();
+                label(ui, "Only", "Slots that may change, such as 3 4; others keep theirs. Empty is every slot.");
+                ui.add(
+                    egui::TextEdit::singleline(&mut panel.only)
+                        .hint_text("all slots")
+                        .desired_width(90.0),
+                );
+                ui.end_row();
+                label(ui, "Groove", "Erase the stroke's cells instead of painting the active slot: a seam cut Depth cells deep.");
+                ui.checkbox(&mut panel.groove, "Groove");
+                ui.end_row();
+            });
+        if ui
+            .button("Stroke")
+            .on_hover_text("MCP surface_stroke: paint the active slot (or cut a groove) along the points, on the nearest surface cells. One undo step.")
+            .clicked()
+        {
+            session.stroke_from_panel();
+        }
+        if point {
+            session.stroke_point_at_selection();
         }
     });
 }

@@ -25,6 +25,7 @@ pub(crate) const WORLD_METHODS: &[&str] = &[
     "voxel.carve",
     "voxel.smooth",
     "voxel.recolor",
+    "voxel.surface_stroke",
     "voxel.loft",
     "voxel.brush",
     "voxel.carve_from_views",

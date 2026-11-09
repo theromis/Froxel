@@ -1,5 +1,5 @@
 //! MCP handlers of the whole-object edits: `split_object`,
-//! `clear_object`, and `recolor`.
+//! `clear_object`, `recolor`, and `surface_stroke`.
 //!
 //! Rhai records `split_object` and `clear_object(object)` as document calls and runs it through this
 //! same handler after its voxels are written; its `recolor` runs
@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use serde_json::{json, Value};
 
-use super::{as_i32, box_corners, opt_bool, opt_str, slot_list};
+use super::{as_i32, box_corners, opt_bool, opt_f64, opt_str, slot_list};
 use crate::state::{Cell, Session, SplitInto, SplitSpec};
 
 /// Most boxes one `split_object` call takes.
@@ -251,6 +251,89 @@ pub(super) fn recolor(session: &mut Session, params: &Value) -> Result<Value, St
     let (writes, matched) = recolor_writes(&session.active().cells, params)?;
     let changed = session.write_cells(&writes)?;
     Ok(json!({"matched": matched, "changed": changed, "voxels": session.voxel_count()}))
+}
+
+/// The stroke of MCP `surface_stroke`: `points` (`[x, y, z]` or `{x, y, z}`),
+/// `curve`, `width`, `depth`, `reach`, `palette`, and `only`.
+pub(crate) fn stroke_spec(params: &Value) -> Result<crate::tools::StrokeSpec, String> {
+    let list = params
+        .get("points")
+        .and_then(Value::as_array)
+        .ok_or("points must be a list of [x, y, z]")?;
+    let mut points = Vec::with_capacity(list.len());
+    for (index, point) in list.iter().enumerate() {
+        let bad = || format!("point {index} must be [x, y, z] or {{x, y, z}}");
+        let at: Vec<f64> = match point {
+            Value::Array(values) if values.len() == 3 => {
+                values.iter().map(Value::as_f64).collect::<Option<_>>()
+            }
+            Value::Object(_) => ["x", "y", "z"]
+                .iter()
+                .map(|key| point.get(*key).and_then(Value::as_f64))
+                .collect::<Option<_>>(),
+            _ => None,
+        }
+        .ok_or_else(bad)?;
+        points.push([at[0], at[1], at[2]]);
+    }
+    let smooth = match opt_str(params, "curve")?.as_deref() {
+        None | Some("polyline") => false,
+        Some("smooth") => true,
+        Some(other) => return Err(format!("curve must be polyline or smooth, not `{other}`")),
+    };
+    let palette = params
+        .get("palette")
+        .ok_or("palette is required: the slot painted, or 0 for a groove")?;
+    let slot = as_i32(palette)
+        .filter(|slot| (0..=255).contains(slot))
+        .ok_or("palette must be 0..255")? as u8;
+    let depth = opt_f64(params, "depth")?.unwrap_or(1.0);
+    if depth.fract() != 0.0 || depth < 1.0 {
+        return Err(format!(
+            "depth must be a whole number 1..={}",
+            crate::tools::MAX_STROKE_DEPTH
+        ));
+    }
+    Ok(crate::tools::StrokeSpec {
+        points,
+        smooth,
+        width: opt_f64(params, "width")?.unwrap_or(1.0),
+        depth: depth.min(f64::from(u32::MAX)) as u32,
+        reach: opt_f64(params, "reach")?.unwrap_or(8.0),
+        slot,
+        only: match params.get("only") {
+            None | Some(Value::Null) => None,
+            Some(_) => Some(slot_list(params, "only")?),
+        },
+    })
+}
+
+/// The writes of `surface_stroke` against `cells` and its counts. Rhai
+/// scripts call this with their options map.
+pub(crate) fn stroke_writes(
+    cells: &HashMap<Cell, u8>,
+    params: &Value,
+) -> Result<(Vec<(i32, i32, i32, i32)>, Value), String> {
+    let spec = stroke_spec(params)?;
+    let stroked = crate::tools::surface_stroke(cells, &spec)?;
+    let counts = json!({
+        "cells": stroked.writes.len(),
+        "samples": stroked.samples,
+        "missed": stroked.missed,
+        "snap": (stroked.snap * 100.0).round() / 100.0,
+        "length": (stroked.length * 100.0).round() / 100.0,
+    });
+    Ok((stroked.writes, counts))
+}
+
+/// MCP `surface_stroke`: paint (or groove) a stroke that snaps to the
+/// active object's surface, one undo step.
+pub(super) fn surface_stroke(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let (writes, mut reply) = stroke_writes(&session.active().cells, params)?;
+    let changed = session.write_cells(&writes)?;
+    reply["changed"] = json!(changed);
+    reply["voxels"] = json!(session.voxel_count());
+    Ok(reply)
 }
 
 #[cfg(test)]

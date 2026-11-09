@@ -23,7 +23,7 @@ If the tools are missing, the server is not configured. Point the user to
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `recolor`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` with its image as rows and a legend, `fit_to_views` with views as rows and a legend, and `marker`,
+  (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` with its image as rows and a legend, `fit_to_views` with views as rows and a legend, and `marker`,
   `collision_box`, `connector`, `collision_from_voxels`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `split_object`, `clear_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -78,6 +78,11 @@ If the tools are missing, the server is not configured. Point the user to
   overwriting; `mode: "paint"` recolours only existing cells.
 - `set_voxels` takes `[x, y, z, palette]` rows, up to 200000 per call. Batch
   detail into few calls.
+- Seams between shell plates, markings on a curved body, and grooves:
+  `surface_stroke` with a few `points` (they may float above the surface),
+  `palette` (0 cuts a groove), `width`, `depth`, `only`. Each sample snaps
+  to the nearest surface cell; do not guess a `fill_tube` radius in paint
+  mode.
 - To empty an object and start it again, call `clear_object` (index or
   name; default the active one): no box limit, the object, its position,
   and its bone stay. Do not erase with `fill_box` palette 0, which stops at

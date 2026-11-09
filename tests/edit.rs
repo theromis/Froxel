@@ -203,7 +203,8 @@ fn the_turtle_parts_example_cuts_the_same_parts_on_a_rerun() {
         head.keys().all(|c| c.1 >= 20),
         "a head cell is left from the longer turtle"
     );
-    assert_eq!(slots(&session, 0)[4] > 0, true);
+    assert!(slots(&session, 0)[4] > 0, "the plastron");
+    assert!(slots(&session, 0)[5] > 0, "the plate seams");
 }
 
 #[test]
@@ -652,4 +653,151 @@ fn intersect_runs_from_a_script_and_the_panel() {
         "{}",
         session.status
     );
+}
+
+/// A dome of slot 3: the top half of a 24 x 24 x 16 ellipsoid.
+fn dome() -> Session {
+    let mut session = Session::new();
+    session.replace_empty();
+    apply(
+        &mut session,
+        "voxel.ellipsoid",
+        &json!({"x0": 0, "y0": 0, "z0": -8, "x1": 23, "y1": 23, "z1": 7, "palette": 3}),
+    )
+    .unwrap();
+    apply(
+        &mut session,
+        "voxel.carve",
+        &json!({"shape": "box", "x0": 0, "y0": 0, "z0": -8, "x1": 23, "y1": 23, "z1": -1}),
+    )
+    .unwrap();
+    session
+}
+
+fn exposed(session: &Session, cell: Cell) -> bool {
+    let cells = &session.objects[0].cells;
+    [
+        (1, 0, 0),
+        (-1, 0, 0),
+        (0, 1, 0),
+        (0, -1, 0),
+        (0, 0, 1),
+        (0, 0, -1),
+    ]
+    .iter()
+    .any(|d| !cells.contains_key(&(cell.0 + d.0, cell.1 + d.1, cell.2 + d.2)))
+}
+
+#[test]
+fn surface_stroke_snaps_floating_points_onto_the_surface() {
+    let mut session = dome();
+    // A seam across the dome, drawn two cells above it.
+    let reply = apply(
+        &mut session,
+        "voxel.surface_stroke",
+        &json!({"points": [[2, 11.5, 7], [11.5, 11.5, 10], [21, 11.5, 7]], "curve": "smooth", "palette": 6}),
+    )
+    .unwrap();
+    assert_eq!(reply["missed"], 0);
+    assert!(reply["cells"].as_i64().unwrap() >= 15, "{reply}");
+    assert!(reply["snap"].as_f64().unwrap() > 1.0);
+    let painted: Vec<Cell> = session.objects[0]
+        .cells
+        .iter()
+        .filter(|(_, slot)| **slot == 6)
+        .map(|(cell, _)| *cell)
+        .collect();
+    assert!(painted.iter().all(|cell| exposed(&session, *cell)));
+    // The seam spans the dome from one side to the other without a gap in x.
+    let mut xs: Vec<i32> = painted.iter().map(|c| c.0).collect();
+    xs.sort_unstable();
+    xs.dedup();
+    assert!(xs.windows(2).all(|w| w[1] - w[0] == 1), "{xs:?}");
+    assert_eq!(
+        session.voxel_count(),
+        dome().voxel_count(),
+        "nothing is added"
+    );
+    // A groove: palette 0 erases two cells deep, and only keeps other slots.
+    let before = session.voxel_count();
+    let reply = apply(
+        &mut session,
+        "voxel.surface_stroke",
+        &json!({"points": [[11.5, 2, 9], [11.5, 21, 9]], "palette": 0, "width": 2, "depth": 2, "only": [3]}),
+    )
+    .unwrap();
+    let removed = reply["changed"].as_i64().unwrap();
+    assert!(removed > 20, "{reply}");
+    assert_eq!(session.voxel_count() as i64, before as i64 - removed);
+    assert!(
+        session.objects[0].cells.values().any(|slot| *slot == 6),
+        "only kept slot 6"
+    );
+    // Too short a reach misses.
+    let reply = apply(
+        &mut session,
+        "voxel.surface_stroke",
+        &json!({"points": [[11, 11, 30], [12, 11, 30]], "palette": 6, "reach": 4}),
+    )
+    .unwrap();
+    assert_eq!(reply["changed"], 0);
+    assert_eq!(reply["missed"], reply["samples"]);
+}
+
+#[test]
+fn surface_stroke_runs_in_world_space_from_a_script_a_batch_and_the_panel() {
+    let mut session = dome();
+    apply(
+        &mut session,
+        "object.set",
+        &json!({"index": 0, "position": [100, 0, 0]}),
+    )
+    .unwrap();
+    let local = {
+        let mut probe = dome();
+        apply(
+            &mut probe,
+            "voxel.surface_stroke",
+            &json!({"points": [[4, 4, 8], [18, 18, 8]], "palette": 7}),
+        )
+        .unwrap()
+    };
+    let world = apply(
+        &mut session,
+        "voxel.surface_stroke",
+        &json!({"points": [[104, 4, 8], [118, 18, 8]], "palette": 7, "space": "world"}),
+    )
+    .unwrap();
+    assert_eq!(world["cells"], local["cells"]);
+    assert_eq!(world["space"], "world");
+    let reply = apply(
+        &mut session,
+        "voxel.batch",
+        &json!({"operations": [{"tool": "surface_stroke", "arguments": {"points": [[4, 18, 8], [18, 4, 8]], "palette": 8}}]}),
+    )
+    .unwrap();
+    assert!(reply["changed"].as_i64().unwrap() > 0);
+    session.edit.stroke.points = "4 11 9\n18 11 9".into();
+    session.active_slot = 9;
+    session.stroke_from_panel();
+    assert!(
+        session.objects[0].cells.values().any(|slot| *slot == 9),
+        "{}",
+        session.status
+    );
+    let mut scripted = Session::new();
+    scripted.replace_empty();
+    scripted
+        .set_script(
+            0,
+            "fill_ellipsoid(0, 0, -8, 23, 23, 7, 3);\ncarve_box(0, 0, -8, 23, 23, -1);\nlet r = surface_stroke([[4, 4, 8], [18, 18, 8]], 7, #{width: 1});\nif r.missed != 0 { throw \"missed\"; }",
+        )
+        .unwrap();
+    scripted.regenerate_script(0).unwrap();
+    let count = scripted.objects[0]
+        .cells
+        .values()
+        .filter(|s| **s == 7)
+        .count();
+    assert_eq!(count as i64, local["cells"].as_i64().unwrap());
 }

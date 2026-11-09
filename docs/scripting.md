@@ -249,6 +249,28 @@ carve_tube([[-1, 0, 4], [12, 1, 4]], #{radius: 2.5});
 `carve_box`, `carve_ellipsoid`, and `carve_rounded_box` also take a trailing
 map with `space` (see World cells).
 
+### Surface stroke
+
+```rhai
+let report = surface_stroke([[2, 14, 9], [11, 14, 11], [20, 14, 9]], 5);
+let report = surface_stroke(points, 0, #{curve: "smooth", width: 2, depth: 1, reach: 6, only: [3]});
+```
+
+MCP `surface_stroke` on the object being written: the path through the
+points snaps to the nearest surface cells, and the cells within `width / 2`
+of it and `depth` cells into the solid take the slot (`0` cuts a groove).
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `curve` | `"polyline"` | `"smooth"` passes a Catmull-Rom curve through the points. |
+| `width` | `1` | Cells across the surface, 0.5..=32. |
+| `depth` | `1` | Cells into the solid, 1..=16. |
+| `reach` | `8` | How far a point may be from the surface it snaps to, 0..=64. |
+| `only` | every slot | Slots that may change. |
+| `space` | `"local"` | `"world"` takes world cells (see World cells). |
+
+It returns `#{changed, cells, samples, missed, snap}`.
+
 ### Recolor
 
 ```rhai

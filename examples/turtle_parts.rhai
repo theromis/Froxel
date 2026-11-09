@@ -1,12 +1,12 @@
 // A pond turtle blocked out in one piece, then cut into its rig parts.
 // The body, head, flippers, and tail are filled together, as a
 // carve_from_views blockout would come out, and the boxy shell is cut to a
-// dome with mode intersect. recolor gives the underside
-// its own slot with no shape change, and split_object moves the cells
-// inside boxes into one object per part. Each cell keeps its world
-// position, so nothing is carved twice. On a rerun the parts exist:
-// clear_object empties each one and the cut goes into it (into) instead of
-// making more.
+// dome with mode intersect. recolor gives the underside its own slot with
+// no shape change, surface_stroke draws the plate seams onto the curved
+// shell, and split_object moves the cells inside boxes into one object per
+// part. Each cell keeps its world position, so nothing is carved twice. On
+// a rerun the parts exist: clear_object empties each one and the cut goes
+// into it (into) instead of making more.
 //
 // Parameters
 //   length   the shell's length in cells (along +Y, the head end)
@@ -20,6 +20,7 @@ let height = param_int("height", 9, 5, 24);
 set_slot(2, [92, 104, 56]); // skin
 set_slot(3, [104, 92, 50]); // shell
 set_slot(4, [168, 150, 92]); // plastron
+set_slot(5, [58, 50, 28]); // seam
 
 let neck = length / 5;
 let flipper = width / 3;
@@ -41,6 +42,15 @@ fill_ellipsoid(width / 2 - 1, -4, 1, width / 2 + 1, 1, 3, 2);
 
 // The plastron: the shell's lowest two layers take a paler slot, no shape change.
 recolor(3, 4, #{x0: 0, y0: 0, z0: 0, x1: x1, y1: y1, z1: 1});
+
+// Seams between the shell's plates: strokes drawn above the dome snap onto
+// its surface, only on shell cells.
+surface_stroke([[x1 / 2, 0, height], [x1 / 2, y1, height]], 5, #{only: [3]});
+for row in 1..4 {
+    let y = row * y1 / 4;
+    surface_stroke([[0, y, height / 2], [x1 / 2, y, height + 2], [x1, y, height / 2]], 5,
+        #{curve: "smooth", only: [3]});
+}
 
 // The cuts: everything past the shell's ends and sides, by part.
 let parts = [

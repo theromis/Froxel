@@ -382,12 +382,92 @@ impl IntersectPanel {
     }
 }
 
+/// The Surface stroke section: a stroke through points that snaps to the
+/// active object's surface.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StrokePanel {
+    /// One point `x y z` per line.
+    pub points: String,
+    pub smooth: bool,
+    pub width: f32,
+    pub depth: i32,
+    pub reach: f32,
+    /// Erase instead of painting the active slot.
+    pub groove: bool,
+    /// Slots that may change; empty is every slot.
+    pub only: String,
+    /// The points are world cells (MCP `space: "world"`).
+    pub world: bool,
+}
+
+impl Default for StrokePanel {
+    fn default() -> Self {
+        Self {
+            points: String::new(),
+            smooth: true,
+            width: 1.0,
+            depth: 1,
+            reach: 8.0,
+            groove: false,
+            only: String::new(),
+            world: false,
+        }
+    }
+}
+
+impl StrokePanel {
+    /// The MCP `surface_stroke` arguments, painting `active` unless a groove.
+    pub(crate) fn args(&self, active: u8) -> Result<Value, String> {
+        let mut points = Vec::new();
+        for line in self.points.lines() {
+            let parts: Vec<&str> = line
+                .split(|c: char| c == ',' || c.is_whitespace())
+                .filter(|part| !part.is_empty())
+                .collect();
+            if parts.is_empty() {
+                continue;
+            }
+            if parts.len() != 3 {
+                return Err(format!("Stroke: a point is x y z, not `{}`", line.trim()));
+            }
+            let point = parts
+                .iter()
+                .map(|part| {
+                    part.parse::<f64>()
+                        .map_err(|_| format!("Stroke: `{part}` is not a number"))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            points.push(point);
+        }
+        if points.len() < 2 {
+            return Err("Stroke: give at least two points, one per line.".into());
+        }
+        let mut args = json!({
+            "points": points,
+            "palette": if self.groove { 0 } else { active.max(1) },
+            "curve": if self.smooth { "smooth" } else { "polyline" },
+            "width": self.width,
+            "depth": self.depth.max(1),
+            "reach": self.reach,
+        });
+        let only = slot_field("Stroke", &self.only)?;
+        if !only.is_empty() {
+            args["only"] = json!(only);
+        }
+        if self.world {
+            args["space"] = json!("world");
+        }
+        Ok(args)
+    }
+}
+
 /// The fields of the Object edits sections.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct EditPanels {
     pub split: SplitPanel,
     pub recolor: RecolorPanel,
     pub intersect: IntersectPanel,
+    pub stroke: StrokePanel,
 }
 
 impl Session {
@@ -425,6 +505,54 @@ impl Session {
             Err(err) => err,
         };
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// The Stroke button: MCP `surface_stroke` on the active object.
+    pub fn stroke_from_panel(&mut self) {
+        let args = match self.edit.stroke.args(self.active_slot) {
+            Ok(args) => args,
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
+        self.status = match crate::remote::apply(self, "voxel.surface_stroke", &args) {
+            Ok(reply) => {
+                let mut text = format!(
+                    "Stroked {} cells ({} changed).",
+                    reply["cells"], reply["changed"]
+                );
+                if reply["missed"].as_u64().unwrap_or(0) > 0 {
+                    text.push_str(&format!(
+                        " {} samples found no surface within reach.",
+                        reply["missed"]
+                    ));
+                }
+                text
+            }
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// Add the selection's centre as the stroke's next point.
+    pub fn stroke_point_at_selection(&mut self) {
+        let Some((min, max)) = cell_bounds(self.picked.iter().copied()) else {
+            self.status = "Stroke: select cells first.".into();
+            return;
+        };
+        let centre = |a: i32, b: i32| f64::from(a + b) / 2.0;
+        let line = format!(
+            "{} {} {}",
+            centre(min.0, max.0),
+            centre(min.1, max.1),
+            centre(min.2, max.2)
+        );
+        let points = &mut self.edit.stroke.points;
+        if !points.is_empty() && !points.ends_with('\n') {
+            points.push('\n');
+        }
+        points.push_str(&line);
     }
 
     /// The Split object button: MCP `split_object` on the active object.

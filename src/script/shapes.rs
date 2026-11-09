@@ -1,5 +1,6 @@
 //! The MCP shape tools in Rhai: `fill_ellipsoid`, `fill_rounded_box`,
-//! `fill_tube`, `fill_box` with a mode, `carve_*`, `recolor`, `smooth`,
+//! `fill_tube`, `fill_box` with a mode, `carve_*`, `recolor`,
+//! `surface_stroke`, `smooth`,
 //! `break_end`, and `scatter`.
 //!
 //! Each call turns its arguments into the MCP tool's arguments and runs the
@@ -24,6 +25,7 @@ const TUBE: &[&str] = &[
     "mode", "radius", "curve", "aspect", "roll", "profile", "pattern", "period", "sectors", "seed",
     "space",
 ];
+const STROKE: &[&str] = &["curve", "width", "depth", "reach", "only", "space"];
 const RECOLOR: &[&str] = &["x0", "y0", "z0", "x1", "y1", "z1", "space"];
 const SMOOTH: &[&str] = &["iterations", "fillAt", "removeAt", "space"];
 const BREAK: &[&str] = &[
@@ -182,6 +184,25 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
             engine.register_fn("recolor", move |pairs: Array, opts: Map| run(pairs, &opts));
         } else {
             engine.register_fn("recolor", move |pairs: Array| run(pairs, &Map::new()));
+        }
+    }
+    for with_opts in [false, true] {
+        let state = scratch.clone();
+        let run = move |points: Array, slot: INT, opts: &Map| -> Fallible<Map> {
+            let mut args = options(opts, STROKE, "surface_stroke")?;
+            args.insert("points".into(), json(&Dynamic::from_array(points))?);
+            args.insert("palette".into(), slot.into());
+            state.borrow_mut().stroke(args).map_err(runtime)
+        };
+        if with_opts {
+            engine.register_fn(
+                "surface_stroke",
+                move |points: Array, slot: INT, opts: Map| run(points, slot, &opts),
+            );
+        } else {
+            engine.register_fn("surface_stroke", move |points: Array, slot: INT| {
+                run(points, slot, &Map::new())
+            });
         }
     }
     for (name, shape) in [("carve_box", "box"), ("carve_ellipsoid", "ellipsoid")] {
@@ -370,6 +391,24 @@ impl Scratch {
         }
         .ok_or("space world needs an object of the document; an object this run creates takes local cells")?;
         Ok((remote::to_local(method, &args, offset)?, Some(offset)))
+    }
+
+    fn stroke(&mut self, args: Args) -> Result<Map, String> {
+        self.keep_going()?;
+        let (args, _) = self.localize("voxel.surface_stroke", args)?;
+        let (writes, counts) = remote::stroke_writes(self.cells(), &args)?;
+        let changed = self.apply(&writes)?;
+        let mut out = reply([
+            ("changed", changed),
+            ("cells", counts["cells"].as_i64().unwrap_or(0)),
+            ("samples", counts["samples"].as_i64().unwrap_or(0)),
+            ("missed", counts["missed"].as_i64().unwrap_or(0)),
+        ]);
+        out.insert(
+            "snap".into(),
+            Dynamic::from_float(counts["snap"].as_f64().unwrap_or(0.0)),
+        );
+        Ok(out)
     }
 
     fn recolor(&mut self, args: Args) -> Result<Map, String> {

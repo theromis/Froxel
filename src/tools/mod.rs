@@ -25,6 +25,7 @@ mod scatter;
 mod sculpt;
 mod shapes;
 mod silhouette;
+mod stroke;
 mod surface;
 mod sweep;
 mod trim;
@@ -59,6 +60,9 @@ pub use shapes::{
 pub use silhouette::{
     carve_from_views, mask_from_rgba, mask_from_rows, Background, CarveSpec, Colour, Crop, Ink,
     Mask, Scale, Side, View, MAX_CARVE_PASSES,
+};
+pub use stroke::{
+    surface_stroke, StrokeSpec, MAX_STROKE_DEPTH, MAX_STROKE_REACH, MAX_STROKE_WIDTH,
 };
 pub use surface::{Exclude, Region, MAX_EXCLUDE};
 pub use sweep::{sweep, Profile, SweepPoint};
