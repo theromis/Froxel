@@ -727,9 +727,61 @@ impl ComponentsPanel {
     }
 }
 
+/// The De-terrace section: MCP `deterrace` on the active object.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TerracePanel {
+    /// 0 blocks, 1 stagger.
+    pub mode: usize,
+    pub size: i32,
+    pub fill: f32,
+    pub tolerance: i32,
+    pub run: i32,
+    pub jitter: f32,
+    pub seed: i32,
+}
+
+impl Default for TerracePanel {
+    fn default() -> Self {
+        Self {
+            mode: 0,
+            size: 2,
+            fill: 0.5,
+            tolerance: 2,
+            run: 2,
+            jitter: 0.3,
+            seed: 0,
+        }
+    }
+}
+
+impl TerracePanel {
+    /// The MCP `deterrace` arguments, over `region` when given.
+    pub(crate) fn args(&self, region: Option<(Cell, Cell)>) -> Value {
+        let mut args = if self.mode == 1 {
+            json!({"mode": "stagger", "run": self.run, "jitter": self.jitter, "seed": self.seed.max(0)})
+        } else {
+            json!({"mode": "blocks", "size": self.size, "fill": self.fill, "tolerance": self.tolerance})
+        };
+        if let Some((min, max)) = region {
+            for (key, value) in [
+                ("x0", min.0),
+                ("y0", min.1),
+                ("z0", min.2),
+                ("x1", max.0),
+                ("y1", max.1),
+                ("z1", max.2),
+            ] {
+                args[key] = json!(value);
+            }
+        }
+        args
+    }
+}
+
 /// The fields of the Object edits sections.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct EditPanels {
+    pub terrace: TerracePanel,
     pub components: ComponentsPanel,
     pub split: SplitPanel,
     pub recolor: RecolorPanel,
@@ -778,6 +830,27 @@ impl Session {
         let (method, args) = self.edit.intersect.args(min, max);
         self.status = match crate::remote::apply(self, method, &args) {
             Ok(reply) => format!("Kept the cells inside; {} removed.", reply["changed"]),
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// The De-terrace button: MCP `deterrace` over the selection's box, or
+    /// the whole object.
+    pub fn deterrace_from_panel(&mut self) {
+        let region = cell_bounds(self.picked.iter().copied());
+        let args = self.edit.terrace.args(region);
+        self.status = match crate::remote::apply(self, "voxel.deterrace", &args) {
+            Ok(reply) => format!(
+                "{} {} cells added, {} removed; one-cell steps {} → {}, longest straight run {} → {}.",
+                if reply["mode"] == "stagger" { "Staggered:" } else { "Blocks:" },
+                reply["added"],
+                reply["removed"],
+                reply["steps"]["before"],
+                reply["steps"]["after"],
+                reply["longestRun"]["before"],
+                reply["longestRun"]["after"]
+            ),
             Err(err) => err,
         };
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);

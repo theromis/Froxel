@@ -15,6 +15,13 @@
 
 ### Added
 
+- De-terrace: MCP `deterrace`, Rhai `deterrace(opts)`, the De-terrace
+  section, and `froxel deterrace` take the one-cell contour terraces out of a
+  voxelized smooth mesh, in one undo step: `blocks` re-quantizes the object
+  into cubes of 2 to 4 cells within a tolerance of its surface, and `stagger`
+  breaks the step edges of its top surface into seeded teeth, reporting the
+  one-cell steps and the longest straight run before and after. It runs in
+  `batch`.
 - Orient to views: MCP `orient_to_views`, Rhai `orient_to_views(views,
   opts)`, the Orient to views section, and `froxel orient` turn an object to
   the axis-aligned turn (24, or 4 upright) and fine yaw (or tilt) steps whose

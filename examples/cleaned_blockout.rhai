@@ -4,7 +4,9 @@
 // orient_to_views turns it upright by matching its silhouettes against a
 // views sheet (drawn here in rows), then components removes the floaters,
 // cuts the snail off at its thinnest neck between a seed in the snail and
-// an anchor in the boulder, and moves it into its own object. On a rerun
+// an anchor in the boulder, and moves it into its own object, and
+// deterrace staggers the one-cell contour terraces of the boulder's gentle
+// slopes so they do not read as stripes. On a rerun
 // the snail object exists: clear_object empties it and the cut goes into
 // it (into) instead of making another.
 //
@@ -85,3 +87,7 @@ if has_object("snail") {
     rider.name = "snail";
 }
 components("split", rider);
+
+// The boulder's slopes came out as one-cell terraces in even rings:
+// stagger their edges into teeth.
+deterrace(#{mode: "stagger", seed: 4});

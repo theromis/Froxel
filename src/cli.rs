@@ -2218,3 +2218,46 @@ fn read_views_json(file: &Path) -> Result<serde_json::Value, String> {
     views_relative(&mut params, file.parent().unwrap_or(Path::new("")));
     Ok(params)
 }
+
+const DETERRACE_HELP: &str = "\
+usage: froxel deterrace --input <file.vox> --out <file.vox> [--object <index|name>]
+                        [--mode blocks|stagger] [--size 2..4] [--fill F] [--origin X,Y,Z]
+                        [--tolerance CELLS] [--run CELLS] [--jitter F] [--seed N]
+
+MCP deterrace on the active object (or --object) of a .vox, saved to
+--out, with the reply printed as JSON: --mode blocks (default) re-quantizes
+the object into cubes of --size cells (a cube is solid when --fill of its
+cells are, default 0.5; cubes that would move the surface more than
+--tolerance cells stay); --mode stagger moves the edges of the one-cell
+terrace steps on the top surface in teeth --run cells long, with --jitter
+of them left in place (seeded by --seed). The reply's steps and longestRun
+count one-cell steps and the longest straight run of them, before and
+after.";
+
+/// `froxel deterrace`: MCP `deterrace` on a `.vox`.
+pub fn deterrace(args: &[String]) -> i32 {
+    let flags = [
+        "--mode",
+        "--size",
+        "--fill",
+        "--origin",
+        "--tolerance",
+        "--run",
+        "--jitter",
+        "--seed",
+    ];
+    match edit_args(args, DETERRACE_HELP, &flags) {
+        Ok(None) => 0,
+        Ok(Some((input, output, object, params))) => edit_vox(
+            &input,
+            &output,
+            object.as_deref(),
+            "voxel.deterrace",
+            &params,
+        ),
+        Err(err) => {
+            eprintln!("{err}");
+            2
+        }
+    }
+}

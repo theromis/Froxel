@@ -1,8 +1,8 @@
 //! Inspector sections of the whole-object edits: Split object (MCP
 //! `split_object`), Clear object (MCP `clear_object`), Recolor (MCP
 //! `recolor`), Intersect (the fills' `mode: "intersect"`), Surface
-//! stroke (MCP `surface_stroke`), Shell plates (MCP `shell_plates`), and
-//! Components (MCP `components`).
+//! stroke (MCP `surface_stroke`), Shell plates (MCP `shell_plates`),
+//! Components (MCP `components`), and De-terrace (MCP `deterrace`).
 
 use egui::{RichText, Ui};
 
@@ -431,6 +431,54 @@ pub(super) fn plates(ui: &mut Ui, session: &mut Session) {
             .clicked()
         {
             session.plates_from_panel();
+        }
+    });
+}
+
+/// MCP `deterrace`: terraces re-quantized into blocks, or staggered.
+pub(super) fn deterrace(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.editor_mode == EditorMode::Model && !session.active().cells.is_empty();
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "De-terrace");
+        let panel = &mut session.edit.terrace;
+        egui::Grid::new("terrace-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Mode", "Blocks re-quantizes the form into cubes of Size cells, so every step is Size tall (the chunky concept-cube look). Stagger moves the edges of one-cell steps on the top surface in teeth, so they do not run in long even contours.");
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut panel.mode, 0, "Blocks");
+                    ui.selectable_value(&mut panel.mode, 1, "Stagger");
+                });
+                ui.end_row();
+                if panel.mode == 0 {
+                    label(ui, "Size", "The cube side in cells.");
+                    ui.add(egui::DragValue::new(&mut panel.size).range(2..=4));
+                    ui.end_row();
+                    label(ui, "Fill", "The share of a cube's cells that makes it solid.");
+                    ui.add(egui::DragValue::new(&mut panel.fill).range(0.05..=1.0).speed(0.01));
+                    ui.end_row();
+                    label(ui, "Tolerance", "Cubes whose decision would move the surface further than this many cells stay as they are, so thin parts survive.");
+                    ui.add(egui::DragValue::new(&mut panel.tolerance).range(0..=16));
+                    ui.end_row();
+                } else {
+                    label(ui, "Run", "The length of a tooth along a step, in cells.");
+                    ui.add(egui::DragValue::new(&mut panel.run).range(1..=16));
+                    ui.end_row();
+                    label(ui, "Jitter", "The share of teeth flipped from the alternating pattern.");
+                    ui.add(egui::DragValue::new(&mut panel.jitter).range(0.0..=1.0).speed(0.01));
+                    ui.end_row();
+                    label(ui, "Seed", "Another seed flips other teeth.");
+                    ui.add(egui::DragValue::new(&mut panel.seed).range(0..=1_000_000));
+                    ui.end_row();
+                }
+            });
+        if ui
+            .button("De-terrace")
+            .on_hover_text("MCP deterrace over the selection's box, or the whole object. One undo step.")
+            .clicked()
+        {
+            session.deterrace_from_panel();
         }
     });
 }

@@ -345,6 +345,20 @@ surface, split by painted or grooved seams. Every option is the MCP one:
 It returns `#{changed, cells, taken, unreached, plates, seams}`.
 `examples/plated_dome.rhai` paints a made-up oval dome.
 
+### De-terrace
+
+```rhai
+let report = deterrace();
+let report = deterrace(#{mode: "stagger", run: 2, jitter: 0.3, seed: 4});
+let report = deterrace(#{mode: "blocks", size: 3, tolerance: 2, x0: 0, y0: 0, z0: 0, x1: 31, y1: 31, z1: 15});
+```
+
+MCP `deterrace` on the object being written, with the MCP tool's options:
+`blocks` re-quantizes it into cubes of `size` cells, `stagger` breaks the
+one-cell terrace steps of its top surface into teeth. It returns
+`#{mode, added, removed, steps, longestRun, kept, changed}`, where `steps`
+and `longestRun` are `#{before, after}`.
+
 ### Recolor
 
 ```rhai

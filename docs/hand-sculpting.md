@@ -20,7 +20,10 @@ It is how agents should model living things through MCP.
    and a `size`; check `margin`), and clean it with
    `components`: `remove_small` erases floaters, and `delete` or `split`
    with a `seed` on a rider and an `anchor` on the body cuts the rider off
-   at its thinnest neck. Otherwise build the large
+   at its thinnest neck. A smooth mesh comes out of the voxelizer with
+   one-cell contour terraces on its gentle slopes, stripes the style rules
+   forbid: `deterrace` `stagger` breaks them into seeded teeth, and
+   `blocks` (`size` 2 or 3) re-quantizes the form into chunky cubes. Otherwise build the large
    forms with `fill_box`,
    `fill_rounded_box`, and `fill_ellipsoid`. Grow limbs, roots, branches,
    tails, and twigs with `fill_tube`. Cut hollows, tunnels, and pits with
@@ -199,6 +202,7 @@ import_mesh          path="fallen_tree.glb" voxelSize=0.08 anchor="bottom" newOb
                                      {view: "side", path: "sheet.png", crop: [620, 60, 180, 300]}],
                              yawStep: 5}
 components           op="remove_small" minCells=40                  # floaters and foam bits
+deterrace            mode="stagger" seed=4                           # no contour bands on the slopes
 preview              path="tree_import.png"
 model_view           path="tree_side.png" view="left"                # compare with the concept
 smooth               x0=-40 y0=-12 z0=0 x1=40 y1=12 z1=20 iterations=1

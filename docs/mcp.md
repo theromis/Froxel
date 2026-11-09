@@ -257,6 +257,7 @@ tracer. A file with no scene graph still loads its first model.
 | `orient_to_views` | `views` | Turn the active object to the axis-aligned turn (of 24, or 4 with `turns` `upright`), plus fine steps (`yawStep`, `yawRange`, `fineAxes`), whose silhouettes best match a views sheet by IoU, and scale it (`size`, `height`, or `scale`). Views as `fit_to_views` takes them, with `weight`. Optional `resolution`, `apply` (false only reports). Replies with `before` and `after` (`score`, per-view `iou`), `rotation` (`euler`, `axes`, `yaw`, `fine`, `matrix`), `candidates`, `margin`, `scale`, `cells`, `bounds`. One undo step. See [Turning a mesh to the views](#turning-a-mesh-to-the-views) |
 | `import_mesh` | `path` | Voxelize a `.glb`, `.gltf`, or `.obj` (with its `.mtl` and textures) into the active object, or a new one with `newObject` (and `name`). Optional `size`, `scale`, or `voxelSize`; `upAxis`, `rotation`, `position`, `anchor` (`min`, `center`, `bottom`), `fill` (`solid`, `parity`, `shell`), `colors` (`auto`, `vertex`), `palette` or `slots`, `maxNewSlots`, `tolerance`, `mode`, `orient` (turn the mesh to a views sheet first, see [Turning a mesh to the views](#turning-a-mesh-to-the-views)). Replies with `cells`, `shell`, `interior`, `openEdges`, `written`, `changed`, `slots`, `newSlots`, `bounds`, `scale`, `triangles`, `primitives`, `textures`, `warnings`. At most 256 cells per axis and 2000000 cells, one undo step |
 | `components` | | The connected parts of the active object, for a generated mesh that came with extras. `op` `list` (default), `keep_largest` (`keep`, default 1), `remove_small` (`minCells`), or `delete`, `move` (`offset`), `split` (`name` or `into`, `copy`, `makeActive`, `index`) of the part holding `seed`; with `anchor`, that part is first cut at its thinnest neck from the anchor's. Optional `connectivity` (6, 18, 26, the default), `reach` (default 8), `radius`. Replies with `count`, `largest`, `components`, `selected`, `seed`, `anchor`, `cut`, `changed`, `voxels`. One undo step. See [Cleaning up a generated mesh](#cleaning-up-a-generated-mesh) |
+| `deterrace` | | Remove the one-cell contour terraces of a voxelized smooth mesh: `mode` `blocks` (default) re-quantizes the active object into cubes of `size` cells (2..=4, default 2) on a grid through `origin`, solid where at least `fill` (default 0.5) of a cube is, within `tolerance` cells of the surface (default `size`); `stagger` moves the edges of one-cell steps on the top surface in teeth `run` cells long (default 2), `jitter` (default 0.3) of them left in place, by `seed`. Optional box `x0`..`z1`. Replies with `added`, `removed`, `steps` and `longestRun` before and after, `kept`, `changed`, `voxels`. One undo step. See [Terraces](#terraces) |
 | `surface_stroke` | `points`, `palette` | Paint a stroke through 2..=1024 **local** points that snaps to the active object's nearest surface cells: seams between shell plates, markings on a curved body. Optional `curve` (`polyline`, `smooth`), `width` (cells across, default 1), `depth` (cells into the solid, default 1), `reach` (default 8), `only`, `mirror`. `palette` `0` cuts a groove. Replies with `cells`, `changed`, `samples`, `missed`, `snap`, `length`, `voxels`. One undo step |
 | `shell_plates` | `palettes` | Paint a turtle-shell plate pattern over the active object's dome: a central plate, `rings` of plates, an outer `band` of `bandCount` plates, and a `rim`, split by seams `seamWidth` wide in the `seam` slot or grooved `seamDepth` deep with `seam` 0. Placed by distance along the surface from the apex, on the surface cells facing up within `facing` (default 80). Optional `layout` (`rings`, `voronoi`), `central`, `band`, `bandCount`, `rim`, `center`, `depth`, `zRange`, `x0`..`z1`, `only`, `jitter`, `symmetric`, `seed`. Replies with `cells`, `changed`, `taken`, `unreached`, `plates`, `seams`, `apex`, `kinds`, `voxels`. One undo step |
 | `recolor` | `from` and `to`, or `map` | Replace palette slot `from` with `to` (or every pair of `map`, `{"3": 5}` or `[[3, 5]]`) in the active object's solid cells, inside an inclusive box `x0`..`z1` or everywhere (with `mirror`, the box and its mirror). No cell is added; `to` `0` erases. Replies with `matched`, `changed`, `voxels`. One undo step |
@@ -729,6 +730,43 @@ turned, and `size` or `voxelSize` apply to the turned mesh. The reply's
 
 `froxel orient` runs it on a `.vox` from a JSON file like that one, and
 `froxel import --orient` on a mesh.
+
+#### Terraces
+
+A smooth mesh voxelized on a gentle slope comes out as contour terraces:
+one-cell steps running in long even bands, which read as stripes on a
+shell or a boulder. `deterrace` takes them out in one of two ways.
+
+`mode` `blocks` (the default) re-quantizes the object into cubes of `size`
+cells (2, 3, or 4) on a grid through `origin` (default `[0, 0, 0]`). A cube
+is solid when at least `fill` of its cells are (default 0.5), and its cells
+then take its most common slot, so every step is `size` cells tall: the
+chunky look of a concept drawn in cubes. A cube whose decision would move
+the surface more than `tolerance` cells (default `size`; Chebyshev distance
+to the nearest cell of the original that agrees) is left as it was, so a
+thin part (a tail, a horn) survives a tight tolerance; `kept` counts them.
+
+`mode` `stagger` keeps the cell size and breaks the bands instead. It works
+on the top surface, each column's highest cell: where a column stands one
+cell above a face neighbour, the edge of that step moves by one cell, the
+low side up or the high side down, in teeth `run` cells long. A
+checkerboard of `run`-cell squares, from a seeded phase per height, says
+which, so teeth along a step alternate out and in whichever way it faces;
+`jitter` (default 0.3) of the teeth stay in place, never two side by side,
+and `seed` picks which. A straight run still longer than `run + 1` is
+broken at its middle. No column moves more than one cell.
+
+The reply's `steps` counts the one-cell steps of the top surface and
+`longestRun` the longest straight run of them (steps facing the same way
+at the same height, side by side along a line), `before` and `after`. An
+optional box `x0`..`z1` limits the change.
+
+```json
+{"mode": "stagger", "run": 2, "seed": 4}
+{"mode": "blocks", "size": 3, "tolerance": 2}
+```
+
+`froxel deterrace` runs it on a `.vox`.
 
 #### Cleaning up a generated mesh
 
@@ -2284,6 +2322,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `orient_to_views` | Orient to views section (the views of Carve from views): Turns (All 24 or Upright), Fine steps (step, range, Tilt), Size (Keep, Longest, Height), Orient |
 | `carve` | Remove mode with Box, Generator, or Tube |
 | `components` | Components section: Joined by, Keep, Min cells, Seed and Anchor (At selection), Offset, Name; List, Keep largest, Remove small, Delete, Move, Split |
+| `deterrace` | De-terrace section: Mode (Blocks: Size, Fill, Tolerance; Stagger: Run, Jitter, Seed), De-terrace over the selection's box or the whole object |
 | `surface_stroke` | Surface stroke section: Points (one per line, Point at selection, World), Smooth, Width, Depth, Reach, Only, Groove, Mirror, Stroke with the active slot |
 | `shell_plates` | Shell plates section: Layout (Rings, Voronoi), Rings, Central, Band and its plates, Rim, Plate slots (ring, central, band, rim), Seams (slot or Groove), Seam size, Depth, Facing, Only, Variation (Jitter, Symmetric, Seed), Paint plates over the selection's box or the whole object |
 | `recolor` | Recolor section: Slots (pairs `from>to`), Mirror, Recolor over the selection's box or the whole object |

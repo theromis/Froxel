@@ -36,6 +36,7 @@ mod silhouette;
 mod stroke;
 mod surface;
 mod sweep;
+pub(crate) mod terrace;
 mod trim;
 mod weather;
 
@@ -91,6 +92,7 @@ pub use stroke::{
 };
 pub use surface::{Exclude, Region, MAX_EXCLUDE};
 pub use sweep::{sweep, Profile, SweepPoint};
+pub use terrace::{deterrace, TerraceMode, TerraceSpec};
 pub use trim::{trim_outline, TrimSkin, TrimSpec};
 pub use weather::{weather, WeatherSpec};
 

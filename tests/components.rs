@@ -280,6 +280,11 @@ fn the_cleaned_blockout_example_stands_the_boulder_up_and_cuts_the_snail_off() {
         zs.iter().sum::<f64>() / zs.len() as f64
     };
     assert!(mean_z(3) > mean_z(2) + 3.0);
+    // deterrace left no long even contour on its slopes. The split runs
+    // after the script, so the crown under the snail was covered when it
+    // ran.
+    let (_, longest) = crate::tools::terrace::one_cell_steps(&crate::tools::terrace::tops(boulder));
+    assert!(longest <= 4, "{longest}");
     let first: Vec<usize> = session.objects.iter().map(|o| o.cells.len()).collect();
     session.regenerate_script(0).unwrap();
     let again: Vec<usize> = session.objects.iter().map(|o| o.cells.len()).collect();

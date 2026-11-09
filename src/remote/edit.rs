@@ -1,5 +1,6 @@
 //! MCP handlers of the whole-object edits: `split_object`,
-//! `clear_object`, `recolor`, `surface_stroke`, and `components`, and the
+//! `clear_object`, `recolor`, `surface_stroke`, `components`, and
+//! `deterrace`, and the
 //! `mirror` argument of the paint and edit tools.
 //!
 //! Rhai records `split_object` and `clear_object(object)` as document calls and runs it through this
@@ -775,6 +776,87 @@ pub(super) fn components(session: &mut Session, params: &Value) -> Result<Value,
     reply["sourceVoxels"] = json!(session.objects[source].cells.len());
     reply["targetVoxels"] = json!(session.objects[done.target].cells.len());
     reply["activeObject"] = json!(session.selected);
+    Ok(reply)
+}
+
+/// The spec of MCP `deterrace`: `mode`, `size`, `fill`, `origin`,
+/// `tolerance`, `run`, `jitter`, `seed`, and an optional box `x0..z1`.
+pub(crate) fn terrace_spec(params: &Value) -> Result<crate::tools::TerraceSpec, String> {
+    use crate::tools::{TerraceMode, TerraceSpec};
+    let mode = match opt_str(params, "mode")?.as_deref() {
+        None | Some("blocks") => TerraceMode::Blocks,
+        Some("stagger") => TerraceMode::Stagger,
+        Some(other) => return Err(format!("mode must be blocks or stagger, not `{other}`")),
+    };
+    let whole = |key: &str, default: i32| -> Result<i32, String> {
+        match params.get(key) {
+            None | Some(Value::Null) => Ok(default),
+            Some(value) => as_i32(value).ok_or_else(|| format!("{key} must be a whole number")),
+        }
+    };
+    let size = whole("size", 2)?;
+    let origin = super::opt_ivec3(params, "origin")?.unwrap_or([0, 0, 0]);
+    let corners = ["x0", "y0", "z0", "x1", "y1", "z1"];
+    let region = match corners.iter().filter(|k| params.get(**k).is_some()).count() {
+        0 => None,
+        6 => {
+            let (x0, y0, z0, x1, y1, z1) = box_corners(params)?;
+            Some(((x0, y0, z0), (x1, y1, z1)))
+        }
+        _ => {
+            return Err(
+                "pass all of x0, y0, z0, x1, y1, z1 for a box, or none for the whole object".into(),
+            )
+        }
+    };
+    let seed = match params.get("seed") {
+        None | Some(Value::Null) => 0,
+        Some(value) => value.as_u64().ok_or("seed must be a whole number")?,
+    };
+    Ok(TerraceSpec {
+        mode,
+        size,
+        fill: opt_f64(params, "fill")?.unwrap_or(0.5),
+        origin: (origin[0], origin[1], origin[2]),
+        tolerance: whole("tolerance", size)?,
+        run: whole("run", 2)?,
+        jitter: opt_f64(params, "jitter")?.unwrap_or(0.3),
+        seed,
+        region,
+    })
+}
+
+/// The writes of `deterrace` against `cells` and the reply's counts. Rhai
+/// scripts call this with their options map.
+pub(crate) fn terrace_writes(
+    cells: &HashMap<Cell, u8>,
+    params: &Value,
+) -> Result<(Vec<(i32, i32, i32, i32)>, Value), String> {
+    let spec = terrace_spec(params)?;
+    let done = crate::tools::deterrace(cells, &spec)?;
+    let mut reply = json!({
+        "mode": match spec.mode {
+            crate::tools::TerraceMode::Blocks => "blocks",
+            crate::tools::TerraceMode::Stagger => "stagger",
+        },
+        "added": done.added,
+        "removed": done.removed,
+        "steps": {"before": done.steps[0], "after": done.steps[1]},
+        "longestRun": {"before": done.longest[0], "after": done.longest[1]},
+    });
+    if spec.mode == crate::tools::TerraceMode::Blocks {
+        reply["kept"] = json!(done.kept);
+    }
+    Ok((done.writes, reply))
+}
+
+/// MCP `deterrace`: re-quantize the active object into blocks, or stagger
+/// its one-cell terrace steps, one undo step.
+pub(super) fn deterrace(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let (writes, mut reply) = terrace_writes(&session.active().cells, params)?;
+    let changed = session.write_cells(&writes)?;
+    reply["changed"] = json!(changed);
+    reply["voxels"] = json!(session.voxel_count());
     Ok(reply)
 }
 

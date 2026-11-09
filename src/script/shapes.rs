@@ -1,6 +1,6 @@
 //! The MCP shape tools in Rhai: `fill_ellipsoid`, `fill_rounded_box`,
 //! `fill_tube`, `fill_box` with a mode, `carve_*`, `recolor`,
-//! `surface_stroke`, `smooth`,
+//! `surface_stroke`, `deterrace`, `smooth`,
 //! `break_end`, and `scatter`.
 //!
 //! Each call turns its arguments into the MCP tool's arguments and runs the
@@ -24,6 +24,22 @@ const TUBE_SHAPE: &[&str] = &["radius", "curve", "aspect", "roll", "profile", "s
 const TUBE: &[&str] = &[
     "mode", "radius", "curve", "aspect", "roll", "profile", "pattern", "period", "sectors", "seed",
     "space", "mirror",
+];
+const TERRACE: &[&str] = &[
+    "mode",
+    "size",
+    "fill",
+    "origin",
+    "tolerance",
+    "run",
+    "jitter",
+    "seed",
+    "x0",
+    "y0",
+    "z0",
+    "x1",
+    "y1",
+    "z1",
 ];
 const STROKE: &[&str] = &[
     "curve", "width", "depth", "reach", "only", "space", "mirror",
@@ -212,6 +228,18 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
             engine.register_fn("recolor", move |pairs: Array, opts: Map| run(pairs, &opts));
         } else {
             engine.register_fn("recolor", move |pairs: Array| run(pairs, &Map::new()));
+        }
+    }
+    for with_opts in [false, true] {
+        let state = scratch.clone();
+        let run = move |opts: &Map| -> Fallible<Map> {
+            let args = options(opts, TERRACE, "deterrace")?;
+            state.borrow_mut().deterrace(args).map_err(runtime)
+        };
+        if with_opts {
+            engine.register_fn("deterrace", move |opts: Map| run(&opts));
+        } else {
+            engine.register_fn("deterrace", move || run(&Map::new()));
         }
     }
     for with_opts in [false, true] {
@@ -426,6 +454,17 @@ impl Scratch {
         }
         .ok_or("space world needs an object of the document; an object this run creates takes local cells")?;
         Ok((remote::to_local(method, &args, offset)?, Some(offset)))
+    }
+
+    fn deterrace(&mut self, args: Args) -> Result<Map, String> {
+        self.keep_going()?;
+        let (writes, counts) = remote::terrace_writes(self.cells(), &Value::Object(args))?;
+        let changed = self.apply(&writes)?;
+        let mut out = super::document::dynamic(&counts)
+            .try_cast::<Map>()
+            .unwrap_or_default();
+        out.insert("changed".into(), Dynamic::from_int(changed));
+        Ok(out)
     }
 
     fn stroke(&mut self, args: Args) -> Result<Map, String> {
