@@ -485,6 +485,25 @@ impl Scratch {
     /// of the document or of this run uses, nor one `set_palette` named.
     fn cavity(&mut self, args: Args) -> Result<Map, String> {
         self.keep_going()?;
+        let mut shades = self.run_shades();
+        let (writes, counts) =
+            remote::cavity_writes(self.cells(), &Value::Object(args), &mut shades)?;
+        self.shades.extend(shades.created.iter().copied());
+        let changed = self.apply(&writes)?;
+        let mut reply: Map = counts
+            .iter()
+            .map(|(key, value)| (key.as_str().into(), super::document::dynamic(value)))
+            .collect();
+        reply.insert("changed".into(), Dynamic::from_int(changed));
+        Ok(reply)
+    }
+
+    /// The palette as the run leaves it, for a tool that makes slots
+    /// (`cavity_tint`, `paint_from_views`, `reduce_palette`): a slot a cell
+    /// of the document or of this run uses, or one `set_palette` named or an
+    /// earlier tool made, is taken. The caller adds `created` to
+    /// `self.shades`.
+    pub(super) fn run_shades(&self) -> crate::tools::Shades {
         let mut shades = match &self.view.shades {
             Some(shades) => (**shades).clone(),
             None => crate::state::Session::blank_shades(),
@@ -507,16 +526,8 @@ impl Scratch {
             shades.materials[shade.slot as usize] = shades.materials[shade.from as usize];
             shades.used[shade.slot as usize] = true;
         }
-        let (writes, counts) =
-            remote::cavity_writes(self.cells(), &Value::Object(args), &mut shades)?;
-        self.shades.extend(shades.created.iter().copied());
-        let changed = self.apply(&writes)?;
-        let mut reply: Map = counts
-            .iter()
-            .map(|(key, value)| (key.as_str().into(), super::document::dynamic(value)))
-            .collect();
-        reply.insert("changed".into(), Dynamic::from_int(changed));
-        Ok(reply)
+        shades.created.clear();
+        shades
     }
 
     /// Run a stone tool on the object being written. The reply holds

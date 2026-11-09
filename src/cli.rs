@@ -1236,6 +1236,7 @@ const PAINT_TOOLS: &[(&str, &str)] = &[
     ("project_paint", "voxel.project_paint"),
     ("decal", "voxel.decal"),
     ("shell_plates", "voxel.shell_plates"),
+    ("paint_from_views", "voxel.paint_from_views"),
 ];
 
 /// `froxel paint`: MCP `project_paint` (or another paint tool, `--tool`)
@@ -1257,7 +1258,7 @@ pub fn paint(args: &[String]) -> i32 {
                     eprintln!(
                         "wrote {} ({} cells painted, {} changed)",
                         output.display(),
-                        reply["cells"],
+                        reply.get("cells").unwrap_or(&reply["painted"]),
                         reply["changed"],
                     );
                     0
@@ -1293,8 +1294,16 @@ arguments. --tool picks it:
       {palettes {ring, seam, central, band, rim}, layout (rings | voronoi),
       rings, central, band, bandCount, rim, center, seamWidth, seamDepth,
       depth, facing, zRange, x0..z1, only, jitter, symmetric, seed}
-mirror (true, an axis, or {axis, at}) paints both sides of a plane. A
-relative path is relative to paint.json.";
+  paint_from_views  every surface cell from a whole views sheet, each
+      from the views that see it by the view its normal faces most:
+      {views [{view, path | rows, crop}] | path alone (the measure_sheet
+      layout), objects, blend (nearest | soft), seam, sharpness, fit (ink
+      | crop), reach, mirror (a missing right view from the left), slots
+      | newSlots (with accents, minShare, contrast, maxAccents), only,
+      x0..z1}
+mirror (true, an axis, or {axis, at}) paints both sides of a plane;
+paint_from_views' mirror is true or false. A relative path is relative to
+paint.json.";
 
 type PaintArgs = (PathBuf, PathBuf, serde_json::Value, &'static str);
 
@@ -1325,7 +1334,7 @@ fn paint_args(args: &[String]) -> Result<Option<PaintArgs>, String> {
                     .map(|(_, method)| *method)
                     .ok_or_else(|| {
                         format!(
-                            "--tool must be project_paint, decal, or shell_plates, not `{name}`"
+                            "--tool must be project_paint, decal, shell_plates, or paint_from_views, not `{name}`"
                         )
                     })?;
             }
@@ -1340,12 +1349,7 @@ fn paint_args(args: &[String]) -> Result<Option<PaintArgs>, String> {
         .map_err(|err| format!("Could not read {}: {err}", file.display()))?;
     let mut params: serde_json::Value = serde_json::from_str(&text)
         .map_err(|err| format!("{} is not JSON: {err}", file.display()))?;
-    if let Some(path) = params.get("path").and_then(|p| p.as_str()) {
-        if Path::new(path).is_relative() {
-            let base = file.parent().unwrap_or(Path::new(""));
-            params["path"] = serde_json::json!(base.join(path).display().to_string());
-        }
-    }
+    views_relative(&mut params, file.parent().unwrap_or(Path::new("")));
     Ok(Some((input, output, params, method)))
 }
 

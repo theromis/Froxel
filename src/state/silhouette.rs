@@ -638,11 +638,133 @@ impl OrientPanel {
     }
 }
 
+/// The Paint from views panel: MCP `paint_from_views` from a whole sheet
+/// (its measured layout) or the Carve from views panel's views.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PaintViewsPanel {
+    /// The sheet PNG; empty takes the Carve from views views.
+    pub path: String,
+    pub background: BackgroundField,
+    /// 0 nearest, 1 soft.
+    pub blend: usize,
+    pub seam: f32,
+    pub sharpness: f32,
+    /// A missing right view from the left one mirrored.
+    pub mirror: bool,
+    /// 0 the slots the object uses, 1 new slots, 2 the listed slots.
+    pub colours: usize,
+    pub new_slots: i32,
+    pub slots: String,
+    /// Keep eyes and mouths their own new slot.
+    pub accents: bool,
+    pub only: String,
+    pub inset: i32,
+    pub reach: f32,
+    /// Paint every visible object together instead of the active one.
+    pub all_objects: bool,
+}
+
+impl Default for PaintViewsPanel {
+    fn default() -> Self {
+        Self {
+            path: String::new(),
+            background: BackgroundField::default(),
+            blend: 0,
+            seam: 12.0,
+            sharpness: 4.0,
+            mirror: true,
+            colours: 0,
+            new_slots: 12,
+            slots: String::new(),
+            accents: true,
+            only: String::new(),
+            inset: 2,
+            reach: 3.0,
+            all_objects: false,
+        }
+    }
+}
+
+impl PaintViewsPanel {
+    /// The MCP `paint_from_views` arguments, over `region` (local cells of
+    /// the active object) when given; `objects` names the objects painted
+    /// together with All objects.
+    pub(crate) fn args(
+        &self,
+        carve: &CarvePanel,
+        region: Option<(super::Cell, super::Cell)>,
+        objects: &[String],
+    ) -> Result<Value, String> {
+        let mut args = if self.path.trim().is_empty() {
+            let carved = carve.args(1)?;
+            if carved["views"]
+                .as_array()
+                .is_none_or(|views| views.is_empty())
+            {
+                return Err(
+                    "Paint from views: choose a sheet, or turn on views in Carve from views."
+                        .into(),
+                );
+            }
+            json!({"views": carved["views"]})
+        } else {
+            let mut args = json!({"path": self.path.trim()});
+            self.background.write(&mut args);
+            args
+        };
+        if self.blend == 1 {
+            args["blend"] = json!("soft");
+            args["sharpness"] = json!(self.sharpness.clamp(0.0, 64.0));
+        } else {
+            args["blend"] = json!("nearest");
+            args["seam"] = json!(self.seam.clamp(0.0, 45.0));
+        }
+        args["mirror"] = json!(self.mirror);
+        args["inset"] = json!(self.inset.clamp(0, 16));
+        args["reach"] = json!(self.reach.clamp(0.0, 64.0));
+        match self.colours {
+            1 => {
+                args["newSlots"] = json!(self.new_slots.clamp(1, 64));
+                args["accents"] = json!(self.accents);
+            }
+            2 => {
+                let slots = super::edit::slot_field("Paint from views", &self.slots)?;
+                if slots.is_empty() {
+                    return Err("Paint from views: list the slots to quantise into.".into());
+                }
+                args["slots"] = json!(slots);
+            }
+            _ => {}
+        }
+        let only = super::edit::slot_field("Paint from views", &self.only)?;
+        if !only.is_empty() {
+            args["only"] = json!(only);
+        }
+        if self.all_objects && !objects.is_empty() {
+            args["objects"] = json!(objects);
+        }
+        if let Some((min, max)) = region {
+            for (key, value) in [
+                ("x0", min.0),
+                ("y0", min.1),
+                ("z0", min.2),
+                ("x1", max.0),
+                ("y1", max.1),
+                ("z1", max.2),
+            ] {
+                args[key] = json!(value);
+            }
+        }
+        Ok(args)
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SilhouettePanels {
     pub measure: MeasurePanel,
     pub carve: CarvePanel,
     pub paint: PaintPanel,
+    pub paint_views: PaintViewsPanel,
     pub decal: DecalPanel,
     pub fit: FitPanel,
     pub orient: OrientPanel,
@@ -1148,6 +1270,52 @@ impl Session {
         if let Some(path) = super::dialog::pick_open("PNG", &["png"]) {
             self.silhouette.paint.path = path.display().to_string();
         }
+    }
+
+    /// Choose the sheet of Paint from views.
+    pub fn pick_paint_views_sheet(&mut self) {
+        if let Some(path) = super::dialog::pick_open("PNG", &["png"]) {
+            self.silhouette.paint_views.path = path.display().to_string();
+        }
+    }
+
+    /// The Paint from views button: MCP `paint_from_views` over the
+    /// selection's box, or the whole object (or every visible object).
+    pub fn paint_views_from_panel(&mut self) {
+        let region = super::geom::cell_bounds(self.picked.iter().copied());
+        let objects: Vec<String> = self
+            .objects
+            .iter()
+            .filter(|o| !o.hidden && !o.cells.is_empty())
+            .map(|o| o.name.clone())
+            .collect();
+        let args = match self
+            .silhouette
+            .paint_views
+            .args(&self.silhouette.carve, region, &objects)
+        {
+            Ok(args) => args,
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
+        self.status = match crate::remote::apply(self, "voxel.paint_from_views", &args) {
+            Ok(reply) => format!(
+                "Painted {} of {} surface cells ({} changed, {} blended at seams); {} seen by no view kept their slot.{}",
+                reply["painted"],
+                reply["surface"],
+                reply["changed"],
+                reply["blended"],
+                reply["unseen"],
+                match reply["newSlots"].as_array().map(Vec::len) {
+                    Some(n) if n > 0 => format!(" {n} new slots."),
+                    _ => String::new(),
+                }
+            ),
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
     }
 
     /// Choose the PNG of Decal.

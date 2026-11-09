@@ -15,6 +15,16 @@
 
 ### Added
 
+- Paint from views: MCP `paint_from_views`, Rhai `paint_from_views(views,
+  opts)`, the Paint from views section, and `froxel paint --tool
+  paint_from_views` recolour every surface cell of an object (or of several
+  objects together) from a whole views sheet in one undo step: each cell
+  from the views that see it (the first solid cell of its column), by the
+  view its normal faces most, blended within a seam angle or softly, mixed
+  in Oklab and quantised into the object's slots, given slots, or a few new
+  slots clustered from the sheet with an accent guard for eyes and mouths.
+  A lone sheet path reads the `measure_sheet` layout; a missing right view
+  is the left one mirrored.
 - De-terrace: MCP `deterrace`, Rhai `deterrace(opts)`, the De-terrace
   section, and `froxel deterrace` take the one-cell contour terraces out of a
   voxelized smooth mesh, in one undo step: `blocks` re-quantizes the object

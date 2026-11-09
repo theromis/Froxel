@@ -31,7 +31,7 @@ server is still running. A server started with `--watch` reloads by itself.
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `shell_plates`, `components`, `deterrace`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` and `decal` with the image as rows and a legend, `fit_to_views` and `orient_to_views` with views as rows and a legend, and `marker`,
+  (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `shell_plates`, `components`, `deterrace`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` and `decal` with the image as rows and a legend, `paint_from_views` with views as rows and a legend, `fit_to_views` and `orient_to_views` with views as rows and a legend, and `marker`,
   `collision_box`, `connector`, `collision_from_voxels`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `split_object`, `clear_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -76,7 +76,7 @@ server is still running. A server started with `--watch` reloads by itself.
   = local cell + the object's `position`. Switch with `set_active_object`.
   Pass `space: "world"` (fills, `carve`, `set_voxels`, `get_voxels`,
   `smooth`, `loft`, `brush`, `carve_from_views`, `project_paint`,
-  `decal`, `split_object`) to give world cells instead; parts that moved after a
+  `paint_from_views`, `decal`, `split_object`) to give world cells instead; parts that moved after a
   save and reopen, or a `mirror_object` copy, need no subtraction then.
 - Palette `0` erases. Slots `1..255` are colours; set them with `set_palette`
   (`entries` sets many at once) before you fill. A colour is `color:
@@ -161,7 +161,12 @@ server is still running. A server started with `--watch` reloads by itself.
    (1 is the surface), `normalLimit` (e.g. 60, so steep sides get no
    streaks), and `only` (the slots it may repaint). It never adds or removes
    cells; do not paint layer by layer with `carve_from_views` `mode: paint`
-   and dummy views. Eyes, a mouth, nostrils, or a badge on a round head or
+   and dummy views. To give a whole form (an image-to-3D import smeared on
+   its hidden sides, or a finished blockout) the sheet's colours on EVERY
+   side, call `paint_from_views` once with the sheet `path` (it reads the
+   layout as `measure_sheet` does) or the four crops, and `newSlots` (about
+   8 to 12) or the object's `slots`; pass `objects` for rig parts. Check
+   `unseen` (cells no view sees keep their slot) and each view's `missed`. Eyes, a mouth, nostrils, or a badge on a round head or
    body are a `decal` (picture, `point` or `ray`, `size` in cells along the
    surface, `up`, `only`, `mirror: true` for the pair of eyes), not a
    `project_paint`, which smears them on the slopes; check `missed` is 0. To finish a blockout (from `carve_from_views` or

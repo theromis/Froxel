@@ -143,7 +143,7 @@ y, then z; each is four numbers, so the array limit allows about 1 000.
 ### World cells
 
 `get_voxels`, `set_voxels`, the fills, the carves, `smooth`, `loft`, `brush`,
-`carve_from_views`, `project_paint`, `decal`, and `split_object` take `space:
+`carve_from_views`, `project_paint`, `paint_from_views`, `decal`, and `split_object` take `space:
 "world"` in their options map, as over MCP: the coordinates are world cells,
 and the position the object had when the run started is subtracted first.
 `get_voxels` then returns world cells, and so do the `bounds` of
@@ -621,6 +621,32 @@ when nothing is carved, and each of `views` holds `grid`, `covered`, and
 `depth` (`calibrate`, `near`, `far`, `rim`, `carved`) for a depth view. `examples/depth_head.rhai` carves a round head from front, side,
 and top rows with a depth map each. `examples/carved_stump.rhai` carves a stump with
 roots from front, side, and top rows.
+
+### Paint from views
+
+```rhai
+let views = [
+    #{view: "front", rows: front_rows, legend: #{o: "#e8822a", c: "#f3e2a8"}},
+    #{view: "side", rows: side_rows, legend: #{o: "#e8822a", c: "#f3e2a8"}},
+    #{view: "top", rows: top_rows, legend: #{o: "#e8822a", b: "#7a3b1e"}},
+];
+let report = paint_from_views(views);
+let report = paint_from_views(views, #{newSlots: 6, seam: 8});
+let report = paint_from_views(views, #{slots: [3, 4, 5], blend: "soft", sharpness: 6, only: [3]});
+```
+
+MCP `paint_from_views` on the object being written: every surface cell takes
+its colour from the views that see it, by the view its normal faces most,
+blended within `seam` degrees of a boundary. The views are maps of `rows`
+and a `legend`, as `carve_from_views` takes them (over MCP they may be PNG
+crops of a sheet, on this same code path). Options are the MCP ones:
+`blend`, `seam`, `sharpness`, `fit`, `reach`, `inset`, `mirror`, `slots` or
+`newSlots` (with `accents`, `minShare`, `contrast`, `maxAccents`), `only`,
+`x0`..`z1`, and `space`. `objects` is MCP only: a script paints the object it
+writes. New colours take free slots of the palette as the run leaves it, as
+`cavity_tint`'s shades do. It returns `#{changed, painted, surface, unseen,
+blended, views, slots, newSlots, accents}`. `examples/painted_crate.rhai`
+paints a made-up crate from three views.
 
 ### Project paint
 
@@ -1347,7 +1373,7 @@ Any function that is not listed on this page is not registered.
 A script describes a family; MCP `export_variants` (or `froxel variants`,
 or the Export panel's **Export variants…**) bakes it once per parameter set
 and writes a `.vox`, a `.glb`, and a manifest with each set's parameters,
-markers, and bounds. Scripts themselves never write files, and they read none: `carve_from_views`, `project_paint`, `decal`, and `fit_to_views` take rows, not PNGs.
+markers, and bounds. Scripts themselves never write files, and they read none: `carve_from_views`, `project_paint`, `paint_from_views`, `decal`, and `fit_to_views` take rows, not PNGs.
 
 ```json
 [

@@ -1,5 +1,6 @@
 //! Inspector sections of the silhouette tools: Carve from views (MCP
-//! `carve_from_views`), Paint from view (MCP `project_paint`), Decal (MCP
+//! `carve_from_views`), Paint from view (MCP `project_paint`), Paint from
+//! views (MCP `paint_from_views`), Decal (MCP
 //! `decal`), Fit to views
 //! (MCP `fit_to_views`), and Compare silhouette (MCP `compare_silhouette`),
 //! whose overlay the viewport shows.
@@ -766,4 +767,92 @@ pub(super) fn compare(ui: &mut Ui, session: &mut Session) {
             .small(),
         );
     }
+}
+
+/// MCP `paint_from_views`: a whole views sheet recolours every surface cell.
+pub(super) fn paint_views(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Paint from views");
+        let mut pick = false;
+        let panel = &mut session.silhouette.paint_views;
+        egui::Grid::new("paint-views-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Sheet", "A views sheet PNG (front, side, top, back in two rows and two columns), read as Measure sheet reads it. Empty takes the views of Carve from views.");
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut panel.path)
+                            .hint_text("Carve's views")
+                            .desired_width(150.0),
+                    );
+                    if ui.button("…").on_hover_text("Choose the sheet PNG.").clicked() {
+                        pick = true;
+                    }
+                });
+                ui.end_row();
+                label(ui, "Background", "Which pixels of the sheet are background.");
+                background(ui, "paint-views-background", &mut panel.background);
+                ui.end_row();
+                label(ui, "Blend", "Nearest: each surface cell takes the view its normal faces most, blending the two best within Seam degrees of their boundary. Soft: every view that sees the cell, weighted by how much it faces it.");
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut panel.blend, 0, "Nearest");
+                    ui.selectable_value(&mut panel.blend, 1, "Soft");
+                    if panel.blend == 0 {
+                        ui.add(egui::DragValue::new(&mut panel.seam).range(0.0..=45.0).speed(0.5).suffix("°"))
+                            .on_hover_text("Seam: degrees around the boundary between two views where they blend; 0 is a hard seam.");
+                    } else {
+                        ui.add(egui::DragValue::new(&mut panel.sharpness).range(0.0..=64.0).speed(0.1))
+                            .on_hover_text("Sharpness: the power of the facing weight; higher is closer to Nearest.");
+                    }
+                });
+                ui.end_row();
+                label(ui, "Mirror", "Make a missing right view from the left one mirrored (and the other way), for a symmetric creature.");
+                ui.checkbox(&mut panel.mirror, "Missing side");
+                ui.end_row();
+                label(ui, "Colours", "Used: the slots the object already uses. New: up to N new colours clustered from the sheet's, in free slots, with eyes and mouths kept their own. Slots: the listed slots.");
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut panel.colours, 0, "Used");
+                    ui.selectable_value(&mut panel.colours, 1, "New");
+                    ui.selectable_value(&mut panel.colours, 2, "Slots");
+                });
+                ui.end_row();
+                if panel.colours == 1 {
+                    label(ui, "New slots", "How many new colours, plus kept accents.");
+                    ui.horizontal(|ui| {
+                        ui.add(egui::DragValue::new(&mut panel.new_slots).range(1..=64));
+                        ui.checkbox(&mut panel.accents, "Keep accents")
+                            .on_hover_text("Small distinct colours (eyes, a mouth) get a slot of their own instead of melting into a big cluster.");
+                    });
+                    ui.end_row();
+                } else if panel.colours == 2 {
+                    label(ui, "Slots", "The slots colours quantise into, such as 3 4 7.");
+                    ui.add(egui::TextEdit::singleline(&mut panel.slots).hint_text("3 4 7").desired_width(90.0));
+                    ui.end_row();
+                }
+                label(ui, "Inset", "Pixels inside each silhouette's edge colours are read from, so anti-aliased background never lands on the model.");
+                ui.add(egui::DragValue::new(&mut panel.inset).range(0..=16));
+                ui.end_row();
+                label(ui, "Reach", "Cells: a surface cell off a view's ink takes the nearest ink within this.");
+                ui.add(egui::DragValue::new(&mut panel.reach).range(0.0..=64.0).speed(0.1));
+                ui.end_row();
+                label(ui, "Only", "Slots that may be repainted, such as 3 4. Empty is every slot.");
+                ui.add(egui::TextEdit::singleline(&mut panel.only).hint_text("all slots").desired_width(90.0));
+                ui.end_row();
+                label(ui, "Objects", "Paint every visible object together (rig parts hide each other from the views), instead of the active one.");
+                ui.checkbox(&mut panel.all_objects, "All visible");
+                ui.end_row();
+            });
+        if ui
+            .button("Paint from views")
+            .on_hover_text("MCP paint_from_views over the selection's box, or the whole object: every surface cell from the views that see it. Never adds or removes cells. One undo step.")
+            .clicked()
+        {
+            session.paint_views_from_panel();
+        }
+        if pick {
+            session.pick_paint_views_sheet();
+        }
+    });
 }

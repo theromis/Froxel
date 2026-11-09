@@ -1729,3 +1729,320 @@ pub(super) fn orient_to_views(session: &mut Session, params: &Value) -> Result<V
     reply.insert("voxels".into(), json!(session.voxel_count()));
     Ok(Value::Object(reply))
 }
+
+/// The spec of `paint_from_views`. Views come from `views` (each `{view,
+/// path | rows, crop, legend, flip, ...}` with the sheet-wide keys at the
+/// top level), or, over MCP with a top-level `path` and no `views`, from
+/// the layout `measure_sheet` finds in that sheet. `default_slots` are the
+/// slots colours quantise into without `slots` or `newSlots`.
+pub(crate) fn views_paint_spec(
+    params: &Value,
+    files: bool,
+    default_slots: Vec<u8>,
+) -> Result<crate::tools::PaintViewsSpec, String> {
+    use crate::tools::{Blend, PaintViewsSpec, Quantize, SheetImage, ViewsFit};
+    let measured;
+    let list = match params.get("views") {
+        Some(Value::Array(list)) => list,
+        None | Some(Value::Null) if files && params.get("path").is_some_and(|p| p.is_string()) => {
+            let mut item = json!({});
+            for key in [
+                "path",
+                "background",
+                "tolerance",
+                "alphaThreshold",
+                "excludeColors",
+                "excludeTolerance",
+                "flood",
+                "keepLargest",
+            ] {
+                if let Some(value) = params.get(key).filter(|v| !v.is_null()) {
+                    item[key] = value.clone();
+                }
+            }
+            let sheet = measure_sheet(&item)?;
+            measured = sheet
+                .get("fitViews")
+                .and_then(Value::as_array)
+                .cloned()
+                .ok_or(
+                    "measure_sheet found no 2 x 2 views layout in path: pass views with crops",
+                )?;
+            &measured
+        }
+        _ => {
+            return Err(if files {
+                "views must be a list of {view, path | rows, crop?}, or pass only path to read the sheet's layout as measure_sheet does".into()
+            } else {
+                "views must be a list of {view, rows, legend}".into()
+            })
+        }
+    };
+    if list.is_empty() || list.len() > 6 {
+        return Err("views must hold 1 to 6 views".into());
+    }
+    let mut images = HashMap::new();
+    let mut views = Vec::with_capacity(list.len());
+    for (i, item) in list.iter().enumerate() {
+        if !item.is_object() {
+            return Err(format!("view {i} must be an object"));
+        }
+        let item = &sheet_keys(params, item);
+        let side =
+            Side::parse(&opt_str(item, "view")?.ok_or_else(|| format!("view {i} needs view"))?)?;
+        let mask = view_mask(item, files, &mut images).map_err(|err| format!("view {i}: {err}"))?;
+        views.push(SheetImage { side, mask });
+    }
+    let blend = match opt_str(params, "blend")?.as_deref() {
+        None | Some("nearest") => Blend::Nearest {
+            seam: opt_f64(params, "seam")?.unwrap_or(12.0) as f32,
+        },
+        Some("soft") => Blend::Soft {
+            sharpness: opt_f64(params, "sharpness")?.unwrap_or(4.0) as f32,
+        },
+        Some(other) => return Err(format!("blend must be nearest or soft, not `{other}`")),
+    };
+    let fit = match opt_str(params, "fit")?.as_deref() {
+        None | Some("ink") => ViewsFit::Ink,
+        Some("crop") => ViewsFit::Crop,
+        Some(other) => return Err(format!("fit must be ink or crop, not `{other}`")),
+    };
+    let quantize = match (slot_list(params, "slots")?, params.get("newSlots")) {
+        (Some(_), Some(n)) if !n.is_null() => return Err("pass slots or newSlots, not both".into()),
+        (Some(slots), _) => Quantize::Slots(slots),
+        (None, Some(n)) if !n.is_null() => Quantize::New(
+            n.as_u64()
+                .ok_or("newSlots must be a whole number of slots")?
+                .min(1 << 16) as usize,
+        ),
+        _ => {
+            if default_slots.is_empty() {
+                return Err(
+                    "the object uses no slot to quantise into: pass slots or newSlots".into(),
+                );
+            }
+            Quantize::Slots(default_slots)
+        }
+    };
+    let guard = match params.get("accents") {
+        Some(Value::Bool(false)) => None,
+        _ => Some(accent_guard(params)?),
+    };
+    let corners = ["x0", "y0", "z0", "x1", "y1", "z1"];
+    let region = match corners.iter().filter(|k| params.get(**k).is_some()).count() {
+        0 => None,
+        6 => {
+            let (x0, y0, z0, x1, y1, z1) = super::box_corners(params)?;
+            Some(((x0, y0, z0), (x1, y1, z1)))
+        }
+        _ => return Err("pass all of x0, y0, z0, x1, y1, z1 for a box, or none".into()),
+    };
+    Ok(PaintViewsSpec {
+        views,
+        blend,
+        mirror: opt_bool(params, "mirror")?.unwrap_or(true),
+        fit,
+        reach: opt_f64(params, "reach")?.unwrap_or(3.0) as f32,
+        inset: match params.get("inset") {
+            // Rows have no anti-aliased edge to peel.
+            None | Some(Value::Null) => {
+                if list
+                    .iter()
+                    .all(|v| v.get("rows").is_some_and(|r| !r.is_null()))
+                {
+                    0
+                } else {
+                    2
+                }
+            }
+            Some(found) => found
+                .as_u64()
+                .filter(|n| *n <= 16)
+                .ok_or("inset must be 0..16 pixels")? as u32,
+        },
+        region,
+        only: slot_list(params, "only")?,
+        quantize,
+        guard,
+    })
+}
+
+/// The accent guard of `paint_from_views` and `reduce_palette`:
+/// `minShare` (default 0.002), `contrast` (Oklab, default 0.12), and
+/// `maxAccents` (default 4).
+pub(crate) fn accent_guard(params: &Value) -> Result<crate::tools::colors::Guard, String> {
+    let mut guard = crate::tools::colors::Guard::default();
+    if let Some(share) = opt_f64(params, "minShare")? {
+        if !(0.0..=1.0).contains(&share) {
+            return Err("minShare must be 0..1".into());
+        }
+        guard.min_share = share as f32;
+    }
+    if let Some(contrast) = opt_f64(params, "contrast")? {
+        if !(0.0..=1.5).contains(&contrast) {
+            return Err("contrast must be 0..1.5 (an Oklab distance)".into());
+        }
+        guard.contrast = contrast as f32;
+    }
+    match params.get("maxAccents") {
+        None | Some(Value::Null) => {}
+        Some(found) => {
+            guard.max_accents = found
+                .as_u64()
+                .filter(|n| *n <= 16)
+                .ok_or("maxAccents must be 0..16")? as usize;
+        }
+    }
+    Ok(guard)
+}
+
+/// The writes of `paint_from_views` against `cells` (any one frame of
+/// coordinates) and its reply. New colours go into `shades.created`; the
+/// caller writes them to the palette in the same undo step. With `files`
+/// false (Rhai) the views must be `rows`.
+pub(crate) fn views_paint_writes(
+    cells: &HashMap<Cell, u8>,
+    palette: &[[u8; 3]; 256],
+    params: &Value,
+    files: bool,
+    shades: &mut crate::tools::Shades,
+) -> Result<(Vec<(Cell, u8)>, Map<String, Value>), String> {
+    let mut used: Vec<u8> = cells.values().copied().collect();
+    used.sort_unstable();
+    used.dedup();
+    let spec = views_paint_spec(params, files, used)?;
+    let done = crate::tools::paint_from_views(cells, &spec, palette, shades)?;
+    let mut reply = Map::new();
+    reply.insert("painted".into(), json!(done.cells.len()));
+    reply.insert("surface".into(), json!(done.surface));
+    reply.insert("unseen".into(), json!(done.unseen));
+    reply.insert("blended".into(), json!(done.blended));
+    reply.insert(
+        "views".into(),
+        json!(done
+            .views
+            .iter()
+            .map(|v| json!({
+                "view": v.side.name(),
+                "mirrored": v.mirrored,
+                "visible": v.visible,
+                "used": v.used,
+                "snapped": v.snapped,
+                "missed": v.missed,
+            }))
+            .collect::<Vec<_>>()),
+    );
+    reply.insert(
+        "slots".into(),
+        json!(done
+            .slots
+            .iter()
+            .map(|(slot, n)| json!({"slot": slot, "cells": n}))
+            .collect::<Vec<_>>()),
+    );
+    reply.insert(
+        "newSlots".into(),
+        json!(shades
+            .created
+            .iter()
+            .map(|s| json!({"slot": s.slot, "rgba": s.rgba}))
+            .collect::<Vec<_>>()),
+    );
+    if matches!(spec.quantize, crate::tools::Quantize::New(_)) {
+        reply.insert("accents".into(), json!(done.accents));
+    }
+    Ok((done.cells, reply))
+}
+
+/// MCP handler `paint_from_views`: recolour the surface of the active
+/// object, or of every object in `objects` together (each hides what is
+/// behind it from the others), from a whole views sheet, one undo step.
+pub(super) fn paint_from_views(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let targets: Vec<usize> = match params.get("objects") {
+        None | Some(Value::Null) => vec![session.selected],
+        Some(Value::Array(list)) if !list.is_empty() => {
+            let mut out = Vec::new();
+            for item in list {
+                let index = super::edit::object_arg(session, &json!({"o": item}), "o")?
+                    .ok_or("objects must name objects by index or name")?;
+                if !out.contains(&index) {
+                    out.push(index);
+                }
+            }
+            out
+        }
+        Some(_) => return Err("objects must be a list of object names or indices".into()),
+    };
+    // Everything in world cells; the box arrives in the active object's
+    // local cells (space world turned it local), so it moves too.
+    let active = session.active().translation;
+    let mut params = params.clone();
+    for (key, by) in [
+        ("x0", active.0),
+        ("x1", active.0),
+        ("y0", active.1),
+        ("y1", active.1),
+        ("z0", active.2),
+        ("z1", active.2),
+    ] {
+        if let Some(v) = params.get(key).and_then(Value::as_i64) {
+            params[key] = json!(v + i64::from(by));
+        }
+    }
+    let mut world: HashMap<Cell, u8> = HashMap::new();
+    let mut owner: HashMap<Cell, usize> = HashMap::new();
+    for &index in &targets {
+        let object = &session.objects[index];
+        let t = object.translation;
+        for (cell, slot) in &object.cells {
+            let w = (cell.0 + t.0, cell.1 + t.1, cell.2 + t.2);
+            world.insert(w, *slot);
+            owner.insert(w, index);
+        }
+    }
+    let palette = session_palette(session);
+    let mut shades = session.shades();
+    let (painted, mut reply) = views_paint_writes(&world, &palette, &params, true, &mut shades)?;
+    let mut per_object: HashMap<usize, Vec<(i32, i32, i32, i32)>> = HashMap::new();
+    for (cell, slot) in painted {
+        let index = owner[&cell];
+        let t = session.objects[index].translation;
+        per_object.entry(index).or_default().push((
+            cell.0 - t.0,
+            cell.1 - t.1,
+            cell.2 - t.2,
+            i32::from(slot),
+        ));
+    }
+    let selected = session.selected;
+    let changed = session.transaction(|session| {
+        session.begin_edit();
+        for shade in &shades.created {
+            session.palette[shade.slot as usize] = shade.rgba;
+            session.materials[shade.slot as usize] = session.materials[shade.from as usize];
+        }
+        let mut changed = 0;
+        for &index in &targets {
+            if let Some(writes) = per_object.get(&index) {
+                session.selected = index;
+                let result = session.write_cells(writes);
+                session.selected = selected;
+                changed += result?;
+            }
+        }
+        session.end_edit();
+        Ok(changed)
+    })?;
+    session.selected = selected;
+    session.mesh_epoch = session.mesh_epoch.wrapping_add(1);
+    reply.insert("changed".into(), json!(changed));
+    reply.insert(
+        "objects".into(),
+        json!(targets
+            .iter()
+            .map(|i| session.objects[*i].name.clone())
+            .collect::<Vec<_>>()),
+    );
+    reply.insert("voxels".into(), json!(session.voxel_count()));
+    Ok(Value::Object(reply))
+}

@@ -9,6 +9,7 @@ mod bark;
 mod brush;
 mod cavity;
 mod collision;
+pub(crate) mod colors;
 mod components;
 mod crown;
 mod debris;
@@ -24,6 +25,7 @@ mod loft;
 mod mask_edit;
 mod mirror;
 pub(crate) mod orient;
+mod paint_views;
 mod planks;
 mod plates;
 mod project;
@@ -63,6 +65,9 @@ pub use mirror::{mirrored, Mirror};
 pub use orient::{
     axis_names, euler_xyz, from_euler_xyz, orient, resample, surface_points, turned, Candidate,
     OrientSpec, OrientView, Oriented, Turns, DEFAULT_ORIENT_RESOLUTION,
+};
+pub use paint_views::{
+    paint_from_views, Blend, Fit as ViewsFit, PaintViewsSpec, Quantize, SheetImage,
 };
 pub use planks::{planks, PlankAxis, PlankSpec};
 pub use plates::{

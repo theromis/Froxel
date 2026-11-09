@@ -121,7 +121,12 @@ off the flat views.
    space under an arch, between roots), so `carve` them, grow the thin
    parts with `fill_tube`, and `smooth` it. Compare again after each step,
    with the first reply's `align` passed back so the placement holds still.
-4. **Paint the patterns.** `project_paint` takes one view (a shell's plates
+4. **Paint the patterns.** An imported mesh smeared on its hidden sides, or
+   a blockout that needs the whole sheet's colours, takes them in ONE
+   `paint_from_views` call: every surface cell from the views that see it,
+   by the view its normal faces most, blended at the seams, quantised into
+   the object's slots (or `newSlots` with the eyes kept). `objects` paints
+   a rig's parts together so they hide each other. `project_paint` takes one view (a shell's plates
    from the top, face markings from the front) and recolours the cells that
    view sees under the image, in one call: no cells are added or removed.
    `depth` paints that many cells into the surface, `normalLimit` leaves the
@@ -168,6 +173,7 @@ carve_from_views     views=[{view: "front", path: "sheet.png", crop: [40, 60, 52
 compare_silhouette   path="front-vs.png" concept="sheet.png" crop=[40, 60, 520, 300] view="front" orthographic=true
 compare_silhouette   path="hero-vs.png" concept="hero.png" preset="game"
                      flood=true keepLargest=true erase=[[412, 96, 80, 120]]
+paint_from_views     path="sheet.png" background="#ff00ff" newSlots=10   # every side from the sheet
 project_paint        view="top" path="sheet.png" crop=[40, 420, 520, 180] size=[96, 34, 56]
                      slots=[3, 4, 5] only=[3] normalLimit=60
 fit_to_views         views=[{view: "front", path: "sheet.png", crop: [40, 60, 520, 300]},

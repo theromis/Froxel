@@ -162,4 +162,31 @@ impl Shades {
         });
         Ok(free)
     }
+
+    /// The slot holding exactly `rgb` (opaque) with `from`'s material: an
+    /// existing one, or the highest free slot, which takes it. Used by
+    /// `paint_from_views` and `reduce_palette` for their new colours.
+    pub fn colour(&mut self, rgb: [u8; 3], from: u8) -> Result<u8, String> {
+        let rgba = [rgb[0], rgb[1], rgb[2], 255];
+        let material = self.materials[from as usize];
+        if let Some(found) = (1..=255u8)
+            .find(|s| self.colors[*s as usize] == rgba && self.materials[*s as usize] == material)
+        {
+            self.used[found as usize] = true;
+            return Ok(found);
+        }
+        let free = (1..=255u8)
+            .rev()
+            .find(|s| !self.used[*s as usize])
+            .ok_or("no free palette slot for a new colour: pass slots, or fewer colours")?;
+        self.colors[free as usize] = rgba;
+        self.materials[free as usize] = material;
+        self.used[free as usize] = true;
+        self.created.push(Shade {
+            slot: free,
+            from,
+            rgba,
+        });
+        Ok(free)
+    }
 }

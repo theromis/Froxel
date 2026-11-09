@@ -31,6 +31,7 @@ pub(crate) const WORLD_METHODS: &[&str] = &[
     "voxel.brush",
     "voxel.carve_from_views",
     "voxel.project_paint",
+    "voxel.paint_from_views",
     "voxel.decal",
     "object.split",
 ];

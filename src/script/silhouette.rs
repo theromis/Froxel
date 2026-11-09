@@ -13,7 +13,10 @@
 //! `fit_to_views(views, opts)` run `remote::fit_writes` with no other
 //! objects in view, and `reference` names another object the run builds.
 //! `orient_to_views(views)` and `orient_to_views(views, opts)` run
-//! `remote::orient_writes`, turning the object being written. Colours quantise to the
+//! `remote::orient_writes`, turning the object being written.
+//! `paint_from_views(views)` and `paint_from_views(views, opts)` run
+//! `remote::views_paint_writes` on the object being written, its new
+//! colours (`newSlots`) in free slots as `cavity_tint` makes shades. Colours quantise to the
 //! document's palette as it was when the run started, with the run's
 //! `palette` calls on top.
 
@@ -37,6 +40,29 @@ const ORIENT: &[&str] = &[
     "height",
     "scale",
     "apply",
+];
+const VIEWS_PAINT: &[&str] = &[
+    "blend",
+    "seam",
+    "sharpness",
+    "fit",
+    "reach",
+    "inset",
+    "mirror",
+    "slots",
+    "newSlots",
+    "accents",
+    "minShare",
+    "contrast",
+    "maxAccents",
+    "only",
+    "x0",
+    "y0",
+    "z0",
+    "x1",
+    "y1",
+    "z1",
+    "space",
 ];
 const CARVE: &[&str] = &[
     "size",
@@ -168,6 +194,23 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     engine.register_fn("project_paint", move |rows: Array, opts: Map| {
         paint(None, rows, &opts)
     });
+    for with_opts in [false, true] {
+        let state = scratch.clone();
+        let run = move |views: Array, opts: &Map| -> Fallible<Map> {
+            let mut args = options(opts, VIEWS_PAINT, "paint_from_views")?;
+            args.insert("views".into(), json(&Dynamic::from_array(views))?);
+            state.borrow_mut().paint_views(args).map_err(runtime)
+        };
+        if with_opts {
+            engine.register_fn("paint_from_views", move |views: Array, opts: Map| {
+                run(views, &opts)
+            });
+        } else {
+            engine.register_fn("paint_from_views", move |views: Array| {
+                run(views, &Map::new())
+            });
+        }
+    }
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |views: Array, opts: &Map| -> Fallible<Map> {
@@ -342,6 +385,31 @@ impl Scratch {
         if let Some(mirrored) = counts.get("mirrored").and_then(Value::as_i64) {
             reply.insert("mirrored".into(), Dynamic::from_int(mirrored));
         }
+        Ok(reply)
+    }
+
+    /// A whole views sheet painted onto the surface of the object being
+    /// written. New colours (`newSlots`) take free slots of the palette as
+    /// the run leaves it. The reply holds `changed` and the MCP counts.
+    fn paint_views(&mut self, args: Args) -> Result<Map, String> {
+        self.keep_going()?;
+        let palette = self.run_palette();
+        let (args, offset) = self.localize("voxel.paint_from_views", args)?;
+        let _ = offset;
+        let mut shades = self.run_shades();
+        let (painted, counts) =
+            remote::views_paint_writes(self.cells(), &palette, &args, false, &mut shades)?;
+        self.shades.extend(shades.created.iter().copied());
+        let writes: Vec<(i32, i32, i32, i32)> = painted
+            .iter()
+            .map(|(c, slot)| (c.0, c.1, c.2, i32::from(*slot)))
+            .collect();
+        let changed = self.apply(&writes)?;
+        let mut reply: Map = counts
+            .iter()
+            .map(|(key, value)| (key.as_str().into(), super::document::dynamic(value)))
+            .collect();
+        reply.insert("changed".into(), Dynamic::from_int(changed));
         Ok(reply)
     }
 

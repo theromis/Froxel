@@ -165,7 +165,7 @@ fn cell_bounds(cells: &HashMap<Cell, u8>) -> Option<([i32; 3], [i32; 3])> {
 
 /// The outward normal of the surface at a cell: the mean direction of the
 /// empty cells within two cells of it, or `fallback` when they cancel.
-fn surface_normal(cells: &HashMap<Cell, u8>, cell: Cell, fallback: V3) -> V3 {
+pub(super) fn surface_normal(cells: &HashMap<Cell, u8>, cell: Cell, fallback: V3) -> V3 {
     let mut sum = [0.0f64; 3];
     for dz in -2i32..=2 {
         for dy in -2i32..=2 {

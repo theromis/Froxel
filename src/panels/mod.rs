@@ -159,6 +159,8 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
                     ui.separator();
                     silhouette::paint(ui, session);
                     ui.separator();
+                    silhouette::paint_views(ui, session);
+                    ui.separator();
                     silhouette::decal(ui, session);
                     ui.separator();
                     silhouette::fit(ui, session);
