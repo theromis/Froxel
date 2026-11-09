@@ -470,6 +470,8 @@ pub struct EditPanels {
     pub stroke: StrokePanel,
     /// The palette dock's hex field for the active slot.
     pub hex: String,
+    /// The Bones panel's joint snap, an index of none, corner, center, half.
+    pub joint_snap: usize,
 }
 
 impl Session {

@@ -311,13 +311,37 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
         move |ctx: NativeCallContext, name: &str, opts: Map| -> Fallible<()> {
             let mut args = options(
                 &opts,
-                &["parent", "pivot", "rotation", "rename"],
+                &[
+                    "parent", "pivot", "joint", "snap", "band", "rotation", "rename",
+                ],
                 "set_bone",
             )?;
             args.insert("name".into(), name.into());
             record(&state, &ctx, "set_bone", "rig.set", Value::Object(args))
         },
     );
+    for with_opts in [false, true] {
+        let state = scratch.clone();
+        let run = move |ctx: &NativeCallContext, opts: &Map| -> Fallible<()> {
+            let args = options(opts, &["bones", "snap", "band"], "place_joints")?;
+            record(
+                &state,
+                ctx,
+                "place_joints",
+                "rig.joints",
+                Value::Object(args),
+            )
+        };
+        if with_opts {
+            engine.register_fn("place_joints", move |ctx: NativeCallContext, opts: Map| {
+                run(&ctx, &opts)
+            });
+        } else {
+            engine.register_fn("place_joints", move |ctx: NativeCallContext| {
+                run(&ctx, &Map::new())
+            });
+        }
+    }
     let state = scratch.clone();
     engine.register_fn(
         "remove_bone",

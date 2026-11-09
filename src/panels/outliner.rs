@@ -326,6 +326,23 @@ fn bone_tree(skeleton: &crate::rig::Skeleton) -> Vec<(usize, usize)> {
     out
 }
 
+/// The snap of Place joints and Pivot at joint.
+fn joint_snap(ui: &mut Ui, session: &mut Session) {
+    const LABELS: [&str; 4] = ["No snap", "Corners", "Centres", "Half cells"];
+    let current = session.edit.joint_snap.min(3);
+    egui::ComboBox::from_id_salt("joint-snap")
+        .selected_text(LABELS[current])
+        .show_ui(ui, |ui| {
+            for (index, label) in LABELS.iter().enumerate() {
+                if ui.selectable_label(current == index, *label).clicked() {
+                    session.edit.joint_snap = index;
+                }
+            }
+        })
+        .response
+        .on_hover_text("Round joint pivots to cell corners, cell centres, or half cells");
+}
+
 fn bone_list(ui: &mut Ui, session: &mut Session) {
     if ui.button("Add bone").clicked() {
         let name = session.fresh_bone_name();
@@ -338,6 +355,19 @@ fn bone_list(ui: &mut Ui, session: &mut Session) {
             session.status = err;
         }
     }
+    ui.horizontal(|ui| {
+        if ui
+            .button("Place joints")
+            .on_hover_text(
+                "Put every bone's pivot where its bound part meets its parent's part \
+                 (MCP place_joints): the overlap, the contact faces, or the nearest band",
+            )
+            .clicked()
+        {
+            session.place_joints_from_panel();
+        }
+        joint_snap(ui, session);
+    });
     let mut pick = None;
     egui::ScrollArea::vertical()
         .id_salt("bone-list")
@@ -399,6 +429,7 @@ fn bone_fields(ui: &mut Ui, session: &mut Session, index: usize) {
     let mut next_parent = parent.clone();
     let mut parent_changed = false;
     let mut turned = None;
+    let mut at_joint = false;
     inspector(ui, "bone-inspector", |ui| {
         prop_label(ui, "Name");
         let mut text = bone_name.clone();
@@ -450,6 +481,19 @@ fn bone_fields(ui: &mut Ui, session: &mut Session, index: usize) {
         });
         ui.end_row();
 
+        prop_label(ui, "");
+        if ui
+            .button("Pivot at joint")
+            .on_hover_text(
+                "Move this pivot to where the bone's part meets its parent's part \
+                 (MCP set_bone joint), with the Bones list's snap",
+            )
+            .clicked()
+        {
+            at_joint = true;
+        }
+        ui.end_row();
+
         prop_label(ui, "Rotation");
         let (next, started) = angle_fields(ui, rotation);
         if started {
@@ -458,6 +502,10 @@ fn bone_fields(ui: &mut Ui, session: &mut Session, index: usize) {
         turned = next;
         ui.end_row();
     });
+    if at_joint {
+        session.joint_pivot_from_panel(&bone_name);
+        return;
+    }
     if let Some(text) = rename {
         if let Err(err) = session.set_bone(&bone_name, None, None, None, Some(text.trim())) {
             session.status = err;

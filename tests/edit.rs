@@ -179,6 +179,15 @@ fn the_turtle_parts_example_cuts_the_same_parts_on_a_rerun() {
     assert!(body
         .keys()
         .all(|c| (0..22).contains(&c.0) && (0..28).contains(&c.1)));
+    // Every part's pivot sits where it meets the shell: the head's on the
+    // shell's front end, between y1 and y1 + 1.
+    let bone = |name: &str| {
+        let index = session.skeleton.index_of(name).unwrap();
+        session.skeleton.bones[index].pivot
+    };
+    assert_eq!(session.skeleton.bones.len(), 5);
+    assert!((bone("head")[1] - 28.0).abs() <= 0.5, "{:?}", bone("head"));
+    assert!(bone("flipper_l")[0].abs() <= 0.5, "{:?}", bone("flipper_l"));
     session.regenerate_script(0).unwrap();
     let again: Vec<usize> = session.objects.iter().map(|o| o.cells.len()).collect();
     assert_eq!(again, first);

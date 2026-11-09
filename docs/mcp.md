@@ -212,7 +212,8 @@ tracer. A file with no scene graph still loads its first model.
 | `clear_object` | — | Empty an object (`index`, an index or a name; default the active one) of every cell, with no box limit. Its name, position, bone, script, and markers stay. Replies with `index`, `name`, `removed`, `voxels`. One undo step; an empty object adds none |
 | `split_object` | `boxes` or `slots` | Move (or `copy`) the cells of an object (`index`, an index or a name; default the active one) inside one or more inclusive local boxes, or of some `slots`, or both, into a new object (`name`) or an existing one (`into`), each cell keeping its world position. `invert` takes the rest. `makeActive` selects the target. Replies with `target`, `name`, `created`, `cells`, `replaced`, `position`, `sourceVoxels`, `targetVoxels`, `bounds`. One undo step |
 | `add_bone` | `name`, `pivot` | Add a bone. `pivot` is a fractional world coordinate `[x, y, z]`. Optional `parent` (omit or null for a root) and `rotation` quaternion `[x, y, z, w]` (default identity `[0, 0, 0, 1]`). One undo step |
-| `set_bone` | `name` | Optional `parent` (null makes a root; omit leaves it), world `pivot`, `rotation` `[x, y, z, w]`, `rename`. One undo step |
+| `set_bone` | `name` | Optional `parent` (null makes a root; omit leaves it), world `pivot`, `rotation` `[x, y, z, w]`, `rename`. `joint: true` measures the pivot at the joint with the parent's part instead, as `place_joints` does (with `snap` and `band`). One undo step |
+| `place_joints` | — | Put bone pivots (`bones`, default every bone) at the joints between their bound parts and their parents' parts: the overlap, the contact faces, or the nearest band (`band`, default 0.5 cells past the closest gap). `snap` `none`, `corner`, `center`, or `half`. Replies with `placed` [{`name`, `parent`, `pivot`, `previous`, `method`, `samples`, `gap`}] and `skipped` [{`name`, `reason`}]. One undo step |
 | `remove_bone` | `name` | Delete a bone. Objects bound to it become unbound. Children keep its parent. One undo step |
 | `bind_object` | `index`, `bone` | Bind an object to one bone, or `bone: null` to unbind. Rigid: one bone, weight 1. One undo step |
 | `list_bones` | — | Each bone's parent, world pivot, quaternion, and the object indices bound to it |
@@ -1337,6 +1338,32 @@ every object that used that bone and reparents its children to its parent.
 One object has one bone. `list_bones` returns `parent`, `pivot`, `rotation`,
 and the object indices currently bound to each bone.
 
+`place_joints` puts pivots where the parts meet, so a creature cut into
+parts with `split_object` and bound with `bind_object` needs no pivots placed
+by eye. A bone's part is the world cells of the objects bound to it; its
+parent part is the cells bound to the nearest ancestor bone that has any, so
+a hip bone with no object of its own is passed over. The pivot is, in order:
+
+- `overlap`: the centroid of the cells both parts hold (a `copy` split);
+- `contact`: the centroid of the faces where a cell of one part touches a
+  cell of the other (a leg under a body gets the centre of its top face);
+- `nearest`: for parts apart, the midpoints between each surface cell of the
+  child and the parent's nearest surface cell, for the child cells within
+  `band` cells (default 0.5) of the closest gap, averaged. `gap` is the empty
+  cells between the parts.
+
+`snap` rounds the pivot to cell corners (`corner`, integers), cell centres
+(`center`, `n + 0.5`), or half cells (`half`). With no `bones` every bone is
+tried and roots and bones with no part are listed in `skipped`; a named bone
+that cannot be placed is an error and nothing moves. One undo step.
+`set_bone` with `joint: true` does the same for one bone (with the new
+`parent` when the call gives one), and replies with the same fields.
+
+```json
+{"name": "place_joints", "arguments": {"snap": "half"}}
+{"name": "set_bone", "arguments": {"name": "head", "joint": true}}
+```
+
 A two-part character, headless:
 
 ```
@@ -1933,6 +1960,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `split_object` | Split object section: Boxes (one per line), World cells, Slots, Invert, Copy, Into (New object with a Name, or an existing object), Split |
 | `space` | World cells in Split object, World beside Origin in Carve from views and beside Box in Paint from view; the viewport tools pick cells in place, so they need none |
 | `add_bone`, `set_bone`, `remove_bone`, `bind_object`, `list_bones` | Bones tree, the Bone inspector, the Object inspector's Bone |
+| `place_joints`, `set_bone` `joint` | Bones tree: Place joints and its snap; the Bone inspector's Pivot at joint |
 | `set_pose`, `clear_pose` | Pose section |
 | `add_clip`, `set_clip_keys`, `list_clips`, `remove_clip` | Clips section: Add, Key pose at a time, Delete |
 | `undo`, `redo` | Edit menu |

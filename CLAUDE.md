@@ -7,7 +7,8 @@ The binary is `froxel`.
 
 `src/main.rs` is the window. `state/` is the session: `document` (palette and
 camera), `files` (open and save), `objects` (bones, the preview pose, clips,
-and undo), `pointer`,
+and undo), `joints` (MCP `place_joints`, pivots at the joints between rig
+parts), `pointer`,
 `selection`, `drag`, `pick`, `geom`, and `vox/` (`.vox` read, write, the
 `MVRG` rig chunk, and the `MVAN` clip chunk). `viewport.rs` is orbit and pointer input. `panels/` is the side
 UI. `tools/` is brush shapes, generators, and the MCP sculpt shapes

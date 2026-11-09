@@ -266,6 +266,10 @@ straight and symmetrical; show poses with bones instead of sculpting them.
 1. `add_bone` with a `pivot` in fractional world coordinates, so a joint can
    sit between cells. Give children a `parent`.
 2. `bind_object` each part to one bone. Skinning is rigid: one bone, weight 1.
+   Then `place_joints` (optionally `snap: "half"`) moves every pivot to where
+   its part meets its parent's part (contact faces, overlap, or the middle of
+   the gap); check `placed[].method` and `gap`, and use `set_bone` with
+   `joint: true` for one bone after its part changes. Do not place pivots by eye.
 3. Check the rig with `render` or `model_view` using `pose` and
    `showBones: true`. That poses one image without changing the document.
    `set_pose` previews in the window and is an edit; `clear_pose` removes it.

@@ -1002,12 +1002,53 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "rig.set" => {
             let name = req_str(&params, "name")?;
             let parent = parent_update(&params)?;
-            let pivot = opt_vec3(&params, "pivot")?;
+            let mut pivot = opt_vec3(&params, "pivot")?;
             let rotation = opt_vec4(&params, "rotation")?;
             let rename = opt_str(&params, "rename")?;
+            let joint = opt_bool(&params, "joint")?.unwrap_or(false);
+            if !joint && (params.get("snap").is_some() || params.get("band").is_some()) {
+                return Err("snap and band need joint: true".into());
+            }
+            let report = if joint {
+                if pivot.is_some() {
+                    return Err("give pivot or joint, not both".into());
+                }
+                let report = session.measure_joint(&name, parent.clone(), joint_options(&params)?)?;
+                pivot = Some(report.joint.pivot);
+                Some(report)
+            } else {
+                None
+            };
             session.set_bone(&name, parent, pivot, rotation, rename.as_deref())?;
             let current = rename.unwrap_or(name);
-            Ok(json!({"name": current}))
+            let mut reply = json!({"name": current});
+            if let Some(report) = report {
+                let mut joint = report.to_json();
+                joint["name"] = json!(current);
+                reply = joint;
+            }
+            Ok(reply)
+        }
+        "rig.joints" => {
+            let bones = match params.get("bones") {
+                None | Some(Value::Null) => None,
+                Some(Value::Array(items)) => Some(
+                    items
+                        .iter()
+                        .map(|item| {
+                            item.as_str()
+                                .map(str::to_string)
+                                .ok_or_else(|| "bones must be bone names".to_string())
+                        })
+                        .collect::<Result<Vec<String>, String>>()?,
+                ),
+                Some(_) => return Err("bones must be an array of bone names".into()),
+            };
+            let (placed, skipped) = session.place_joints(bones.as_deref(), joint_options(&params)?)?;
+            Ok(json!({
+                "placed": placed.iter().map(|r| r.to_json()).collect::<Vec<_>>(),
+                "skipped": skipped.iter().map(|(name, reason)| json!({"name": name, "reason": reason})).collect::<Vec<_>>(),
+            }))
         }
         "rig.remove" => {
             let name = req_str(&params, "name")?;
@@ -1580,7 +1621,8 @@ const METHODS: &[(&str, &str, &str)] = &[
         "Run the script and replace the objects it writes. One undo step. A limit or runtime error leaves the document as it was and includes the script line.",
     ),
     ("rig.add", "name, pivot, parent?, rotation?", "Add a bone. rotation is [x, y, z, w]"),
-    ("rig.set", "name, parent?, pivot?, rotation?, rename?", "Change a bone. parent null makes a root"),
+    ("rig.set", "name, parent?, pivot?, joint?, snap?, band?, rotation?, rename?", "Change a bone. parent null makes a root"),
+    ("rig.joints", "bones?, snap?, band?", "Put bone pivots at the joints between their parts and their parents' parts"),
     ("rig.remove", "name", "Delete a bone. Objects bound to it become unbound"),
     ("rig.bind", "index, bone", "Bind an object. bone null unbinds"),
     ("rig.list", "", "Bones with parent, pivot, rotation, and bound objects"),
@@ -2848,6 +2890,21 @@ fn bone_rows(session: &Session) -> Vec<Value> {
             })
         })
         .collect()
+}
+
+/// `snap` and `band` of `place_joints` and `set_bone` `joint`.
+fn joint_options(value: &Value) -> Result<crate::state::JointOptions, String> {
+    let mut options = crate::state::JointOptions::default();
+    if let Some(snap) = opt_str(value, "snap")? {
+        options.snap = crate::state::JointSnap::parse(&snap)?;
+    }
+    if let Some(band) = opt_f64(value, "band")? {
+        if !(0.0..=64.0).contains(&band) {
+            return Err(format!("band must be 0 to 64 cells ({band})"));
+        }
+        options.band = band as f32;
+    }
+    Ok(options)
 }
 
 fn parent_update(value: &Value) -> Result<Option<Option<String>>, String> {

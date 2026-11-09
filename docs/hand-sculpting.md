@@ -510,3 +510,16 @@ each part to its bone.
 split_object   index="turtle" boxes=[[0, 30, 6, 23, 41, 20]] name="head"
 split_object   index="turtle" boxes=[[16, -6, 2, 23, 0, 8]] name="tail"
 ```
+
+**Joints.** After the parts are bound to their bones, `place_joints` puts
+every pivot where its part meets its parent's part: the centre of the faces
+they share, the middle of an overlap, or the middle of the gap when they do
+not touch. Do not place pivots by eye. `snap: "half"` keeps them on half
+cells; `set_bone` with `joint: true` redoes one bone after its part changes.
+
+```
+add_bone       name="body" pivot=[12, 20, 10]
+add_bone       name="head" parent="body" pivot=[0, 0, 0]
+bind_object    index="head" bone="head"
+place_joints   snap="half"
+```

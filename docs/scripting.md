@@ -1051,6 +1051,9 @@ split_object(object, #{slots: [6], into: "shell", copy: false, invert: false});
 add_bone(name, pivot);                       // pivot [x, y, z], fractional world cells
 add_bone(name, pivot, #{parent: "hip", rotation: [0.0, 0.0, 0.0, 1.0]});
 set_bone(name, #{parent: (), pivot: [0, 0, 6], rotation: [0.0, 0.0, 0.0, 1.0], rename: "spine"});
+set_bone(name, #{joint: true, snap: "half"});   // pivot where its part meets its parent's
+place_joints();                              // every bone's pivot at its joint
+place_joints(#{bones: ["head", "tail"], snap: "center", band: 0.5});
 remove_bone(name);
 bind_object(object, "arm");                  // () unbinds
 let bones = list_bones();                    // [#{name, parent, pivot, rotation, objects}, …]

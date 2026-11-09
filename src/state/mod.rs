@@ -636,6 +636,7 @@ mod files;
 mod foliage;
 mod geom;
 mod import;
+mod joints;
 mod markers;
 mod objects;
 mod organic;
@@ -939,6 +940,7 @@ pub use geom::palette_slot_at;
 pub use geom::raycast;
 pub(crate) use geom::{occupied_bounds, resolved_box};
 pub use import::ImportPanel;
+pub use joints::{JointOptions, JointSnap};
 pub(crate) use markers::append_gltf_markers;
 pub(crate) use markers::replace_collision_markers;
 pub use markers::{

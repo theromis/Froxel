@@ -69,3 +69,18 @@ for part in parts {
         split_object(0, #{boxes: part[1], name: name});
     }
 }
+
+// The rig: a bone per part, bound to it, and every pivot moved to where the
+// part meets the shell (the faces they share), so none is placed by eye.
+if !has_bone("shell") {
+    add_bone("shell", [x1 / 2, y1 / 2, 0]);
+}
+bind_object(0, "shell");
+for part in parts {
+    let name = part[0];
+    if !has_bone(name) {
+        add_bone(name, [0, 0, 0], #{parent: "shell"});
+    }
+    bind_object(name, name);
+}
+place_joints(#{snap: "half"});
