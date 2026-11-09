@@ -40,6 +40,60 @@ fn background(ui: &mut Ui, id: &str, field: &mut crate::state::BackgroundField) 
     });
 }
 
+/// MCP `measure_sheet`: a views sheet's crops, cube pitch, checks, and
+/// parts, read before carving it.
+pub(super) fn measure(ui: &mut Ui, session: &mut Session) {
+    section(ui, "Measure sheet");
+    let mut pick = false;
+    let panel = &mut session.silhouette.measure;
+    egui::Grid::new("measure-panel")
+        .num_columns(2)
+        .spacing([8.0, 4.0])
+        .show(ui, |ui| {
+            label(ui, "Sheet", "A views sheet PNG: front, side, top, and back in two rows and two columns on a key background.");
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut panel.path)
+                        .hint_text("views.png")
+                        .desired_width(150.0),
+                );
+                if ui.button("…").on_hover_text("Choose the sheet PNG.").clicked() {
+                    pick = true;
+                }
+            });
+            ui.end_row();
+            label(ui, "Background", "Which pixels of the sheet are background.");
+            background(ui, "measure-background", &mut panel.background);
+            ui.end_row();
+            label(ui, "Count parts", "Count the parts sticking out of the top view's body (flippers, legs, head, tail), to catch a top view with too many.");
+            ui.checkbox(&mut panel.parts, "");
+            ui.end_row();
+        });
+    if pick {
+        session.pick_measure_sheet();
+    }
+    ui.horizontal(|ui| {
+        if ui
+            .button("Measure")
+            .on_hover_text("MCP measure_sheet: each view's crop, its cube pitch in pixels from the seams, and whether the front, side, and top agree in size. Writes no file.")
+            .clicked()
+        {
+            session.measure_from_panel();
+        }
+        if !session.silhouette.measure.views.is_empty()
+            && ui
+                .button("Use crops")
+                .on_hover_text("Put the sheet and the measured crops into the Carve from views rows (front, left, top), which Fit to views shares.")
+                .clicked()
+        {
+            session.use_measured_crops();
+        }
+    });
+    for line in &session.silhouette.measure.lines {
+        ui.label(RichText::new(line).small().color(DIM));
+    }
+}
+
 /// MCP `carve_from_views`: the visual hull of a turnaround sheet's views.
 pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
     let enabled = session.editor_mode == EditorMode::Model;

@@ -253,6 +253,7 @@ tracer. A file with no scene graph still loads its first model.
 | `project_paint` | `view` or `yaw` + `pitch`, `path` or `rows` | Recolour the active object's existing surface from one image projected along a view: never adds or removes cells. The image is a PNG `path` with `crop`, `background`, `tolerance`, `alphaThreshold`, `flip`, or `rows` with a `legend`; background pixels leave the surface alone. Optional `origin` and `size` (the box that may be painted; defaults to the object's bounds), `cellsPerPixel` or `imageSize`, `palette` or `slots`, `coverage`, `depth` (cells below the visible surface, default 1), `normalLimit` (degrees; steeper surfaces are skipped), `only` (slots that may be repainted), `mirror` (both sides of a plane). Replies with `cells`, `changed`, `bounds`, `origin`, `size`, `grid`, `covered`, `rays`, and `steep`. One undo step. See [Silhouettes](#silhouettes) |
 | `decal` | `point` or `ray`, `size`, `path` or `rows` | Lay one picture onto the active object's curved surface around a point, so it keeps its size and shape on a round head: the surface is unrolled around the point and each surface cell takes the picture's ink under it. `ray` `{origin, direction}` takes the first solid cell instead. Optional `up` (default +Z), `crop`, `background`, `tolerance`, `flip`, `legend`, `palette` or `slots`, `coverage`, `depth` (cells into the solid, default 1), `reach` (default 8), `normalLimit` (degrees from the point's normal, default 90), `only`, `mirror`. Never adds or removes cells. Replies with `cells`, `changed`, `bounds`, `centre`, `normal`, `grid`, `covered`, `missed`, `reached`. One undo step. See [Silhouettes](#silhouettes) |
 | `compare_silhouette` | `path`, `concept` | Compare the model's `preview` silhouette from a camera (`preset`, `presets`, `placementYaw`, `view`, `yaw`, `pitch`, `orthographic`, `fov`, `margin`, `object`, `isolate`, `pose`) with a mask cut from a concept PNG (`crop`, `background`, `tolerance`, `alphaThreshold`, `flip`) and cleaned by the [mask edits](#masking-a-concept) (`excludeColors`, `excludeTolerance`, `flood`, `mask`, `erase`, `keepLargest`; the reply's `maskEdits` counts them). `align` `fit` (default), `height`, `width`, or `{scale, offset}` places the concept with one uniform scale. Replies with `iou`, `missing`, `excess`, `pixels`, `align`, `conceptBounds`, `modelBounds`, and `aspect`, and writes an overlay PNG. Optional `width`, `height`, `lighting`, `antialias`. See [Silhouettes](#silhouettes) |
+| `measure_sheet` | `path` | Read a views sheet image, writing nothing: each view's tight `crop` (connected inked regions under the background rule and the mask edits, merged within `gap` pixels, regions under `minShare` of the largest in `ignored`), the 2 x 2 `layout` names (front, side, top, back), the cube pitch per view (`pitchX`, `pitchY`, `strength`, `cubes`, `square`) from the autocorrelation of the cube seams, `checks` (front height = side height, front width = top width, side length = top length, in percent of pixels and of cubes, `ok` within `checkTolerance`), `fitViews` for `carve_from_views` and `fit_to_views`, and with `parts` the top view's parts sticking out of its body. See [Measuring a sheet](#measuring-a-sheet) |
 | `set_view` | — | Move the session camera; connected, the window's. Optional `view`, `yaw`, `pitch`, `preset`, `presets`, `placementYaw`, `frame`, `distance`, `orthographic`, `bones`. Not an edit |
 | `screenshot` | — | PNG of the whole editor window. Connected mode only |
 | `screenshot_viewport` | — | PNG of the 3D viewport, including its mode chips. Connected mode only |
@@ -1541,9 +1542,63 @@ step and a failure anywhere leaves the document as it was (`scripting.md`).
 
 Copying cells from flat sheet views gives blobs, and comparing heights
 says little about whether a model reads like its concept. Four tools work
-from the views instead: `carve_from_views` makes the form, `project_paint`
+from the views instead (after `measure_sheet` has read the sheet's crops,
+cube pitch, and agreement): `carve_from_views` makes the form, `project_paint`
 paints one view's pattern onto it, `fit_to_views` refines a blockout until
 its views match the sheet, and `compare_silhouette` measures it.
+
+### Measuring a sheet
+
+Read the sheet before carving it, instead of measuring it with scripts:
+`measure_sheet` writes nothing and changes nothing.
+
+```json
+{"name": "measure_sheet", "arguments": {"path": "views-v06.png", "parts": true}}
+```
+
+- **Views.** The inked pixels (the background rule of a view: auto keys
+  transparency or the commonest border colour; the mask edits apply) split
+  into 8-connected regions. Regions whose boxes come within `gap` pixels
+  (default 12) merge, so a tail drawn apart from its body stays in its
+  view; regions under `minShare` (default 0.02) of the largest are left out
+  and listed in `ignored` (labels, specks). Each view's `crop` is its tight
+  box `[x, y, width, height]` in image pixels (with `crop` given, only that
+  part of the image is read).
+- **Layout.** Four views in two rows and two columns take the `layout`
+  names in reading order, `[front, side, top, back]` by default, and
+  `fitViews` is then the list `carve_from_views` and `fit_to_views` take
+  with the sheet's `path` and background. Any other arrangement leaves the
+  views unnamed, in reading order, with no checks.
+- **Pitch.** A cube's seams are thin lines darker than both sides. Their
+  depth per column (`pitchX`) and per row (`pitchY`) repeats every cube, so
+  the profile's autocorrelation peaks at the pitch: the peak with the best
+  support at its first multiples, refined from the furthest multiple still
+  a peak to a fraction of a pixel (`strength`, 0..1, is the autocorrelation
+  at the pitch). `pitchRange` limits the search (default `[4, 96]` pixels).
+  `cubes` is the crop in cubes (width by `pitchX`, height by `pitchY`), and
+  `square` is false when the two pitches differ by more than 10%: the
+  sheet, or an image generator, drew the cubes stretched (`notes` says so).
+- **Checks.** `front height = side height`, `front width = top width`, and
+  `side length = top length` (the side's width against the top's height),
+  each with both sizes in pixels and cubes, `percent` (`|a - b| / max`) in
+  pixels and `percentCubes`, and `ok` within `checkTolerance` (default 3%).
+  `ok` at the top level is all of them.
+- **Parts** (`parts: true`, or `{view, radius, minShare}`). The view (the
+  top one by default, or an index on an unnamed sheet) is opened by
+  `radius` pixels (default half its thickest point: erode, keep the largest
+  core, grow it back) to find its body; every piece outside it bigger than
+  `minShare` of the view (default 0.004) and reaching more than 0.42
+  `radius` past the body is a part, with its `bounds`, `pixels`, and
+  `direction` from the body (`n` is image up). A turtle's top view has six:
+  four flippers, a head, and a tail; a count of eight shows a top view drawn
+  with six flippers.
+
+The pond turtle's `views-v06.png` reads as front `[40, 201, 547, 275]`, side
+`[646, 199, 595, 280]`, top `[40, 636, 537, 576]`, and back
+`[672, 773, 541, 276]`, with cubes about 13 pixels wide and 18 tall in every
+view (so the sheet is stretched), front width = top width within 0.7% in
+cubes, side length against top length 30% apart in cubes, and six top-view
+parts. `froxel measure --sheet views.png --parts` prints the same.
 
 `carve_from_views` turns a turnaround sheet into the rough form. Each of
 2 to 6 views is extruded through a box along its depth axis, and the cells
@@ -2090,6 +2145,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `mode` `intersect` | Intersect section: Shape (Box, Ellipsoid, Rounded box with Radius) inscribed in the selection's box, Keep inside |
 | `project_paint` | Paint from view section: View, Flip, Image…, Crop, Background, Scale (Fit box or Cells / px), Box origin and size, Depth, Normal limit, Only, Colour from image or the active slot, Mirror, Paint |
 | `decal` | Decal section: Image…, Flip, Crop, Background, Point (At selection, World), Up, Size, Depth, Reach, Normal limit, Only, Colour from image or the active slot, Mirror, Lay decal |
+| `measure_sheet` | Measure sheet section: Sheet …, Background, Count parts, Measure (views, checks, and parts listed under it), Use crops (into the Carve from views rows) |
 | `compare_silhouette` | Compare silhouette section: Concept Image…, Crop, Background, Flip, Exclude (colours and tolerance), Flood (and its step), Mask (…, Invert), Erase (one rectangle per line), Largest only, Camera (Viewport, Game, Front, Left, Top), Align (Fit, Height, Width), Compare; the overlay shows in the viewport's bottom-right corner until Hide overlay; MCP `compare_silhouette` over the control port shows it there too |
 | `import_mesh` | File > Import Mesh… and the Import mesh section: File, Size, Voxel, or Scale, File is Z-up, Rotation, Position, Anchor, Solid, Parity, or Shell, Texture or Vertex colour, Slots, New slots, Tolerance, Mode, New object |
 | `carve` | Remove mode with Box, Generator, or Tube |

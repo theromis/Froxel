@@ -29,6 +29,7 @@ mod relief;
 mod scatter;
 mod sculpt;
 mod shapes;
+mod sheet_measure;
 mod silhouette;
 mod stroke;
 mod surface;
@@ -70,6 +71,7 @@ pub use shapes::{
     bresenham, circle, cube, extrude, flood_empty, flood_face, rounded_inside, rounded_radius,
     square,
 };
+pub use sheet_measure::{luma_of, measure_sheet, PartsSpec, SheetSpec, SheetView};
 pub use silhouette::{
     carve_from_views, mask_from_rgba, mask_from_rows, Background, CarveSpec, Colour, Crop, Ink,
     Mask, Scale, Side, View, MAX_CARVE_PASSES,

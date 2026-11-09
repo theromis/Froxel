@@ -692,7 +692,9 @@ each of `views` is `#{view, before, after}` and `before` and `after` hold
 fits a boxy blockout to a beetle's front, side, and top rows.
 
 MCP `compare_silhouette` writes a file, so it has no script form; check a
-script's result with it over MCP. The mask edits that need an image
+script's result with it over MCP. MCP `measure_sheet` reads an image file,
+so scripts do not have it either: measure the sheet over MCP and pass its
+sizes in. The mask edits that need an image
 (`flood`, `mask`) have none either, but a `rows` view (and
 `project_paint`'s rows) takes `excludeColors` (legend `#rrggbb` colours),
 `excludeTolerance`, `erase` (`[[x, y, width, height]]` in characters), and

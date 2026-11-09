@@ -1499,6 +1499,159 @@ fn views_relative(params: &mut serde_json::Value, base: &Path) {
     }
 }
 
+/// `froxel measure`: MCP `measure_sheet` on a views sheet.
+pub fn measure(args: &[String]) -> i32 {
+    match measure_args(args) {
+        Ok(None) => 0,
+        Ok(Some((params, as_json))) => {
+            let mut session = Session::new();
+            match crate::remote::apply(&mut session, "image.measure_sheet", &params) {
+                Ok(reply) => {
+                    if as_json {
+                        println!("{reply:#}");
+                    } else {
+                        print!("{}", measure_text(&reply));
+                    }
+                    0
+                }
+                Err(err) => {
+                    eprintln!("{err}");
+                    1
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            2
+        }
+    }
+}
+
+const MEASURE_HELP: &str = "\
+usage: froxel measure --sheet <views.png> [--background auto|alpha|#rrggbb]
+                      [--tolerance N] [--crop X,Y,W,H] [--gap PX]
+                      [--min-share F] [--layout front,side,top,back]
+                      [--pitch-range LOW,HIGH] [--parts [VIEW]]
+                      [--check-tolerance PERCENT] [--flood N] [--json]
+
+Reads a views sheet as MCP measure_sheet does and writes nothing: each
+view's crop (its inked region's tight box), the 2 x 2 layout's names, the
+cube pitch in pixels across and down (from the autocorrelation of the cube
+seams), the size in cubes, and whether front height = side height, front
+width = top width, and side length = top length (in pixels and in cubes,
+within --check-tolerance percent, default 3). --parts counts the pieces
+sticking out of the top view's body (or VIEW's): flippers, legs, a head, a
+tail. --json prints the whole reply, whose fitViews go straight into
+carve_from_views and fit_to_views.";
+
+pub(crate) fn measure_args(args: &[String]) -> Result<Option<(serde_json::Value, bool)>, String> {
+    use serde_json::json;
+    let mut params = json!({});
+    let mut as_json = false;
+    let mut index = 0;
+    let numbers = |text: &str, flag: &str, count: usize| -> Result<Vec<f64>, String> {
+        let list: Vec<f64> = text
+            .split(',')
+            .map(|part| part.trim().parse::<f64>())
+            .collect::<Result<_, _>>()
+            .map_err(|_| format!("{flag} needs {count} numbers, not `{text}`"))?;
+        if list.len() != count {
+            return Err(format!("{flag} needs {count} numbers, not `{text}`"));
+        }
+        Ok(list)
+    };
+    while index < args.len() {
+        let flag = args[index].clone();
+        let mut value = || -> Result<String, String> {
+            index += 1;
+            args.get(index)
+                .cloned()
+                .ok_or_else(|| format!("{flag} needs a value"))
+        };
+        match flag.as_str() {
+            "-h" | "--help" => {
+                eprintln!("{MEASURE_HELP}");
+                return Ok(None);
+            }
+            "--sheet" | "--input" => params["path"] = json!(value()?),
+            "--background" => params["background"] = json!(value()?),
+            "--tolerance" => params["tolerance"] = json!(numbers(&value()?, &flag, 1)?[0]),
+            "--crop" => params["crop"] = json!(numbers(&value()?, &flag, 4)?),
+            "--gap" => params["gap"] = json!(numbers(&value()?, &flag, 1)?[0]),
+            "--min-share" => params["minShare"] = json!(numbers(&value()?, &flag, 1)?[0]),
+            "--layout" => {
+                params["layout"] = json!(value()?.split(',').map(str::trim).collect::<Vec<_>>())
+            }
+            "--pitch-range" => params["pitchRange"] = json!(numbers(&value()?, &flag, 2)?),
+            "--check-tolerance" => {
+                params["checkTolerance"] = json!(numbers(&value()?, &flag, 1)?[0])
+            }
+            "--flood" => params["flood"] = json!(numbers(&value()?, &flag, 1)?[0]),
+            "--parts" => {
+                let view = args.get(index + 1).filter(|next| !next.starts_with('-'));
+                params["parts"] = match view {
+                    Some(view) => {
+                        index += 1;
+                        json!({"view": view})
+                    }
+                    None => json!(true),
+                };
+            }
+            "--json" => as_json = true,
+            other => return Err(format!("unknown argument `{other}`\n\n{MEASURE_HELP}")),
+        }
+        index += 1;
+    }
+    if params.get("path").is_none() {
+        return Err(format!("--sheet is required\n\n{MEASURE_HELP}"));
+    }
+    Ok(Some((params, as_json)))
+}
+
+/// The plain report of `froxel measure`.
+fn measure_text(reply: &serde_json::Value) -> String {
+    let mut out = String::new();
+    for (index, view) in reply["views"].as_array().into_iter().flatten().enumerate() {
+        out.push_str(&format!(
+            "{:<6} crop {}  pitch {} x {} px  cubes {}\n",
+            view["view"]
+                .as_str()
+                .map_or(index.to_string(), str::to_string),
+            view["crop"],
+            view["pitchX"],
+            view["pitchY"],
+            view["cubes"]
+        ));
+    }
+    for check in reply["checks"].as_array().into_iter().flatten() {
+        out.push_str(&format!(
+            "{:<4} {}: {}% in pixels, {}% in cubes\n",
+            if check["ok"] == true { "ok" } else { "OFF" },
+            check["check"].as_str().unwrap_or(""),
+            check["percent"],
+            check["percentCubes"]
+        ));
+    }
+    if let Some(parts) = reply.get("parts") {
+        let dirs: Vec<&str> = parts["parts"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|p| p["direction"].as_str())
+            .collect();
+        out.push_str(&format!(
+            "parts of {}: {} ({})\n",
+            parts["view"].as_str().unwrap_or(""),
+            parts["count"],
+            dirs.join(" ")
+        ));
+    }
+    for note in reply["notes"].as_array().into_iter().flatten() {
+        out.push_str(&format!("note: {}\n", note.as_str().unwrap_or("")));
+    }
+    out
+}
+
 /// `froxel compare`: MCP `compare_silhouette` on a `.vox`.
 pub fn compare(args: &[String]) -> i32 {
     match compare_args(args) {

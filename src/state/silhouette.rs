@@ -561,8 +561,22 @@ impl DecalPanel {
     }
 }
 
+/// The Measure sheet panel: MCP `measure_sheet` on a views sheet.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MeasurePanel {
+    pub path: String,
+    pub background: BackgroundField,
+    /// Count the top view's parts.
+    pub parts: bool,
+    /// One line per view, check, and the parts, from the last reading.
+    pub lines: Vec<String>,
+    /// The last reply's `fitViews`, for Use crops.
+    pub views: Vec<(String, [u64; 4])>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SilhouettePanels {
+    pub measure: MeasurePanel,
     pub carve: CarvePanel,
     pub paint: PaintPanel,
     pub decal: DecalPanel,
@@ -867,6 +881,128 @@ impl Session {
             number("excess") * 100.0,
             out.display()
         );
+    }
+
+    /// The Measure sheet button: MCP `measure_sheet`, its views, checks,
+    /// and parts as lines under the panel.
+    pub fn measure_from_panel(&mut self) {
+        let panel = &self.silhouette.measure;
+        if panel.path.trim().is_empty() {
+            self.status = "Measure: choose a views sheet.".into();
+            return;
+        }
+        let mut args = json!({"path": panel.path.trim(), "parts": panel.parts});
+        panel.background.write(&mut args);
+        let reply = match crate::remote::apply(self, "image.measure_sheet", &args) {
+            Ok(reply) => reply,
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
+        let mut lines = Vec::new();
+        let mut views = Vec::new();
+        for (index, view) in reply["views"].as_array().into_iter().flatten().enumerate() {
+            let name = view["view"]
+                .as_str()
+                .map_or(format!("view {index}"), str::to_string);
+            let crop: Vec<u64> = view["crop"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_u64)
+                .collect();
+            lines.push(format!(
+                "{name}: crop {crop:?}, pitch {} x {} px, {} cubes",
+                view["pitchX"], view["pitchY"], view["cubes"]
+            ));
+            if let (Some(name), Ok(crop)) = (view["view"].as_str(), <[u64; 4]>::try_from(crop)) {
+                views.push((name.to_string(), crop));
+            }
+        }
+        for check in reply["checks"].as_array().into_iter().flatten() {
+            lines.push(format!(
+                "{} {}: {}% ({}% in cubes)",
+                if check["ok"] == true { "ok" } else { "off" },
+                check["check"].as_str().unwrap_or(""),
+                check["percent"],
+                check["percentCubes"]
+            ));
+        }
+        if let Some(parts) = reply.get("parts") {
+            let dirs: Vec<&str> = parts["parts"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|p| p["direction"].as_str())
+                .collect();
+            lines.push(format!(
+                "{} view: {} parts ({})",
+                parts["view"].as_str().unwrap_or(""),
+                parts["count"],
+                dirs.join(" ")
+            ));
+        }
+        for note in reply["notes"].as_array().into_iter().flatten() {
+            lines.push(note.as_str().unwrap_or("").to_string());
+        }
+        self.status = format!(
+            "Measured {} views{}.",
+            views
+                .len()
+                .max(reply["views"].as_array().map_or(0, Vec::len)),
+            if reply["ok"] == true {
+                ", every check ok"
+            } else {
+                ""
+            }
+        );
+        let panel = &mut self.silhouette.measure;
+        panel.lines = lines;
+        panel.views = views;
+    }
+
+    /// Use crops: the measured views' crops into the Carve from views rows
+    /// (front, left (side), top), which Fit to views shares.
+    pub fn use_measured_crops(&mut self) {
+        let path = self.silhouette.measure.path.trim().to_string();
+        let mut used = 0;
+        for (name, crop) in self.silhouette.measure.views.clone() {
+            let side = match name.as_str() {
+                "side" => "left",
+                other => other,
+            };
+            let Some(index) = SIDES.iter().position(|(_, s)| *s == side) else {
+                continue;
+            };
+            let carve = &mut self.silhouette.carve;
+            let row = match carve.views.iter().position(|row| row.side == index) {
+                Some(row) => row,
+                None => match carve.views.iter().position(|row| !row.on) {
+                    Some(row) => row,
+                    None => continue,
+                },
+            };
+            let row = &mut carve.views[row];
+            row.on = true;
+            row.side = index;
+            row.path = path.clone();
+            row.crop = format!("{} {} {} {}", crop[0], crop[1], crop[2], crop[3]);
+            used += 1;
+        }
+        self.silhouette.carve.background = self.silhouette.measure.background.clone();
+        self.status = if used == 0 {
+            "Measure a 2 x 2 sheet first.".into()
+        } else {
+            format!("Set {used} Carve from views rows from the sheet.")
+        };
+    }
+
+    /// Choose the sheet of Measure sheet.
+    pub fn pick_measure_sheet(&mut self) {
+        if let Some(path) = super::dialog::pick_open("PNG", &["png"]) {
+            self.silhouette.measure.path = path.display().to_string();
+        }
     }
 
     /// Keep a comparison's overlay for the viewport. MCP

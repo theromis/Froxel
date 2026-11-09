@@ -69,6 +69,12 @@ A unique asset with an approved turnaround sheet (a hero view plus front,
 side, and top views) starts from its silhouettes, not from cells copied
 off the flat views.
 
+0. **Read the sheet.** `measure_sheet` (or `froxel measure --sheet
+   views.png --parts`) returns each view's crop, the cube pitch in pixels,
+   the size in cubes, whether the front, side, and top agree in size, and
+   how many parts stick out of the top view's body. Fix or regenerate a
+   sheet whose checks are off or whose top view has six flippers before
+   carving it, and pass its `fitViews` to the tools below.
 1. **Carve the rough form.** `carve_from_views` takes the front, side, and
    top views as crops of the sheet and fills their visual hull: the cells
    every view covers. Give the cells per pixel, or the box `size` in cells

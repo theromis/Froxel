@@ -1041,6 +1041,207 @@ pub(super) fn compare_silhouette(session: &mut Session, params: &Value) -> Resul
     Ok(reply)
 }
 
+/// MCP `measure_sheet`: read a views sheet and reply with its views,
+/// pitches, checks, and parts. Writes no file.
+pub(super) fn measure_sheet(params: &Value) -> Result<Value, String> {
+    use crate::tools::{PartsSpec, SheetSpec};
+    let path = super::req_str(params, "path")?;
+    let mut images = HashMap::new();
+    let mut item = params.clone();
+    if let Some(map) = item.as_object_mut() {
+        map.remove("rows");
+        map.remove("flip");
+        map.remove("mask");
+    }
+    let (mask, edited) = view_mask_report(&item, true, &mut images)?;
+    let image = &images[&path];
+    let [cx, cy, cw, ch] = crop(params)?.unwrap_or([0, 0, image.width, image.height]);
+    let mut luma = Vec::with_capacity((cw * ch) as usize);
+    for y in cy..cy + ch {
+        let row = ((y * image.width + cx) * 4) as usize;
+        luma.extend(crate::tools::luma_of(
+            &image.rgba[row..row + (cw * 4) as usize],
+        ));
+    }
+    let mut spec = SheetSpec::default();
+    if let Some(gap) = opt_f64(params, "gap")? {
+        if !(0.0..=1024.0).contains(&gap) {
+            return Err("gap must be 0..1024 pixels".into());
+        }
+        spec.gap = gap.round() as u32;
+    }
+    if let Some(share) = opt_f64(params, "minShare")? {
+        if !(0.0..=1.0).contains(&share) {
+            return Err("minShare must be 0..1".into());
+        }
+        spec.min_share = share as f32;
+    }
+    if let Some(tolerance) = opt_f64(params, "checkTolerance")? {
+        if !(0.0..=100.0).contains(&tolerance) {
+            return Err("checkTolerance must be 0..100 percent".into());
+        }
+        spec.tolerance = tolerance as f32;
+    }
+    match params.get("layout") {
+        None | Some(Value::Null) => {}
+        Some(Value::Array(names)) if names.len() == 4 => {
+            for (slot, name) in spec.layout.iter_mut().zip(names) {
+                let name = name.as_str().ok_or("layout must be 4 view names")?;
+                crate::tools::Side::parse(name).map_err(|err| format!("layout: {err}"))?;
+                *slot = name.to_string();
+            }
+        }
+        Some(_) => return Err("layout must be 4 view names in reading order".into()),
+    }
+    if let Some(range) = super::opt_vec2(params, "pitchRange")? {
+        let (lo, hi) = (range[0].round(), range[1].round());
+        if !(2.0..=512.0).contains(&lo) || hi < lo * 2.0 || hi > 2048.0 {
+            return Err("pitchRange must be [low, high] pixels, 2 <= low, high >= 2 * low".into());
+        }
+        spec.pitch_range = [lo as u32, hi as u32];
+    }
+    spec.parts = match params.get("parts") {
+        None | Some(Value::Null) | Some(Value::Bool(false)) => None,
+        Some(Value::Bool(true)) => Some(PartsSpec::default()),
+        Some(found @ Value::Object(_)) => {
+            let mut parts = PartsSpec::default();
+            if let Some(view) = found.get("view") {
+                parts.view = match view {
+                    Value::String(text) => text.clone(),
+                    Value::Number(n) => n.to_string(),
+                    _ => return Err("parts view must be a name or an index".into()),
+                };
+            }
+            if let Some(radius) = opt_f64(found, "radius")? {
+                if !(1.0..=4096.0).contains(&radius) {
+                    return Err("parts radius must be 1..4096 pixels".into());
+                }
+                parts.radius = Some(radius as f32);
+            }
+            if let Some(share) = opt_f64(found, "minShare")? {
+                if !(0.0..=1.0).contains(&share) {
+                    return Err("parts minShare must be 0..1".into());
+                }
+                parts.min_share = share as f32;
+            }
+            Some(parts)
+        }
+        Some(_) => return Err("parts must be true or {view, radius, minShare}".into()),
+    };
+    let sheet = crate::tools::measure_sheet(&mask, &luma, &spec)?;
+    // A view's size in cubes: across by its across pitch, down by its down
+    // pitch (each falling back to the view's pitch).
+    let cubes = |v: &crate::tools::SheetView| -> Option<[f64; 2]> {
+        let pitch = v.pitch()?;
+        let px = v.pitch_x.map_or(pitch, |p| p.pitch);
+        let py = v.pitch_y.map_or(pitch, |p| p.pitch);
+        Some([
+            round(v.crop[2] as f32 / px, 1),
+            round(v.crop[3] as f32 / py, 1),
+        ])
+    };
+    // Square cubes: the two pitches within 10% of each other.
+    let square = |v: &crate::tools::SheetView| -> Option<bool> {
+        match (v.pitch_x, v.pitch_y) {
+            (Some(a), Some(b)) => Some((a.pitch - b.pitch).abs() <= 0.1 * a.pitch.max(b.pitch)),
+            _ => None,
+        }
+    };
+    let mut notes = Vec::new();
+    let stretched: Vec<String> = sheet
+        .views
+        .iter()
+        .enumerate()
+        .filter(|(_, v)| square(v) == Some(false))
+        .map(|(i, v)| v.name.clone().unwrap_or(i.to_string()))
+        .collect();
+    if !stretched.is_empty() {
+        notes.push(format!(
+            "cubes are not square in {} (pitchX and pitchY differ by more than 10%): the sheet may be stretched, so compare sizes in cubes along the same axis",
+            stretched.join(", ")
+        ));
+    }
+    if !sheet.layout {
+        notes.push(format!(
+            "{} views are not a 2 x 2 layout: no names and no checks",
+            sheet.views.len()
+        ));
+    }
+    let shift = |c: [u32; 4]| [c[0] + cx, c[1] + cy, c[2], c[3]];
+    let views: Vec<Value> = sheet
+        .views
+        .iter()
+        .map(|v| {
+            let pitch = v.pitch();
+            json!({
+                "view": v.name,
+                "crop": shift(v.crop),
+                "pixels": v.pixels,
+                "pitch": pitch.map(|p| round(p, 2)),
+                "pitchX": v.pitch_x.map(|p| round(p.pitch, 2)),
+                "pitchY": v.pitch_y.map(|p| round(p.pitch, 2)),
+                "strength": [v.pitch_x.map(|p| round(p.strength, 3)), v.pitch_y.map(|p| round(p.strength, 3))],
+                "cubes": cubes(v),
+                "square": square(v),
+            })
+        })
+        .collect();
+    let checks: Vec<Value> = sheet
+        .checks
+        .iter()
+        .map(|c| {
+            let side = |(view, axis, pixels): &(String, &str, f32), cubes: Option<f32>| {
+                json!({"view": view, "axis": axis, "pixels": pixels, "cubes": cubes.map(|v| round(v, 1))})
+            };
+            json!({
+                "check": c.name,
+                "a": side(&c.a, c.cubes.map(|v| v.0)),
+                "b": side(&c.b, c.cubes.map(|v| v.1)),
+                "percent": round(c.percent, 1),
+                "percentCubes": c.percent_cubes.map(|v| round(v, 1)),
+                "ok": c.percent <= spec.tolerance
+                    && c.percent_cubes.is_none_or(|v| v <= spec.tolerance),
+            })
+        })
+        .collect();
+    let mut reply = json!({
+        "path": path,
+        "width": image.width,
+        "height": image.height,
+        "layout": sheet.layout,
+        "views": views,
+        "checks": checks,
+        "ok": sheet.layout && sheet.checks.iter().all(|c| c.percent <= spec.tolerance
+            && c.percent_cubes.is_none_or(|v| v <= spec.tolerance)),
+        "ignored": sheet.ignored.iter().map(|c| shift(*c)).collect::<Vec<_>>(),
+        "notes": notes,
+    });
+    if sheet.layout {
+        reply["fitViews"] = json!(sheet
+            .views
+            .iter()
+            .map(|v| json!({"view": v.name, "crop": shift(v.crop)}))
+            .collect::<Vec<_>>());
+    }
+    if let Some(parts) = &sheet.parts {
+        reply["parts"] = json!({
+            "view": parts.view,
+            "count": parts.parts.len(),
+            "radius": round(parts.radius, 1),
+            "bodyPixels": parts.body_pixels,
+            "parts": parts.parts.iter().map(|p| json!({
+                "bounds": shift(p.bounds),
+                "pixels": p.pixels,
+                "direction": p.direction,
+            })).collect::<Vec<_>>(),
+        });
+    }
+    if let Some(edited) = edited {
+        reply["maskEdits"] = mask_report_json(&edited);
+    }
+    Ok(reply)
+}
+
 fn align_arg(params: &Value) -> Result<crate::silhouette::Align, String> {
     use crate::silhouette::Align;
     match params.get("align") {

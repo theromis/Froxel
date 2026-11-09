@@ -113,8 +113,12 @@ If the tools are missing, the server is not configured. Point the user to
 ## Hand sculpting loop
 
 1. `new_document`, then `set_palette` with the colours you need.
-   From a concept's turnaround sheet, start the form with
-   `carve_from_views`: the front, side, and top views as PNG crops of the
+   From a concept's turnaround sheet, first read it with `measure_sheet`
+   (`parts: true`): it gives each view's crop (`fitViews`), the cube pitch
+   per view, whether front/side/top agree in percent, and the top view's
+   part count (six for a turtle: four flippers, head, tail). Never measure a
+   sheet with ad-hoc scripts; fix a sheet whose checks fail. Then start the
+   form with `carve_from_views`: the front, side, and top views as PNG crops of the
    sheet (`crop`, `cellsPerPixel` or a box `size`, a background rule) fill
    their visual hull, coloured from the nearest view. Do not copy cells from
    the flat views by hand. When a grey depth pass of the sheet exists (white
