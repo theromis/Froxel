@@ -1617,7 +1617,7 @@ const IMPORT_USAGE: &str = "\
 usage: froxel import --mesh <file.glb|.gltf|.obj> --output <file.vox>
                      [--input <base.vox>] [--size CELLS | --voxel-size METRES | --scale CELLS_PER_UNIT]
                      [--z-up] [--rotation X,Y,Z] [--position X,Y,Z] [--anchor min|center|bottom]
-                     [--shell] [--vertex-colors] [--palette SLOT | --slots A,B,...]
+                     [--fill solid|parity|shell | --shell] [--vertex-colors] [--palette SLOT | --slots A,B,...]
                      [--max-new-slots N] [--tolerance D] [--mode replace|empty|paint]
                      [--new-object] [--name NAME]
 
@@ -1625,7 +1625,10 @@ MCP import_mesh from the command line: voxelize the mesh into the first object
 of --input (or a new document), or a new object with --new-object, and save
 the .vox. --size is cells along the longest axis (default 64); --voxel-size
 0.08 keeps a glTF's real size at 0.08 m voxels. The file's Y-up becomes Z-up
-unless --z-up. --shell writes only the surface. Colours come from the
+unless --z-up. --fill solid (default) fills all a flood from the box
+border cannot reach, sealing the openings of an open mesh at their rims;
+parity is the older ray-parity vote; shell (or --shell) writes only the
+surface. PNG, JPEG, and WebP textures are read. Colours come from the
 base-colour texture, factor, and vertex colours (--vertex-colors: vertex
 colours only), reuse palette slots within --tolerance (default 12), and add
 at most --max-new-slots (default 32) in slots no cell uses; --slots maps to
@@ -1750,6 +1753,7 @@ fn import_args(
             "--name" => params["name"] = json!(value()?),
             "--z-up" => params["upAxis"] = json!("z"),
             "--shell" => params["fill"] = json!("shell"),
+            "--fill" => params["fill"] = json!(value()?),
             "--vertex-colors" => params["colors"] = json!("vertex"),
             "--new-object" => params["newObject"] = json!(true),
             other => return Err(format!("unknown argument `{other}`\n{IMPORT_USAGE}")),

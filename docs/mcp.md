@@ -185,7 +185,7 @@ tracer. A file with no scene graph still loads its first model.
 | `deform` | `op` | `bend`, `taper`, or `twist` the active object (or the cells of a box `x0`..`z1`) along `axis`, or `displace` its surface with 3D noise. Optional `axis`, `origin`, `length`, `center`, `angle`, `direction`, `start`, `end`, `amplitude`, `scale`, `octaves`, `seed`, `bias`. Slots are kept. Replies with `cells`, `result`, `added`, `removed`. One undo step |
 | `brush` | `op`, `points` | Sculpt brush dabs along **local** points: `inflate`, `deflate` (`dig`), `smooth`, `flatten`, or `grab` (`drag`). Optional `radius`, `strength`, `falloff` (`smooth`, `linear`, `constant`), `only`, `palette`, `vector` (grab), `spacing`. Replies with `dabs`, `added`, `removed`. One undo step |
 | `carve_from_views` | `views` | Fill the visual hull of 2 to 6 orthographic views (front, side, top) of a concept's turnaround sheet into the active object: each view's silhouette is extruded along its depth axis and the cells every view covers are kept. A view's `depth` (or the top-level `depthPath`), a grey depth map with white near, carves away the cells in front of its surface, so a round head is round; one view with depth is enough. See [Depth maps](#depth-maps). A view is a PNG `path` with `crop`, `background` (`auto`, `alpha`, or a key colour with `tolerance`), and `cellsPerPixel` or `size`, or `rows` with a `legend`. Optional `path`, `background`, `tolerance`, `alphaThreshold` (for every view without its own), `depthPath`, `depthTolerance`, `size`, `origin`, `cellsPerPixel`, `palette` or `slots`, `coverage`, `shell`, `smooth`, `mode`. Replies with `cells`, `bounds`, `size`, and each view's `grid`, `covered`, and `depth` (its calibration and the cells it carved). At most 4000000 cells in the box, one undo step. See [Silhouettes](#silhouettes) |
-| `import_mesh` | `path` | Voxelize a `.glb`, `.gltf`, or `.obj` (with its `.mtl` and textures) into the active object, or a new one with `newObject` (and `name`). Optional `size`, `scale`, or `voxelSize`; `upAxis`, `rotation`, `position`, `anchor` (`min`, `center`, `bottom`), `fill` (`solid`, `shell`), `colors` (`auto`, `vertex`), `palette` or `slots`, `maxNewSlots`, `tolerance`, `mode`. Replies with `cells`, `shell`, `interior`, `written`, `changed`, `slots`, `newSlots`, `bounds`, `scale`, `triangles`, `primitives`, `textures`, `warnings`. At most 256 cells per axis and 2000000 cells, one undo step |
+| `import_mesh` | `path` | Voxelize a `.glb`, `.gltf`, or `.obj` (with its `.mtl` and textures) into the active object, or a new one with `newObject` (and `name`). Optional `size`, `scale`, or `voxelSize`; `upAxis`, `rotation`, `position`, `anchor` (`min`, `center`, `bottom`), `fill` (`solid`, `parity`, `shell`), `colors` (`auto`, `vertex`), `palette` or `slots`, `maxNewSlots`, `tolerance`, `mode`. Replies with `cells`, `shell`, `interior`, `openEdges`, `written`, `changed`, `slots`, `newSlots`, `bounds`, `scale`, `triangles`, `primitives`, `textures`, `warnings`. At most 256 cells per axis and 2000000 cells, one undo step |
 | `surface_stroke` | `points`, `palette` | Paint a stroke through 2..=1024 **local** points that snaps to the active object's nearest surface cells: seams between shell plates, markings on a curved body. Optional `curve` (`polyline`, `smooth`), `width` (cells across, default 1), `depth` (cells into the solid, default 1), `reach` (default 8), `only`. `palette` `0` cuts a groove. Replies with `cells`, `changed`, `samples`, `missed`, `snap`, `length`, `voxels`. One undo step |
 | `recolor` | `from` and `to`, or `map` | Replace palette slot `from` with `to` (or every pair of `map`, `{"3": 5}` or `[[3, 5]]`) in the active object's solid cells, inside an inclusive box `x0`..`z1` or everywhere. No cell is added; `to` `0` erases. Replies with `matched`, `changed`, `voxels`. One undo step |
 | `carve` | `shape` | Remove the solid cells inside a `box`, `ellipsoid`, `rounded_box`, or `tube`, given as for the fill tools. To cut a polygon or rounded rectangle along a path, call `sweep` with `palette` `0`. Replies with `removed`. One undo step |
@@ -508,12 +508,15 @@ triangle primitive (triangles, strips, fans) of every mesh node of the
 default scene is placed under its node's world transform (TRS or
 `matrix`). Skins and morph targets are ignored, so a rigged mesh comes in
 its bind pose; Draco and meshopt compression are refused (export without
-them). A material gives its `baseColorFactor` and `baseColorTexture` (PNG
-or JPEG, with its sampler's wrap and `KHR_texture_transform`), or the
+them). A material gives its `baseColorFactor` and `baseColorTexture` (PNG,
+JPEG, or WebP, through a plain `source` or `EXT_texture_webp` as image-to-3D
+tools such as TRELLIS write it, with its sampler's wrap and
+`KHR_texture_transform`), or the
 diffuse of `KHR_materials_pbrSpecularGlossiness`; `COLOR_0` multiplies it.
 An `.obj` reads `v` (with optional `r g b` vertex colours), `vt`, faces of
 any size, and its `.mtl`'s `Kd`, `d`, and `map_Kd`. A texture it cannot
-read is skipped with a line in `warnings`.
+read (KTX2/Basis through `KHR_texture_basisu`) is skipped with a line in
+`warnings`.
 
 The file is Y-up (glTF, and OBJ as Blender writes it) and becomes Z-up:
 file `(x, y, z)` is cell `(x, -z, y)`, the inverse of the glTF export, so a
@@ -528,10 +531,21 @@ centre of its bottom face). With `newObject`, `position` is the new
 object's world position and the anchor is its local origin.
 
 Every cell a triangle touches is the shell. `fill` `solid` (the default)
-adds the inside: a cell is in when at least two of the three rays through
-its centre along x, y, and z have crossed the surface an odd number of
-times, so a small hole in a scanned or generated mesh does not empty the
-row. `shell` writes only the surface. A face that lands exactly on a cell
+adds the inside: every cell that a flood of the outside, from the border of
+the shell's box through cells off the shell, cannot reach. A hollow or
+double-walled mesh (an outer and an inner surface, as image-to-3D tools
+often make) therefore comes out solid. A mesh with open edges (an edge of
+one triangle once equal positions are welded; the reply's `openEdges`)
+first has its openings sealed: a cell off the shell whose lines towards at
+least 17 of its 26 neighbours meet the shell before the box border also
+stops the flood. 17 is the upper hemisphere plus the horizon, so a dome
+open underneath (a turtle shell) is filled up to its rim plane and nothing
+below the rim is, and a hole or seam a few cells wide is closed. A deep
+pocket of an open mesh (a cup) is filled too; pass `shell` or `parity` for
+those. `parity` is the older rule: a cell is in when at least two of the
+three rays through its centre along x, y, and z have crossed the surface an
+odd number of times; it fills only the wall of a double-walled mesh.
+`shell` writes only the surface. A face that lands exactly on a cell
 boundary goes to the cell behind it, so a 1 m cube at `voxelSize` `0.25`
 is exactly 4 cells a side.
 
@@ -1893,7 +1907,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `mode` `intersect` | Intersect section: Shape (Box, Ellipsoid, Rounded box with Radius) inscribed in the selection's box, Keep inside |
 | `project_paint` | Paint from view section: View, Flip, Image…, Crop, Background, Scale (Fit box or Cells / px), Box origin and size, Depth, Normal limit, Only, Colour from image or the active slot, Paint |
 | `compare_silhouette` | Compare silhouette section: Concept Image…, Crop, Background, Flip, Camera (Viewport, Game, Front, Left, Top), Align (Fit, Height, Width), Compare; the overlay shows in the viewport's bottom-right corner until Hide overlay; MCP `compare_silhouette` over the control port shows it there too |
-| `import_mesh` | File > Import Mesh… and the Import mesh section: File, Size, Voxel, or Scale, File is Z-up, Rotation, Position, Anchor, Solid or Shell, Texture or Vertex colour, Slots, New slots, Tolerance, Mode, New object |
+| `import_mesh` | File > Import Mesh… and the Import mesh section: File, Size, Voxel, or Scale, File is Z-up, Rotation, Position, Anchor, Solid, Parity, or Shell, Texture or Vertex colour, Slots, New slots, Tolerance, Mode, New object |
 | `carve` | Remove mode with Box, Generator, or Tube |
 | `surface_stroke` | Surface stroke section: Points (one per line, Point at selection, World), Smooth, Width, Depth, Reach, Only, Groove, Stroke with the active slot |
 | `recolor` | Recolor section: Slots (pairs `from>to`), Recolor over the selection's box or the whole object |

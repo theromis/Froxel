@@ -5,8 +5,10 @@
 //! transform, or every face of an OBJ, with the base-colour texture, factor,
 //! and vertex colours each triangle needs. [`voxelize`] places the soup in
 //! cell space (up axis, rotation, size, anchor), marks every cell a triangle
-//! touches (the shell), fills the inside by a majority vote of ray parity
-//! along X, Y, and Z when solid, and colours each shell cell at the nearest
+//! touches (the shell), fills the inside when solid (everything a flood from
+//! the box border cannot reach; an open mesh has its openings sealed first,
+//! see [`seal_votes`]) or by parity (a majority vote of ray parity along X,
+//! Y, and Z), and colours each shell cell at the nearest
 //! point of its nearest triangle; inside cells take the colour of the nearest
 //! shell cell. [`quantize`] maps those colours into the document palette.
 
@@ -299,9 +301,29 @@ pub(crate) struct Voxelize {
     pub anchor: Anchor,
     /// Cell coordinates the anchor lands on (a cell corner).
     pub position: [f64; 3],
-    pub solid: bool,
+    pub fill: Fill,
     pub colors: Colors,
 }
+
+/// How [`voxelize`] fills the inside of the shell.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Fill {
+    /// Every cell a flood of the outside from the box border cannot reach.
+    /// An open mesh (an edge with one face) first has its openings sealed
+    /// by cells enclosed in at least [`SEAL_VOTES`] of 26 directions, so a
+    /// hole, a seam, or an open underside does not let the flood in.
+    Solid,
+    /// A majority vote of ray parity along X, Y, and Z.
+    Parity,
+    /// The shell alone.
+    Shell,
+}
+
+/// Of the 26 directions to the neighbours of a cell, how many must meet the
+/// shell before the box border for the cell to seal an opening. 17 is the
+/// upper hemisphere plus the horizon: a bowl open below is sealed at its
+/// rim plane, and a cell under the rim is not.
+pub(crate) const SEAL_VOTES: u8 = 17;
 
 pub(crate) struct Voxels {
     /// Every cell with its sRGB colour, sorted.
@@ -311,6 +333,9 @@ pub(crate) struct Voxels {
     pub scale: f64,
     pub min: Cell,
     pub max: Cell,
+    /// Edges of exactly one triangle once equal positions are welded: 0 for
+    /// a watertight mesh.
+    pub open_edges: usize,
 }
 
 struct Hit {
@@ -464,10 +489,11 @@ pub(crate) fn voxelize(mesh: &Mesh, options: &Voxelize) -> Result<Voxels, String
         }
     }
 
-    let inside = if options.solid {
-        inside_cells(mesh, &at, low, dims, &shell)
-    } else {
-        Vec::new()
+    let open_edges = open_edges(mesh);
+    let inside = match options.fill {
+        Fill::Solid => unreached_cells(&shell, open_edges > 0),
+        Fill::Parity => inside_cells(mesh, &at, low, dims, &shell),
+        Fill::Shell => Vec::new(),
     };
     if shell.len() + inside.len() > MAX_CELLS {
         return Err(format!(
@@ -534,7 +560,166 @@ pub(crate) fn voxelize(mesh: &Mesh, options: &Voxelize) -> Result<Voxels, String
         scale,
         min,
         max,
+        open_edges,
     })
+}
+
+/// Edges used by exactly one triangle, with vertices welded by position.
+fn open_edges(mesh: &Mesh) -> usize {
+    let mut ids: HashMap<[u64; 3], u32> = HashMap::new();
+    let welded: Vec<u32> = mesh
+        .positions
+        .iter()
+        .map(|p| {
+            let next = ids.len() as u32;
+            *ids.entry(p.map(f64::to_bits)).or_insert(next)
+        })
+        .collect();
+    let mut uses: HashMap<(u32, u32), u32> = HashMap::new();
+    for triangle in &mesh.triangles {
+        let v = triangle.v.map(|i| welded[i as usize]);
+        for (a, b) in [(v[0], v[1]), (v[1], v[2]), (v[2], v[0])] {
+            if a != b {
+                *uses.entry((a.min(b), a.max(b))).or_default() += 1;
+            }
+        }
+    }
+    uses.values().filter(|&&n| n == 1).count()
+}
+
+/// Cells not on the shell that a 6-connected flood from the border of the
+/// shell's box cannot reach. With `seal`, cells that [`seal_votes`] counts
+/// as enclosed also stop the flood.
+fn unreached_cells(shell: &HashMap<Cell, Hit>, seal: bool) -> Vec<Cell> {
+    if shell.is_empty() {
+        return Vec::new();
+    }
+    let mut lo = [i32::MAX; 3];
+    let mut hi = [i32::MIN; 3];
+    for &(x, y, z) in shell.keys() {
+        for (axis, value) in [x, y, z].into_iter().enumerate() {
+            lo[axis] = lo[axis].min(value);
+            hi[axis] = hi[axis].max(value);
+        }
+    }
+    let dims = [0, 1, 2].map(|a| (hi[a] - lo[a] + 1) as usize);
+    let index = |x: usize, y: usize, z: usize| (z * dims[1] + y) * dims[0] + x;
+    let mut wall = vec![false; dims[0] * dims[1] * dims[2]];
+    for &(x, y, z) in shell.keys() {
+        wall[index(
+            (x - lo[0]) as usize,
+            (y - lo[1]) as usize,
+            (z - lo[2]) as usize,
+        )] = true;
+    }
+    let shell_wall = wall.clone();
+    if seal {
+        let votes = seal_votes(&shell_wall, dims);
+        for (cell, &count) in wall.iter_mut().zip(&votes) {
+            if count >= SEAL_VOTES {
+                *cell = true;
+            }
+        }
+    }
+    let mut outside = vec![false; wall.len()];
+    let mut queue = VecDeque::new();
+    for z in 0..dims[2] {
+        for y in 0..dims[1] {
+            for x in 0..dims[0] {
+                let border = x == 0
+                    || y == 0
+                    || z == 0
+                    || x + 1 == dims[0]
+                    || y + 1 == dims[1]
+                    || z + 1 == dims[2];
+                let i = index(x, y, z);
+                if border && !wall[i] {
+                    outside[i] = true;
+                    queue.push_back([x, y, z]);
+                }
+            }
+        }
+    }
+    while let Some([x, y, z]) = queue.pop_front() {
+        let steps = [
+            (x > 0).then(|| [x - 1, y, z]),
+            (x + 1 < dims[0]).then(|| [x + 1, y, z]),
+            (y > 0).then(|| [x, y - 1, z]),
+            (y + 1 < dims[1]).then(|| [x, y + 1, z]),
+            (z > 0).then(|| [x, y, z - 1]),
+            (z + 1 < dims[2]).then(|| [x, y, z + 1]),
+        ];
+        for [nx, ny, nz] in steps.into_iter().flatten() {
+            let i = index(nx, ny, nz);
+            if !wall[i] && !outside[i] {
+                outside[i] = true;
+                queue.push_back([nx, ny, nz]);
+            }
+        }
+    }
+    let mut inside = Vec::new();
+    for z in 0..dims[2] {
+        for y in 0..dims[1] {
+            for x in 0..dims[0] {
+                let i = index(x, y, z);
+                if !shell_wall[i] && !outside[i] {
+                    inside.push((x as i32 + lo[0], y as i32 + lo[1], z as i32 + lo[2]));
+                }
+            }
+        }
+    }
+    inside
+}
+
+/// For each cell of the box, how many of the 26 directions to its
+/// neighbours meet `wall` before leaving the box. A line of cells that
+/// steps by one direction escapes when it leaves the box with no wall cell,
+/// which each direction finds in one pass from the far side.
+fn seal_votes(wall: &[bool], dims: [usize; 3]) -> Vec<u8> {
+    let index = |x: usize, y: usize, z: usize| (z * dims[1] + y) * dims[0] + x;
+    let mut votes = vec![0u8; wall.len()];
+    let mut escapes = vec![false; wall.len()];
+    let order = |n: usize, d: i32| -> Vec<usize> {
+        if d > 0 {
+            (0..n).rev().collect()
+        } else {
+            (0..n).collect()
+        }
+    };
+    for dz in -1i32..=1 {
+        for dy in -1i32..=1 {
+            for dx in -1i32..=1 {
+                if (dx, dy, dz) == (0, 0, 0) {
+                    continue;
+                }
+                let (xs, ys, zs) = (order(dims[0], dx), order(dims[1], dy), order(dims[2], dz));
+                let step = |v: usize, d: i32, n: usize| -> Option<usize> {
+                    let next = v as i64 + i64::from(d);
+                    (0..n as i64).contains(&next).then_some(next as usize)
+                };
+                for &z in &zs {
+                    for &y in &ys {
+                        for &x in &xs {
+                            let i = index(x, y, z);
+                            let free = match (
+                                step(x, dx, dims[0]),
+                                step(y, dy, dims[1]),
+                                step(z, dz, dims[2]),
+                            ) {
+                                (Some(nx), Some(ny), Some(nz)) => escapes[index(nx, ny, nz)],
+                                _ => true,
+                            };
+                            escapes[i] = !wall[i] && free;
+                            if !escapes[i] {
+                                votes[i] += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    votes
 }
 
 /// Cells inside the mesh and not on its shell: a cell is inside when at

@@ -156,7 +156,10 @@ If the tools are missing, the server is not configured. Point the user to
    hero rock) with a mesh sculpted in Blender or generated from the concept
    by an image-to-3D tool, start with `import_mesh` (`voxelSize` 0.08 for
    0.08 m voxels, `anchor: "bottom"`, `newObject: true`, and `slots` to map
-   onto your bark, stone, or moss slots) and finish it with the tools below;
+   onto your bark, stone, or moss slots; PNG, JPEG, and WebP textures are
+   read, and the default `fill` `solid` fills a double-walled or open mesh,
+   sealing openings at their rims: check `interior` and `openEdges` in the
+   reply) and finish it with the tools below;
    tubes and boxes alone make such an asset read as pipes. Otherwise block
    out the large forms with `fill_rounded_box` and
    `fill_ellipsoid`. Grow limbs, roots, branches, and twigs with `fill_tube`

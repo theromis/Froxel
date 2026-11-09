@@ -12,7 +12,7 @@ use std::path::Path;
 use serde_json::{json, Map, Value};
 
 use super::{add_mode, opt_bool, opt_f64, opt_str, req_str, slot_list, FillMode};
-use crate::import::{Anchor, Colors, Fit, Mesh, Up, Voxelize};
+use crate::import::{Anchor, Colors, Fill, Fit, Mesh, Up, Voxelize};
 use crate::state::{Cell, PaletteChange, Session};
 
 /// The default `size`: cells along the longest axis.
@@ -78,10 +78,15 @@ pub(crate) fn voxelize_options(params: &Value, up: Up) -> Result<Voxelize, Strin
             ))
         }
     };
-    let solid = match opt_str(params, "fill")?.as_deref() {
-        None | Some("solid") => true,
-        Some("shell") => false,
-        Some(other) => return Err(format!("fill must be solid or shell, not `{other}`")),
+    let fill = match opt_str(params, "fill")?.as_deref() {
+        None | Some("solid") => Fill::Solid,
+        Some("parity") => Fill::Parity,
+        Some("shell") => Fill::Shell,
+        Some(other) => {
+            return Err(format!(
+                "fill must be solid, parity, or shell, not `{other}`"
+            ))
+        }
     };
     let colors = match opt_str(params, "colors")?.as_deref() {
         None | Some("auto") => Colors::Auto,
@@ -99,7 +104,7 @@ pub(crate) fn voxelize_options(params: &Value, up: Up) -> Result<Voxelize, Strin
         rotation: number3(params, "rotation")?.unwrap_or([0.0; 3]),
         anchor,
         position: number3(params, "position")?.unwrap_or([0.0; 3]),
-        solid,
+        fill,
         colors,
     })
 }
@@ -191,6 +196,7 @@ pub(crate) fn import_plan(
     reply.insert("cells".into(), json!(voxels.cells.len()));
     reply.insert("shell".into(), json!(voxels.shell));
     reply.insert("interior".into(), json!(voxels.cells.len() - voxels.shell));
+    reply.insert("openEdges".into(), json!(voxels.open_edges));
     reply.insert("written".into(), json!(writes.len()));
     reply.insert("slots".into(), json!(written));
     reply.insert(

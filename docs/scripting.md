@@ -644,7 +644,7 @@ options are the MCP tool's except `path`, `newObject`, and `name`:
 | `rotation` | `[0, 0, 0]` | Degrees about x, then y, then z. |
 | `position` | `[0, 0, 0]` | Where the anchor lands, in local cells. |
 | `anchor` | `"min"` | `"center"` or `"bottom"`. |
-| `fill` | `"solid"` | `"shell"` writes only the cells the surface touches. |
+| `fill` | `"solid"` | Everything a flood from the box border cannot reach, with an open mesh's openings sealed at their rims. `"parity"` is the ray-parity vote; `"shell"` writes only the cells the surface touches. |
 | `colors` | `"auto"` | `"vertex"`: the same for a script mesh, which has no texture. |
 | `palette` | none | Paint every cell this slot. |
 | `slots` | none | Map colours only to these slots. |
@@ -653,7 +653,7 @@ options are the MCP tool's except `path`, `newObject`, and `name`:
 | `mode` | `"replace"` | `"empty"` adds only into empty cells; `"paint"` recolours solid ones. |
 
 It returns the MCP reply as a map: `#{changed, cells, shell, interior,
-written, slots, newSlots, bounds, scale, triangles, ...}`, where `bounds`
+openEdges, written, slots, newSlots, bounds, scale, triangles, ...}`, where `bounds`
 is `#{min, max, size}`. A mesh is at most 4 096 positions and 4 096
 triangles (the array limit). `examples/faceted_boulder.rhai` builds a
 lumpy sphere, voxelizes it, and weathers and mosses it.

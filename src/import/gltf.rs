@@ -564,9 +564,21 @@ fn texture_of(doc: &Doc, texture: usize, dir: &Path) -> Result<Texture, String> 
     let entry = list(doc.doc, "textures")
         .get(texture)
         .ok_or("it does not exist")?;
-    let source = index(entry, "source").ok_or(
-        "it has no PNG or JPEG source (KHR_texture_basisu and EXT_texture_webp are not read)",
-    )?;
+    let webp = entry
+        .get("extensions")
+        .and_then(|e| e.get("EXT_texture_webp"))
+        .and_then(|e| index(e, "source"));
+    let basisu = entry
+        .get("extensions")
+        .and_then(|e| e.get("KHR_texture_basisu"))
+        .is_some();
+    let source = match (webp, index(entry, "source")) {
+        (Some(source), _) | (None, Some(source)) => source,
+        (None, None) if basisu => {
+            return Err("its only source is KHR_texture_basisu (KTX2/Basis), which import does not read; export the texture as PNG, JPEG, or WebP".into())
+        }
+        (None, None) => return Err("it has no image source".into()),
+    };
     let image = list(doc.doc, "images")
         .get(source)
         .ok_or_else(|| format!("image {source} does not exist"))?;

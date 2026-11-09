@@ -19,7 +19,8 @@ pub struct ImportPanel {
     pub position: [i32; 3],
     /// 0 min, 1 center, 2 bottom.
     pub anchor: usize,
-    pub shell: bool,
+    /// 0 solid, 1 parity, 2 shell.
+    pub fill: usize,
     pub vertex_only: bool,
     /// Palette indices to map to; empty quantizes into the palette.
     pub slots: String,
@@ -42,7 +43,7 @@ impl Default for ImportPanel {
             rotation: [0.0; 3],
             position: [0; 3],
             anchor: 0,
-            shell: false,
+            fill: 0,
             vertex_only: false,
             slots: String::new(),
             max_new: crate::remote::DEFAULT_MAX_NEW_SLOTS as i32,
@@ -60,13 +61,14 @@ impl ImportPanel {
         }
         let anchor = ["min", "center", "bottom"][self.anchor.min(2)];
         let mode = ["replace", "empty", "paint"][self.mode.min(2)];
+        let fill = ["solid", "parity", "shell"][self.fill.min(2)];
         let mut args = json!({
             "path": self.path.trim(),
             "upAxis": if self.z_up { "z" } else { "y" },
             "rotation": self.rotation,
             "position": self.position,
             "anchor": anchor,
-            "fill": if self.shell { "shell" } else { "solid" },
+            "fill": fill,
             "colors": if self.vertex_only { "vertex" } else { "auto" },
             "maxNewSlots": self.max_new.clamp(0, 255),
             "tolerance": self.tolerance,
@@ -109,8 +111,9 @@ impl Session {
             Ok(reply) => {
                 let size = &reply["bounds"]["size"];
                 let mut status = format!(
-                    "Imported {} cells ({} x {} x {}) into {}, {} slots, {} new.",
+                    "Imported {} cells ({} inside, {} x {} x {}) into {}, {} slots, {} new.",
                     reply["written"],
+                    reply["interior"],
                     size[0],
                     size[1],
                     size[2],
@@ -118,6 +121,10 @@ impl Session {
                     reply["slots"].as_array().map_or(0, Vec::len),
                     reply["newSlots"].as_array().map_or(0, Vec::len),
                 );
+                let open = reply["openEdges"].as_u64().unwrap_or(0);
+                if open > 0 {
+                    status.push_str(&format!(" The mesh has {open} open edges."));
+                }
                 if let Some(warnings) = reply["warnings"].as_array() {
                     for warning in warnings.iter().filter_map(Value::as_str) {
                         status.push(' ');

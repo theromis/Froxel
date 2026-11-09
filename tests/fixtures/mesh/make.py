@@ -7,6 +7,9 @@ quad.gltf + quad.bin    a 1 x 1 quad on the ground with an external 2x2
 quad_embedded.gltf      the same quad, buffer and image as data URIs
 quad_jpeg.obj + .mtl    the same quad as OBJ with a 16x16 JPEG map_Kd
   + checker.jpg           (made with macOS sips)
+quad_webp.glb           the same quad as a .glb whose texture is a lossless
+                        WebP checker in a bufferView, through
+                        EXT_texture_webp only (made with cwebp)
 parts.glb               two primitives (red factor; blue PNG in a
                         bufferView) under a scaled root node and a child
                         node with a matrix: 6 x 3 x 2 metres
@@ -195,3 +198,36 @@ glb = (struct.pack("<III", 0x46546C67, 2, 12 + 8 + len(text) + 8 + len(parts))
        + struct.pack("<II", len(text), 0x4E4F534A) + text
        + struct.pack("<II", len(parts), 0x004E4942) + bytes(parts))
 write("parts.glb", glb)
+
+# quad_webp.glb: the quad with a lossless WebP checker, as image-to-3D tools
+# write it: the texture has no plain source, only EXT_texture_webp.
+scratch = os.path.join(HERE, "checker_webp.png")
+write("checker_webp.png", CHECKER)
+webp_path = os.path.join(HERE, "checker_webp.webp")
+subprocess.run(["cwebp", "-quiet", "-lossless", scratch, "-o", webp_path], check=True,
+               capture_output=True)
+with open(webp_path, "rb") as f:
+    webp = f.read()
+os.remove(scratch)
+os.remove(webp_path)
+blob = bytearray(quad_bin)
+while len(blob) % 4:
+    blob.append(0)
+image_offset = len(blob)
+blob.extend(webp)
+while len(blob) % 4:
+    blob.append(0)
+doc = quad_doc(None, None)
+del doc["buffers"][0]["uri"]
+doc["buffers"][0]["byteLength"] = len(blob)
+doc["bufferViews"].append({"buffer": 0, "byteOffset": image_offset, "byteLength": len(webp)})
+doc["images"] = [{"bufferView": 3, "mimeType": "image/webp"}]
+doc["textures"] = [{"sampler": 0, "extensions": {"EXT_texture_webp": {"source": 0}}}]
+doc["extensionsUsed"] = ["EXT_texture_webp"]
+doc["extensionsRequired"] = ["EXT_texture_webp"]
+text = json.dumps(doc).encode()
+text += b" " * (-len(text) % 4)
+glb = (struct.pack("<III", 0x46546C67, 2, 12 + 8 + len(text) + 8 + len(blob))
+       + struct.pack("<II", len(text), 0x4E4F534A) + text
+       + struct.pack("<II", len(blob), 0x004E4942) + bytes(blob))
+write("quad_webp.glb", glb)

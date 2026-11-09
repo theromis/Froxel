@@ -77,10 +77,11 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
-                label(ui, "Fill", "Solid fills the inside by a vote of ray parity along X, Y, and Z, so a small hole does not empty it. Shell writes only the cells the surface touches.");
+                label(ui, "Fill", "Solid fills everything a flood from the box border cannot reach, so a hollow or double-walled mesh comes out solid; an open mesh (holes, seams, an open underside) first has its openings sealed at their rims. Parity is the older vote of ray parity along X, Y, and Z. Shell writes only the cells the surface touches.");
                 ui.horizontal(|ui| {
-                    ui.selectable_value(&mut panel.shell, false, "Solid");
-                    ui.selectable_value(&mut panel.shell, true, "Shell");
+                    for (index, name) in ["Solid", "Parity", "Shell"].into_iter().enumerate() {
+                        ui.selectable_value(&mut panel.fill, index, name);
+                    }
                 });
                 ui.end_row();
                 label(ui, "Colour", "Texture: the base-colour texture times its factor times vertex colours, at the nearest point of the surface. Vertex: vertex colours only.");

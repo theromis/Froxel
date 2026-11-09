@@ -175,8 +175,13 @@ fits its longest axis to a number of cells instead. The colours of the
 base-colour texture go into the palette (reusing close slots, adding at
 most `maxNewSlots`); pass `slots` to map onto a palette you have already
 chosen, such as bark and moss slots, so the finishing tools find them.
-Read the reply's `bounds` for the boxes of the next tools. `fill` `shell`
-keeps only the surface, for a hollow log to carve into. `mode` `paint`
+Read the reply's `bounds` for the boxes of the next tools. The default
+`fill` `solid` fills a generated mesh even when it is double-walled or not
+watertight (the reply's `openEdges` counts its open edges): openings are
+sealed at their rims, so a shell open underneath comes out solid; check
+`interior` in the reply. Textures may be PNG, JPEG, or WebP (TRELLIS writes
+WebP). `fill` `shell` keeps only the surface, for a hollow log to carve
+into. `mode` `paint`
 projects a textured mesh's colours onto a form already in the object.
 `docs/mcp.md` describes the options; `froxel import` does the same from
 the command line.

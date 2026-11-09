@@ -9,13 +9,17 @@ fn fixture(name: &str) -> PathBuf {
 }
 
 fn options(fit: Fit, solid: bool) -> Voxelize {
+    with_fill(fit, if solid { Fill::Solid } else { Fill::Shell })
+}
+
+fn with_fill(fit: Fit, fill: Fill) -> Voxelize {
     Voxelize {
         fit,
         up: Up::Y,
         rotation: [0.0; 3],
         anchor: Anchor::Min,
         position: [0.0; 3],
-        solid,
+        fill,
         colors: Colors::Auto,
     }
 }
@@ -73,7 +77,12 @@ fn placement_follows_anchor_rotation_and_scale() {
 
 #[test]
 fn a_textured_quad_samples_each_quadrant() {
-    for name in ["quad.gltf", "quad_embedded.gltf", "quad_jpeg.obj"] {
+    for name in [
+        "quad.gltf",
+        "quad_embedded.gltf",
+        "quad_jpeg.obj",
+        "quad_webp.glb",
+    ] {
         let mesh = load(&fixture(name)).unwrap();
         assert_eq!(mesh.textures.len(), 1, "{name}");
         let voxels = voxelize(&mesh, &options(Fit::Cells(4.0), true)).unwrap();
@@ -110,15 +119,140 @@ fn every_primitive_lands_under_its_node_transforms() {
 }
 
 #[test]
-fn an_open_mesh_still_fills_by_the_vote() {
+fn a_webp_texture_is_read_and_ktx2_is_refused() {
+    let mesh = load(&fixture("quad_webp.glb")).unwrap();
+    assert!(mesh.warnings.is_empty(), "{:?}", mesh.warnings);
+    let texture = &mesh.textures[0];
+    assert_eq!((texture.width, texture.height), (2, 2));
+    assert_eq!(texture.rgba[0], [255, 0, 0, 255]);
+    assert_eq!(texture.rgba[3], [255, 255, 255, 255]);
+    let ktx2 = b"\xabKTX 20\xbb\r\n\x1a\n\0\0\0\0";
+    let err = image::decode(ktx2, "image 0").unwrap_err();
+    assert!(err.contains("KTX2"), "{err}");
+}
+
+/// A sphere of `rings` x `segments` quads about `centre`, outward, or
+/// inward when `radius` is negative; rows of the lower half are skipped
+/// below `cut` (a z in file units, Z up).
+fn sphere(mesh: &mut Mesh, centre: [f64; 3], radius: f64, cut: Option<f64>) {
+    let (rings, segments) = (16u32, 24u32);
+    let r = radius.abs();
+    let mut at = Vec::new();
+    for i in 0..=rings {
+        let theta = std::f64::consts::PI * f64::from(i) / f64::from(rings);
+        let mut row = Vec::new();
+        for j in 0..segments {
+            let phi = std::f64::consts::TAU * f64::from(j) / f64::from(segments);
+            let p = [
+                centre[0] + r * theta.sin() * phi.cos(),
+                centre[1] + r * theta.sin() * phi.sin(),
+                centre[2] + r * theta.cos(),
+            ];
+            // Each pole is one vertex, so the mesh is watertight.
+            if j > 0 && (i == 0 || i == rings) {
+                row.push(row[0]);
+            } else {
+                row.push(mesh.push_vertex(p, [0.0; 2], [1.0; 4]));
+            }
+        }
+        at.push(row);
+    }
+    for i in 0..rings as usize {
+        let low = mesh.positions[at[i + 1][0] as usize][2];
+        if cut.is_some_and(|cut| low < cut) {
+            continue;
+        }
+        for j in 0..segments as usize {
+            let k = (j + 1) % segments as usize;
+            let (a, b, c, d) = (at[i][j], at[i + 1][j], at[i + 1][k], at[i][k]);
+            let quads = if radius > 0.0 {
+                [[a, b, c], [a, c, d]]
+            } else {
+                [[a, c, b], [a, d, c]]
+            };
+            for v in quads {
+                mesh.push_triangle(v, 0).unwrap();
+            }
+        }
+    }
+}
+
+fn inside_count(voxels: &Voxels) -> usize {
+    voxels.cells.len() - voxels.shell
+}
+
+#[test]
+fn a_hollow_double_wall_comes_out_solid() {
+    // An outer sphere and an inward inner one: a closed wall 1.5 cells
+    // thick. Parity fills only the wall; solid fills the hollow too.
+    let mut mesh = Mesh::default();
+    sphere(&mut mesh, [0.0; 3], 10.0, None);
+    sphere(&mut mesh, [0.0; 3], -8.5, None);
+    let mut solid = with_fill(Fit::Scale(1.0), Fill::Solid);
+    solid.up = Up::Z;
+    let mut parity = solid.clone();
+    parity.fill = Fill::Parity;
+    let filled = voxelize(&mesh, &solid).unwrap();
+    let voted = voxelize(&mesh, &parity).unwrap();
+    assert_eq!(filled.open_edges, 0);
+    // The same cells as the outer sphere alone, filled.
+    let mut ball = Mesh::default();
+    sphere(&mut ball, [0.0; 3], 10.0, None);
+    let ball = voxelize(&ball, &solid).unwrap();
+    let cells = |v: &Voxels| v.cells.iter().map(|(c, _)| *c).collect::<Vec<_>>();
+    assert_eq!(cells(&filled), cells(&ball));
+    assert!(inside_count(&voted) < inside_count(&filled) / 4);
+}
+
+#[test]
+fn a_dome_open_underneath_is_sealed_at_its_rim() {
+    // The upper half of a sphere with no floor, like a turtle shell open
+    // underneath: the flood would run in from below, so the rim is sealed.
+    let mut mesh = Mesh::default();
+    sphere(&mut mesh, [0.0; 3], 12.0, Some(-1e-9));
+    let mut solid = with_fill(Fit::Scale(1.0), Fill::Solid);
+    solid.up = Up::Z;
+    let voxels = voxelize(&mesh, &solid).unwrap();
+    assert_eq!(voxels.open_edges, 24);
+    // The upper half of the filled ball, cell for cell, to within its rim
+    // ring.
+    let mut ball = Mesh::default();
+    sphere(&mut ball, [0.0; 3], 12.0, None);
+    let ball = voxelize(&ball, &solid).unwrap();
+    let upper: std::collections::HashSet<Cell> = ball
+        .cells
+        .iter()
+        .filter(|((_, _, z), _)| *z >= 12)
+        .map(|((x, y, z), _)| (*x, *y, z - 12))
+        .collect();
+    let dome: std::collections::HashSet<Cell> = voxels.cells.iter().map(|(c, _)| *c).collect();
+    let differ = upper.symmetric_difference(&dome).count();
+    assert!(differ < upper.len() / 50, "{differ} of {}", upper.len());
+    // The top of the dome is 12 cells above the rim; nothing hangs below.
+    assert_eq!(voxels.max.2 - voxels.min.2 + 1, 12);
+    // The centre column is full from the rim to the top.
+    let column = voxels
+        .cells
+        .iter()
+        .filter(|((x, y, _), _)| (*x, *y) == (12, 12))
+        .count();
+    assert_eq!(column, 12);
+}
+
+#[test]
+fn an_open_mesh_still_fills_by_the_vote_or_the_seal() {
     let mut mesh = load(&fixture("cube.obj")).unwrap();
-    // Drop the two triangles of the x = 0 face: rays along x see one
-    // crossing, but the y and z rays still agree the inside is inside, and
-    // the layer where the face was fills from them too.
+    // Drop the two triangles of the x = 0 face. Parity: rays along x see
+    // one crossing, but the y and z rays still agree the inside is inside,
+    // and the layer where the face was fills from them too. Solid: that
+    // layer is enclosed in 17 directions, so it seals the opening.
     mesh.triangles.truncate(10);
-    let voxels = voxelize(&mesh, &options(Fit::Cells(8.0), true)).unwrap();
-    assert_eq!(voxels.cells.len(), 512);
-    assert_eq!(voxels.cells.len() - voxels.shell, 216 + 36);
+    for fill in [Fill::Solid, Fill::Parity] {
+        let voxels = voxelize(&mesh, &with_fill(Fit::Cells(8.0), fill)).unwrap();
+        assert_eq!(voxels.open_edges, 4, "{fill:?}");
+        assert_eq!(voxels.cells.len(), 512, "{fill:?}");
+        assert_eq!(voxels.cells.len() - voxels.shell, 216 + 36, "{fill:?}");
+    }
 }
 
 #[test]

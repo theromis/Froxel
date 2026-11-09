@@ -1,4 +1,4 @@
-//! Texture images for mesh import: PNG and JPEG decoding, and the base64 of
+//! Texture images for mesh import: PNG, JPEG, and WebP decoding, and the base64 of
 //! glTF `data:` URIs.
 
 use super::{Texture, Wrap};
@@ -6,14 +6,20 @@ use super::{Texture, Wrap};
 /// The largest texture side import decodes.
 const MAX_SIDE: u32 = 16_384;
 
-/// Decode a PNG or JPEG by its first bytes into sRGB RGBA.
+/// Decode a PNG, JPEG, or WebP by its first bytes into sRGB RGBA.
 pub(crate) fn decode(bytes: &[u8], what: &str) -> Result<Texture, String> {
     if bytes.starts_with(b"\x89PNG") {
         decode_png(bytes, what)
     } else if bytes.starts_with(&[0xff, 0xd8]) {
         decode_jpeg(bytes, what)
+    } else if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+        decode_webp(bytes, what)
+    } else if bytes.starts_with(b"\xabKTX 20\xbb") {
+        Err(format!(
+            "{what} is KTX2 (Basis), which import does not read; use PNG, JPEG, or WebP"
+        ))
     } else {
-        Err(format!("{what} is not a PNG or JPEG"))
+        Err(format!("{what} is not a PNG, JPEG, or WebP"))
     }
 }
 
@@ -95,6 +101,34 @@ fn decode_jpeg(bytes: &[u8], what: &str) -> Result<Texture, String> {
     Ok(Texture {
         width: width as u32,
         height: height as u32,
+        rgba,
+        wrap: [Wrap::Repeat; 2],
+    })
+}
+
+fn decode_webp(bytes: &[u8], what: &str) -> Result<Texture, String> {
+    let mut decoder = image_webp::WebPDecoder::new(std::io::Cursor::new(bytes))
+        .map_err(|err| format!("{what} is not a WebP: {err}"))?;
+    let (width, height) = decoder.dimensions();
+    check_size(width, height, what)?;
+    let alpha = decoder.has_alpha();
+    let size = decoder
+        .output_buffer_size()
+        .ok_or_else(|| format!("{what} is too large"))?;
+    let mut buf = vec![0; size];
+    // An animated WebP reads its first frame.
+    decoder
+        .read_image(&mut buf)
+        .map_err(|err| format!("Could not read {what}: {err}"))?;
+    let channels = if alpha { 4 } else { 3 };
+    let rgba = buf
+        .chunks_exact(channels)
+        .take((width * height) as usize)
+        .map(|px| [px[0], px[1], px[2], if alpha { px[3] } else { 255 }])
+        .collect();
+    Ok(Texture {
+        width,
+        height,
         rgba,
         wrap: [Wrap::Repeat; 2],
     })
