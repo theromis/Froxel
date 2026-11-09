@@ -29,6 +29,7 @@ pub(crate) const BATCH_TOOLS: &[(&str, &str)] = &[
     ("carve", "voxel.carve"),
     ("recolor", "voxel.recolor"),
     ("surface_stroke", "voxel.surface_stroke"),
+    ("shell_plates", "voxel.shell_plates"),
     ("components", "voxel.components"),
     ("clear_object", "object.clear"),
     ("trim_outline", "voxel.trim_outline"),

@@ -273,6 +273,183 @@ pub(super) fn recolor(session: &mut Session, params: &Value) -> Result<Value, St
     Ok(reply)
 }
 
+/// A slot or a list of slots under `palettes`.
+fn slot_choice(value: &Value, what: &str) -> Result<Vec<u8>, String> {
+    let bad = || format!("palettes {what} must be a palette index 1..255 or a list of them");
+    let one = |v: &Value| {
+        as_i32(v)
+            .filter(|s| (1..=255).contains(s))
+            .map(|s| s as u8)
+            .ok_or_else(bad)
+    };
+    match value {
+        Value::Array(items) if !items.is_empty() => items.iter().map(one).collect(),
+        Value::Array(_) => Err(bad()),
+        other => Ok(vec![one(other)?]),
+    }
+}
+
+/// The pattern of MCP `shell_plates`.
+pub(crate) fn plates_spec(params: &Value) -> Result<crate::tools::PlateSpec, String> {
+    use crate::tools::{PlateLayout, PlateSlots};
+    let layout = match opt_str(params, "layout")?.as_deref() {
+        None | Some("rings") => PlateLayout::Rings,
+        Some("voronoi") => PlateLayout::Voronoi,
+        Some(other) => return Err(format!("layout must be rings or voronoi, not `{other}`")),
+    };
+    let palettes = params
+        .get("palettes")
+        .filter(|v| v.is_object())
+        .ok_or("palettes is required: {ring, seam, central?, band?, rim?}")?;
+    let ring = slot_choice(
+        palettes
+            .get("ring")
+            .ok_or("palettes needs ring: the plates' slot or slots")?,
+        "ring",
+    )?;
+    let kind = |key: &str, default: &[u8]| -> Result<Vec<u8>, String> {
+        match palettes.get(key) {
+            None | Some(Value::Null) => Ok(default.to_vec()),
+            Some(found) => slot_choice(found, key),
+        }
+    };
+    let central = kind("central", &ring)?;
+    let band = kind("band", &ring)?;
+    let rim = kind("rim", &band)?;
+    let seam = palettes
+        .get("seam")
+        .ok_or("palettes needs seam: the seam slot, or 0 for a groove")
+        .and_then(|v| {
+            as_i32(v)
+                .filter(|s| (0..=255).contains(s))
+                .map(|s| s as u8)
+                .ok_or("palettes seam must be 0..255")
+        })?;
+    for key in palettes.as_object().into_iter().flat_map(|m| m.keys()) {
+        if !["ring", "central", "band", "rim", "seam"].contains(&key.as_str()) {
+            return Err(format!(
+                "palettes takes ring, central, band, rim, and seam, not `{key}`"
+            ));
+        }
+    }
+    let rings = match params.get("rings") {
+        None | Some(Value::Null) => vec![6],
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|v| v.as_u64().map(|n| n.min(1 << 20) as u32))
+            .collect::<Option<Vec<_>>>()
+            .ok_or("rings must be a list of plate counts, such as [5, 8]")?,
+        Some(found) => vec![found
+            .as_u64()
+            .ok_or("rings must be a list of plate counts, such as [5, 8]")?
+            .min(1 << 20) as u32],
+    };
+    let whole = |key: &str, default: u32| -> Result<u32, String> {
+        match params.get(key) {
+            None | Some(Value::Null) => Ok(default),
+            Some(found) => found
+                .as_u64()
+                .map(|n| n.min(1 << 20) as u32)
+                .ok_or_else(|| format!("{key} must be a whole number")),
+        }
+    };
+    let band_count = whole("bandCount", rings.last().map_or(12, |n| n * 2))?;
+    let center = match params.get("center") {
+        None | Some(Value::Null) => None,
+        Some(found) => Some(
+            found
+                .as_array()
+                .filter(|pair| pair.len() == 2)
+                .and_then(|pair| Some([pair[0].as_f64()?, pair[1].as_f64()?]))
+                .ok_or("center must be [x, y]")?,
+        ),
+    };
+    let z_range = match params.get("zRange") {
+        None | Some(Value::Null) => None,
+        Some(found) => {
+            let pair = found
+                .as_array()
+                .filter(|pair| pair.len() == 2)
+                .and_then(|pair| Some((as_i32(&pair[0])?, as_i32(&pair[1])?)))
+                .ok_or("zRange must be [z0, z1]")?;
+            Some((pair.0.min(pair.1), pair.0.max(pair.1)))
+        }
+    };
+    let corners = ["x0", "y0", "z0", "x1", "y1", "z1"];
+    let region = match corners.iter().filter(|k| params.get(**k).is_some()).count() {
+        0 => None,
+        6 => {
+            let (x0, y0, z0, x1, y1, z1) = box_corners(params)?;
+            Some(((x0, y0, z0), (x1, y1, z1)))
+        }
+        _ => return Err("pass all of x0, y0, z0, x1, y1, z1 for a box, or none".into()),
+    };
+    Ok(crate::tools::PlateSpec {
+        layout,
+        center,
+        central: opt_f64(params, "central")?.unwrap_or(0.22),
+        rings,
+        band: opt_f64(params, "band")?.unwrap_or(0.15),
+        band_count,
+        rim: opt_f64(params, "rim")?.unwrap_or(1.0),
+        slots: PlateSlots {
+            central,
+            ring,
+            band,
+            rim,
+            seam,
+        },
+        seam_width: opt_f64(params, "seamWidth")?.unwrap_or(1.0),
+        seam_depth: whole("seamDepth", 1)?,
+        depth: whole("depth", 1)?,
+        facing: opt_f64(params, "facing")?.unwrap_or(80.0),
+        z_range,
+        region,
+        only: match params.get("only") {
+            None | Some(Value::Null) => None,
+            Some(_) => Some(slot_list(params, "only")?),
+        },
+        jitter: opt_f64(params, "jitter")?.unwrap_or(0.25),
+        symmetric: opt_bool(params, "symmetric")?.unwrap_or(true),
+        seed: params.get("seed").and_then(Value::as_u64).unwrap_or(1),
+    })
+}
+
+/// The writes of `shell_plates` against `cells` and its counts. Rhai
+/// scripts call this with their options map.
+pub(crate) fn plates_writes(
+    cells: &HashMap<Cell, u8>,
+    params: &Value,
+) -> Result<(Vec<(i32, i32, i32, i32)>, Value), String> {
+    let spec = plates_spec(params)?;
+    let plated = crate::tools::shell_plates(cells, &spec)?;
+    let counts = json!({
+        "cells": plated.writes.len(),
+        "taken": plated.taken,
+        "unreached": plated.unreached,
+        "plates": plated.plates,
+        "seams": plated.seams,
+        "apex": plated.apex.map(|c| json!([c.0, c.1, c.2])),
+        "kinds": {
+            "central": plated.kinds[0],
+            "ring": plated.kinds[1],
+            "band": plated.kinds[2],
+            "rim": plated.kinds[3],
+        },
+    });
+    Ok((plated.writes, counts))
+}
+
+/// MCP `shell_plates`: paint a plate pattern over the active object's
+/// dome, one undo step.
+pub(super) fn shell_plates(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let (writes, mut reply) = plates_writes(&session.active().cells, params)?;
+    let changed = session.write_cells(&writes)?;
+    reply["changed"] = json!(changed);
+    reply["voxels"] = json!(session.voxel_count());
+    Ok(reply)
+}
+
 /// The methods that take `mirror`.
 pub(crate) const MIRROR_METHODS: &[&str] = &[
     "voxel.set_many",

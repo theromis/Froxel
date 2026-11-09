@@ -1,7 +1,8 @@
 //! Inspector sections of the whole-object edits: Split object (MCP
 //! `split_object`), Clear object (MCP `clear_object`), Recolor (MCP
 //! `recolor`), Intersect (the fills' `mode: "intersect"`), Surface
-//! stroke (MCP `surface_stroke`), and Components (MCP `components`).
+//! stroke (MCP `surface_stroke`), Shell plates (MCP `shell_plates`), and
+//! Components (MCP `components`).
 
 use egui::{RichText, Ui};
 
@@ -344,6 +345,92 @@ pub(super) fn components(ui: &mut Ui, session: &mut Session) {
         }
         if let Some(op) = run {
             session.components_from_panel(op);
+        }
+    });
+}
+
+/// MCP `shell_plates`: a plate pattern over a dome.
+pub(super) fn plates(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Shell plates");
+        let panel = &mut session.edit.plates;
+        let slots = |ui: &mut Ui, text: &mut String, hint: &str| {
+            ui.add(
+                egui::TextEdit::singleline(text)
+                    .hint_text(hint)
+                    .desired_width(90.0),
+            );
+        };
+        egui::Grid::new("plates-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Layout", "Rings cuts each ring into sectors, staggered ring to ring; Voronoi gives each cell the nearest of seeds laid out in the rings, for rounder, irregular plates.");
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut panel.layout, 0, "Rings");
+                    ui.selectable_value(&mut panel.layout, 1, "Voronoi");
+                });
+                ui.end_row();
+                label(ui, "Rings", "Plates per ring from the centre out, such as 5 9.");
+                slots(ui, &mut panel.rings, "6");
+                ui.end_row();
+                label(ui, "Central", "Share of the dome's radius the central plate spans; 0 for none.");
+                ui.add(egui::DragValue::new(&mut panel.central).range(0.0..=0.9).speed(0.005));
+                ui.end_row();
+                label(ui, "Band", "Share of the radius the outer band spans, and its plates (0 is one unbroken band).");
+                ui.horizontal(|ui| {
+                    ui.add(egui::DragValue::new(&mut panel.band).range(0.0..=0.6).speed(0.005));
+                    ui.add(egui::DragValue::new(&mut panel.band_count).range(0..=crate::tools::MAX_PLATES_PER_RING as i32))
+                        .on_hover_text("Plates in the band.");
+                });
+                ui.end_row();
+                label(ui, "Rim", "Rim width in cells along the surface at the dome's edge; 0 for none.");
+                ui.add(egui::DragValue::new(&mut panel.rim).range(0.0..=32.0).speed(0.1));
+                ui.end_row();
+                label(ui, "Plate slots", "Slots per kind, such as 3 4 5: each plate picks one by Seed. Empty ring slots paint the active slot; empty central and band take the ring's, an empty rim the band's.");
+                ui.vertical(|ui| {
+                    slots(ui, &mut panel.ring_slots, "ring: active");
+                    slots(ui, &mut panel.central_slots, "central");
+                    slots(ui, &mut panel.band_slots, "band");
+                    slots(ui, &mut panel.rim_slots, "rim");
+                });
+                ui.end_row();
+                label(ui, "Seams", "The seam slot, or Groove to cut the seams Seam depth cells deep.");
+                ui.horizontal(|ui| {
+                    ui.add_enabled(!panel.groove, egui::DragValue::new(&mut panel.seam).range(1..=255));
+                    ui.checkbox(&mut panel.groove, "Groove");
+                });
+                ui.end_row();
+                label(ui, "Seam size", "Width in cells and depth into the solid.");
+                ui.horizontal(|ui| {
+                    ui.add(egui::DragValue::new(&mut panel.seam_width).range(0.5..=crate::tools::MAX_SEAM_WIDTH as f32).speed(0.05));
+                    ui.add(egui::DragValue::new(&mut panel.seam_depth).range(1..=crate::tools::MAX_PLATE_DEPTH as i32));
+                });
+                ui.end_row();
+                label(ui, "Depth", "Cells a plate's slot reaches in along the normal.");
+                ui.add(egui::DragValue::new(&mut panel.depth).range(1..=crate::tools::MAX_PLATE_DEPTH as i32));
+                ui.end_row();
+                label(ui, "Facing", "Degrees from straight up a surface may face and still take the pattern; the selection's box limits it too.");
+                ui.add(egui::DragValue::new(&mut panel.facing).range(0.0..=180.0).speed(0.5).suffix("°"));
+                ui.end_row();
+                label(ui, "Only", "Only cells of these slots take the pattern, such as 2. Empty is every slot.");
+                slots(ui, &mut panel.only, "all slots");
+                ui.end_row();
+                label(ui, "Variation", "Jitter moves boundaries and seeds; Symmetric mirrors them left to right; Seed changes them and the slot picks.");
+                ui.horizontal(|ui| {
+                    ui.add(egui::DragValue::new(&mut panel.jitter).range(0.0..=1.0).speed(0.01));
+                    ui.checkbox(&mut panel.symmetric, "Symmetric");
+                    ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999).prefix("seed "));
+                });
+                ui.end_row();
+            });
+        if ui
+            .button("Paint plates")
+            .on_hover_text("MCP shell_plates over the selection's box, or the whole object: plates, seams, band, and rim that follow the surface. One undo step.")
+            .clicked()
+        {
+            session.plates_from_panel();
         }
     });
 }

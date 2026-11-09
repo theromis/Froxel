@@ -37,7 +37,12 @@ It is how agents should model living things through MCP.
    cells and is one undo step. Seams between shell plates and markings on a
    curved body are `surface_stroke`: the path through a few points snaps
    to the nearest surface cells, `width` cells across and `depth` cells
-   deep (`palette` `0` cuts a groove), so no tube radius is guessed. To change a whole slot (the blockout's slot
+   deep (`palette` `0` cuts a groove), so no tube radius is guessed. A whole
+   shell's plates are one `shell_plates` call, not a seam at a time: a
+   central plate, `rings` of plates, an outer band, and a rim over the
+   dome, with seams painted or grooved, placed by distance along the
+   surface so the steep sides get no streaks and the left and right plates
+   match. To change a whole slot (the blockout's slot
    to the shell's, the belly to a paler one), call `recolor` with `from` and
    `to` or a `map`, in a box or everywhere: the shape stays as it is. A
    symmetric creature is painted once: `mirror: true` on `set_voxels`, the

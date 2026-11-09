@@ -316,6 +316,35 @@ the options of the MCP tool (`connectivity`, `keep`, `minCells`, `seed`,
 the document, so it runs after the voxels are written, on the cells as
 the script left them, like `split_object`, and returns an empty map.
 
+### Shell plates
+
+```rhai
+let report = shell_plates(#{palettes: #{ring: [3, 4, 5], central: 7, rim: 8, seam: 6}, rings: [5, 9]});
+let report = shell_plates(#{palettes: #{ring: 3, seam: 0}, layout: "voronoi", rings: [6, 10], seamDepth: 2, facing: 70});
+```
+
+MCP `shell_plates` on the object being written, on the same code path: a
+central plate, rings of plates, an outer band, and a rim over the dome's
+surface, split by painted or grooved seams. Every option is the MCP one:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `palettes` | — | `#{ring, seam, central?, band?, rim?}`: a slot or a list per kind; `seam` 0 cuts grooves. |
+| `layout` | `"rings"` | `"voronoi"` for rounder, irregular plates. |
+| `rings` | `[6]` | Plates per ring from the centre out, at most 8 rings of 64. |
+| `central`, `band` | `0.22`, `0.15` | Shares of the dome's radius; 0 for none. |
+| `bandCount` | twice the last ring | Plates in the band; 0 is one unbroken band. |
+| `rim` | `1` | Rim width in cells at the edge; 0 for none. |
+| `center` | the middle | Plan centre `[x, y]`; the apex is the highest cell near it. |
+| `seamWidth`, `seamDepth`, `depth` | `1`, `1`, `1` | Seam width; cells a seam and a plate reach in. |
+| `facing` | `80` | Degrees from straight up a taken cell may face. |
+| `zRange`, `x0`..`z1`, `only` | all | Heights, a box, and the slots taken. |
+| `jitter`, `symmetric`, `seed` | `0.25`, `true`, `1` | Boundary and seed movement, left-right mirroring, variation. |
+| `space` | `"local"` | `"world"` takes world cells (see World cells). |
+
+It returns `#{changed, cells, taken, unreached, plates, seams}`.
+`examples/plated_dome.rhai` paints a made-up oval dome.
+
 ### Recolor
 
 ```rhai

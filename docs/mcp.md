@@ -210,6 +210,7 @@ tracer. A file with no scene graph still loads its first model.
 | `import_mesh` | `path` | Voxelize a `.glb`, `.gltf`, or `.obj` (with its `.mtl` and textures) into the active object, or a new one with `newObject` (and `name`). Optional `size`, `scale`, or `voxelSize`; `upAxis`, `rotation`, `position`, `anchor` (`min`, `center`, `bottom`), `fill` (`solid`, `parity`, `shell`), `colors` (`auto`, `vertex`), `palette` or `slots`, `maxNewSlots`, `tolerance`, `mode`, `orient` (turn the mesh to a views sheet first, see [Turning a mesh to the views](#turning-a-mesh-to-the-views)). Replies with `cells`, `shell`, `interior`, `openEdges`, `written`, `changed`, `slots`, `newSlots`, `bounds`, `scale`, `triangles`, `primitives`, `textures`, `warnings`. At most 256 cells per axis and 2000000 cells, one undo step |
 | `components` | | The connected parts of the active object, for a generated mesh that came with extras. `op` `list` (default), `keep_largest` (`keep`, default 1), `remove_small` (`minCells`), or `delete`, `move` (`offset`), `split` (`name` or `into`, `copy`, `makeActive`, `index`) of the part holding `seed`; with `anchor`, that part is first cut at its thinnest neck from the anchor's. Optional `connectivity` (6, 18, 26, the default), `reach` (default 8), `radius`. Replies with `count`, `largest`, `components`, `selected`, `seed`, `anchor`, `cut`, `changed`, `voxels`. One undo step. See [Cleaning up a generated mesh](#cleaning-up-a-generated-mesh) |
 | `surface_stroke` | `points`, `palette` | Paint a stroke through 2..=1024 **local** points that snaps to the active object's nearest surface cells: seams between shell plates, markings on a curved body. Optional `curve` (`polyline`, `smooth`), `width` (cells across, default 1), `depth` (cells into the solid, default 1), `reach` (default 8), `only`, `mirror`. `palette` `0` cuts a groove. Replies with `cells`, `changed`, `samples`, `missed`, `snap`, `length`, `voxels`. One undo step |
+| `shell_plates` | `palettes` | Paint a turtle-shell plate pattern over the active object's dome: a central plate, `rings` of plates, an outer `band` of `bandCount` plates, and a `rim`, split by seams `seamWidth` wide in the `seam` slot or grooved `seamDepth` deep with `seam` 0. Placed by distance along the surface from the apex, on the surface cells facing up within `facing` (default 80). Optional `layout` (`rings`, `voronoi`), `central`, `band`, `bandCount`, `rim`, `center`, `depth`, `zRange`, `x0`..`z1`, `only`, `jitter`, `symmetric`, `seed`. Replies with `cells`, `changed`, `taken`, `unreached`, `plates`, `seams`, `apex`, `kinds`, `voxels`. One undo step |
 | `recolor` | `from` and `to`, or `map` | Replace palette slot `from` with `to` (or every pair of `map`, `{"3": 5}` or `[[3, 5]]`) in the active object's solid cells, inside an inclusive box `x0`..`z1` or everywhere (with `mirror`, the box and its mirror). No cell is added; `to` `0` erases. Replies with `matched`, `changed`, `voxels`. One undo step |
 | `carve` | `shape` | Remove the solid cells inside a `box`, `ellipsoid`, `rounded_box`, or `tube`, given as for the fill tools. To cut a polygon or rounded rectangle along a path, call `sweep` with `palette` `0`. Replies with `removed`. One undo step |
 | `break_end` | `point`, `normal` | Break the active object across a plane: a jagged face, bark on its rim, sapwood inside, and tapered splinters out along the normal. Optional `depth`, `splinters` or `density`, `length`, `thickness`, `taper`, `rimBias`, `bark`, `sapwood`, `tips`, `seed`. One undo step |
@@ -316,6 +317,39 @@ Nothing is added. `missed` counts samples with no surface within reach and
 
 ```json
 {"points": [[2, 14, 9], [11, 14, 11], [20, 14, 9]], "curve": "smooth", "palette": 5, "width": 1, "only": [3]}
+```
+
+`shell_plates` paints a turtle-shell-like plate pattern over a dome in one
+call, instead of one `surface_stroke` per seam: a central plate (`central`,
+its share of the dome's radius, default 0.22; 0 for none), rings of plates
+(`rings`, plates per ring from the centre out, default `[6]`), an outer
+band (`band`, its share, default 0.15, of `bandCount` plates, default twice
+the last ring's; 0 is one unbroken band), and a rim (`rim`, cells at the
+edge, default 1). `palettes` gives each kind its slot or slots (`ring` and
+`seam` required; `central` and `band` default to `ring`, `rim` to `band`),
+and each plate picks one by `seed`. Seams are `seamWidth` cells wide
+(default 1) in the `seam` slot, or with `seam` 0 a groove `seamDepth` cells
+deep; the rim takes none. It works on the surface, not on a view: the cells
+taken are the surface cells whose normal is within `facing` degrees of
+straight up (default 80), optionally inside a box `x0`..`z1`, a `zRange`
+`[z0, z1]`, and the `only` slots. Each one's place is its distance along
+the surface from the apex (the highest cell near `center`, default the
+middle of the taken cells in plan) over that distance out to the dome's
+edge in its direction, so the rings keep their width down the steep sides
+of a tall or oval dome and nothing streaks as a top projection does.
+`layout` `rings` cuts each ring into sectors whose boundaries `jitter`
+moves (default 0.25 of a plate) and staggers ring to ring; `voronoi` gives
+each cell the nearest of seeds laid out in the rings, for rounder,
+irregular plates. `symmetric` (default true) mirrors boundaries, seeds, and
+slot picks across the plane through the centre along y, so a shell facing
+−Y has matching left and right plates. `depth` paints plates that many
+cells in along the normal. `unreached` counts taken cells not joined to the
+apex along the surface, which are left alone; `kinds` counts the surface
+cells of each kind.
+
+```json
+{"palettes": {"ring": [3, 4, 5], "central": 7, "band": [4, 5], "rim": 8, "seam": 6},
+ "rings": [5, 9], "bandCount": 16, "jitter": 0.3, "seed": 3}
 ```
 
 `recolor` changes slots, never the shape: every solid cell whose slot is in
@@ -1577,7 +1611,7 @@ the error says which (`batch item 2 (carve) failed, so nothing was changed:
 no undo step is added.
 
 It runs `set_voxel`, `set_voxels`, `set_palette`, `fill_box`, `fill_ellipsoid`,
-`fill_rounded_box`, `fill_tube`, `sweep`, `loft`, `carve`, `trim_outline`, `smooth`, `deform`,
+`fill_rounded_box`, `fill_tube`, `sweep`, `loft`, `carve`, `shell_plates`, `trim_outline`, `smooth`, `deform`,
 `brush`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`,
 `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, and `vines`, all on the active
 object. Tools that write files (`save_file`, `render`, `preview`, `model_view`,
@@ -1893,8 +1927,8 @@ file, so scripts do not have it. `froxel compare` is the same from the
 command line, `froxel carve` runs `carve_from_views` from a JSON file (depth
 maps included; relative `path`, `depthPath`, and `depth` paths are relative
 to it), and
-`froxel paint` runs `project_paint` (or `decal` with `--tool decal`) from
-one on a copy of a `.vox`.
+`froxel paint` runs `project_paint` (or `decal` or `shell_plates` with
+`--tool`) from one on a copy of a `.vox`.
 
 ### Masking a concept
 
@@ -2202,6 +2236,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `carve` | Remove mode with Box, Generator, or Tube |
 | `components` | Components section: Joined by, Keep, Min cells, Seed and Anchor (At selection), Offset, Name; List, Keep largest, Remove small, Delete, Move, Split |
 | `surface_stroke` | Surface stroke section: Points (one per line, Point at selection, World), Smooth, Width, Depth, Reach, Only, Groove, Mirror, Stroke with the active slot |
+| `shell_plates` | Shell plates section: Layout (Rings, Voronoi), Rings, Central, Band and its plates, Rim, Plate slots (ring, central, band, rim), Seams (slot or Groove), Seam size, Depth, Facing, Only, Variation (Jitter, Symmetric, Seed), Paint plates over the selection's box or the whole object |
 | `recolor` | Recolor section: Slots (pairs `from>to`), Mirror, Recolor over the selection's box or the whole object |
 | `mirror` | Mirror row (on, X/Y/Z, At; empty At is the object's centre) in Paint from view, Surface stroke, and Recolor, and Mirror under the tool options for the viewport's brush and shape tools (`set_voxels` and the fills) |
 | `loft` | Loft section: Points (one per line, x y z then optional rx ry roll flatTop noise frequency; Point at selection adds the selection's centre), Smooth, Round ends, Radii, Roll, Flat top, Noise, Lumps, Palettes, Rings, Stripes, or Random, Period, Mode, Seed |

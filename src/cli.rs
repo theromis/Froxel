@@ -1235,6 +1235,7 @@ fn carve_args(
 const PAINT_TOOLS: &[(&str, &str)] = &[
     ("project_paint", "voxel.project_paint"),
     ("decal", "voxel.decal"),
+    ("shell_plates", "voxel.shell_plates"),
 ];
 
 /// `froxel paint`: MCP `project_paint` (or another paint tool, `--tool`)
@@ -1254,11 +1255,10 @@ pub fn paint(args: &[String]) -> i32 {
             match done {
                 Ok(reply) => {
                     eprintln!(
-                        "wrote {} ({} cells painted, {} changed, grid {})",
+                        "wrote {} ({} cells painted, {} changed)",
                         output.display(),
                         reply["cells"],
                         reply["changed"],
-                        reply["grid"],
                     );
                     0
                 }
@@ -1289,6 +1289,10 @@ arguments. --tool picks it:
       its size and shape: {point | ray {origin, direction}, size, up, path,
       crop, background, tolerance, flip, palette | slots, coverage, depth,
       reach, normalLimit, only, mirror}
+  shell_plates  a turtle-shell plate pattern over the dome's surface:
+      {palettes {ring, seam, central, band, rim}, layout (rings | voronoi),
+      rings, central, band, bandCount, rim, center, seamWidth, seamDepth,
+      depth, facing, zRange, x0..z1, only, jitter, symmetric, seed}
 mirror (true, an axis, or {axis, at}) paints both sides of a plane. A
 relative path is relative to paint.json.";
 
@@ -1320,7 +1324,9 @@ fn paint_args(args: &[String]) -> Result<Option<PaintArgs>, String> {
                     .find(|(tool, _)| *tool == name)
                     .map(|(_, method)| *method)
                     .ok_or_else(|| {
-                        format!("--tool must be project_paint or decal, not `{name}`")
+                        format!(
+                            "--tool must be project_paint, decal, or shell_plates, not `{name}`"
+                        )
                     })?;
             }
             other => return Err(format!("unknown argument `{other}`\n\n{PAINT_HELP}")),

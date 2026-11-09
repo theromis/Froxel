@@ -25,6 +25,7 @@ mod mask_edit;
 mod mirror;
 pub(crate) mod orient;
 mod planks;
+mod plates;
 mod project;
 mod relief;
 mod scatter;
@@ -63,6 +64,10 @@ pub use orient::{
     OrientSpec, OrientView, Oriented, Turns, DEFAULT_ORIENT_RESOLUTION,
 };
 pub use planks::{planks, PlankAxis, PlankSpec};
+pub use plates::{
+    shell_plates, PlateLayout, PlateSlots, PlateSpec, MAX_PLATES_PER_RING, MAX_PLATE_DEPTH,
+    MAX_SEAM_WIDTH,
+};
 pub use project::{project_paint, PaintSpec, Toward, MAX_PAINT_DEPTH};
 pub use relief::{column_relief, relief_facing, ReliefSpec};
 pub use scatter::{scatter, PieceKind, ScatterSpec, Scattered, MAX_PIECES};

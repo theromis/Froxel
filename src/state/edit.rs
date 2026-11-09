@@ -522,6 +522,127 @@ impl StrokePanel {
     }
 }
 
+/// The Shell plates section: a plate pattern over a dome.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlatesPanel {
+    /// 0 rings, 1 voronoi.
+    pub layout: usize,
+    /// Plates per ring, such as `5 9`.
+    pub rings: String,
+    pub central: f32,
+    pub band: f32,
+    pub band_count: i32,
+    pub rim: f32,
+    /// Slot lists per kind; empty central and band take the ring's, an
+    /// empty rim the band's.
+    pub ring_slots: String,
+    pub central_slots: String,
+    pub band_slots: String,
+    pub rim_slots: String,
+    pub seam: i32,
+    /// Cut the seams instead of painting them.
+    pub groove: bool,
+    pub seam_width: f32,
+    pub seam_depth: i32,
+    pub depth: i32,
+    pub facing: f32,
+    /// Only cells of these slots; empty is every slot.
+    pub only: String,
+    pub jitter: f32,
+    pub symmetric: bool,
+    pub seed: i32,
+}
+
+impl Default for PlatesPanel {
+    fn default() -> Self {
+        Self {
+            layout: 0,
+            rings: "6".into(),
+            central: 0.22,
+            band: 0.15,
+            band_count: 12,
+            rim: 1.0,
+            ring_slots: String::new(),
+            central_slots: String::new(),
+            band_slots: String::new(),
+            rim_slots: String::new(),
+            seam: 1,
+            groove: false,
+            seam_width: 1.0,
+            seam_depth: 1,
+            depth: 1,
+            facing: 80.0,
+            only: String::new(),
+            jitter: 0.25,
+            symmetric: true,
+            seed: 1,
+        }
+    }
+}
+
+impl PlatesPanel {
+    /// The MCP `shell_plates` arguments over the inclusive box `region`,
+    /// or the whole object. An empty ring slot list paints `active`.
+    pub(crate) fn args(&self, active: u8, region: Option<(Cell, Cell)>) -> Result<Value, String> {
+        let rings: Vec<u32> = self
+            .rings
+            .split(|c: char| c == ',' || c.is_whitespace())
+            .filter(|part| !part.is_empty())
+            .map(|part| {
+                part.parse::<u32>()
+                    .map_err(|_| format!("Plates: ring `{part}` is not a plate count"))
+            })
+            .collect::<Result<_, _>>()?;
+        let mut ring = slot_field("Plates", &self.ring_slots)?;
+        if ring.is_empty() {
+            ring.push(active.max(1));
+        }
+        let mut palettes = json!({
+            "ring": ring,
+            "seam": if self.groove { 0 } else { self.seam.clamp(1, 255) },
+        });
+        for (key, text) in [
+            ("central", &self.central_slots),
+            ("band", &self.band_slots),
+            ("rim", &self.rim_slots),
+        ] {
+            let slots = slot_field("Plates", text)?;
+            if !slots.is_empty() {
+                palettes[key] = json!(slots);
+            }
+        }
+        let mut args = json!({
+            "palettes": palettes,
+            "layout": if self.layout == 1 { "voronoi" } else { "rings" },
+            "rings": rings,
+            "central": self.central,
+            "band": self.band,
+            "bandCount": self.band_count.max(0),
+            "rim": self.rim,
+            "seamWidth": self.seam_width,
+            "seamDepth": self.seam_depth.max(1),
+            "depth": self.depth.max(1),
+            "facing": self.facing,
+            "jitter": self.jitter,
+            "symmetric": self.symmetric,
+            "seed": self.seed.max(0),
+        });
+        let only = slot_field("Plates", &self.only)?;
+        if !only.is_empty() {
+            args["only"] = json!(only);
+        }
+        if let Some((min, max)) = region {
+            for (key, value) in ["x0", "y0", "z0", "x1", "y1", "z1"]
+                .iter()
+                .zip([min.0, min.1, min.2, max.0, max.1, max.2])
+            {
+                args[*key] = json!(value);
+            }
+        }
+        Ok(args)
+    }
+}
+
 /// `, N on the mirrored side` when a reply has `mirrored`.
 pub(crate) fn mirrored_note(reply: &Value) -> String {
     match reply.get("mirrored").and_then(Value::as_u64) {
@@ -614,6 +735,7 @@ pub struct EditPanels {
     pub recolor: RecolorPanel,
     pub intersect: IntersectPanel,
     pub stroke: StrokePanel,
+    pub plates: PlatesPanel,
     /// Mirror of the viewport's brush and shape tools.
     pub viewport_mirror: MirrorField,
     /// The palette dock's hex field for the active slot.
@@ -749,6 +871,36 @@ impl Session {
                     text.push_str(&format!(
                         " {} samples found no surface within reach.",
                         reply["missed"]
+                    ));
+                }
+                text
+            }
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// The Paint plates button: MCP `shell_plates` over the selection's
+    /// box, or the whole active object.
+    pub fn plates_from_panel(&mut self) {
+        let region = cell_bounds(self.picked.iter().copied());
+        let args = match self.edit.plates.args(self.active_slot, region) {
+            Ok(args) => args,
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
+        self.status = match crate::remote::apply(self, "voxel.shell_plates", &args) {
+            Ok(reply) => {
+                let mut text = format!(
+                    "Painted {} plates over {} cells ({} seam cells, {} changed).",
+                    reply["plates"], reply["taken"], reply["seams"], reply["changed"]
+                );
+                if reply["unreached"].as_u64().unwrap_or(0) > 0 {
+                    text.push_str(&format!(
+                        " {} cells are not joined to the apex and were left alone.",
+                        reply["unreached"]
                     ));
                 }
                 text

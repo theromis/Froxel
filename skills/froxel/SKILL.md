@@ -23,7 +23,7 @@ If the tools are missing, the server is not configured. Point the user to
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `components`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` and `decal` with the image as rows and a legend, `fit_to_views` and `orient_to_views` with views as rows and a legend, and `marker`,
+  (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `shell_plates`, `components`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` and `decal` with the image as rows and a legend, `fit_to_views` and `orient_to_views` with views as rows and a legend, and `marker`,
   `collision_box`, `connector`, `collision_from_voxels`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `split_object`, `clear_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -85,6 +85,12 @@ If the tools are missing, the server is not configured. Point the user to
   `palette` (0 cuts a groove), `width`, `depth`, `only`. Each sample snaps
   to the nearest surface cell; do not guess a `fill_tube` radius in paint
   mode.
+- A shell's plate pattern (central plate, rings of plates, outer band,
+  rim, seams): ONE `shell_plates` call on the dome (`palettes` {ring, seam,
+  central, band, rim}, `rings` such as [5, 9], `bandCount`, `layout` rings
+  or voronoi, `seam` 0 for grooves, `facing` or `zRange` to keep it on
+  top). Do not draw each seam with `surface_stroke` or project a pattern
+  from the top view, which streaks down the sides.
 - Symmetric features (cheeks, eyes, flippers, horns, side stripes): draw one
   side and pass `mirror: true` (x about the object's centre), an axis, or
   `{axis, at}` to `set_voxels`, the fills (not mode intersect), `recolor`,

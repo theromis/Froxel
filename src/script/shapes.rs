@@ -28,6 +28,32 @@ const TUBE: &[&str] = &[
 const STROKE: &[&str] = &[
     "curve", "width", "depth", "reach", "only", "space", "mirror",
 ];
+const PLATES: &[&str] = &[
+    "palettes",
+    "layout",
+    "rings",
+    "central",
+    "band",
+    "bandCount",
+    "rim",
+    "center",
+    "seamWidth",
+    "seamDepth",
+    "depth",
+    "facing",
+    "zRange",
+    "x0",
+    "y0",
+    "z0",
+    "x1",
+    "y1",
+    "z1",
+    "only",
+    "jitter",
+    "symmetric",
+    "seed",
+    "space",
+];
 const RECOLOR: &[&str] = &["x0", "y0", "z0", "x1", "y1", "z1", "space", "mirror"];
 const SMOOTH: &[&str] = &["iterations", "fillAt", "removeAt", "space"];
 const BREAK: &[&str] = &[
@@ -206,6 +232,13 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
                 run(points, slot, &Map::new())
             });
         }
+    }
+    {
+        let state = scratch.clone();
+        engine.register_fn("shell_plates", move |opts: Map| -> Fallible<Map> {
+            let args = options(&opts, PLATES, "shell_plates")?;
+            state.borrow_mut().plates(args).map_err(runtime)
+        });
     }
     for (name, shape) in [("carve_box", "box"), ("carve_ellipsoid", "ellipsoid")] {
         let state = scratch.clone();
@@ -414,6 +447,21 @@ impl Scratch {
             out.insert("mirrored".into(), Dynamic::from_int(mirrored));
         }
         Ok(out)
+    }
+
+    fn plates(&mut self, args: Args) -> Result<Map, String> {
+        self.keep_going()?;
+        let (args, _) = self.localize("voxel.shell_plates", args)?;
+        let (writes, counts) = remote::plates_writes(self.cells(), &args)?;
+        let changed = self.apply(&writes)?;
+        Ok(reply([
+            ("changed", changed),
+            ("cells", counts["cells"].as_i64().unwrap_or(0)),
+            ("taken", counts["taken"].as_i64().unwrap_or(0)),
+            ("unreached", counts["unreached"].as_i64().unwrap_or(0)),
+            ("plates", counts["plates"].as_i64().unwrap_or(0)),
+            ("seams", counts["seams"].as_i64().unwrap_or(0)),
+        ]))
     }
 
     fn recolor(&mut self, args: Args) -> Result<Map, String> {

@@ -26,6 +26,7 @@ pub(crate) const WORLD_METHODS: &[&str] = &[
     "voxel.smooth",
     "voxel.recolor",
     "voxel.surface_stroke",
+    "voxel.shell_plates",
     "voxel.loft",
     "voxel.brush",
     "voxel.carve_from_views",
@@ -53,7 +54,8 @@ pub(crate) fn is_world(params: &Value) -> Result<bool, String> {
 /// object at `offset`, and `space` removed. Corners `x0..z1`, cells `x`,
 /// `y`, `z`, `points` and `cells` (lists or maps; a list's first three
 /// numbers), `origin`, `boxes`, `exclude`, a decal's `point` and `ray`
-/// origin, and a `mirror`'s `at` move;
+/// origin, `shell_plates`' `center` and `zRange`, and a `mirror`'s `at`
+/// move;
 /// everything else stays.
 pub(crate) fn to_local(method: &str, params: &Value, offset: Cell) -> Result<Value, String> {
     if !WORLD_METHODS.contains(&method) {
@@ -81,6 +83,15 @@ pub(crate) fn to_local(method: &str, params: &Value, offset: Cell) -> Result<Val
     }
     if let Some(origin @ Value::Array(_)) = map.get_mut("origin") {
         shift_point(origin, by, -1, "origin")?;
+    }
+    // A plate pattern's plan centre and height range.
+    if let Some(center @ Value::Array(_)) = map.get_mut("center") {
+        shift_point(center, by, -1, "center")?;
+    }
+    if let Some(Value::Array(range)) = map.get_mut("zRange") {
+        for value in range.iter_mut() {
+            shift_number(value, -by[2], "zRange")?;
+        }
     }
     // A decal's point and its ray's origin.
     if let Some(point @ Value::Array(_)) = map.get_mut("point") {
