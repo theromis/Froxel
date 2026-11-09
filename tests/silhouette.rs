@@ -540,3 +540,285 @@ fn the_panels_carve_and_compare() {
     assert_eq!(overlay.epoch, 1);
     assert!(session.status.starts_with("IoU"), "{}", session.status);
 }
+
+/// A 4×4×3 block of slot 1 at the origin.
+fn block() -> Session {
+    let mut session = empty_session();
+    apply(
+        &mut session,
+        "voxel.fill",
+        json!({"x0": 0, "y0": 0, "z0": 0, "x1": 3, "y1": 3, "z1": 2, "palette": 1}),
+    );
+    session
+}
+
+#[test]
+fn a_top_view_paints_only_the_surface_it_sees() {
+    let mut session = block();
+    let before = session.active().cells.len();
+    // Image down is -Y: the top row is y = 3, and the image's left is x = 0.
+    let reply = apply(
+        &mut session,
+        "voxel.project_paint",
+        json!({"view": "top", "rows": ["ab..", "....", "....", "...a"], "legend": {"a": 5, "b": 6}}),
+    );
+    assert_eq!(reply["grid"], json!([4, 4]));
+    assert_eq!(reply["cells"], 3);
+    assert_eq!(reply["changed"], 3);
+    let cells = &session.active().cells;
+    assert_eq!(cells.len(), before);
+    assert_eq!(cells[&(0, 3, 2)], 5);
+    assert_eq!(cells[&(1, 3, 2)], 6);
+    assert_eq!(cells[&(3, 0, 2)], 5);
+    assert_eq!(cells[&(0, 3, 1)], 1);
+    assert_eq!(cells.values().filter(|slot| **slot != 1).count(), 3);
+    // depth 2 reaches the layer below as well; undo is one step.
+    session.undo();
+    assert!(session.active().cells.values().all(|slot| *slot == 1));
+    let reply = apply(
+        &mut session,
+        "voxel.project_paint",
+        json!({"view": "top", "rows": ["xxxx", "xxxx", "xxxx", "xxxx"], "legend": {"x": 3}, "depth": 2}),
+    );
+    assert_eq!(reply["cells"], 32);
+    let cells = &session.active().cells;
+    assert!((0..4).all(|x| (0..4).all(|y| cells[&(x, y, 0)] == 1 && cells[&(x, y, 1)] == 3)));
+}
+
+#[test]
+fn a_front_view_maps_image_right_to_x_and_down_to_minus_z() {
+    let mut session = block();
+    apply(
+        &mut session,
+        "voxel.project_paint",
+        json!({"view": "front", "rows": ["x...", "....", "...y"], "legend": {"x": 4, "y": 5}}),
+    );
+    let cells = &session.active().cells;
+    // Seen from -Y, the front face is y = 0.
+    assert_eq!(cells[&(0, 0, 2)], 4);
+    assert_eq!(cells[&(3, 0, 0)], 5);
+    assert_eq!(cells[&(0, 1, 2)], 1);
+    // The same direction as yaw -90, pitch 0 snaps to the front view.
+    let mut angled = block();
+    apply(
+        &mut angled,
+        "voxel.project_paint",
+        json!({"yaw": -90, "pitch": 0, "rows": ["x...", "....", "...y"], "legend": {"x": 4, "y": 5}}),
+    );
+    assert_eq!(angled.active().cells, session.active().cells);
+}
+
+#[test]
+fn only_and_the_box_limit_what_is_repainted() {
+    let mut session = block();
+    apply(
+        &mut session,
+        "voxel.fill",
+        json!({"x0": 0, "y0": 0, "z0": 2, "x1": 1, "y1": 3, "z1": 2, "palette": 2}),
+    );
+    let reply = apply(
+        &mut session,
+        "voxel.project_paint",
+        json!({"view": "top", "rows": ["xxxx", "xxxx", "xxxx", "xxxx"], "legend": {"x": 7}, "only": [1]}),
+    );
+    assert_eq!(reply["cells"], 8);
+    let cells = &session.active().cells;
+    // Slot 2 stays, and hides the cells below it.
+    assert_eq!(cells[&(0, 0, 2)], 2);
+    assert_eq!(cells[&(0, 0, 1)], 1);
+    assert_eq!(cells[&(3, 3, 2)], 7);
+    // A box of x 3 alone: the image stretches over it.
+    let mut boxed = block();
+    let reply = apply(
+        &mut boxed,
+        "voxel.project_paint",
+        json!({"view": "top", "rows": ["x"], "legend": {"x": 7}, "origin": [3, 0, 0], "size": [1, 4, 3]}),
+    );
+    assert_eq!(reply["grid"], json!([1, 4]));
+    assert_eq!(reply["cells"], 4);
+    assert!((0..4).all(|y| boxed.active().cells[&(3, y, 2)] == 7));
+}
+
+/// A dome: the top half of an ellipsoid 21 cells across.
+fn dome() -> Session {
+    let mut session = empty_session();
+    apply(
+        &mut session,
+        "voxel.ellipsoid",
+        json!({"x0": 0, "y0": 0, "z0": -8, "x1": 20, "y1": 20, "z1": 8, "palette": 1}),
+    );
+    let below: Vec<(i32, i32, i32, i32)> = session
+        .active()
+        .cells
+        .keys()
+        .filter(|cell| cell.2 < 0)
+        .map(|cell| (cell.0, cell.1, cell.2, 0))
+        .collect();
+    session.write_cells(&below).unwrap();
+    session
+}
+
+#[test]
+fn normal_limit_leaves_the_steep_sides_of_a_dome() {
+    let rows: Vec<String> = (0..21).map(|_| "x".repeat(21)).collect();
+    let mut all = dome();
+    let open = apply(
+        &mut all,
+        "voxel.project_paint",
+        json!({"view": "top", "rows": rows, "legend": {"x": 3}}),
+    );
+    assert_eq!(open["steep"], 0);
+    let mut limited = dome();
+    let steep = apply(
+        &mut limited,
+        "voxel.project_paint",
+        json!({"view": "top", "rows": rows, "legend": {"x": 3}, "normalLimit": 45}),
+    );
+    assert!(steep["steep"].as_u64().unwrap() > 0, "{steep}");
+    assert!(steep["cells"].as_u64().unwrap() < open["cells"].as_u64().unwrap());
+    let cells = &limited.active().cells;
+    // The crown is painted, the rim at the bottom edge is not.
+    assert_eq!(cells[&(10, 10, 8)], 3);
+    assert_eq!(cells[&(0, 10, 0)], 1);
+    // An oblique view paints the side that faces it, and no more cells.
+    let mut oblique = dome();
+    let count = oblique.active().cells.len();
+    let reply = apply(
+        &mut oblique,
+        "voxel.project_paint",
+        json!({"yaw": -90, "pitch": 30, "rows": rows, "legend": {"x": 4}, "normalLimit": 80}),
+    );
+    assert!(reply["cells"].as_u64().unwrap() > 50, "{reply}");
+    assert_eq!(oblique.active().cells.len(), count);
+    let cells = &oblique.active().cells;
+    assert_eq!(cells[&(10, 0, 0)], 4);
+    assert_eq!(cells[&(10, 20, 0)], 1);
+}
+
+#[test]
+fn image_colours_quantise_when_painting_and_bad_calls_are_explained() {
+    let path = png(
+        "paint-pattern.png",
+        4,
+        4,
+        [255, 255, 255, 255],
+        [200, 20, 20, 255],
+        |x, _| x < 2,
+    );
+    let mut session = block();
+    apply(
+        &mut session,
+        "palette.set",
+        json!({"entries": [{"index": 9, "r": 210, "g": 30, "b": 30}]}),
+    );
+    let reply = apply(
+        &mut session,
+        "voxel.project_paint",
+        json!({"view": "top", "path": path, "slots": [1, 9], "background": "#ffffff"}),
+    );
+    assert_eq!(reply["cells"], 8);
+    assert_eq!(session.active().cells[&(0, 0, 2)], 9);
+    assert_eq!(session.active().cells[&(3, 0, 2)], 1);
+    for (params, says) in [
+        (json!({"rows": ["x"]}), "needs view"),
+        (json!({"view": "up", "rows": ["x"]}), "view must be"),
+        (json!({"view": "top", "yaw": 0, "rows": ["x"]}), "not both"),
+        (json!({"view": "top", "rows": ["x"], "depth": 0}), "depth"),
+        (
+            json!({"view": "top", "rows": ["x"], "normalLimit": 120}),
+            "normalLimit",
+        ),
+        (json!({"view": "top", "rows": ["x"]}), "legend"),
+    ] {
+        let err = crate::remote::apply(&mut session, "voxel.project_paint", &params).unwrap_err();
+        assert!(err.contains(says), "{params}: {err}");
+    }
+    let err = crate::remote::apply(
+        &mut empty_session(),
+        "voxel.project_paint",
+        &json!({"view": "top", "rows": ["x"], "palette": 2}),
+    )
+    .unwrap_err();
+    assert!(err.contains("no cells"), "{err}");
+}
+
+#[test]
+fn a_script_paints_the_same_cells() {
+    let mut session = block();
+    apply(
+        &mut session,
+        "voxel.project_paint",
+        json!({"view": "top", "rows": ["ab..", "....", "....", "...a"], "legend": {"a": 5, "b": 6}}),
+    );
+    let source = r#"
+        fill_box(0, 0, 0, 3, 3, 2, 1);
+        let done = project_paint("top", ["ab..", "....", "....", "...a"], #{legend: #{a: 5, b: 6}});
+        if done.cells != 3 || done.changed != 3 { throw "counts"; }
+        if done.bounds.max[2] != 2 { throw "bounds"; }
+        let side = project_paint(["x"], #{yaw: 0, pitch: 0, palette: 2, origin: [3, 3, 0], size: [1, 1, 1]});
+        if side.cells != 1 { throw "oblique"; }
+    "#;
+    let mut scripted = empty_session();
+    scripted.set_script(0, source).unwrap();
+    scripted.regenerate_script(0).unwrap();
+    let mut expected = session.active().cells.clone();
+    expected.insert((3, 3, 0), 2);
+    assert_eq!(scripted.active().cells, expected);
+    let mut failing = empty_session();
+    let err = failing
+        .set_script(
+            0,
+            r#"fill_box(0, 0, 0, 1, 1, 1, 1); project_paint("top", ["x"], #{path: "a.png"});"#,
+        )
+        .and_then(|_| failing.regenerate_script(0))
+        .unwrap_err();
+    assert!(err.contains("no option `path`"), "{err}");
+}
+
+#[test]
+fn the_paint_panel_paints_from_an_image() {
+    let path = png(
+        "panel-paint.png",
+        4,
+        4,
+        [255, 255, 255, 255],
+        [40, 120, 40, 255],
+        |x, y| x == y,
+    );
+    let mut session = block();
+    session.active_slot = 7;
+    let panel = &mut session.silhouette.paint;
+    panel.path = path;
+    panel.colour_image = false;
+    panel.only = "1".into();
+    session.paint_from_panel();
+    assert!(
+        session.status.starts_with("Painted 4 cells (4 changed)"),
+        "{}",
+        session.status
+    );
+    // Image row 0 is y = 3.
+    assert_eq!(session.active().cells[&(0, 3, 2)], 7);
+    assert_eq!(session.active().cells[&(3, 0, 2)], 7);
+    let args = session.silhouette.paint.args(7).unwrap();
+    assert_eq!(args["view"], "top");
+    assert_eq!(args["only"], json!([1]));
+    assert_eq!(args["palette"], 7);
+    assert!(args.get("normalLimit").is_none());
+}
+
+#[test]
+fn the_painted_shell_example_runs() {
+    let mut session = empty_session();
+    session
+        .set_script(0, include_str!("../examples/painted_shell.rhai"))
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    let cells = &session.active().cells;
+    // Plates, seams, and spine on top; the steep rim keeps its colour.
+    for slot in [2, 3, 4, 5] {
+        assert!(cells.values().any(|s| *s == slot), "slot {slot}");
+    }
+    let top = cells.keys().map(|c| c.2).max().unwrap();
+    assert_ne!(cells[&(11, 14, top)], 2);
+}

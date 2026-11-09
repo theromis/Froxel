@@ -68,6 +68,14 @@ off the flat views.
    space under an arch, between roots), so `carve` them, grow the thin
    parts with `fill_tube`, and `smooth` it. Compare again after each step,
    with the first reply's `align` passed back so the placement holds still.
+4. **Paint the patterns.** `project_paint` takes one view (a shell's plates
+   from the top, face markings from the front) and recolours the cells that
+   view sees under the image, in one call: no cells are added or removed.
+   `depth` paints that many cells into the surface, `normalLimit` leaves the
+   steep sides alone so they get no streaks, and `only` keeps other slots
+   (the eyes, the belly) as they are. With the `origin` and
+   `cellsPerPixel` that carved the form, the same crop lands on the same
+   cells.
 
 ```
 carve_from_views     views=[{view: "front", path: "sheet.png", crop: [40, 60, 520, 300]},
@@ -76,6 +84,8 @@ carve_from_views     views=[{view: "front", path: "sheet.png", crop: [40, 60, 52
                      size=[96, 34, 56] slots=[3, 4, 5, 6] smooth=1
 compare_silhouette   path="front-vs.png" concept="sheet.png" crop=[40, 60, 520, 300] view="front" orthographic=true
 compare_silhouette   path="hero-vs.png" concept="hero.png" preset="game"
+project_paint        view="top" path="sheet.png" crop=[40, 420, 520, 180] size=[96, 34, 56]
+                     slots=[3, 4, 5] only=[3] normalLimit=60
 ```
 
 `preset="game"` is the gameplay camera; a project redefines it with `presets`
@@ -83,8 +93,10 @@ compare_silhouette   path="hero-vs.png" concept="hero.png" preset="game"
 a level from that same camera, in `preview` too ([preview.md](preview.md)).
 
 `examples/carved_stump.rhai` does the same in a script, with the views as
-rows. In the editor, the Carve from views and Compare silhouette sections
-hold the same fields, and the comparison shows over the viewport.
+rows, and `examples/painted_shell.rhai` paints a shell's plates from a top
+view. In the editor, the Carve from views, Paint from view, and Compare
+silhouette sections hold the same fields, and the comparison shows over the
+viewport.
 
 ## Start from a mesh
 

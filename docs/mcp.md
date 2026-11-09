@@ -206,6 +206,7 @@ tracer. A file with no scene graph still loads its first model.
 | `render` | `path` | Path-trace the scene to a PNG. The camera fits the visible cells (or `target`) in the frame. `width` and `height` default to 256 (up to 4096, 4096 × 2048 pixels in all); one alone and the other follows the model. `samples` defaults to 16. `bounces` defaults to 4. `denoise` defaults to true. `yaw` defaults to 30°, `pitch` to 25°. Optional `zoom`, `margin`, `target`, `distance`, `orthographic`, `views`, `pose`, `showBones` |
 | `model_view` | `path` | Flat model view PNG: each pixel is the palette colour of the first cell hit, no light, no tonemap. Fitted like `render`. `width` and `height` default to 512 (up to 4096). Orthographic by default. Optional `view`, `yaw`, `pitch`, `zoom`, `margin`, `target`, `pixelsPerVoxel`, `distance`, `orthographic`, `background`, `views`, `pose`, `showBones` |
 | `preview` | `path` | Fast lit PNG: the viewport's mesh and light rasterised on the CPU in well under a second, fitted to the model or one object with a margin. `width` and `height` default to 1024 (up to 4096). Optional `view`, `yaw`, `pitch`, `preset` (`game`: orthographic, yaw −135, pitch 32), `presets` (an object or a JSON file; the user's `camera_presets.json` is read too), `placementYaw` (the asset's turn about up where it is placed in a level), `orthographic`, `fov`, `margin`, `object`, `isolate`, `background`, `antialias`, `pose`. `inputs`, `variants`, or `reference` (with `columns`, `labels`) make a labelled contact sheet of several models and a concept image. `overlay` (`true`, or `boxes`, `points`, `connectors`) draws the markers over the model with their names (`overlayLabels`). `lighting` (`old_pond`, or a name from `lightingPresets` or the user's `lighting_presets.json`, or fields: sun direction, colour, and energy, ambient colour and energy, exposure, background, a LUT) lights it as a game does. Replies `previewTriangles` (the unmerged mesh it draws) and `export` (`triangles` and `quads` that `export_mesh` writes with the options in `export`, such as `colorAtlas`); `countsLabel` writes both on the image. See [preview.md](preview.md). `glb` draws a written `.glb` instead of the document, unlit, as a game draws a baked file |
+| `project_paint` | `view` or `yaw` + `pitch`, `path` or `rows` | Recolour the active object's existing surface from one image projected along a view: never adds or removes cells. The image is a PNG `path` with `crop`, `background`, `tolerance`, `alphaThreshold`, `flip`, or `rows` with a `legend`; background pixels leave the surface alone. Optional `origin` and `size` (the box that may be painted; defaults to the object's bounds), `cellsPerPixel` or `imageSize`, `palette` or `slots`, `coverage`, `depth` (cells below the visible surface, default 1), `normalLimit` (degrees; steeper surfaces are skipped), `only` (slots that may be repainted). Replies with `cells`, `changed`, `bounds`, `origin`, `size`, `grid`, `covered`, `rays`, and `steep`. One undo step. See [Silhouettes](#silhouettes) |
 | `compare_silhouette` | `path`, `concept` | Compare the model's `preview` silhouette from a camera (`preset`, `presets`, `placementYaw`, `view`, `yaw`, `pitch`, `orthographic`, `fov`, `margin`, `object`, `isolate`, `pose`) with a mask cut from a concept PNG (`crop`, `background`, `tolerance`, `alphaThreshold`, `flip`). `align` `fit` (default), `height`, `width`, or `{scale, offset}` places the concept with one uniform scale. Replies with `iou`, `missing`, `excess`, `pixels`, `align`, `conceptBounds`, `modelBounds`, and `aspect`, and writes an overlay PNG. Optional `width`, `height`, `lighting`, `antialias`. See [Silhouettes](#silhouettes) |
 | `set_view` | — | Move the session camera; connected, the window's. Optional `view`, `yaw`, `pitch`, `preset`, `presets`, `placementYaw`, `frame`, `distance`, `orthographic`, `bones`. Not an edit |
 | `screenshot` | — | PNG of the whole editor window. Connected mode only |
@@ -1270,8 +1271,8 @@ in the regenerate's undo step. Only the tools that write files (`render`,
 `export_models`, `bake_scene`), `import_mesh` (scripts read no files; `voxelize`
 runs its voxelizer on a mesh the script builds), and the session and UI
 tools have no script form. A
-script reads no files either, so its `carve_from_views` takes `rows`
-instead of PNG paths.
+script reads no files either, so its `carve_from_views` and
+`project_paint` take `rows` instead of PNG paths.
 
 A script run is already one undo step that changes nothing when it fails, so
 `batch` has no script form: call the tools in order.
@@ -1336,8 +1337,9 @@ step and a failure anywhere leaves the document as it was (`scripting.md`).
 ### Silhouettes
 
 Copying cells from flat sheet views gives blobs, and comparing heights
-says little about whether a model reads like its concept. Two tools work
-on silhouettes instead.
+says little about whether a model reads like its concept. Three tools work
+from the views instead: `carve_from_views` makes the form, `project_paint`
+paints one view's pattern onto it, and `compare_silhouette` measures it.
 
 `carve_from_views` turns a turnaround sheet into the rough form. Each of
 2 or 3 views is extruded through a box along its depth axis, and the cells
@@ -1385,6 +1387,40 @@ The hull is the outer limit of the form: a concave part (the gap between
 two legs seen from the side) stays filled until `carve` cuts it. Shape it
 from there with `carve`, `fill_tube`, `smooth`, and `set_voxels`.
 
+`project_paint` recolours the surface one view sees from a single image: a
+turtle shell's plates from the top view, face markings from the front. It
+never adds or removes cells. `view` names the side as in the table above,
+or `yaw` and `pitch` in degrees, as `preview` takes them (yaw 0 looks from
++X, −90 from the front, pitch 90 from above), give an oblique projection
+with `preview`'s image axes. The image is a `path` with a `crop` and the
+background rule above, or `rows` and a `legend`; background pixels leave
+the surface alone, and `background: "alpha"` on an opaque image inks every
+pixel. The box `origin` and `size` (default: the object's bounds; `null` on
+an axis reaches the object's far side) limits which cells may change, and
+the image is placed on the box's projection as a `carve_from_views` view is
+placed in its box: stretched over it, or at `cellsPerPixel` or `imageSize`
+`[across, down]` cells, centred across and standing on the bottom (an
+oblique view is centred both ways). So a sheet crop with the `origin` and
+`cellsPerPixel` that carved the form lands on the same cells.
+
+Each grid cell the image inks (at least `coverage` of its footprint) casts
+a parallel ray along the view, or a 3 by 3 fan of rays for an oblique view.
+A ray paints the solid cells within `depth` cells (default 1) of the first
+solid cell it meets, so nothing behind the visible surface changes. Cells
+outside the box, or of slots not in `only`, keep their slot and still hide
+what is behind them. `normalLimit` (degrees, 0..90) skips a ray whose first
+cell's surface normal (from the empty cells within two cells of it) is
+further than that from the view direction, so a top view does not streak
+down the steep sides; the reply's `steep` counts those rays. Colours
+quantise to the nearest of `slots`, a legend's palette index is used as it
+is, and `palette` paints one slot wherever the image is inked. A cell under
+several pixels takes the commonest.
+
+```json
+{"view": "top", "path": "sheet.png", "crop": [40, 420, 520, 180],
+ "cellsPerPixel": 0.18, "slots": [3, 4, 5], "only": [3], "normalLimit": 60}
+```
+
 `compare_silhouette` scores the model against one concept view from a
 camera, as a number and a picture. The model is drawn with `preview` and
 its mask is every pixel it covers; the concept's mask is cut like a
@@ -1406,7 +1442,8 @@ aspect. Use an orthographic named `view` for a turnaround view and
 project's own camera and `placementYaw` for an asset placed turned in a level
 (see [preview.md](preview.md)). It writes a
 file, so scripts do not have it. `froxel compare` is the same from the
-command line, and `froxel carve` runs `carve_from_views` from a JSON file.
+command line, `froxel carve` runs `carve_from_views` from a JSON file, and
+`froxel paint` runs `project_paint` from one on a copy of a `.vox`.
 
 ### Markers
 
@@ -1524,6 +1561,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `sweep` | Sweep section: Points (one per line, Point at selection adds the selection's centre), Smooth, Rectangle (Width, Height, Radius) or Polygon, Palettes, Bands, Rings, or Random, Period, Mode, Seed |
 | `trim_outline` | Trim section: Outline (one point per line, Point at selection adds the selection's centre), Smooth, Inset, Only, New skin, Slot, Thickness; Trim inside the selection's box or on the whole object |
 | `carve_from_views` | Carve from views section: three view rows (on, side, Image…, crop, Flip), Cells / px, Size, Origin, Background (Auto, Alpha, Key with tolerance), Colour from views or the active slot, Shell, Smooth, Carve |
+| `project_paint` | Paint from view section: View, Flip, Image…, Crop, Background, Scale (Fit box or Cells / px), Box origin and size, Depth, Normal limit, Only, Colour from image or the active slot, Paint |
 | `compare_silhouette` | Compare silhouette section: Concept Image…, Crop, Background, Flip, Camera (Viewport, Game, Front, Left, Top), Align (Fit, Height, Width), Compare; the overlay shows in the viewport's bottom-right corner until Hide overlay; MCP `compare_silhouette` over the control port shows it there too |
 | `import_mesh` | File > Import Mesh… and the Import mesh section: File, Size, Voxel, or Scale, File is Z-up, Rotation, Position, Anchor, Solid or Shell, Texture or Vertex colour, Slots, New slots, Tolerance, Mode, New object |
 | `carve` | Remove mode with Box, Generator, or Tube |

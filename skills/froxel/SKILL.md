@@ -23,7 +23,7 @@ If the tools are missing, the server is not configured. Point the user to
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, and `marker`,
+  (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` with its image as rows and a legend, and `marker`,
   `collision_box`, `connector`, `collision_from_voxels`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -93,7 +93,13 @@ If the tools are missing, the server is not configured. Point the user to
    sheet (`crop`, `cellsPerPixel` or a box `size`, a background rule) fill
    their visual hull, coloured from the nearest view. Do not copy cells from
    the flat views by hand. The hull is the outer limit: carve the concave
-   parts (gaps between legs, under a log) afterwards.
+   parts (gaps between legs, under a log) afterwards. Paint a pattern one
+   view shows (a shell's plates from the top, face markings from the front)
+   with ONE `project_paint` call: `view`, the image crop, `slots`, `depth`
+   (1 is the surface), `normalLimit` (e.g. 60, so steep sides get no
+   streaks), and `only` (the slots it may repaint). It never adds or removes
+   cells; do not paint layer by layer with `carve_from_views` `mode: paint`
+   and dummy views.
 2. **Block out.** For a unique organic asset (a fallen tree, a creature, a
    hero rock) with a mesh sculpted in Blender or generated from the concept
    by an image-to-3D tool, start with `import_mesh` (`voxelSize` 0.08 for

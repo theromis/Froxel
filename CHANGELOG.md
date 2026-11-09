@@ -22,6 +22,13 @@
   material is `KHR_materials_unlit`, off by default, and deterministic. MCP
   `preview` `glb` and `froxel preview --input file.glb` draw a written file
   unlit. `examples/stacked_blocks.rhai` is a model to try it on.
+- Projected paint: MCP `project_paint`, Rhai `project_paint(view, rows,
+  opts)`, `froxel paint`, and the Paint from view section recolour the
+  active object's existing surface from one image projected along a view
+  (the six sheet views, or `yaw` and `pitch`), in one call and one undo
+  step: `depth` cells below the surface, `normalLimit` to leave steep sides,
+  `only` to keep other slots, and a box. No cell is added or removed.
+  `examples/painted_shell.rhai` paints a shell's plates onto a dome.
 - Scene bake: MCP `bake_scene`, `froxel bake-scene`, and Bake scene… in the
   Export panel bake one placement of many `.vox` files together, at any yaw and
   scale, with mesh, plane, or height field occluders, into one merged `.glb`

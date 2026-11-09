@@ -452,6 +452,39 @@ It returns `#{changed, cells, bounds: #{min, max}, size}`; `bounds` is `()`
 when nothing is carved. `examples/carved_stump.rhai` carves a stump with
 roots from front, side, and top rows.
 
+### Project paint
+
+```rhai
+let report = project_paint("top", ["..aa..", ".abba.", "..aa.."], #{legend: #{a: 4, b: 5}});
+let report = project_paint("front", rows, #{legend: #{e: 9}, origin: [0, 0, 6], size: [12, (), 4], depth: 1});
+let report = project_paint(rows, #{yaw: -60, pitch: 35, palette: 6, normalLimit: 70});
+```
+
+MCP `project_paint`: one image recolours the surface a view sees on the
+object being written; no cell is added or removed. The image is `rows` and
+a `legend`, as a `carve_from_views` view is (over MCP it may be a PNG
+crop, on this same code path). The view is the first argument (`front`,
+`back`, `left` or `side`, `right`, `top`, `bottom`, as in `carve_from_views`),
+or `yaw` and `pitch` in the options for an oblique projection. Options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `legend` | none | Character to palette index or `"#rrggbb"`. |
+| `flip` | `false` | Mirror the image left to right. |
+| `yaw`, `pitch` | none | Degrees, as `preview` takes them, instead of a view. |
+| `origin`, `size` | the object's bounds | The box of cells that may be painted; `()` in a `size` slot reaches the object's far side. |
+| `cellsPerPixel` | stretch | Cells per row character; or `imageSize: [across, down]`. Placed as a `carve_from_views` view is. |
+| `palette` | none | One slot wherever the image is inked, instead of its colours. |
+| `slots` | 1..255 | Slots a `#rrggbb` legend colour quantises to. |
+| `coverage` | `0.5` | Share of a grid cell's footprint that must be inked. |
+| `depth` | `1` | Solid cells painted per ray from the visible surface, 1..64. |
+| `normalLimit` | none | Degrees, 0..90: skip a surface turned further than this from the view. |
+| `only` | every slot | Slots that may be repainted; others keep theirs and still hide what is behind. |
+
+It returns `#{changed, cells, covered, rays, steep, bounds: #{min, max}}`;
+`bounds` is `()` when nothing is painted. `examples/painted_shell.rhai`
+paints a shell's plates onto a dome from the top.
+
 MCP `compare_silhouette` writes a file, so it has no script form; check a
 script's result with it over MCP.
 
@@ -1023,7 +1056,7 @@ Any function that is not listed on this page is not registered.
 A script describes a family; MCP `export_variants` (or `froxel variants`,
 or the Export panel's **Export variants…**) bakes it once per parameter set
 and writes a `.vox`, a `.glb`, and a manifest with each set's parameters,
-markers, and bounds. Scripts themselves never write files, and they read none: `carve_from_views` takes rows, not PNGs.
+markers, and bounds. Scripts themselves never write files, and they read none: `carve_from_views` and `project_paint` take rows, not PNGs.
 
 ```json
 [

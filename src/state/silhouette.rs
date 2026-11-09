@@ -1,5 +1,5 @@
-//! The Silhouette panels: the fields of MCP `carve_from_views` and
-//! `compare_silhouette`, and the comparison overlay the viewport shows.
+//! The Silhouette panels: the fields of MCP `carve_from_views`,
+//! `project_paint`, and `compare_silhouette`, and the comparison overlay the viewport shows.
 //! Each button builds the MCP arguments and runs the MCP handler.
 
 use std::path::PathBuf;
@@ -104,6 +104,126 @@ impl Default for CarvePanel {
     }
 }
 
+/// The Paint from view panel: one image onto the surface a view sees.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PaintPanel {
+    /// Index into [`SIDES`].
+    pub side: usize,
+    pub path: String,
+    /// `x y w h` in pixels; empty is the whole image.
+    pub crop: String,
+    pub flip: bool,
+    pub background: BackgroundField,
+    /// Stretch the image over the box; off uses `cells_per_pixel`.
+    pub fit: bool,
+    pub cells_per_pixel: f32,
+    /// `x y z` origin and size of the box; empty is the object's bounds.
+    pub origin: String,
+    pub size: String,
+    pub depth: i32,
+    /// Degrees; 90 is no limit.
+    pub normal_limit: f32,
+    /// Slots that may be repainted, separated by spaces; empty is all.
+    pub only: String,
+    /// Colour from the image; off paints the active slot.
+    pub colour_image: bool,
+}
+
+impl Default for PaintPanel {
+    fn default() -> Self {
+        Self {
+            side: 4,
+            path: String::new(),
+            crop: String::new(),
+            flip: false,
+            background: BackgroundField::default(),
+            fit: true,
+            cells_per_pixel: 0.25,
+            origin: String::new(),
+            size: String::new(),
+            depth: 1,
+            normal_limit: 90.0,
+            only: String::new(),
+            colour_image: true,
+        }
+    }
+}
+
+impl PaintPanel {
+    /// The MCP `project_paint` arguments. `active` is the slot used when
+    /// the colour does not come from the image.
+    pub(crate) fn args(&self, active: u8) -> Result<Value, String> {
+        if self.path.trim().is_empty() {
+            return Err("Paint from view: choose an image.".into());
+        }
+        let mut args = json!({
+            "view": SIDES[self.side.min(SIDES.len() - 1)].1,
+            "path": self.path.trim(),
+            "flip": self.flip,
+            "depth": self.depth.max(1)
+        });
+        if let Some(crop) = numbers("Crop", &self.crop, 4)? {
+            args["crop"] = json!(crop);
+        }
+        self.background.write(&mut args);
+        if !self.fit {
+            args["cellsPerPixel"] = json!(self.cells_per_pixel);
+        }
+        if let Some(origin) = signed("Origin", &self.origin)? {
+            args["origin"] = json!(origin);
+        }
+        if let Some(size) = numbers("Size", &self.size, 3)? {
+            args["size"] = json!(size);
+        }
+        if self.normal_limit < 90.0 {
+            args["normalLimit"] = json!(self.normal_limit.max(0.0));
+        }
+        let only: Vec<&str> = self
+            .only
+            .split(|c: char| c == ',' || c.is_whitespace())
+            .filter(|part| !part.is_empty())
+            .collect();
+        if !only.is_empty() {
+            let slots = only
+                .iter()
+                .map(|part| {
+                    part.parse::<u8>()
+                        .ok()
+                        .filter(|slot| *slot > 0)
+                        .ok_or_else(|| format!("Only: `{part}` is not a slot 1..255"))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            args["only"] = json!(slots);
+        }
+        if !self.colour_image {
+            args["palette"] = json!(active.max(1));
+        }
+        Ok(args)
+    }
+}
+
+/// Three whole numbers, which may be negative, separated by spaces or
+/// commas.
+fn signed(what: &str, text: &str) -> Result<Option<[i64; 3]>, String> {
+    let parts: Vec<&str> = text
+        .split(|c: char| c == ',' || c.is_whitespace())
+        .filter(|part| !part.is_empty())
+        .collect();
+    if parts.is_empty() {
+        return Ok(None);
+    }
+    if parts.len() != 3 {
+        return Err(format!("{what}: 3 whole numbers"));
+    }
+    let mut out = [0i64; 3];
+    for (slot, part) in out.iter_mut().zip(&parts) {
+        *slot = part
+            .parse()
+            .map_err(|_| format!("{what}: `{part}` is not a whole number"))?;
+    }
+    Ok(Some(out))
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ComparePanel {
     pub path: String,
@@ -133,6 +253,7 @@ pub struct SilhouetteOverlay {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SilhouettePanels {
     pub carve: CarvePanel,
+    pub paint: PaintPanel,
     pub compare: ComparePanel,
     pub overlay: Option<SilhouetteOverlay>,
 }
@@ -266,6 +387,35 @@ impl Session {
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
     }
 
+    /// The Paint from view panel's button: MCP `project_paint` onto the
+    /// active object.
+    pub fn paint_from_panel(&mut self) {
+        let args = match self.silhouette.paint.args(self.active_slot) {
+            Ok(args) => args,
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
+        self.status = match crate::remote::apply(self, "voxel.project_paint", &args) {
+            Ok(reply) => {
+                let mut text = format!(
+                    "Painted {} cells ({} changed) from the {} grid.",
+                    reply["cells"], reply["changed"], reply["grid"]
+                );
+                if reply["steep"].as_u64().unwrap_or(0) > 0 {
+                    text.push_str(&format!(
+                        " {} rays met too steep a surface.",
+                        reply["steep"]
+                    ));
+                }
+                text
+            }
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
     /// The Compare panel's button: MCP `compare_silhouette` to a PNG in the
     /// temporary folder, then shown over the viewport.
     pub fn compare_from_panel(&mut self) {
@@ -335,6 +485,13 @@ impl Session {
             if let Some(view) = self.silhouette.carve.views.get_mut(row) {
                 view.path = path.display().to_string();
             }
+        }
+    }
+
+    /// Choose the image of Paint from view.
+    pub fn pick_paint_image(&mut self) {
+        if let Some(path) = super::dialog::pick_open("PNG", &["png"]) {
+            self.silhouette.paint.path = path.display().to_string();
         }
     }
 

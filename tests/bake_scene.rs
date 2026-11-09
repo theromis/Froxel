@@ -760,7 +760,10 @@ fn an_instance_sway_scales_its_sway_and_leaves_bob_and_others() {
     };
     // One placement as it is and the same one at sway 0.4: the same vertices,
     // sway scaled, bob kept.
-    let plain = write(json!([{"source": source, "translation": [1, 0, 2]}]), "swayed_a.glb");
+    let plain = write(
+        json!([{"source": source, "translation": [1, 0, 2]}]),
+        "swayed_a.glb",
+    );
     let swayed = write(
         json!([{"source": source, "translation": [1, 0, 2], "sway": 0.4}]),
         "swayed_b.glb",
@@ -772,7 +775,8 @@ fn an_instance_sway_scales_its_sway_and_leaves_bob_and_others() {
         assert!((b[0] - a[0] * 0.4).abs() < 1e-6, "{a:?} {b:?}");
         assert_eq!(a[1], b[1], "bob stays the asset's");
     }
-    let spans = |path: &Path| glb_json(path)["scenes"][0]["extras"]["froxelScene"]["instances"][0].clone();
+    let spans =
+        |path: &Path| glb_json(path)["scenes"][0]["extras"]["froxelScene"]["instances"][0].clone();
     assert!(spans(&plain).get("sway").is_none());
     assert_eq!(spans(&swayed)["sway"], json!(0.4));
     // Sway 1 writes the same bytes as none.
@@ -780,6 +784,10 @@ fn an_instance_sway_scales_its_sway_and_leaves_bob_and_others() {
     let one = write(json!([{"source": source, "sway": 1}]), "sway_one.glb");
     assert_eq!(std::fs::read(plain).unwrap(), std::fs::read(one).unwrap());
     // Out of range is refused.
-    let bad = SceneBake::parse(&json!({"instances": [{"source": source, "sway": 5}]}), Path::new(""), None);
+    let bad = SceneBake::parse(
+        &json!({"instances": [{"source": source, "sway": 5}]}),
+        Path::new(""),
+        None,
+    );
     assert!(bad.is_err());
 }

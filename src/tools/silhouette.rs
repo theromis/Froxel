@@ -347,17 +347,18 @@ pub struct Carved {
 }
 
 /// A view's mask resampled to its grid: each grid cell's inked share and ink.
-struct Grid {
-    cols: u32,
-    rows: u32,
+/// `project_paint` resamples its image the same way.
+pub(super) struct Grid {
+    pub(super) cols: u32,
+    pub(super) rows: u32,
     /// Where the grid starts along its across and down box axes.
     offset: [i64; 2],
-    inside: Vec<bool>,
-    ink: Vec<Option<Ink>>,
+    pub(super) inside: Vec<bool>,
+    pub(super) ink: Vec<Option<Ink>>,
 }
 
 impl Grid {
-    fn build(mask: &Mask, cols: u32, rows: u32, coverage: f32) -> Grid {
+    pub(super) fn build(mask: &Mask, cols: u32, rows: u32, coverage: f32) -> Grid {
         let (fx, fy) = (
             f64::from(mask.width) / f64::from(cols),
             f64::from(mask.height) / f64::from(rows),
@@ -458,7 +459,7 @@ impl Grid {
 }
 
 /// The nearest of `slots` to a colour.
-fn quantize(color: [u8; 3], palette: &[[u8; 3]; 256], slots: &[u8]) -> u8 {
+pub(super) fn quantize(color: [u8; 3], palette: &[[u8; 3]; 256], slots: &[u8]) -> u8 {
     slots
         .iter()
         .copied()

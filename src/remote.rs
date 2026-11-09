@@ -22,7 +22,7 @@ pub(crate) use import::{
 };
 pub(crate) use markers::marker_kind;
 pub(crate) use organic::{organic_writes, Organic};
-pub(crate) use silhouette::{hull_writes, session_palette};
+pub(crate) use silhouette::{hull_writes, paint_writes, session_palette};
 pub(crate) use stone::{cavity_writes, stone_writes, Stone};
 
 use crate::state::{Cell, GlassMode, Session};
@@ -890,6 +890,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "voxel.loft" => organic::apply_organic(session, &params, Organic::Loft),
         "voxel.brush" => organic::apply_organic(session, &params, Organic::Brush),
         "voxel.carve_from_views" => silhouette::carve_from_views(session, &params),
+        "voxel.project_paint" => silhouette::project_paint(session, &params),
         "render.compare_silhouette" => silhouette::compare_silhouette(session, &params),
         "mesh.import" => import::apply_import(session, &params),
         "voxel.bark" => stone::apply_stone(session, &params, Stone::Bark),
@@ -1457,6 +1458,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.loft", "points, radius? | rx? + ry?, roll?, flatTop?, noise?, frequency?, curve?, caps?, palette | palettes, pattern?, period?, sectors?, seed?, mode?", "Fill a solid along a curve whose elliptical, flattened, noisy section changes per point"),
     ("voxel.brush", "op, points, radius?, strength?, falloff?, only?, palette?, vector?, spacing?", "Sculpt brush dabs along points: inflate, deflate, smooth, flatten, or grab"),
     ("voxel.carve_from_views", "views, size?, origin?, cellsPerPixel?, palette? | slots?, coverage?, shell?, smooth?, mode?", "Fill the visual hull of 2 or 3 orthographic views (front, side, top): each a PNG path or rows, with crop, cellsPerPixel or size, and a background rule"),
+    ("voxel.project_paint", "view | yaw + pitch, path + crop? | rows + legend?, background?, cellsPerPixel? | imageSize?, origin?, size?, palette? | slots?, coverage?, depth?, normalLimit?, only?", "Recolour the active object's visible surface from one image projected along a view: never adds or removes cells"),
     ("render.compare_silhouette", "path, concept, crop?, background?, tolerance?, alphaThreshold?, flip?, align?, preset?, view?, yaw?, pitch?, orthographic?, fov?, margin?, object?, isolate?, width?, height?, lighting?, pose?", "Compare the model's preview silhouette with a concept mask: IoU, missing and excess shares, and an overlay PNG"),
     ("mesh.import", "path, size? | scale? | voxelSize?, upAxis?, rotation?, position?, anchor?, fill?, colors?, palette? | slots?, maxNewSlots?, tolerance?, mode?, newObject?, name?", "Voxelize a .glb, .gltf, or .obj into the active object or a new one, colours quantized into the palette. One undo step"),
     ("marker.set", "name, kind?, point | x0..z1 | min + max, direction?, object?", "Name a point, collision box, or connector on an object; replaces one of the same name"),

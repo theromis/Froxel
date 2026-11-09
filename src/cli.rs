@@ -1,5 +1,5 @@
 //! `froxel render`, `froxel preview`, `froxel export`, `froxel import`,
-//! `froxel carve`, `froxel compare`, and `froxel voxrt`.
+//! `froxel carve`, `froxel paint`, `froxel compare`, and `froxel voxrt`.
 
 use std::path::{Path, PathBuf};
 
@@ -1223,6 +1223,93 @@ fn carve_args(
                     view["path"] = serde_json::json!(base.join(path).display().to_string());
                 }
             }
+        }
+    }
+    Ok(Some((input, output, params)))
+}
+
+/// `froxel paint`: MCP `project_paint` from a JSON file of its arguments,
+/// on a copy of a `.vox`.
+pub fn paint(args: &[String]) -> i32 {
+    match paint_args(args) {
+        Ok(None) => 0,
+        Ok(Some((input, output, params))) => {
+            let mut session = Session::new();
+            let done = session
+                .open_vox(&input)
+                .and_then(|()| crate::remote::apply(&mut session, "voxel.project_paint", &params))
+                .and_then(|reply| {
+                    session.write_vox(&output)?;
+                    Ok(reply)
+                });
+            match done {
+                Ok(reply) => {
+                    eprintln!(
+                        "wrote {} ({} cells painted, {} changed, grid {}, {} steep rays)",
+                        output.display(),
+                        reply["cells"],
+                        reply["changed"],
+                        reply["grid"],
+                        reply["steep"]
+                    );
+                    0
+                }
+                Err(err) => {
+                    eprintln!("{err}");
+                    1
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            2
+        }
+    }
+}
+
+const PAINT_HELP: &str = "\
+usage: froxel paint --args <paint.json> --input <base.vox> --out <file.vox>
+
+Recolours the active object's visible surface from one image projected
+along a view, as MCP project_paint does, and saves the .vox. Cells are never
+added or removed. paint.json holds that tool's arguments: {view | yaw +
+pitch, path, crop, background, tolerance, flip, cellsPerPixel | imageSize,
+origin, size, palette | slots, coverage, depth, normalLimit, only}. A
+relative path is relative to paint.json.";
+
+fn paint_args(args: &[String]) -> Result<Option<(PathBuf, PathBuf, serde_json::Value)>, String> {
+    let (mut file, mut output, mut input) = (None, None, None);
+    let mut index = 0;
+    while index < args.len() {
+        let value = |index: &mut usize| -> Result<String, String> {
+            *index += 1;
+            args.get(*index)
+                .cloned()
+                .ok_or_else(|| format!("{} needs a value", args[*index - 1]))
+        };
+        match args[index].as_str() {
+            "-h" | "--help" => {
+                eprintln!("{PAINT_HELP}");
+                return Ok(None);
+            }
+            "--args" => file = Some(PathBuf::from(value(&mut index)?)),
+            "--out" | "--output" => output = Some(PathBuf::from(value(&mut index)?)),
+            "--input" => input = Some(PathBuf::from(value(&mut index)?)),
+            other => return Err(format!("unknown argument `{other}`\n\n{PAINT_HELP}")),
+        }
+        index += 1;
+    }
+    let file = file.ok_or_else(|| format!("--args is required\n\n{PAINT_HELP}"))?;
+    let input = input.ok_or_else(|| format!("--input is required\n\n{PAINT_HELP}"))?;
+    let output = output.ok_or_else(|| format!("--out is required\n\n{PAINT_HELP}"))?;
+    let text = std::fs::read_to_string(&file)
+        .map_err(|err| format!("Could not read {}: {err}", file.display()))?;
+    let mut params: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|err| format!("{} is not JSON: {err}", file.display()))?;
+    if let Some(path) = params.get("path").and_then(|p| p.as_str()) {
+        if Path::new(path).is_relative() {
+            let base = file.parent().unwrap_or(Path::new(""));
+            params["path"] = serde_json::json!(base.join(path).display().to_string());
         }
     }
     Ok(Some((input, output, params)))

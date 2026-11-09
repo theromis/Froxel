@@ -155,6 +155,8 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
                     ui.separator();
                     silhouette::carve(ui, session);
                     ui.separator();
+                    silhouette::paint(ui, session);
+                    ui.separator();
                     silhouette::compare(ui, session);
                     ui.separator();
                     import::import(ui, session);

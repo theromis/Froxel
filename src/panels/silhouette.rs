@@ -1,5 +1,6 @@
 //! Inspector sections of the silhouette tools: Carve from views (MCP
-//! `carve_from_views`) and Compare silhouette (MCP `compare_silhouette`),
+//! `carve_from_views`), Paint from view (MCP `project_paint`), and Compare
+//! silhouette (MCP `compare_silhouette`),
 //! whose overlay the viewport shows.
 
 use egui::{RichText, Ui};
@@ -127,6 +128,114 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
         }
         if let Some(row) = pick {
             session.pick_carve_view(row);
+        }
+    });
+}
+
+/// MCP `project_paint`: one image recolours the surface a view sees.
+pub(super) fn paint(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Paint from view");
+        let mut pick = false;
+        let panel = &mut session.silhouette.paint;
+        egui::Grid::new("paint-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "View", "The side the image looks from, for a model facing −Y: Top looks down with image down toward −Y; Left (side) looks from +X with the model's front on the image's left.");
+                ui.horizontal(|ui| {
+                    egui::ComboBox::from_id_salt("paint-side")
+                        .width(90.0)
+                        .selected_text(SIDES[panel.side.min(SIDES.len() - 1)].0)
+                        .show_ui(ui, |ui| {
+                            for (index, (name, _)) in SIDES.iter().enumerate() {
+                                ui.selectable_value(&mut panel.side, index, *name);
+                            }
+                        });
+                    ui.checkbox(&mut panel.flip, "Flip")
+                        .on_hover_text("Mirror the image left to right.");
+                });
+                ui.end_row();
+                label(ui, "Image", "The PNG to paint: a pattern, or a crop of the turnaround sheet. Background pixels leave the surface alone.");
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut panel.path)
+                            .hint_text("pattern.png")
+                            .desired_width(150.0),
+                    );
+                    if ui.button("…").on_hover_text("Choose the PNG.").clicked() {
+                        pick = true;
+                    }
+                });
+                ui.end_row();
+                label(ui, "Crop", "The image's rectangle in pixels: x y width height. Empty is the whole image.");
+                ui.add(
+                    egui::TextEdit::singleline(&mut panel.crop)
+                        .hint_text("x y w h")
+                        .desired_width(90.0),
+                );
+                ui.end_row();
+                label(ui, "Background", "Which pixels of the image are background. Alpha on an opaque image paints every pixel.");
+                background(ui, "paint-background", &mut panel.background);
+                ui.end_row();
+                label(ui, "Scale", "Fit stretches the image over the box as seen from the view; off places it at Cells / px, centred and standing on the box's bottom, as Carve from views does.");
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut panel.fit, "Fit box");
+                    ui.add_enabled(
+                        !panel.fit,
+                        egui::DragValue::new(&mut panel.cells_per_pixel)
+                            .range(0.01..=8.0)
+                            .speed(0.005),
+                    )
+                    .on_hover_text("Cells per image pixel.");
+                });
+                ui.end_row();
+                label(ui, "Box", "Origin x y z and size x y z of the cells that may be painted. Empty is the object's bounds.");
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut panel.origin)
+                            .hint_text("origin")
+                            .desired_width(70.0),
+                    );
+                    ui.add(
+                        egui::TextEdit::singleline(&mut panel.size)
+                            .hint_text("size")
+                            .desired_width(70.0),
+                    );
+                });
+                ui.end_row();
+                label(ui, "Depth", "Solid cells painted below the visible surface along each ray; 1 is the surface alone.");
+                ui.add(egui::DragValue::new(&mut panel.depth).range(1..=crate::tools::MAX_PAINT_DEPTH as i32));
+                ui.end_row();
+                label(ui, "Normal limit", "Degrees: a surface turned further than this from the view is left alone, so steep sides get no streaks. 90 is no limit.");
+                ui.add(
+                    egui::DragValue::new(&mut panel.normal_limit)
+                        .range(0.0..=90.0)
+                        .speed(0.5)
+                        .suffix("°"),
+                );
+                ui.end_row();
+                label(ui, "Only", "Slots that may be repainted, such as 3 4; other cells keep theirs. Empty is every slot.");
+                ui.add(
+                    egui::TextEdit::singleline(&mut panel.only)
+                        .hint_text("all slots")
+                        .desired_width(90.0),
+                );
+                ui.end_row();
+                label(ui, "Colour", "From the image: each pixel quantised to the nearest palette slot. Off paints the active slot where the image is inked.");
+                ui.checkbox(&mut panel.colour_image, "From image");
+                ui.end_row();
+            });
+        if ui
+            .button("Paint")
+            .on_hover_text("MCP project_paint: recolour the cells the view sees under the image. Never adds or removes cells. One undo step.")
+            .clicked()
+        {
+            session.paint_from_panel();
+        }
+        if pick {
+            session.pick_paint_image();
         }
     });
 }

@@ -1,9 +1,10 @@
-//! MCP `carve_from_views` and `compare_silhouette`, their arguments, and
-//! their replies.
+//! MCP `carve_from_views`, `project_paint`, and `compare_silhouette`,
+//! their arguments, and their replies.
 //!
 //! A view or a concept is an image `path` with a `crop` and a background
 //! rule, or `rows` of characters with a `legend`. Rhai scripts have no file
-//! access, so they pass rows; [`hull_writes`] is the code path both share.
+//! access, so they pass rows; [`hull_writes`] and [`paint_writes`] are the
+//! code paths MCP and Rhai share.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -115,6 +116,31 @@ fn carve_spec(params: &Value, files: bool) -> Result<CarveSpec, String> {
         };
         views.push(View { side, mask, scale });
     }
+    let size = box_size(params)?;
+    let origin = super::opt_ivec3(params, "origin")?.unwrap_or([0, 0, 0]);
+    let colour = colour_arg(params)?;
+    let passes = |key: &str| -> Result<Option<u32>, String> {
+        match params.get(key) {
+            None | Some(Value::Null) => Ok(None),
+            Some(found) => found
+                .as_u64()
+                .map(|n| Some(n.min(u64::from(u32::MAX)) as u32))
+                .ok_or_else(|| format!("{key} must be a whole number")),
+        }
+    };
+    Ok(CarveSpec {
+        views,
+        origin: (origin[0], origin[1], origin[2]),
+        size,
+        colour,
+        coverage: opt_f64(params, "coverage")?.unwrap_or(0.5) as f32,
+        shell: passes("shell")?.filter(|n| *n > 0),
+        smooth: passes("smooth")?.unwrap_or(0),
+    })
+}
+
+/// `size` [x, y, z] cells, each a whole number or null.
+fn box_size(params: &Value) -> Result<[Option<u32>; 3], String> {
     let mut size = [None; 3];
     match params.get("size") {
         None | Some(Value::Null) => {}
@@ -133,48 +159,147 @@ fn carve_spec(params: &Value, files: bool) -> Result<CarveSpec, String> {
         }
         Some(_) => return Err("size must be [x, y, z] cells".into()),
     }
-    let origin = super::opt_ivec3(params, "origin")?.unwrap_or([0, 0, 0]);
-    let colour = match params.get("palette") {
-        None | Some(Value::Null) => {
-            let slots = match params.get("slots") {
-                None | Some(Value::Null) => (1..=255).collect(),
-                Some(Value::Array(list)) => list
-                    .iter()
-                    .map(|v| {
-                        v.as_u64()
-                            .filter(|slot| (1..=255).contains(slot))
-                            .map(|slot| slot as u8)
-                            .ok_or("slots must be palette indices 1..255")
-                    })
-                    .collect::<Result<Vec<_>, _>>()?,
-                Some(_) => return Err("slots must be a list of palette indices".into()),
-            };
-            Colour::Views { slots }
-        }
+    Ok(size)
+}
+
+/// Palette indices 1..255 under `key`, or `None` when it is left out.
+fn slot_list(params: &Value, key: &str) -> Result<Option<Vec<u8>>, String> {
+    match params.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Array(list)) => list
+            .iter()
+            .map(|v| {
+                v.as_u64()
+                    .filter(|slot| (1..=255).contains(slot))
+                    .map(|slot| slot as u8)
+                    .ok_or_else(|| format!("{key} must be palette indices 1..255"))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(Some),
+        Some(_) => Err(format!("{key} must be a list of palette indices")),
+    }
+}
+
+/// `palette` (one slot) or `slots` (the slots image colours quantise to).
+fn colour_arg(params: &Value) -> Result<Colour, String> {
+    Ok(match params.get("palette") {
+        None | Some(Value::Null) => Colour::Views {
+            slots: slot_list(params, "slots")?.unwrap_or_else(|| (1..=255).collect()),
+        },
         Some(found) => Colour::Slot(
             found
                 .as_u64()
                 .filter(|slot| (1..=255).contains(slot))
                 .ok_or("palette must be 1..255")? as u8,
         ),
-    };
-    let passes = |key: &str| -> Result<Option<u32>, String> {
-        match params.get(key) {
-            None | Some(Value::Null) => Ok(None),
-            Some(found) => found
-                .as_u64()
-                .map(|n| Some(n.min(u64::from(u32::MAX)) as u32))
-                .ok_or_else(|| format!("{key} must be a whole number")),
+    })
+}
+
+/// MCP handler `project_paint`: recolour the active object's visible
+/// surface from one image, one undo step.
+pub(super) fn project_paint(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let palette = session_palette(session);
+    let (writes, mut reply) = paint_writes(&session.active().cells, &palette, params, true)?;
+    let changed = session.write_cells(&writes)?;
+    reply.insert("changed".into(), json!(changed));
+    reply.insert("voxels".into(), json!(session.voxel_count()));
+    Ok(Value::Object(reply))
+}
+
+/// The writes of `project_paint` against `cells` and its reply. With
+/// `files` false (Rhai) the image must be `rows`.
+pub(crate) fn paint_writes(
+    cells: &HashMap<Cell, u8>,
+    palette: &[[u8; 3]; 256],
+    params: &Value,
+    files: bool,
+) -> Result<(Writes, Map<String, Value>), String> {
+    let spec = paint_spec(params, files)?;
+    let painted = crate::tools::project_paint(cells, &spec, palette)?;
+    let writes: Writes = painted
+        .cells
+        .iter()
+        .map(|(cell, slot)| (cell.0, cell.1, cell.2, i32::from(*slot)))
+        .collect();
+    let mut reply = Map::new();
+    reply.insert("cells".into(), json!(painted.cells.len()));
+    reply.insert(
+        "bounds".into(),
+        match painted.bounds {
+            Some((min, max)) => json!({"min": [min.0, min.1, min.2], "max": [max.0, max.1, max.2]}),
+            None => Value::Null,
+        },
+    );
+    reply.insert(
+        "origin".into(),
+        json!([painted.origin.0, painted.origin.1, painted.origin.2]),
+    );
+    reply.insert("size".into(), json!(painted.size));
+    reply.insert("grid".into(), json!(painted.grid));
+    reply.insert("covered".into(), json!(painted.covered));
+    reply.insert("rays".into(), json!(painted.rays));
+    reply.insert("steep".into(), json!(painted.steep));
+    Ok((writes, reply))
+}
+
+fn paint_spec(params: &Value, files: bool) -> Result<crate::tools::PaintSpec, String> {
+    use crate::tools::Toward;
+    let toward = match opt_str(params, "view")? {
+        Some(name) => {
+            if params.get("yaw").is_some_and(|v| !v.is_null())
+                || params.get("pitch").is_some_and(|v| !v.is_null())
+            {
+                return Err("pass view or yaw and pitch, not both".into());
+            }
+            Toward::Side(Side::parse(&name)?)
+        }
+        None => {
+            let yaw = opt_f64(params, "yaw")?;
+            let pitch = opt_f64(params, "pitch")?;
+            if yaw.is_none() && pitch.is_none() {
+                return Err(format!("needs view ({}) or yaw and pitch", Side::NAMES));
+            }
+            Toward::Angles {
+                yaw: yaw.unwrap_or(0.0) as f32,
+                pitch: pitch.unwrap_or(0.0) as f32,
+            }
         }
     };
-    Ok(CarveSpec {
-        views,
-        origin: (origin[0], origin[1], origin[2]),
-        size,
-        colour,
+    let mask = view_mask(params, files, &mut HashMap::new())?;
+    let scale = match (params.get("imageSize"), opt_f64(params, "cellsPerPixel")?) {
+        (Some(found), cpp) if !found.is_null() => {
+            if cpp.is_some() {
+                return Err("pass imageSize or cellsPerPixel, not both".into());
+            }
+            let pair = found
+                .as_array()
+                .filter(|pair| pair.len() == 2)
+                .and_then(|pair| Some([pair[0].as_u64()?, pair[1].as_u64()?]))
+                .ok_or("imageSize must be [across, down] cells")?;
+            Scale::Size(pair.map(|n| n.min(u64::from(u32::MAX)) as u32))
+        }
+        (_, Some(c)) => Scale::CellsPerPixel(c as f32),
+        _ => Scale::Fit,
+    };
+    let origin = super::opt_ivec3(params, "origin")?.map(|o| (o[0], o[1], o[2]));
+    let depth = match params.get("depth") {
+        None | Some(Value::Null) => 1,
+        Some(found) => found
+            .as_u64()
+            .ok_or("depth must be a whole number of cells")?
+            .min(u64::from(u32::MAX)) as u32,
+    };
+    Ok(crate::tools::PaintSpec {
+        mask,
+        toward,
+        scale,
+        origin,
+        size: box_size(params)?,
+        colour: colour_arg(params)?,
         coverage: opt_f64(params, "coverage")?.unwrap_or(0.5) as f32,
-        shell: passes("shell")?.filter(|n| *n > 0),
-        smooth: passes("smooth")?.unwrap_or(0),
+        depth,
+        normal_limit: opt_f64(params, "normalLimit")?.map(|n| n as f32),
+        only: slot_list(params, "only")?,
     })
 }
 
