@@ -1545,11 +1545,17 @@ fn fit_spec(params: &Value, files: bool) -> Result<crate::tools::FitSpec, String
 /// `yawRange`, and `resolution`.
 pub(crate) fn orient_spec(params: &Value, files: bool) -> Result<crate::tools::OrientSpec, String> {
     use crate::tools::{OrientSpec, OrientView, Turns};
-    let list = params
-        .get("views")
-        .and_then(Value::as_array)
-        .filter(|list| (1..=6).contains(&list.len()))
-        .ok_or("views must be a list of 1 to 6 {view, path | rows, ...}")?;
+    let measured;
+    let list = match params.get("views") {
+        None | Some(Value::Null) if files && params.get("path").is_some_and(|p| p.is_string()) => {
+            measured = sheet_layout(params)?;
+            &measured
+        }
+        found => found
+            .and_then(Value::as_array)
+            .filter(|list| (1..=6).contains(&list.len()))
+            .ok_or("views must be a list of 1 to 6 {view, path | rows, ...}, or pass only the sheet's path")?,
+    };
     let mut images = HashMap::new();
     let mut views = Vec::with_capacity(list.len());
     for (i, item) in list.iter().enumerate() {
@@ -1745,29 +1751,7 @@ pub(crate) fn views_paint_spec(
     let list = match params.get("views") {
         Some(Value::Array(list)) => list,
         None | Some(Value::Null) if files && params.get("path").is_some_and(|p| p.is_string()) => {
-            let mut item = json!({});
-            for key in [
-                "path",
-                "background",
-                "tolerance",
-                "alphaThreshold",
-                "excludeColors",
-                "excludeTolerance",
-                "flood",
-                "keepLargest",
-            ] {
-                if let Some(value) = params.get(key).filter(|v| !v.is_null()) {
-                    item[key] = value.clone();
-                }
-            }
-            let sheet = measure_sheet(&item)?;
-            measured = sheet
-                .get("fitViews")
-                .and_then(Value::as_array)
-                .cloned()
-                .ok_or(
-                    "measure_sheet found no 2 x 2 views layout in path: pass views with crops",
-                )?;
+            measured = sheet_layout(params)?;
             &measured
         }
         _ => {
@@ -1865,6 +1849,35 @@ pub(crate) fn views_paint_spec(
         quantize,
         guard,
     })
+}
+
+/// The views of the sheet at `params`' `path`, as `measure_sheet` finds
+/// its 2 x 2 layout: `[{view, crop}]`, read with the sheet-wide background
+/// and mask keys.
+pub(crate) fn sheet_layout(params: &Value) -> Result<Vec<Value>, String> {
+    let mut item = json!({});
+    for key in [
+        "path",
+        "background",
+        "tolerance",
+        "alphaThreshold",
+        "excludeColors",
+        "excludeTolerance",
+        "flood",
+        "keepLargest",
+    ] {
+        if let Some(value) = params.get(key).filter(|v| !v.is_null()) {
+            item[key] = value.clone();
+        }
+    }
+    let sheet = measure_sheet(&item)?;
+    sheet
+        .get("fitViews")
+        .and_then(Value::as_array)
+        .cloned()
+        .ok_or_else(|| {
+            "measure_sheet found no 2 x 2 views layout in path: pass views with crops".into()
+        })
 }
 
 /// The accent guard of `paint_from_views` and `reduce_palette`:

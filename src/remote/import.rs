@@ -124,12 +124,54 @@ pub(crate) fn import_plan(
     let mut options = voxelize_options(params, up)?;
     let oriented = match params.get("orient") {
         None | Some(Value::Null) => None,
-        Some(orient) if orient.is_object() => Some(
-            orient_mesh(mesh, &mut options, orient, files)
-                .map_err(|err| format!("orient: {err}"))?,
-        ),
+        Some(Value::String(text)) if text == "upright" => {
+            let mut reply = Map::new();
+            reply.insert(
+                "upright".into(),
+                upright_mesh(mesh, &mut options, DEFAULT_MAX_TILT)?,
+            );
+            Some(reply)
+        }
+        Some(orient) if orient.is_object() => {
+            let stand = match orient.get("upright") {
+                None | Some(Value::Null) => false,
+                Some(found) => found.as_bool().ok_or("orient upright must be true or false")?,
+            };
+            let max_tilt = opt_f64(orient, "maxTilt")?.unwrap_or(DEFAULT_MAX_TILT);
+            let first = if stand {
+                Some(upright_mesh(mesh, &mut options, max_tilt)?)
+            } else {
+                None
+            };
+            let has_views = orient.get("views").is_some_and(|v| !v.is_null())
+                || orient.get("path").is_some_and(|v| !v.is_null());
+            let mut reply = if has_views {
+                let mut search = orient.clone();
+                if let Some(map) = search.as_object_mut() {
+                    map.remove("upright");
+                    map.remove("maxTilt");
+                }
+                if stand && search.get("turns").is_none_or(Value::is_null) {
+                    // Standing up already chose up: search the yaw only.
+                    search["turns"] = json!("upright");
+                }
+                orient_mesh(mesh, &mut options, &search, files)
+                    .map_err(|err| format!("orient: {err}"))?
+            } else if stand {
+                Map::new()
+            } else {
+                return Err("orient needs views or a sheet path, or upright: true".into());
+            };
+            if let Some(first) = first {
+                reply.insert("upright".into(), first);
+            }
+            Some(reply)
+        }
         Some(_) => {
-            return Err("orient must be {views, turns?, yawStep?, yawRange?, resolution?}".into())
+            return Err(
+                "orient must be \"upright\" or {upright?, views | path, turns?, yawStep?, yawRange?, resolution?}"
+                    .into(),
+            )
         }
     };
     let mode = add_mode(params)?;
@@ -361,6 +403,48 @@ fn clean_import(
         .collect();
     writes.sort_unstable();
     Ok((writes, new_slots, report))
+}
+
+/// How far, in degrees, `orient` `upright` may tilt the mesh's up by
+/// default: a moderately tilted import is stood level, a fish (whose
+/// thinnest axis lies flat) is not laid on its side.
+const DEFAULT_MAX_TILT: f64 = 40.0;
+
+/// `orient: "upright"`: the PCA turn of the mesh's vertices, as placed by
+/// `upAxis` and `rotation`, folded into `options.rotation` (thinnest axis
+/// up, the form narrowing upward, the taller end of the long axis to −Y).
+/// Returns the reply's `upright`.
+fn upright_mesh(mesh: &Mesh, options: &mut Voxelize, max_tilt: f64) -> Result<Value, String> {
+    let before = crate::tools::from_euler_xyz(options.rotation);
+    let mut seen = std::collections::HashSet::new();
+    let mut points = Vec::new();
+    for t in &mesh.triangles {
+        for &v in &t.v {
+            if !seen.insert(v) {
+                continue;
+            }
+            let [x, y, z] = mesh.positions[v as usize];
+            let p = match options.up {
+                Up::Y => [x, -z, y],
+                Up::Z => [x, y, z],
+            };
+            points.push(crate::tools::turned(&before, p));
+        }
+    }
+    let found = crate::tools::upright(&points, max_tilt).map_err(|err| format!("orient: {err}"))?;
+    let total = crate::tools::orient::mul(&found.turn, &before);
+    options.rotation = crate::tools::euler_xyz(&total);
+    let r = |v: f64| round(v, 4);
+    Ok(json!({
+        "up": found.up.map(r),
+        "spread": found.spread.map(|s| round(s.max(0.0).sqrt(), 4)),
+        "skew": r(found.skew),
+        "headRise": r(found.head_rise),
+        "keptUp": found.kept_up,
+        "keptYaw": found.kept_yaw,
+        "rotation": options.rotation.map(|v| round(v, 3)),
+        "axes": crate::tools::axis_names(&total),
+    }))
 }
 
 fn round(value: f64, places: i32) -> f64 {

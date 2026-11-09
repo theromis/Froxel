@@ -1858,7 +1858,7 @@ usage: froxel import --mesh <file.glb|.gltf|.obj> --output <file.vox>
                      [--z-up] [--rotation X,Y,Z] [--position X,Y,Z] [--anchor min|center|bottom]
                      [--fill solid|parity|shell | --shell] [--vertex-colors] [--palette SLOT | --slots A,B,...]
                      [--max-new-slots N] [--tolerance D] [--mode replace|empty|paint]
-                     [--new-object] [--name NAME] [--orient <orient.json>]
+                     [--new-object] [--name NAME] [--orient upright|<orient.json>]
                      [--clean true|JSON]
 
 MCP import_mesh from the command line: voxelize the mesh into the first object
@@ -1875,7 +1875,10 @@ at most --max-new-slots (default 32) in slots no cell uses; --slots maps to
 those slots only, --palette paints one. --orient reads a views sheet's
 orient_to_views arguments (views, turns, yawStep, ...; paths relative to the
 file) and turns the mesh to the axis-aligned turn and yaw whose silhouettes
-match the views best before voxelizing it. --clean runs MCP reduce_palette
+match the views best before voxelizing it (with upright: true in it, the
+mesh is stood up first and only its yaw searched); --orient upright alone
+stands a tilted mesh level from its shape (thinnest principal axis up,
+narrowing upward, the taller end of its long axis toward -Y). --clean runs MCP reduce_palette
 over the imported cells before they are written: true is
 {\"colors\": 8, \"despeckle\": 1}, or pass its options as JSON (colors |
 palette, accents, minShare, contrast, maxAccents, despeckle, minSame,
@@ -1996,7 +1999,14 @@ fn import_args(
                 params["slots"] = json!(slots);
             }
             "--anchor" => params["anchor"] = json!(value()?),
-            "--orient" => params["orient"] = read_views_json(Path::new(value()?))?,
+            "--orient" => {
+                let text = value()?;
+                params["orient"] = if text == "upright" {
+                    serde_json::json!("upright")
+                } else {
+                    read_views_json(Path::new(text))?
+                };
+            }
             "--clean" => {
                 let text = value()?;
                 params["clean"] = serde_json::from_str(&text)

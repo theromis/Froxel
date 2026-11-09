@@ -15,6 +15,15 @@
 
 ### Added
 
+- Upright import: `import_mesh` `orient: "upright"` (Rhai `voxelize`, the
+  Import mesh panel's Orient, `froxel import --orient upright`) stands a
+  tilted image-to-3D mesh level from its shape before voxelizing it: the
+  thinnest principal axis up within `maxTilt` (default 40 degrees), signed
+  so the form narrows upward, and the taller end of its long axis toward
+  −Y; round shapes keep their up or yaw. `{upright: true, ...views}` stands
+  it up and then searches only the yaw against the sheet, and the views
+  search of `orient` and `orient_to_views` takes a lone sheet `path` (its
+  `measure_sheet` layout).
 - Split parts: MCP `split_parts`, Rhai `split_parts(object, parts, opts)`,
   the Split parts section, and `froxel split-parts` cut one blockout into
   its rig parts in one undo step: every cell goes to the part whose seed

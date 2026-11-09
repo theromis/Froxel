@@ -20,7 +20,7 @@ cube pitch, checks, and parts; `mask_edit.rs`: the mask edits of `compare_silhou
 `excludeColors`, `flood`, `mask`, `erase`, `keepLargest`; `paint_views.rs`: MCP `paint_from_views`;
 `reduce.rs`: MCP `reduce_palette` and `import_mesh` `clean`; `colors.rs`: Oklab, median cut,
 k-means, and the accent guard they share; `rig_split.rs`: MCP `split_parts`, the geodesic
-split into rig parts). `mesh.rs` and `gpu.rs` draw the
+split into rig parts; `upright.rs`: `import_mesh` `orient: "upright"`, the PCA stand-up). `mesh.rs` and `gpu.rs` draw the
 edit-mode mesh. `trace/` is the CPU path tracer. `trace_gpu.rs` plus
 `trace.wgsl` and `blit.wgsl` are the wgpu tracer used by Render mode.
 `import/` reads `.glb`, `.gltf`, and `.obj` meshes and voxelizes them

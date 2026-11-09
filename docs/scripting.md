@@ -811,7 +811,10 @@ match the views, then the object resampled to it. The options are the MCP
 tool's (`turns`, `yawStep`, `yawRange`, `fineAxes`, `resolution`, `size`,
 `height`, `scale`, `apply`), and it returns the MCP reply as a map
 (`before`, `after`, `rotation`, `candidates`, `margin`, `scale`, `bounds`,
-`changed`). `voxelize` takes the same search as its `orient` option.
+`changed`). `voxelize` takes the same search as its `orient` option, and
+`orient: "upright"` (or `upright: true` in the search, with `maxTilt`) stands
+a tilted mesh level from its shape, the taller end of its long axis to −Y;
+`examples/tilted_slug.rhai` stands up a tilted slug and cleans its colours.
 `examples/cleaned_blockout.rhai` stands up a boulder that came in on its
 side.
 

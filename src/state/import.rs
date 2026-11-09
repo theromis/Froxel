@@ -29,8 +29,11 @@ pub struct ImportPanel {
     /// 0 replace, 1 empty, 2 paint.
     pub mode: usize,
     pub new_object: bool,
-    /// Turn the mesh to the Carve from views views first (MCP `orient`).
-    pub orient: bool,
+    /// MCP `orient`: 0 none, 1 upright (PCA), 2 the Carve from views views,
+    /// 3 upright and then the views' yaw.
+    pub orient: usize,
+    /// Degrees `upright` may tilt the mesh's up (MCP `maxTilt`).
+    pub max_tilt: f32,
     /// Reduce and despeckle the colours with the Reduce palette section's
     /// options (MCP `clean`).
     pub clean: bool,
@@ -55,7 +58,8 @@ impl Default for ImportPanel {
             tolerance: crate::remote::DEFAULT_TOLERANCE as f32,
             mode: 0,
             new_object: true,
-            orient: false,
+            orient: 0,
+            max_tilt: 40.0,
             clean: false,
         }
     }
@@ -108,8 +112,20 @@ impl Session {
     /// The Import mesh panel's button: MCP `import_mesh`.
     pub fn import_from_panel(&mut self) {
         let args = self.import.args().and_then(|mut args| {
-            if self.import.orient {
-                args["orient"] = self.silhouette.orient.search_args(&self.silhouette.carve)?;
+            match self.import.orient {
+                1 => {
+                    args["orient"] = json!({"upright": true, "maxTilt": self.import.max_tilt});
+                }
+                2 | 3 => {
+                    let mut search = self.silhouette.orient.search_args(&self.silhouette.carve)?;
+                    if self.import.orient == 3 {
+                        search["upright"] = json!(true);
+                        search["maxTilt"] = json!(self.import.max_tilt);
+                        search["turns"] = json!("upright");
+                    }
+                    args["orient"] = search;
+                }
+                _ => {}
             }
             if self.import.clean {
                 args["clean"] = self.edit.reduce.args(None)?;

@@ -113,9 +113,18 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                 label(ui, "Target", "Import into a new object, or into the active one.");
                 ui.checkbox(&mut panel.new_object, "New object");
                 ui.end_row();
-                label(ui, "Orient", "MCP import_mesh orient: turn the mesh to the axis-aligned turn and fine yaw whose silhouettes best match the views of Carve from views (with the Orient to views options) before voxelizing it.");
-                ui.checkbox(&mut panel.orient, "Orient to views");
+                label(ui, "Orient", "MCP import_mesh orient, before voxelizing. Upright: stand a tilted mesh level from its shape (thinnest principal axis up, narrowing upward, the taller end of its long axis toward −Y), tilting up at most Max tilt. Views: the axis-aligned turn and fine yaw whose silhouettes best match the views of Carve from views (with the Orient to views options). Both: upright, then the views' yaw.");
+                ui.horizontal(|ui| {
+                    for (index, name) in ["Off", "Upright", "Views", "Both"].into_iter().enumerate() {
+                        ui.selectable_value(&mut panel.orient, index, name);
+                    }
+                });
                 ui.end_row();
+                if panel.orient == 1 || panel.orient == 3 {
+                    label(ui, "Max tilt", "Degrees Upright may move the mesh's up. A fish's thinnest axis lies flat, so a larger tilt would lay it on its side; past this the file's up stays.");
+                    ui.add(egui::DragValue::new(&mut panel.max_tilt).range(0.0..=180.0).speed(1.0).suffix("°"));
+                    ui.end_row();
+                }
                 label(ui, "Clean", "MCP import_mesh clean: reduce the imported colours and despeckle them with the Reduce palette section's options before they are written.");
                 ui.checkbox(&mut panel.clean, "Reduce palette");
                 ui.end_row();

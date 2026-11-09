@@ -42,6 +42,7 @@ mod surface;
 mod sweep;
 pub(crate) mod terrace;
 mod trim;
+mod upright;
 mod weather;
 
 pub use bark::{bark, BarkDirection, BarkSpec};
@@ -103,6 +104,7 @@ pub use surface::{Exclude, Region, MAX_EXCLUDE};
 pub use sweep::{sweep, Profile, SweepPoint};
 pub use terrace::{deterrace, TerraceMode, TerraceSpec};
 pub use trim::{trim_outline, TrimSkin, TrimSpec};
+pub use upright::upright;
 pub use weather::{weather, WeatherSpec};
 
 pub(crate) fn plane_axes(axis: i32) -> (usize, usize) {

@@ -254,8 +254,8 @@ tracer. A file with no scene graph still loads its first model.
 | `deform` | `op` | `bend`, `taper`, or `twist` the active object (or the cells of a box `x0`..`z1`) along `axis`, or `displace` its surface with 3D noise. Optional `axis`, `origin`, `length`, `center`, `angle`, `direction`, `start`, `end`, `amplitude`, `scale`, `octaves`, `seed`, `bias`. Slots are kept. Replies with `cells`, `result`, `added`, `removed`. One undo step |
 | `brush` | `op`, `points` | Sculpt brush dabs along **local** points: `inflate`, `deflate` (`dig`), `smooth`, `flatten`, or `grab` (`drag`). Optional `radius`, `strength`, `falloff` (`smooth`, `linear`, `constant`), `only`, `palette`, `vector` (grab), `spacing`. Replies with `dabs`, `added`, `removed`. One undo step |
 | `carve_from_views` | `views` | Fill the visual hull of 2 to 6 orthographic views (front, side, top) of a concept's turnaround sheet into the active object: each view's silhouette is extruded along its depth axis and the cells every view covers are kept. A view's `depth` (or the top-level `depthPath`), a grey depth map with white near, carves away the cells in front of its surface, so a round head is round; one view with depth is enough. See [Depth maps](#depth-maps). A view is a PNG `path` with `crop`, `background` (`auto`, `alpha`, or a key colour with `tolerance`), and `cellsPerPixel` or `size`, or `rows` with a `legend`. Optional `path`, `background`, `tolerance`, `alphaThreshold` (for every view without its own), `depthPath`, `depthTolerance`, `size`, `origin`, `cellsPerPixel`, `palette` or `slots`, `coverage`, `shell`, `smooth`, `mode`. Replies with `cells`, `bounds`, `size`, and each view's `grid`, `covered`, and `depth` (its calibration and the cells it carved). At most 4000000 cells in the box, one undo step. See [Silhouettes](#silhouettes) |
-| `orient_to_views` | `views` | Turn the active object to the axis-aligned turn (of 24, or 4 with `turns` `upright`), plus fine steps (`yawStep`, `yawRange`, `fineAxes`), whose silhouettes best match a views sheet by IoU, and scale it (`size`, `height`, or `scale`). Views as `fit_to_views` takes them, with `weight`. Optional `resolution`, `apply` (false only reports). Replies with `before` and `after` (`score`, per-view `iou`), `rotation` (`euler`, `axes`, `yaw`, `fine`, `matrix`), `candidates`, `margin`, `scale`, `cells`, `bounds`. One undo step. See [Turning a mesh to the views](#turning-a-mesh-to-the-views) |
-| `import_mesh` | `path` | Voxelize a `.glb`, `.gltf`, or `.obj` (with its `.mtl` and textures) into the active object, or a new one with `newObject` (and `name`). Optional `size`, `scale`, or `voxelSize`; `upAxis`, `rotation`, `position`, `anchor` (`min`, `center`, `bottom`), `fill` (`solid`, `parity`, `shell`), `colors` (`auto`, `vertex`), `palette` or `slots`, `maxNewSlots`, `tolerance`, `mode`, `clean` (reduce and despeckle the colours first, see [Cleaning up colours](#cleaning-up-colours)), `orient` (turn the mesh to a views sheet first, see [Turning a mesh to the views](#turning-a-mesh-to-the-views)). Replies with `cells`, `shell`, `interior`, `openEdges`, `written`, `changed`, `slots`, `newSlots`, `bounds`, `scale`, `triangles`, `primitives`, `textures`, `warnings`. At most 256 cells per axis and 2000000 cells, one undo step |
+| `orient_to_views` | `views` or `path` | Turn the active object to the axis-aligned turn (of 24, or 4 with `turns` `upright`), plus fine steps (`yawStep`, `yawRange`, `fineAxes`), whose silhouettes best match a views sheet by IoU, and scale it (`size`, `height`, or `scale`). Views as `fit_to_views` takes them, with `weight`, or only the sheet's `path` (its `measure_sheet` layout). Optional `resolution`, `apply` (false only reports). Replies with `before` and `after` (`score`, per-view `iou`), `rotation` (`euler`, `axes`, `yaw`, `fine`, `matrix`), `candidates`, `margin`, `scale`, `cells`, `bounds`. One undo step. See [Turning a mesh to the views](#turning-a-mesh-to-the-views) |
+| `import_mesh` | `path` | Voxelize a `.glb`, `.gltf`, or `.obj` (with its `.mtl` and textures) into the active object, or a new one with `newObject` (and `name`). Optional `size`, `scale`, or `voxelSize`; `upAxis`, `rotation`, `position`, `anchor` (`min`, `center`, `bottom`), `fill` (`solid`, `parity`, `shell`), `colors` (`auto`, `vertex`), `palette` or `slots`, `maxNewSlots`, `tolerance`, `mode`, `clean` (reduce and despeckle the colours first, see [Cleaning up colours](#cleaning-up-colours)), `orient` (`"upright"` stands a tilted mesh level from its shape, or (turn the mesh to a views sheet first, see [Turning a mesh to the views](#turning-a-mesh-to-the-views)). Replies with `cells`, `shell`, `interior`, `openEdges`, `written`, `changed`, `slots`, `newSlots`, `bounds`, `scale`, `triangles`, `primitives`, `textures`, `warnings`. At most 256 cells per axis and 2000000 cells, one undo step |
 | `components` | | The connected parts of the active object, for a generated mesh that came with extras. `op` `list` (default), `keep_largest` (`keep`, default 1), `remove_small` (`minCells`), or `delete`, `move` (`offset`), `split` (`name` or `into`, `copy`, `makeActive`, `index`) of the part holding `seed`; with `anchor`, that part is first cut at its thinnest neck from the anchor's. Optional `connectivity` (6, 18, 26, the default), `reach` (default 8), `radius`. Replies with `count`, `largest`, `components`, `selected`, `seed`, `anchor`, `cut`, `changed`, `voxels`. One undo step. See [Cleaning up a generated mesh](#cleaning-up-a-generated-mesh) |
 | `deterrace` | | Remove the one-cell contour terraces of a voxelized smooth mesh: `mode` `blocks` (default) re-quantizes the active object into cubes of `size` cells (2..=4, default 2) on a grid through `origin`, solid where at least `fill` (default 0.5) of a cube is, within `tolerance` cells of the surface (default `size`); `stagger` moves the edges of one-cell steps on the top surface in teeth `run` cells long (default 2), `jitter` (default 0.3) of them left in place, by `seed`. Optional box `x0`..`z1`. Replies with `added`, `removed`, `steps` and `longestRun` before and after, `kept`, `changed`, `voxels`. One undo step. See [Terraces](#terraces) |
 | `reduce_palette` | | Clean up the colours of a voxelized mesh on the active object: `colors` clusters them into N (median cut and k-means in Oklab over the surface) with an accent guard (`accents`, `minShare`, `contrast`, `maxAccents`) that keeps eyes and mouths, or `palette` snaps them to slots or `#rrggbb` colours; `despeckle` passes of a surface majority filter (`minSame`, default 2) then recolour lone specks. `protect` slots stay. Optional box `x0`..`z1`. Replies with `slots` (before, after), `clusters`, `accents`, `despeckled`, `recolored`, `newSlots`, `changed`, `voxels`. One undo step. See [Cleaning up colours](#cleaning-up-colours) |
@@ -731,8 +731,38 @@ turned, and `size` or `voxelSize` apply to the turned mesh. The reply's
  "yawStep": 3, "yawRange": 15, "size": 64}
 ```
 
+Over MCP the views may be left out: a top-level `path` alone reads the
+sheet's 2 x 2 layout as `measure_sheet` does (`{"path": "views.png",
+"background": "#ff00ff", "yawStep": 3}`).
+
+An image-to-3D mesh also comes in tilted a few degrees off level, which no
+axis-aligned turn fixes. `import_mesh` `orient: "upright"` stands it level
+from its shape alone, with no sheet: up is the thinnest principal axis of
+the vertices (as `upAxis` and `rotation` place them), signed so the form
+narrows upward (the third moment along it is positive, as for a dome; when
+that is too small to say, the sign nearer the file's up), and the end of
+the long level axis whose cross-section stands taller (the vertices beyond
+its 92nd percentile against those below the 8th) is the head, turned to
+−Y. Up moves at most `maxTilt` degrees (default 40) from the file's up: a
+fish is thinner side to side than top to bottom, so its thinnest axis lies
+flat and a larger tilt would lay it on its side. Two principal spreads
+within 8% of each other do not pick an axis, so a round toad keeps the
+file's up (`keptUp`) or yaw (`keptYaw`). The turn is folded into `rotation`
+before voxelizing, like the views search; the reply's `orientation.upright`
+gives `up` (in the file's frame), `spread`, `skew`, `headRise`, `keptUp`,
+`keptYaw`, `rotation`, and `axes`. The head rule suits a creature whose
+head end stands taller (a turtle, a toad, a slug); a fish's tall tail fin
+can win it, so turn a fish with the views. `{"upright": true, "maxTilt":
+40, "path": "views.png", ...}` does both: the mesh is stood up first, then
+only its yaw is searched against the sheet (`turns` `upright`).
+
+```json
+{"path": "turtle.glb", "size": 64, "anchor": "bottom", "orient": "upright"}
+{"path": "toad.glb", "size": 28, "orient": {"upright": true, "path": "views.png", "background": "#ff00ff", "yawStep": 5}}
+```
+
 `froxel orient` runs it on a `.vox` from a JSON file like that one, and
-`froxel import --orient` on a mesh.
+`froxel import --orient` (a JSON file, or `upright`) on a mesh.
 
 #### Terraces
 

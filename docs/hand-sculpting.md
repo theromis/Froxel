@@ -17,7 +17,8 @@ It is how agents should model living things through MCP.
    when there is one (see "Start from a mesh"), turned to the views sheet
    with its `orient` option (or `orient_to_views` afterwards: the
    axis-aligned turn and fine yaw whose silhouettes match the views best,
-   and a `size`; check `margin`), and clean it with
+   and a `size`; check `margin`; `orient: "upright"` first stands a mesh
+   tilted a few degrees level, head to −Y, from its shape alone), and clean it with
    `components`: `remove_small` erases floaters, and `delete` or `split`
    with a `seed` on a rider and an `anchor` on the body cuts the rider off
    at its thinnest neck. A smooth mesh comes out of the voxelizer with
@@ -210,6 +211,7 @@ import_mesh          path="fallen_tree.glb" voxelSize=0.08 anchor="bottom" newOb
                      orient={views: [{view: "front", path: "sheet.png", crop: [40, 60, 520, 300]},
                                      {view: "side", path: "sheet.png", crop: [620, 60, 180, 300]}],
                              yawStep: 5}
+                     # or orient="upright" for a tilted mesh and no sheet
 components           op="remove_small" minCells=40                  # floaters and foam bits
 reduce_palette       colors=6 despeckle=2                            # a few clean colours, eyes kept
 deterrace            mode="stagger" seed=4                           # no contour bands on the slopes

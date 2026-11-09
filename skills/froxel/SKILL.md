@@ -193,8 +193,13 @@ server is still running. A server started with `--watch` reloads by itself.
    sealing openings at their rims: check `interior` and `openEdges` in the
    reply) and finish it with the tools below; pass `orient` with the
    sheet's views (as `fit_to_views` takes them, plus `yawStep`) so the
-   mesh comes in turned to the sheet, or call `orient_to_views` (with
-   `size`) on the imported object, instead of guessing `rotation` by eye,
+   mesh comes in turned to the sheet (or only the sheet's `path`, read as
+   `measure_sheet` does), or call `orient_to_views` (with
+   `size`) on the imported object, instead of guessing `rotation` by eye;
+   a mesh tilted off level (SF3D, TRELLIS) takes `orient: "upright"` (PCA:
+   thinnest axis up, the taller end to −Y; check `orientation.upright`
+   `keptUp`/`keptYaw`, a round toad keeps its up) or `{upright: true, path:
+   sheet}` to stand it up and then match the sheet's yaw;
    and read `margin` (under 0.01: add a side or back view); first clean it with
    `components`: `list` the parts, `remove_small` (`minCells`) the floaters
    and foam, and `delete` or `split` a rider sitting on the body with a
