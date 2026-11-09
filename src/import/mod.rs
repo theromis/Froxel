@@ -461,6 +461,12 @@ pub(crate) fn voxelize(mesh: &Mesh, options: &Voxelize) -> Result<Voxels, String
     let mut shell: HashMap<Cell, Hit> = HashMap::new();
     for (index, triangle) in mesh.triangles.iter().enumerate() {
         let [a, b, c] = triangle.v.map(|v| at[v as usize]);
+        // A zero-area triangle (a pole ring of repeated vertices) has no
+        // surface of its own and no usable barycentrics; its neighbours
+        // cover its cells.
+        if degenerate(a, b, c) {
+            continue;
+        }
         // A face that lands on a cell boundary inside the mesh (two parts
         // meeting at a whole cell) goes to the cell behind it.
         let inward = -(b - a).cross(c - a).normalize_or_zero() * behind;
@@ -869,6 +875,25 @@ fn triangle_box(v0: DVec3, v1: DVec3, v2: DVec3, h: f64) -> bool {
     normal.dot(v0).abs() <= r
 }
 
+/// Whether triangle `abc` has no area, relative to its longest edge.
+fn degenerate(a: DVec3, b: DVec3, c: DVec3) -> bool {
+    let edge2 = (b - a)
+        .length_squared()
+        .max((c - b).length_squared())
+        .max((a - c).length_squared());
+    let area2 = (b - a).cross(c - a).length_squared();
+    !(area2 > edge2 * edge2 * 1e-24)
+}
+
+/// `num / den` on an edge of `closest_point`, 0 where the edge has no length.
+fn ratio(num: f64, den: f64) -> f64 {
+    if den.abs() < 1e-300 {
+        0.0
+    } else {
+        (num / den).clamp(0.0, 1.0)
+    }
+}
+
 /// The point of triangle `abc` nearest `p` and its barycentric weights
 /// (Ericson, Real-Time Collision Detection 5.1.5).
 fn closest_point(p: DVec3, a: DVec3, b: DVec3, c: DVec3) -> (DVec3, [f64; 3]) {
@@ -888,7 +913,7 @@ fn closest_point(p: DVec3, a: DVec3, b: DVec3, c: DVec3) -> (DVec3, [f64; 3]) {
     }
     let vc = d1 * d4 - d3 * d2;
     if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
-        let v = d1 / (d1 - d3);
+        let v = ratio(d1, d1 - d3);
         return (a + ab * v, [1.0 - v, v, 0.0]);
     }
     let cp = p - c;
@@ -899,12 +924,12 @@ fn closest_point(p: DVec3, a: DVec3, b: DVec3, c: DVec3) -> (DVec3, [f64; 3]) {
     }
     let vb = d5 * d2 - d1 * d6;
     if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
-        let w = d2 / (d2 - d6);
+        let w = ratio(d2, d2 - d6);
         return (a + ac * w, [1.0 - w, 0.0, w]);
     }
     let va = d3 * d6 - d5 * d4;
     if va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0 {
-        let w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+        let w = ratio(d4 - d3, (d4 - d3) + (d5 - d6));
         return (b + (c - b) * w, [0.0, 1.0 - w, w]);
     }
     let denom = va + vb + vc;

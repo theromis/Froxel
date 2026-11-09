@@ -318,3 +318,64 @@ fn base64_and_uris_decode() {
     assert_eq!(image::percent_decode("my%20tex.png"), "my tex.png");
     assert_eq!(image::percent_decode("100%"), "100%");
 }
+
+#[test]
+fn degenerate_pole_triangles_do_not_turn_cells_black() {
+    // A lat-long sphere whose pole rings are separate vertices at one point:
+    // the triangles there have zero area, and their nearest point used to
+    // come back as NaN, which coloured the cell black.
+    let (rings, segments) = (12u32, 16u32);
+    let mut mesh = Mesh::default();
+    let green = [0.1, 0.6, 0.2, 1.0];
+    let mut at = Vec::new();
+    for i in 0..=rings {
+        let theta = std::f64::consts::PI * f64::from(i) / f64::from(rings);
+        let row: Vec<u32> = (0..=segments)
+            .map(|j| {
+                let phi = std::f64::consts::TAU * f64::from(j) / f64::from(segments);
+                let p = [
+                    8.0 * theta.sin() * phi.cos(),
+                    8.0 * theta.sin() * phi.sin(),
+                    8.0 * theta.cos(),
+                ];
+                mesh.push_vertex(p, [0.0; 2], green)
+            })
+            .collect();
+        at.push(row);
+    }
+    let mut triangles = Vec::new();
+    for i in 0..rings as usize {
+        for j in 0..segments as usize {
+            let (a, b, c, d) = (at[i][j], at[i + 1][j], at[i + 1][j + 1], at[i][j + 1]);
+            // Every rotation of the vertex order, so the repeated pole
+            // vertices come first, second, and third.
+            for (n, mut v) in [[a, b, c], [a, c, d]].into_iter().enumerate() {
+                v.rotate_left((i + j + n) % 3);
+                triangles.push(v);
+            }
+        }
+    }
+    // The zero-area triangles first, so they reach their cells before any
+    // neighbour does.
+    let flat = |v: &[u32; 3]| {
+        let p = v.map(|k| mesh.positions[k as usize]);
+        p[0] == p[1] || p[1] == p[2] || p[0] == p[2]
+    };
+    triangles.sort_by_key(|v| !flat(v));
+    assert!(triangles.iter().filter(|v| flat(v)).count() >= segments as usize);
+    for v in triangles {
+        mesh.push_triangle(v, 0).unwrap();
+    }
+    for fill in [Fill::Shell, Fill::Solid] {
+        let mut options = with_fill(Fit::Scale(1.0), fill);
+        options.up = Up::Z;
+        let voxels = voxelize(&mesh, &options).unwrap();
+        assert!(!voxels.cells.is_empty());
+        for (cell, rgb) in &voxels.cells {
+            assert!(
+                rgb.iter().map(|&c| u32::from(c)).sum::<u32>() > 60,
+                "{fill:?}: cell {cell:?} is {rgb:?}"
+            );
+        }
+    }
+}
