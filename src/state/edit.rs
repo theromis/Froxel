@@ -859,11 +859,115 @@ impl ReducePanel {
     }
 }
 
+/// The Split parts section: MCP `split_parts` on the active object.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PartsPanel {
+    /// One part per line: `name x y z [x y z ...]`, `name bone=NAME`, or
+    /// `name marker=NAME`, each optionally followed by `| nx ny nz ax ay az`
+    /// cutting planes.
+    pub parts: String,
+    /// The points are world cells (MCP `space: "world"`).
+    pub world: bool,
+    pub geodesic: bool,
+    pub remove_source: bool,
+    pub bind: bool,
+}
+
+impl Default for PartsPanel {
+    fn default() -> Self {
+        Self {
+            parts: String::new(),
+            world: false,
+            geodesic: true,
+            remove_source: true,
+            bind: true,
+        }
+    }
+}
+
+impl PartsPanel {
+    /// The MCP `split_parts` arguments.
+    pub(crate) fn args(&self) -> Result<Value, String> {
+        let mut parts = Vec::new();
+        for (n, line) in self.parts.lines().enumerate() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let mut pieces = line.split('|');
+            let head = pieces.next().unwrap_or("");
+            let mut words = head.split_whitespace();
+            let name = words
+                .next()
+                .ok_or_else(|| format!("Split parts: line {} needs a name", n + 1))?;
+            let rest: Vec<&str> = words.collect();
+            let mut part = json!({"name": name});
+            if let Some(bone) = rest.iter().find_map(|w| w.strip_prefix("bone=")) {
+                part["bone"] = json!(bone);
+            } else if let Some(marker) = rest.iter().find_map(|w| w.strip_prefix("marker=")) {
+                part["marker"] = json!(marker);
+            } else {
+                let numbers: Vec<f64> = rest
+                    .iter()
+                    .map(|w| {
+                        w.trim_matches(',').parse::<f64>().map_err(|_| {
+                            format!("Split parts: line {}: `{w}` is not a number", n + 1)
+                        })
+                    })
+                    .collect::<Result<_, _>>()?;
+                if numbers.is_empty() || numbers.len() % 3 != 0 {
+                    return Err(format!(
+                        "Split parts: line {} is name x y z [x y z ...], name bone=NAME, or name marker=NAME",
+                        n + 1
+                    ));
+                }
+                let points: Vec<Value> = numbers.chunks(3).map(|p| json!(p)).collect();
+                part["points"] = json!(points);
+            }
+            let mut planes = Vec::new();
+            for plane in pieces {
+                let numbers: Vec<f64> = plane
+                    .split_whitespace()
+                    .map(|w| w.trim_matches(',').parse::<f64>())
+                    .collect::<Result<_, _>>()
+                    .map_err(|_| {
+                        format!("Split parts: line {}: a plane is nx ny nz ax ay az", n + 1)
+                    })?;
+                if numbers.len() != 6 {
+                    return Err(format!(
+                        "Split parts: line {}: a plane is nx ny nz ax ay az",
+                        n + 1
+                    ));
+                }
+                planes.push(json!({"normal": &numbers[..3], "at": &numbers[3..]}));
+            }
+            if !planes.is_empty() {
+                part["planes"] = json!(planes);
+            }
+            parts.push(part);
+        }
+        if parts.is_empty() {
+            return Err("Split parts: add a line per part, such as `head 12 30 14`.".into());
+        }
+        let mut args = json!({
+            "parts": parts,
+            "metric": if self.geodesic { "geodesic" } else { "euclidean" },
+            "removeSource": self.remove_source,
+            "bind": self.bind,
+        });
+        if self.world {
+            args["space"] = json!("world");
+        }
+        Ok(args)
+    }
+}
+
 /// The fields of the Object edits sections.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct EditPanels {
     pub terrace: TerracePanel,
     pub reduce: ReducePanel,
+    pub parts: PartsPanel,
     pub components: ComponentsPanel,
     pub split: SplitPanel,
     pub recolor: RecolorPanel,
@@ -912,6 +1016,120 @@ impl Session {
         let (method, args) = self.edit.intersect.args(min, max);
         self.status = match crate::remote::apply(self, method, &args) {
             Ok(reply) => format!("Kept the cells inside; {} removed.", reply["changed"]),
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// MCP `split_parts`' writes: each part's world cells into the object
+    /// of its name (made, or emptied and moved to `[0, 0, 0]`), so local
+    /// cells are world cells; bound to the bone of its name with `bind`;
+    /// and the `source` removed with `remove`.
+    pub(crate) fn place_parts(
+        &mut self,
+        source: usize,
+        parts: &[(String, HashMap<Cell, u8>)],
+        remove: bool,
+        bind: bool,
+    ) -> Result<(), String> {
+        for (name, cells) in parts {
+            super::objects::check_object_name(name)?;
+            if let Some((min, max)) = cell_bounds(cells.keys().copied()) {
+                let span = [max.0 - min.0 + 1, max.1 - min.1 + 1, max.2 - min.2 + 1];
+                if span.iter().any(|axis| *axis > 256) {
+                    return Err(format!(
+                        "part `{name}` would be {}x{}x{}; .vox models are at most 256 per axis",
+                        span[0], span[1], span[2]
+                    ));
+                }
+            }
+        }
+        let source_name = self.objects[source].name.clone();
+        let hidden = self.objects[source].hidden;
+        for (name, cells) in parts {
+            let index = match self.objects.iter().position(|o| &o.name == name) {
+                Some(index) => index,
+                None => self.add_object(Some(name), [0, 0, 0], None, false)?,
+            };
+            self.commit();
+            self.checkpoint();
+            let object = &mut self.objects[index];
+            object.cells = cells.clone();
+            object.translation = (0, 0, 0);
+            object.box_min = (0, 0, 0);
+            object.dims = (0, 0, 0);
+            object.rot = ROT_IDENTITY;
+            object.model_dims = (0, 0, 0);
+            if &source_name != name {
+                object.hidden = hidden;
+            }
+            self.commit();
+            if bind && self.skeleton.bones.iter().any(|b| &b.name == name) {
+                self.bind_object(index, Some(name))?;
+            }
+        }
+        if remove {
+            let index = self
+                .objects
+                .iter()
+                .position(|o| o.name == source_name)
+                .ok_or("the source object is gone")?;
+            self.remove_object(index)?;
+        }
+        self.clear_picked();
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+        Ok(())
+    }
+
+    /// Split parts' Seed at selection: the selection's centre as a new
+    /// line, named `part`.
+    pub fn parts_seed_at_selection(&mut self) {
+        let Some((min, max)) = cell_bounds(self.picked.iter().copied()) else {
+            self.status = "Split parts: select cells first.".into();
+            return;
+        };
+        let by = if self.edit.parts.world {
+            self.active().translation
+        } else {
+            (0, 0, 0)
+        };
+        let mid = |a: i32, b: i32, o: i32| (a + b) / 2 + o;
+        let line = format!(
+            "part {} {} {}",
+            mid(min.0, max.0, by.0),
+            mid(min.1, max.1, by.1),
+            mid(min.2, max.2, by.2)
+        );
+        let parts = &mut self.edit.parts.parts;
+        if !parts.is_empty() && !parts.ends_with('\n') {
+            parts.push('\n');
+        }
+        parts.push_str(&line);
+    }
+
+    /// The Split parts button: MCP `split_parts` on the active object.
+    pub fn split_parts_from_panel(&mut self) {
+        let args = match self.edit.parts.args() {
+            Ok(args) => args,
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
+        self.status = match crate::remote::apply(self, "object.split_parts", &args) {
+            Ok(reply) => {
+                let parts: Vec<String> = reply["parts"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|p| format!("{} {}", p["name"].as_str().unwrap_or("?"), p["cells"]))
+                    .collect();
+                format!(
+                    "Split into {} ({} cells no path reached).",
+                    parts.join(", "),
+                    reply["unreached"]
+                )
+            }
             Err(err) => err,
         };
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);

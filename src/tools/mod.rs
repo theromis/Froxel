@@ -31,6 +31,7 @@ mod plates;
 mod project;
 mod reduce;
 mod relief;
+mod rig_split;
 mod scatter;
 mod sculpt;
 mod shapes;
@@ -78,6 +79,7 @@ pub use plates::{
 pub use project::{project_paint, PaintSpec, Toward, MAX_PAINT_DEPTH};
 pub use reduce::{reduce_palette, Reduce, ReduceSpec, SnapTo};
 pub use relief::{column_relief, relief_facing, ReliefSpec};
+pub use rig_split::{split_parts, Metric, PartSeed, Plane, RigSplitSpec};
 pub use scatter::{scatter, PieceKind, ScatterSpec, Scattered, MAX_PIECES};
 #[cfg(test)]
 pub use sculpt::{smooth, tube};

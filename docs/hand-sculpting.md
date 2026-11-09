@@ -562,6 +562,17 @@ split_object   index="turtle" boxes=[[0, 30, 6, 23, 41, 20]] name="head"
 split_object   index="turtle" boxes=[[16, -6, 2, 23, 0, 8]] name="tail"
 ```
 
+For a whole creature (head, jaw, body, four limbs, tail) one `split_parts`
+call replaces the boxes: name each part with a seed `point` (or a `bone`
+or a `marker`), and every cell goes to the part nearest through the solid,
+so a leg ends where it meets the body. A `planes` entry cuts a jaw or a
+tail root at a set place. Each part comes out as its own object at world
+`[0, 0, 0]`, as the tip above wants, and is bound to the bone of its name.
+
+```
+split_parts    object="turtle" parts=[{name: "body", point: [12, 20, 10]}, {name: "head", point: [12, 2, 12]}, {name: "tail", point: [12, 44, 6]}, {name: "flipper_fl", point: [2, 10, 4]}, {name: "flipper_fr", point: [22, 10, 4]}]
+```
+
 **Joints.** After the parts are bound to their bones, `place_joints` puts
 every pivot where its part meets its parent's part: the centre of the faces
 they share, the middle of an overlap, or the middle of the gap when they do

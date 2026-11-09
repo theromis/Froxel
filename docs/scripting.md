@@ -1242,6 +1242,8 @@ mirror_object(object, "x", "arm_l");         // axis "x", "y", or "z"
 mirror_object(object, "x", "arm_l", #{position: [-6, 0, 0], mirrorBones: true});
 split_object(object, #{boxes: [[0, 30, 6, 23, 41, 20]], name: "head"});
 split_object(object, #{slots: [6], into: "shell", copy: false, invert: false});
+split_parts(object, [#{name: "head", point: [6, -5, 17]}, #{name: "body", point: [6, 12, 14]}]);
+split_parts(object, parts, #{metric: "geodesic", connectivity: 26, reach: 8, removeSource: false, bind: true});
 
 add_bone(name, pivot);                       // pivot [x, y, z], fractional world cells
 add_bone(name, pivot, #{parent: "hip", rotation: [0.0, 0.0, 0.0, 1.0]});
@@ -1269,12 +1271,16 @@ They change the document, not the scratch objects, so the run records them
 and applies them after the script finishes: first the voxels, `set_slot`,
 and `set_motion`, then these calls in the order the script made them,
 through the MCP tools themselves, all in the same undo step. So
-`mirror_object` copies and `split_object` cuts an object's final voxels, an object made with
+`mirror_object` copies and `split_object` and `split_parts` cut an object's final voxels, an object made with
 `object("name")` can be named in them, and an index means the object at
 that index when the call runs, after any earlier `remove_object`. A call
 that fails stops the regenerate: the error names the script line and the
 function, and the whole document is put back. A run makes at most 4 096 of
-these calls.
+these calls. `split_parts` takes MCP `split_parts`' parts (`point`,
+`points`, `bone`, or `marker`, and `planes`) and options; it removes the
+emptied source, so name a part like the script's own object (as
+`examples/split_critter.rhai` does) or pass `removeSource: false` to keep
+the script.
 
 `list_bones`, `list_clips`, and `has_bone`, `has_clip`, and `has_object`
 read the document as it was when the run started; a call recorded earlier

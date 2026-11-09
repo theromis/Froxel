@@ -187,6 +187,8 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
                     ui.separator();
                     edit::reduce(ui, session);
                     ui.separator();
+                    edit::parts(ui, session);
+                    ui.separator();
                     import::import(ui, session);
                     ui.separator();
                     stone::markers(ui, session);

@@ -285,6 +285,7 @@ tracer. A file with no scene graph still loads its first model.
 | `mirror_object` | `index`, `axis`, `name` | Copy the object mirrored across `x`, `y`, or `z` through the origin. Optional world `position` and `mirrorBones` (default false). Replies with the copy's `index`, `name`, `bones`, and world `position`. One undo step |
 | `clear_object` | — | Empty an object (`index`, an index or a name; default the active one) of every cell, with no box limit. Its name, position, bone, script, and markers stay. Replies with `index`, `name`, `removed`, `voxels`. One undo step; an empty object adds none |
 | `split_object` | `boxes` or `slots` | Move (or `copy`) the cells of an object (`index`, an index or a name; default the active one) inside one or more inclusive local boxes, or of some `slots`, or both, into a new object (`name`) or an existing one (`into`), each cell keeping its world position. `invert` takes the rest. `makeActive` selects the target. Replies with `target`, `name`, `created`, `cells`, `replaced`, `position`, `sourceVoxels`, `targetVoxels`, `bounds`. One undo step |
+| `split_parts` | `parts` | Cut an object (`object`, default the active one) into its rig parts in one call: `parts` `[{name, point \| points \| bone \| marker, planes?}]`; every cell goes to the part whose seed is nearest through the solid (`metric` `geodesic`, `connectivity` 26 or 6; `euclidean` is the other metric and the fallback for unreached cells), on the kept side of its `planes` `[{normal, at}]`. Each part becomes its own object at world `[0, 0, 0]` with world cells; the source is removed unless a part has its name or `removeSource` is false; `bind` (default true) binds a part to the bone of its name. Optional `reach` (default 8), `space`. Replies with `parts` (`name`, `index`, `cells`, `seeds`, `bone`, `bounds`), `unreached`, `metric`, `sourceRemoved`, `objects`. One undo step. See [Splitting into rig parts](#splitting-into-rig-parts) |
 | `add_bone` | `name`, `pivot` | Add a bone. `pivot` is a fractional world coordinate `[x, y, z]`. Optional `parent` (omit or null for a root) and `rotation` quaternion `[x, y, z, w]` (default identity `[0, 0, 0, 1]`). One undo step |
 | `set_bone` | `name` | Optional `parent` (null makes a root; omit leaves it), world `pivot`, `rotation` `[x, y, z, w]`, `rename`. `joint: true` measures the pivot at the joint with the parent's part instead, as `place_joints` does (with `snap` and `band`). One undo step |
 | `place_joints` | — | Put bone pivots (`bones`, default every bone) at the joints between their bound parts and their parents' parts: the overlap, the contact faces, or the nearest band (`band`, default 0.5 cells past the closest gap). `snap` `none`, `corner`, `center`, or `half`. Replies with `placed` [{`name`, `parent`, `pivot`, `previous`, `method`, `samples`, `gap`}] and `skipped` [{`name`, `reason`}]. One undo step |
@@ -846,6 +847,51 @@ a part with no neck thinner than 65536 cells is refused.
 
 `examples/cleaned_blockout.rhai` cleans a boulder that came with a snail
 and foam bits.
+
+#### Splitting into rig parts
+
+A creature imported or carved in one piece has to be cut into its rig parts
+(head, jaw, body, four limbs, tail) before it is bound to bones. `split_parts`
+does it in one call, instead of a `split_object` box per part fought into
+the corners. `parts` names each part and its seed: `point` (a cell of the
+source object, or a world cell with `space` `world`), `points` (several
+seeds of one part, such as along a leg), `bone` (that bone's pivot), or
+`marker` (a point marker). A seed snaps to the nearest solid cell within
+`reach` (default 8); one further off is refused.
+
+Every solid cell goes to the part whose seed is nearest along a path
+through the solid: `metric` `geodesic` (the default) runs a multi-source
+Dijkstra over the cells, joined by faces, edges, and corners
+(`connectivity` 26) or faces only (6), so a jaw seed does not take the
+cheek across the mouth and a leg ends where it meets the body. `metric`
+`euclidean` takes the straight-line distance; it is also the fallback for
+cells no path reaches (`unreached` counts them). A part's `planes`
+`[{normal, at}]` keep it on the side its normal points to (cells whose
+centre `c` has `(c - at) . normal >= 0`; `at` is a cell like `point`): its
+wave stops at the plane, to cut a neck or a tail root at a set place.
+
+Each part is written as its own object at world `[0, 0, 0]` with its cells
+in world cells, the [hand-sculpting](hand-sculpting.md) rig convention, so
+`add_bone` pivots read straight off the cells and `bind_object` needs no
+cell moves. An existing object of a part's name is replaced and moved to
+`[0, 0, 0]`. The source (`object`, default the active one) is removed unless
+a part has its name or `removeSource` is false. `bind` (default true) binds
+each part to the bone of its name when there is one, so seeding by `bone`
+then `place_joints` rigs it.
+
+```json
+{"parts": [
+  {"name": "body", "point": [16, 20, 12]},
+  {"name": "head", "point": [16, 2, 18]},
+  {"name": "jaw", "point": [16, 1, 10], "planes": [{"normal": [0, 0, -1], "at": [0, 0, 12]}]},
+  {"name": "tail", "points": [[16, 40, 8], [16, 46, 6]]},
+  {"name": "leg_fl", "point": [6, 8, 1]}, {"name": "leg_fr", "point": [26, 8, 1]},
+  {"name": "leg_bl", "point": [6, 32, 1]}, {"name": "leg_br", "point": [26, 32, 1]}
+]}
+```
+
+`froxel split-parts` runs it on a `.vox` from a JSON file of its arguments.
+`examples/split_critter.rhai` cuts a made-up critter into eight parts.
 
 `column_relief` breaks a cliff face into columns for a fractured cliff.
 `facing` is the face's outward direction along x or y (`+x`, `-x`, `+y`,
@@ -2452,6 +2498,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `mirror_object` | Object inspector: Mirror X, Y, Z and Mirror bones too |
 | `clear_object` | Clear object section: Clear empties the active object |
 | `split_object` | Split object section: Boxes (one per line), World cells, Slots, Invert, Copy, Into (New object with a Name, or an existing object), Split |
+| `split_parts` | Split parts section: Parts (one line per part: `name x y z`, `name bone=NAME`, `name marker=NAME`, with `\| nx ny nz ax ay az` planes), Seed at selection, World, Distance (through the solid), Source (Remove), Bind (to bones), Split parts |
 | `space` | World cells in Split object, World beside Origin in Carve from views and beside Box in Paint from view; the viewport tools pick cells in place, so they need none |
 | `add_bone`, `set_bone`, `remove_bone`, `bind_object`, `list_bones` | Bones tree, the Bone inspector, the Object inspector's Bone |
 | `place_joints`, `set_bone` `joint` | Bones tree: Place joints and its snap; the Bone inspector's Pivot at joint |

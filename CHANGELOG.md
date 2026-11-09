@@ -15,6 +15,13 @@
 
 ### Added
 
+- Split parts: MCP `split_parts`, Rhai `split_parts(object, parts, opts)`,
+  the Split parts section, and `froxel split-parts` cut one blockout into
+  its rig parts in one undo step: every cell goes to the part whose seed
+  (a point, a bone's pivot, or a point marker) is nearest through the solid
+  (geodesic, Euclidean as the other metric and the fallback), on the kept
+  side of the part's cutting planes, and each part becomes its own object
+  at world [0, 0, 0], bound to the bone of its name.
 - Reduce palette: MCP `reduce_palette`, Rhai `reduce_palette(opts)`, the
   Reduce palette section, `froxel reduce-palette`, and `import_mesh` `clean`
   (Rhai `voxelize`, the Import mesh panel's Clean, `froxel import --clean`)

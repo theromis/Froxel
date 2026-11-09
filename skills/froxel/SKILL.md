@@ -34,7 +34,7 @@ server is still running. A server started with `--watch` reloads by itself.
   (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `shell_plates`, `components`, `deterrace`, `reduce_palette`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` and `decal` with the image as rows and a legend, `paint_from_views` with views as rows and a legend, `fit_to_views` and `orient_to_views` with views as rows and a legend, and `marker`,
   `collision_box`, `connector`, `collision_from_voxels`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
-  tools (`mirror_object`, `split_object`, `clear_object`, `add_bone`, `bind_object`, `set_clip_keys`,
+  tools (`mirror_object`, `split_object`, `split_parts`, `clear_object`, `add_bone`, `bind_object`, `set_clip_keys`,
   `set_palette`, …). The document tools apply after the script in order;
   guard `add_bone`, `add_clip`, and `mirror_object` with `has_bone`,
   `has_clip`, and `has_object` so a rerun does not fail. Only file-writing
@@ -307,8 +307,13 @@ server is still running. A server started with `--watch` reloads by itself.
 Build each rig part (head, jaw, body segments, limbs, tail) as its own object
 at world `[0, 0, 0]` with `add_object`, so local cells are world cells. A
 creature carved in one piece with `carve_from_views` is cut into those parts
-with `split_object` (boxes and/or slots, a `name` or `into`): the cells keep
-their world positions, so do not carve each part again and erase the rest. Sculpt
+with ONE `split_parts` call (a `name` and a seed `point`, `bone`, or
+`marker` per part, `planes` to cut a jaw or a tail root): every cell goes to
+the part nearest through the solid, and each part comes out at world
+`[0, 0, 0]` bound to the bone of its name; check each part's `cells` and
+`unreached`. `split_object` (boxes and/or slots, a `name` or `into`) cuts
+one part by boxes: the cells keep their world positions, so do not carve
+each part again and erase the rest. Sculpt
 paired parts once and copy them with `mirror_object`. Keep the rest pose
 straight and symmetrical; show poses with bones instead of sculpting them.
 

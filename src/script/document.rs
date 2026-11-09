@@ -287,6 +287,54 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
             });
         }
     }
+    for with_opts in [false, true] {
+        let state = scratch.clone();
+        let run = move |ctx: &NativeCallContext,
+                        object: Dynamic,
+                        parts: Array,
+                        opts: &Map|
+              -> Fallible<()> {
+            let mut args = options(
+                opts,
+                &[
+                    "metric",
+                    "connectivity",
+                    "reach",
+                    "removeSource",
+                    "bind",
+                    "space",
+                ],
+                "split_parts",
+            )?;
+            args.insert("object".into(), object_ref(&state, &object, false)?);
+            args.insert(
+                "parts".into(),
+                super::shapes::json(&Dynamic::from_array(parts))?,
+            );
+            record(
+                &state,
+                ctx,
+                "split_parts",
+                "object.split_parts",
+                Value::Object(args),
+            )
+        };
+        if with_opts {
+            engine.register_fn(
+                "split_parts",
+                move |ctx: NativeCallContext, object: Dynamic, parts: Array, opts: Map| {
+                    run(&ctx, object, parts, &opts)
+                },
+            );
+        } else {
+            engine.register_fn(
+                "split_parts",
+                move |ctx: NativeCallContext, object: Dynamic, parts: Array| {
+                    run(&ctx, object, parts, &Map::new())
+                },
+            );
+        }
+    }
     let state = scratch.clone();
     engine.register_fn(
         "split_object",

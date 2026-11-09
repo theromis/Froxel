@@ -2,8 +2,8 @@
 //! `split_object`), Clear object (MCP `clear_object`), Recolor (MCP
 //! `recolor`), Intersect (the fills' `mode: "intersect"`), Surface
 //! stroke (MCP `surface_stroke`), Shell plates (MCP `shell_plates`),
-//! Components (MCP `components`), De-terrace (MCP `deterrace`), and Reduce
-//! palette (MCP `reduce_palette`).
+//! Components (MCP `components`), De-terrace (MCP `deterrace`), Reduce
+//! palette (MCP `reduce_palette`), and Split parts (MCP `split_parts`).
 
 use egui::{RichText, Ui};
 
@@ -533,4 +533,55 @@ pub(super) fn reduce(ui: &mut Ui, session: &mut Session) {
             session.reduce_from_panel();
         }
     });
+}
+
+/// MCP `split_parts`: the active object cut into one object per rig part.
+pub(super) fn parts(ui: &mut Ui, session: &mut Session) {
+    let enabled = !session.active().cells.is_empty();
+    let mut seed = false;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Split parts");
+        let panel = &mut session.edit.parts;
+        egui::Grid::new("parts-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Parts", "One part per line: name x y z (a seed cell; more triples for more seeds of the part), name bone=NAME (that bone's pivot), or name marker=NAME. Add | nx ny nz ax ay az for a cutting plane the part keeps the normal's side of.");
+                ui.vertical(|ui| {
+                    ui.add(
+                        egui::TextEdit::multiline(&mut panel.parts)
+                            .hint_text("head 12 30 14\nbody bone=body\ntail 12 2 6 | 0 -1 0 12 6 6")
+                            .desired_rows(4)
+                            .desired_width(170.0),
+                    );
+                    ui.horizontal(|ui| {
+                        if ui.button("Seed at selection").on_hover_text("Add the selection's centre as a new part line, named part.").clicked() {
+                            seed = true;
+                        }
+                        ui.checkbox(&mut panel.world, "World")
+                            .on_hover_text("MCP space world: the seeds and planes are world cells.");
+                    });
+                });
+                ui.end_row();
+                label(ui, "Distance", "Geodesic: each cell goes to the seed nearest through the solid, so a jaw does not take the cheek across the mouth. Off: straight-line distance.");
+                ui.checkbox(&mut panel.geodesic, "Through the solid");
+                ui.end_row();
+                label(ui, "Source", "Remove the emptied object afterwards (a part named like it keeps it).");
+                ui.checkbox(&mut panel.remove_source, "Remove");
+                ui.end_row();
+                label(ui, "Bind", "Bind each part to the bone of its name when there is one.");
+                ui.checkbox(&mut panel.bind, "To bones");
+                ui.end_row();
+            });
+        if ui
+            .button("Split parts")
+            .on_hover_text("MCP split_parts: each part becomes its own object at world [0, 0, 0], with its cells in world cells, ready for bind_object. One undo step.")
+            .clicked()
+        {
+            session.split_parts_from_panel();
+        }
+    });
+    if seed {
+        session.parts_seed_at_selection();
+    }
 }

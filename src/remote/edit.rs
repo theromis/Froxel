@@ -1040,3 +1040,192 @@ pub(super) fn reduce_palette(session: &mut Session, params: &Value) -> Result<Va
     reply["voxels"] = json!(session.voxel_count());
     Ok(reply)
 }
+
+/// `[x, y, z]` of numbers.
+fn point3(value: &Value, what: &str) -> Result<[f64; 3], String> {
+    value
+        .as_array()
+        .filter(|items| items.len() == 3)
+        .and_then(|items| Some([items[0].as_f64()?, items[1].as_f64()?, items[2].as_f64()?]))
+        .ok_or_else(|| format!("{what} must be [x, y, z]"))
+}
+
+/// The spec of MCP `split_parts` against the source object at `offset`
+/// (its world position), with every point in world cells: `parts` of
+/// `{name, point | points | bone | marker, planes}`; a `point` is a cell
+/// (local, or world with `space` world) and a `bone` pivot or a `marker`
+/// point is a world position.
+pub(crate) fn rig_split_spec(
+    session: Option<&Session>,
+    params: &Value,
+    offset: Cell,
+) -> Result<crate::tools::RigSplitSpec, String> {
+    use crate::tools::{Metric, PartSeed, Plane};
+    let world = super::is_world(params)?;
+    // A cell index to its centre in world cells.
+    let cell_point = |p: [f64; 3]| -> [f64; 3] {
+        let by = if world {
+            [0.0; 3]
+        } else {
+            [
+                f64::from(offset.0),
+                f64::from(offset.1),
+                f64::from(offset.2),
+            ]
+        };
+        [p[0] + by[0] + 0.5, p[1] + by[1] + 0.5, p[2] + by[2] + 0.5]
+    };
+    let list = params
+        .get("parts")
+        .and_then(Value::as_array)
+        .ok_or("parts must be a list of {name, point | points | bone | marker, planes?}")?;
+    let mut parts = Vec::with_capacity(list.len());
+    for (i, item) in list.iter().enumerate() {
+        let name = opt_str(item, "name")?.ok_or_else(|| format!("part {i} needs name"))?;
+        let mut points = Vec::new();
+        if let Some(p) = item.get("point").filter(|v| !v.is_null()) {
+            points.push(cell_point(point3(p, "point")?));
+        }
+        if let Some(found) = item.get("points").filter(|v| !v.is_null()) {
+            let items = found
+                .as_array()
+                .ok_or_else(|| format!("part `{name}`: points must be a list of [x, y, z]"))?;
+            for p in items {
+                points.push(cell_point(point3(p, "points")?));
+            }
+        }
+        if let Some(bone) = opt_str(item, "bone")? {
+            let session = session.ok_or("bone seeds are MCP only: pass point")?;
+            let found = session
+                .skeleton
+                .bones
+                .iter()
+                .find(|b| b.name == bone)
+                .ok_or_else(|| format!("part `{name}`: there is no bone named `{bone}`"))?;
+            points.push(found.pivot.map(f64::from));
+        }
+        if let Some(marker) = opt_str(item, "marker")? {
+            let session = session.ok_or("marker seeds are MCP only: pass point")?;
+            let found = session
+                .markers
+                .iter()
+                .find(|m| m.name == marker)
+                .ok_or_else(|| format!("part `{name}`: there is no marker named `{marker}`"))?;
+            let crate::state::MarkerKind::Point { at } = found.kind else {
+                return Err(format!("part `{name}`: marker `{marker}` is not a point"));
+            };
+            let by = session
+                .objects
+                .iter()
+                .find(|o| o.name == found.object)
+                .map_or((0, 0, 0), |o| o.translation);
+            points.push([
+                f64::from(at[0]) + f64::from(by.0),
+                f64::from(at[1]) + f64::from(by.1),
+                f64::from(at[2]) + f64::from(by.2),
+            ]);
+        }
+        if points.is_empty() {
+            return Err(format!(
+                "part `{name}` needs point, points, bone, or marker"
+            ));
+        }
+        let mut planes = Vec::new();
+        if let Some(found) = item.get("planes").filter(|v| !v.is_null()) {
+            let items = found
+                .as_array()
+                .ok_or_else(|| format!("part `{name}`: planes must be a list of {{normal, at}}"))?;
+            for plane in items {
+                let normal = point3(plane.get("normal").unwrap_or(&Value::Null), "plane normal")?;
+                if normal.iter().all(|c| c.abs() < 1e-9) {
+                    return Err(format!("part `{name}`: a plane normal must not be zero"));
+                }
+                let at = point3(plane.get("at").unwrap_or(&Value::Null), "plane at")?;
+                planes.push(Plane {
+                    normal,
+                    at: cell_point(at),
+                });
+            }
+        }
+        parts.push(PartSeed {
+            name,
+            points,
+            planes,
+        });
+    }
+    let metric = match opt_str(params, "metric")?.as_deref() {
+        None | Some("geodesic") => Metric::Geodesic,
+        Some("euclidean") => Metric::Euclidean,
+        Some(other) => {
+            return Err(format!(
+                "metric must be geodesic or euclidean, not `{other}`"
+            ))
+        }
+    };
+    let connectivity = match params.get("connectivity") {
+        None | Some(Value::Null) => 26,
+        Some(found) => found.as_u64().ok_or("connectivity must be 6 or 26")? as u32,
+    };
+    Ok(crate::tools::RigSplitSpec {
+        parts,
+        metric,
+        connectivity,
+        reach: opt_f64(params, "reach")?.unwrap_or(8.0),
+    })
+}
+
+/// MCP `split_parts`: cut the source object (`object`, default the
+/// active one) into one object per part, each at world `[0, 0, 0]` with its
+/// cells in world cells, in one undo step. An existing object of a part's
+/// name is emptied and moved to `[0, 0, 0]` first. The source is removed
+/// unless a part has its name or `removeSource` is false. With `bind`
+/// (default true) a part is bound to the bone of its name when there is one.
+pub(super) fn split_parts(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let source = object_arg(session, params, "object")?.unwrap_or(session.selected);
+    let offset = session.objects[source].translation;
+    let spec = rig_split_spec(Some(session), params, offset)?;
+    let world: HashMap<Cell, u8> = session.objects[source]
+        .cells
+        .iter()
+        .map(|(c, s)| ((c.0 + offset.0, c.1 + offset.1, c.2 + offset.2), *s))
+        .collect();
+    let split = crate::tools::split_parts(&world, &spec)?;
+    let source_name = session.objects[source].name.clone();
+    let keeps_source = spec.parts.iter().any(|p| p.name == source_name);
+    let remove = !keeps_source && opt_bool(params, "removeSource")?.unwrap_or(true);
+    let bind = opt_bool(params, "bind")?.unwrap_or(true);
+    let mut per_part: Vec<HashMap<Cell, u8>> = vec![HashMap::new(); spec.parts.len()];
+    for (cell, part) in &split.labels {
+        per_part[*part].insert(*cell, world[cell]);
+    }
+    let names: Vec<String> = spec.parts.iter().map(|p| p.name.clone()).collect();
+    let parts: Vec<(String, HashMap<Cell, u8>)> = names
+        .iter()
+        .cloned()
+        .zip(per_part.iter().cloned())
+        .collect();
+    session.transaction(|session| session.place_parts(source, &parts, remove, bind))?;
+    session.mesh_epoch = session.mesh_epoch.wrapping_add(1);
+    let objects: Vec<Value> = names
+        .iter()
+        .enumerate()
+        .map(|(i, name)| {
+            let index = session.objects.iter().position(|o| &o.name == name);
+            json!({
+                "name": name,
+                "index": index,
+                "cells": split.counts[i],
+                "seeds": split.seeds[i].iter().map(|c| [c.0, c.1, c.2]).collect::<Vec<_>>(),
+                "bone": index.and_then(|i| session.objects[i].bone.clone()),
+                "bounds": super::bounds_json(per_part[i].keys().copied()),
+            })
+        })
+        .collect();
+    Ok(json!({
+        "parts": objects,
+        "unreached": split.unreached,
+        "metric": if spec.metric == crate::tools::Metric::Geodesic { "geodesic" } else { "euclidean" },
+        "sourceRemoved": remove,
+        "objects": session.objects.len(),
+    }))
+}

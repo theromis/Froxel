@@ -826,7 +826,8 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
     } else {
         params.clone()
     };
-    if is_world(&params)? {
+    // split_parts reads its own space: its points are in the source's frame.
+    if is_world(&params)? && method != "object.split_parts" {
         return apply_world(session, method, &params);
     }
     match method {
@@ -898,6 +899,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "voxel.components" => edit::components(session, &params),
         "voxel.deterrace" => edit::deterrace(session, &params),
         "voxel.reduce_palette" => edit::reduce_palette(session, &params),
+        "object.split_parts" => edit::split_parts(session, &params),
         "voxel.smooth" => smooth(session, &params),
         "voxel.break" => break_end(session, &params),
         "voxel.scatter" => scatter(session, &params),
@@ -1576,6 +1578,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("object.set", "index, name?, position?, hidden?", "Rename, move, or hide. position is world voxels; local cells stay put"),
     ("object.remove", "index", "Remove an object and its voxels. Later indices shift. The last object stays"),
     ("voxel.recolor", "from + to | map, x0..z1?, mirror?", "Replace palette slots of the active object's cells (one, or a map of several), in a box or everywhere, with no shape change. One undo step"),
+    ("object.split_parts", "parts [{name, point | points | bone | marker, planes?}], object?, metric?, connectivity?, reach?, removeSource?, bind?, space?", "Cut an object into one object per rig part at world [0, 0, 0]: each cell goes to the part whose seed is nearest through the solid (geodesic), with optional cutting planes per part. One undo step"),
     ("voxel.reduce_palette", "colors? | palette?, accents?, minShare?, contrast?, maxAccents?, despeckle?, minSame?, protect?, x0..z1?", "Reduce the active object's colours to colors clusters (k-means in Oklab, small distinct accents kept) or snap them to palette (slots or #rrggbb), then despeckle the surface with a majority filter. One undo step"),
     ("voxel.deterrace", "mode?, size?, fill?, origin?, tolerance?, run?, jitter?, seed?, x0..z1?", "Re-quantize the active object into blocks of size cells (mode blocks), or stagger its one-cell terrace steps in teeth (mode stagger), so a voxelized smooth mesh has no long even contour bands. One undo step"),
     ("voxel.components", "op?, connectivity?, keep?, minCells?, seed?, anchor?, reach?, radius?, offset?, index?, name? | into?, copy?, makeActive?", "List the active object's connected parts, keep the largest, remove floaters smaller than minCells, or delete, move, or split out the part holding seed, cut first from anchor at the thinnest neck. One undo step"),
