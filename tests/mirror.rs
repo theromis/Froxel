@@ -232,7 +232,7 @@ fn scripts_batches_and_panels_take_the_mirror() {
              set_voxels([[1, 20, 8, 7]], #{mirror: true});\n\
              fill_box(0, 6, 6, 1, 9, 9, 3, #{mode: \"paint\", mirror: \"x\"});\n\
              let s = surface_stroke([[2, 3, 8], [4, 2, 12]], 5, #{mirror: #{axis: \"x\"}});\n\
-             if s.cells == 0 { throw \"stroke\"; }\n\
+             if s.cells == 0 || s.mirrored == 0 { throw \"stroke\"; }\n\
              recolor(3, 4, #{x0: 0, y0: 0, z0: 0, x1: 7, y1: 15, z1: 15, mirror: true});\n\
              project_paint(\"front\", [\"x...\", \"....\"], #{legend: #{x: 6}, mirror: true});",
         )

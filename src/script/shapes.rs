@@ -410,6 +410,9 @@ impl Scratch {
             "snap".into(),
             Dynamic::from_float(counts["snap"].as_f64().unwrap_or(0.0)),
         );
+        if let Some(mirrored) = counts.get("mirrored").and_then(Value::as_i64) {
+            out.insert("mirrored".into(), Dynamic::from_int(mirrored));
+        }
         Ok(out)
     }
 

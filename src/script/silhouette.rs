@@ -271,6 +271,9 @@ impl Scratch {
             );
         }
         reply.insert("bounds".into(), bounds_map(&counts["bounds"]));
+        if let Some(mirrored) = counts.get("mirrored").and_then(Value::as_i64) {
+            reply.insert("mirrored".into(), Dynamic::from_int(mirrored));
+        }
         Ok(reply)
     }
 
