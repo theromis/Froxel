@@ -8,7 +8,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use rhai::{Array, Dynamic, Engine, Map, INT};
-use serde_json::Value;
 
 use super::shapes::{box_args, json, options, Args, Fallible};
 use super::stone::reply;
@@ -46,10 +45,11 @@ const LOFT: &[&str] = &[
     "sectors",
     "seed",
     "mode",
+    "space",
 ];
 
 const BRUSH: &[&str] = &[
-    "radius", "strength", "falloff", "only", "palette", "vector", "spacing",
+    "radius", "strength", "falloff", "only", "palette", "vector", "spacing", "space",
 ];
 
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
@@ -142,7 +142,13 @@ impl Scratch {
     /// `changed` and the tool's own counts.
     fn organic(&mut self, args: Args, tool: Organic) -> Result<Map, String> {
         self.keep_going()?;
-        let (writes, counts) = remote::organic_writes(self.cells(), &Value::Object(args), tool)?;
+        let method = match tool {
+            Organic::Deform => "voxel.deform",
+            Organic::Loft => "voxel.loft",
+            Organic::Brush => "voxel.brush",
+        };
+        let (args, _) = self.localize(method, args)?;
+        let (writes, counts) = remote::organic_writes(self.cells(), &args, tool)?;
         let changed = self.apply(&writes)?;
         Ok(reply(counts, changed))
     }

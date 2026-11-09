@@ -34,8 +34,9 @@ It is how agents should model living things through MCP.
 5. **Save.** `save_file`. Froxel saves retain world voxel and marker positions
    when reopened, including negative cells and an off-centre chosen origin.
    Local cells may rebase to the model box: read the object position again before
-   further local-cell edits. Foreign files without Froxel origin metadata still
-   open centred and floored.
+   further local-cell edits, or send the edits with `space: "world"`, which
+   subtracts each object's position for you. Foreign files without Froxel
+   origin metadata still open centred and floored.
 
 ```
 new_document
@@ -394,6 +395,12 @@ segments, limbs, and tail each as its own object (`add_object` with
 `position` `[0, 0, 0]`) and sculpt it in world cells. The local cells are
 then the world cells, so `add_bone` pivots are read straight off the cells
 and `bind_object` needs no cell moves.
+
+**Aim in world cells.** Once the parts have positions of their own (after a
+`split_object` into an existing object, a `mirror_object`, or a save and
+reopen), pass `space: "world"` to the fills, `carve`, `set_voxels`,
+`carve_from_views`, and `project_paint`: the same world box hits the same
+place in whichever part is active, with no position subtracted by hand.
 
 **Send many small edits as one `batch`.** A run of `fill_box`, `carve`,
 `sweep`, `set_palette`, and surface tools such as `planks` goes in one call, one undo step:

@@ -127,12 +127,30 @@ object being written:
 ```rhai
 let cells = get_voxels(x0, y0, z0, x1, y1, z1); // [[x, y, z, slot], …], solid cells, sorted
 let changed = set_voxels([[0, 0, 0, 1], #{x: 1, y: 0, z: 0, palette: 2}]);
+let cells = get_voxels(x0, y0, z0, x1, y1, z1, #{space: "world"});
+set_voxels(cells, #{space: "world"});
 ```
 
 `get_voxels` returns the solid cells of the inclusive box, sorted by x, then
 y, then z; each is four numbers, so the array limit allows about 1 000.
 `set_voxels` takes `[x, y, z, slot]` or `#{x, y, z, palette}` entries (slot
 `0` erases) and returns the number of cells that changed.
+
+### World cells
+
+`get_voxels`, `set_voxels`, the fills, the carves, `smooth`, `loft`, `brush`,
+`carve_from_views`, `project_paint`, and `split_object` take `space:
+"world"` in their options map, as over MCP: the coordinates are world cells,
+and the position the object had when the run started is subtracted first.
+`get_voxels` then returns world cells, and so do the `bounds` of
+`carve_from_views` and `project_paint`. An object the run creates with
+`object("name")` has no position yet, so it takes local cells only.
+
+```rhai
+fill_box(12, -6, 4, 15, -3, 6, 7, #{mode: "paint", space: "world"});
+let cells = get_voxels(12, -6, 4, 15, -3, 6, #{space: "world"});
+carve_box(12, -6, 6, 15, -3, 6, #{space: "world"});
+```
 
 ## Shapes
 

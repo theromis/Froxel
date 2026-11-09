@@ -17,12 +17,14 @@ use serde_json::Value;
 use super::{axis, coord, runtime, slot_index, Scratch};
 use crate::remote::{self, Sculpt};
 
-const FILL: &[&str] = &["mode"];
-const TUBE_SHAPE: &[&str] = &["radius", "curve", "aspect", "roll", "profile"];
+const FILL: &[&str] = &["mode", "space"];
+const CARVE: &[&str] = &["space"];
+const TUBE_SHAPE: &[&str] = &["radius", "curve", "aspect", "roll", "profile", "space"];
 const TUBE: &[&str] = &[
     "mode", "radius", "curve", "aspect", "roll", "profile", "pattern", "period", "sectors", "seed",
+    "space",
 ];
-const SMOOTH: &[&str] = &["iterations", "fillAt", "removeAt"];
+const SMOOTH: &[&str] = &["iterations", "fillAt", "removeAt", "space"];
 const BREAK: &[&str] = &[
     "depth",
     "splinters",
@@ -162,17 +164,47 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
                 state.borrow_mut().carve(args).map_err(runtime)
             },
         );
+        let state = scratch.clone();
+        engine.register_fn(
+            name,
+            move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT, opts: Map| {
+                let mut args = options(&opts, CARVE, name)?;
+                args.extend(box_args([x0, y0, z0, x1, y1, z1])?);
+                args.insert("shape".into(), shape.into());
+                state.borrow_mut().carve(args).map_err(runtime)
+            },
+        );
     }
-    let state = scratch.clone();
-    engine.register_fn(
-        "carve_rounded_box",
-        move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT, radius: Dynamic| {
-            let mut args = box_args([x0, y0, z0, x1, y1, z1])?;
+    for with_opts in [false, true] {
+        let state = scratch.clone();
+        let run = move |corners: [INT; 6], radius: Dynamic, opts: &Map| -> Fallible<INT> {
+            let mut args = options(opts, CARVE, "carve_rounded_box")?;
+            args.extend(box_args(corners)?);
             args.insert("shape".into(), "rounded_box".into());
             args.insert("radius".into(), number(&radius, "radius")?);
             state.borrow_mut().carve(args).map_err(runtime)
-        },
-    );
+        };
+        if with_opts {
+            engine.register_fn(
+                "carve_rounded_box",
+                move |x0: INT,
+                      y0: INT,
+                      z0: INT,
+                      x1: INT,
+                      y1: INT,
+                      z1: INT,
+                      radius: Dynamic,
+                      opts: Map| { run([x0, y0, z0, x1, y1, z1], radius, &opts) },
+            );
+        } else {
+            engine.register_fn(
+                "carve_rounded_box",
+                move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT, radius: Dynamic| {
+                    run([x0, y0, z0, x1, y1, z1], radius, &Map::new())
+                },
+            );
+        }
+    }
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |points: Array, opts: &Map| -> Fallible<INT> {
@@ -268,19 +300,52 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
 impl Scratch {
     fn fill(&mut self, args: Args, sculpt: Sculpt) -> Result<INT, String> {
         self.keep_going()?;
-        let writes = remote::fill_writes(self.cells(), &Value::Object(args), sculpt)?;
+        let method = match sculpt {
+            Sculpt::Box => "voxel.fill",
+            Sculpt::Ellipsoid => "voxel.ellipsoid",
+            Sculpt::RoundedBox => "voxel.rounded",
+            Sculpt::Tube => "voxel.tube",
+        };
+        let (args, _) = self.localize(method, args)?;
+        let writes = remote::fill_writes(self.cells(), &args, sculpt)?;
         self.apply(&writes)
     }
 
     fn carve(&mut self, args: Args) -> Result<INT, String> {
         self.keep_going()?;
-        let writes = remote::carve_writes(self.cells(), &Value::Object(args))?;
+        let (args, _) = self.localize("voxel.carve", args)?;
+        let writes = remote::carve_writes(self.cells(), &args)?;
         self.apply(&writes)
+    }
+
+    /// The MCP arguments of `method` in local cells of the object being
+    /// written: with `space: "world"`, its position when the run started is
+    /// subtracted (`remote::to_local`) and returned. An object the run
+    /// creates has no position yet, so it takes local cells only.
+    pub(super) fn localize(
+        &self,
+        method: &str,
+        args: Args,
+    ) -> Result<(Value, Option<crate::state::Cell>), String> {
+        let mut args = Value::Object(args);
+        if !remote::is_world(&args)? {
+            if let Some(map) = args.as_object_mut() {
+                map.remove("space");
+            }
+            return Ok((args, None));
+        }
+        let offset = match &self.built[self.current].key {
+            super::BuiltKey::Index(index) => self.view.positions.get(*index).copied(),
+            super::BuiltKey::Name(_) => None,
+        }
+        .ok_or("space world needs an object of the document; an object this run creates takes local cells")?;
+        Ok((remote::to_local(method, &args, offset)?, Some(offset)))
     }
 
     fn smooth(&mut self, args: Args) -> Result<Map, String> {
         self.keep_going()?;
-        let (min, max, iterations, fill_at, remove_at) = remote::smooth_args(&Value::Object(args))?;
+        let (args, _) = self.localize("voxel.smooth", args)?;
+        let (min, max, iterations, fill_at, remove_at) = remote::smooth_args(&args)?;
         let report =
             crate::tools::smooth_checked(self.cells(), min, max, iterations, fill_at, remove_at)?;
         let changed = self.apply(&report.writes)?;

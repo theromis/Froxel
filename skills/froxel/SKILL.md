@@ -66,6 +66,10 @@ If the tools are missing, the server is not configured. Point the user to
 - `x` and `y` are horizontal, `z` is up. A model faces −Y.
 - Voxel tools write the **active object**, in its **local** cells. World cell
   = local cell + the object's `position`. Switch with `set_active_object`.
+  Pass `space: "world"` (fills, `carve`, `set_voxels`, `get_voxels`,
+  `smooth`, `loft`, `brush`, `carve_from_views`, `project_paint`,
+  `split_object`) to give world cells instead; parts that moved after a
+  save and reopen, or a `mirror_object` copy, need no subtraction then.
 - Palette `0` erases. Slots `1..255` are colours; set them with `set_palette`
   (`entries` sets many at once) before you fill.
 - An object is at most 256 cells per axis. A cell lies in `[-1024, 1024)`.

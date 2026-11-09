@@ -14,7 +14,7 @@ use std::rc::Rc;
 use rhai::{Array, Dynamic, Engine, EvalAltResult, Map, NativeCallContext, INT};
 use serde_json::{json, Value};
 
-use super::shapes::{box_args, json, options, Args};
+use super::shapes::{box_args, json, options};
 use super::{runtime, BuiltKey, Scratch};
 use crate::remote;
 use crate::state::Session;
@@ -32,6 +32,8 @@ type Fallible<T> = Result<T, Box<EvalAltResult>>;
 #[derive(Clone, Default)]
 pub(crate) struct DocView {
     pub(crate) names: Vec<String>,
+    /// Each object's world position, for `space: "world"`.
+    pub(crate) positions: Vec<crate::state::Cell>,
     pub(crate) bones: Value,
     pub(crate) clips: Value,
     /// 256 colours; empty is the default palette.
@@ -49,6 +51,11 @@ impl DocView {
                 .objects
                 .iter()
                 .map(|object| object.name.clone())
+                .collect(),
+            positions: session
+                .objects
+                .iter()
+                .map(|object| object.translation)
                 .collect(),
             bones: remote::bones_json(session),
             clips: remote::clips_json(session),
@@ -90,31 +97,63 @@ impl DocOp {
 }
 
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
-    let state = scratch.clone();
-    engine.register_fn(
-        "get_voxels",
-        move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT| -> Fallible<Array> {
-            let args = Value::Object(box_args([x0, y0, z0, x1, y1, z1])?);
+    for with_opts in [false, true] {
+        let state = scratch.clone();
+        let run = move |corners: [INT; 6], opts: &Map| -> Fallible<Array> {
+            let mut args = options(opts, &["space"], "get_voxels")?;
+            args.extend(box_args(corners)?);
             let scratch = state.borrow();
+            let (args, offset) = scratch.localize("voxel.get_box", args).map_err(runtime)?;
+            let by = offset.unwrap_or((0, 0, 0));
             let cells = remote::box_cells(scratch.cells(), &args).map_err(runtime)?;
             Ok(cells
                 .into_iter()
                 .map(|(x, y, z, slot)| {
-                    let cell = [x.into(), y.into(), z.into(), slot.into()];
+                    let cell = [
+                        (x + by.0).into(),
+                        (y + by.1).into(),
+                        (z + by.2).into(),
+                        slot.into(),
+                    ];
                     Dynamic::from_array(cell.into_iter().map(Dynamic::from_int).collect())
                 })
                 .collect())
-        },
-    );
-    let state = scratch.clone();
-    engine.register_fn("set_voxels", move |cells: Array| -> Fallible<INT> {
-        let mut args = Args::new();
-        args.insert("cells".into(), json(&Dynamic::from_array(cells))?);
-        let mut scratch = state.borrow_mut();
-        scratch.keep_going().map_err(runtime)?;
-        let writes = remote::cell_writes(&Value::Object(args)).map_err(runtime)?;
-        scratch.apply(&writes).map_err(runtime)
-    });
+        };
+        if with_opts {
+            engine.register_fn(
+                "get_voxels",
+                move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT, opts: Map| {
+                    run([x0, y0, z0, x1, y1, z1], &opts)
+                },
+            );
+        } else {
+            engine.register_fn(
+                "get_voxels",
+                move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT| {
+                    run([x0, y0, z0, x1, y1, z1], &Map::new())
+                },
+            );
+        }
+    }
+    for with_opts in [false, true] {
+        let state = scratch.clone();
+        let run = move |cells: Array, opts: &Map| -> Fallible<INT> {
+            let mut args = options(opts, &["space"], "set_voxels")?;
+            args.insert("cells".into(), json(&Dynamic::from_array(cells))?);
+            let mut scratch = state.borrow_mut();
+            scratch.keep_going().map_err(runtime)?;
+            let (args, _) = scratch.localize("voxel.set_many", args).map_err(runtime)?;
+            let writes = remote::cell_writes(&args).map_err(runtime)?;
+            scratch.apply(&writes).map_err(runtime)
+        };
+        if with_opts {
+            engine.register_fn("set_voxels", move |cells: Array, opts: Map| {
+                run(cells, &opts)
+            });
+        } else {
+            engine.register_fn("set_voxels", move |cells: Array| run(cells, &Map::new()));
+        }
+    }
 
     let state = scratch.clone();
     engine.register_fn(
@@ -162,7 +201,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
         move |ctx: NativeCallContext, object: Dynamic, opts: Map| -> Fallible<()> {
             let mut args = options(
                 &opts,
-                &["boxes", "slots", "invert", "copy", "into", "name"],
+                &["boxes", "slots", "invert", "copy", "into", "name", "space"],
                 "split_object",
             )?;
             args.insert("index".into(), object_ref(&state, &object, false)?);

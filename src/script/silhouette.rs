@@ -31,6 +31,7 @@ const CARVE: &[&str] = &[
     "shell",
     "smooth",
     "mode",
+    "space",
 ];
 
 const PAINT: &[&str] = &[
@@ -51,6 +52,7 @@ const PAINT: &[&str] = &[
     "depth",
     "normalLimit",
     "only",
+    "space",
 ];
 
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
@@ -126,8 +128,9 @@ impl Scratch {
     fn paint_view(&mut self, args: Args) -> Result<Map, String> {
         self.keep_going()?;
         let palette = self.run_palette();
-        let (writes, counts) =
-            remote::paint_writes(self.cells(), &palette, &Value::Object(args), false)?;
+        let (args, offset) = self.localize("voxel.project_paint", args)?;
+        let (writes, counts) = remote::paint_writes(self.cells(), &palette, &args, false)?;
+        let counts = world_counts(counts, offset);
         let changed = self.apply(&writes)?;
         let mut reply = Map::new();
         reply.insert("changed".into(), Dynamic::from_int(changed));
@@ -146,8 +149,9 @@ impl Scratch {
     fn carve_views(&mut self, args: Args) -> Result<Map, String> {
         self.keep_going()?;
         let palette = self.run_palette();
-        let (writes, counts) =
-            remote::hull_writes(self.cells(), &palette, &Value::Object(args), false)?;
+        let (args, offset) = self.localize("voxel.carve_from_views", args)?;
+        let (writes, counts) = remote::hull_writes(self.cells(), &palette, &args, false)?;
+        let counts = world_counts(counts, offset);
         let changed = self.apply(&writes)?;
         let mut reply = Map::new();
         reply.insert("changed".into(), Dynamic::from_int(changed));
@@ -158,6 +162,22 @@ impl Scratch {
         reply.insert("bounds".into(), bounds_map(&counts["bounds"]));
         reply.insert("size".into(), corner(&counts["size"]));
         Ok(reply)
+    }
+}
+
+/// A tool's counts with `bounds` and `origin` in world cells when the call
+/// was in world space.
+fn world_counts(
+    counts: serde_json::Map<String, Value>,
+    offset: Option<crate::state::Cell>,
+) -> serde_json::Map<String, Value> {
+    let mut counts = Value::Object(counts);
+    if let Some(offset) = offset {
+        remote::to_world_reply(&mut counts, offset);
+    }
+    match counts {
+        Value::Object(map) => map,
+        _ => unreachable!("counts stay a map"),
     }
 }
 

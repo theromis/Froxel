@@ -192,6 +192,8 @@ pub struct SplitPanel {
     pub slots: String,
     pub invert: bool,
     pub copy: bool,
+    /// The boxes are world cells (MCP `space: "world"`).
+    pub world: bool,
     /// `None` makes a new object named `name`; else the target's index.
     pub into: Option<usize>,
     pub name: String,
@@ -204,6 +206,7 @@ impl Default for SplitPanel {
             slots: String::new(),
             invert: false,
             copy: false,
+            world: false,
             into: None,
             name: "part".into(),
         }
@@ -240,6 +243,9 @@ impl SplitPanel {
         }
         if !boxes.is_empty() {
             args["boxes"] = json!(boxes);
+            if self.world {
+                args["space"] = json!("world");
+            }
         }
         let slots = slot_field("Split", &self.slots)?;
         if !slots.is_empty() {

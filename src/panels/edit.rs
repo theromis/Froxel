@@ -30,13 +30,17 @@ pub(super) fn split(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Boxes", "Inclusive boxes x0 y0 z0 x1 y1 z1 in the active object's local cells, one per line. A cell inside any of them is taken. Empty takes by slot alone.");
-                ui.add(
-                    egui::TextEdit::multiline(&mut panel.boxes)
-                        .hint_text("0 0 20 15 12 31")
-                        .desired_rows(2)
-                        .desired_width(150.0),
-                );
+                label(ui, "Boxes", "Inclusive boxes x0 y0 z0 x1 y1 z1, one per line, in the active object's local cells or, with World, in world cells. A cell inside any of them is taken. Empty takes by slot alone.");
+                ui.vertical(|ui| {
+                    ui.add(
+                        egui::TextEdit::multiline(&mut panel.boxes)
+                            .hint_text("0 0 20 15 12 31")
+                            .desired_rows(2)
+                            .desired_width(150.0),
+                    );
+                    ui.checkbox(&mut panel.world, "World cells")
+                        .on_hover_text("MCP space world: the boxes are world cells, and the object's position is subtracted first.");
+                });
                 ui.end_row();
                 label(ui, "Slots", "Only cells of these slots, such as 3 4. Empty is every slot.");
                 ui.add(

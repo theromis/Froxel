@@ -99,11 +99,13 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
                         .desired_width(90.0),
                 );
                 ui.end_row();
-                label(ui, "Origin", "Local cell of the box's minimum corner.");
+                label(ui, "Origin", "Cell of the box's minimum corner: local to the active object, or a world cell with World.");
                 ui.horizontal(|ui| {
                     for value in &mut panel.origin {
                         ui.add(egui::DragValue::new(value).range(-1024..=1023));
                     }
+                    ui.checkbox(&mut panel.world, "World")
+                        .on_hover_text("MCP space world: the origin is a world cell, and the object's position is subtracted first.");
                 });
                 ui.end_row();
                 label(ui, "Background", "Which pixels of every view are background.");
@@ -203,6 +205,8 @@ pub(super) fn paint(ui: &mut Ui, session: &mut Session) {
                             .hint_text("size")
                             .desired_width(70.0),
                     );
+                    ui.checkbox(&mut panel.world, "World")
+                        .on_hover_text("MCP space world: the origin is a world cell, and the object's position is subtracted first.");
                 });
                 ui.end_row();
                 label(ui, "Depth", "Solid cells painted below the visible surface along each ray; 1 is the surface alone.");

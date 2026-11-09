@@ -3009,3 +3009,34 @@ fn a_foreign_import_states_its_shift_and_keeps_it_through_a_save() {
     assert_eq!(restored["min"], json!([10.0, 5.0, -14.0]));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn the_tools_that_take_world_space_list_it() {
+    let tools = tools();
+    let space = |name: &str| {
+        tools
+            .iter()
+            .find(|tool| tool["name"] == name)
+            .unwrap_or_else(|| panic!("no tool {name}"))["inputSchema"]["properties"]
+            .get("space")
+            .is_some()
+    };
+    for name in [
+        "fill_box",
+        "fill_ellipsoid",
+        "fill_rounded_box",
+        "fill_tube",
+        "carve",
+        "set_voxels",
+        "get_voxels",
+        "carve_from_views",
+        "project_paint",
+        "split_object",
+    ] {
+        assert!(space(name), "{name}");
+    }
+    for name in ["deform", "batch", "mirror_object", "render"] {
+        assert!(!space(name), "{name}");
+    }
+    assert!(known_arguments("fill_box", &json!({"space": "world"})).is_ok());
+}

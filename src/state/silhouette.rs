@@ -74,6 +74,8 @@ pub struct CarvePanel {
     pub size: String,
     pub cells_per_pixel: f32,
     pub origin: [i32; 3],
+    /// The origin is a world cell (MCP `space: "world"`).
+    pub world: bool,
     pub background: BackgroundField,
     /// Colour from the views; off fills the active slot.
     pub colour_views: bool,
@@ -96,6 +98,7 @@ impl Default for CarvePanel {
             size: String::new(),
             cells_per_pixel: 0.25,
             origin: [0, 0, 0],
+            world: false,
             background: BackgroundField::default(),
             colour_views: true,
             shell: 0,
@@ -120,6 +123,8 @@ pub struct PaintPanel {
     /// `x y z` origin and size of the box; empty is the object's bounds.
     pub origin: String,
     pub size: String,
+    /// The origin is a world cell (MCP `space: "world"`).
+    pub world: bool,
     pub depth: i32,
     /// Degrees; 90 is no limit.
     pub normal_limit: f32,
@@ -141,6 +146,7 @@ impl Default for PaintPanel {
             cells_per_pixel: 0.25,
             origin: String::new(),
             size: String::new(),
+            world: false,
             depth: 1,
             normal_limit: 90.0,
             only: String::new(),
@@ -171,6 +177,9 @@ impl PaintPanel {
         }
         if let Some(origin) = signed("Origin", &self.origin)? {
             args["origin"] = json!(origin);
+            if self.world {
+                args["space"] = json!("world");
+            }
         }
         if let Some(size) = numbers("Size", &self.size, 3)? {
             args["size"] = json!(size);
@@ -305,6 +314,9 @@ impl CarvePanel {
             "origin": self.origin,
             "cellsPerPixel": self.cells_per_pixel
         });
+        if self.world {
+            args["space"] = json!("world");
+        }
         if let Some(size) = numbers("Size", &self.size, 3)? {
             args["size"] = json!(size);
         }

@@ -15,6 +15,14 @@
 
 ### Added
 
+- World cells: `space: "world"` on MCP `get_voxel`, `set_voxel`,
+  `set_voxels`, `get_voxels`, `fill_box`, `fill_ellipsoid`,
+  `fill_rounded_box`, `fill_tube`, `carve`, `smooth`, `loft`, `brush`,
+  `carve_from_views`, `project_paint`, and `split_object` (and the same key
+  in their Rhai options) takes world cells and subtracts the object's
+  position first; the reply's coordinates come back in world cells. The
+  Split object, Carve from views, and Paint from view sections have a World
+  switch. `mirror_object` replies with the copy's `position`.
 - Split object: MCP `split_object`, Rhai `split_object(object, opts)`, and
   the Split object section move (or copy) the cells of an object inside one
   or more boxes, or of some slots, into a new or an existing object, each

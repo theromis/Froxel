@@ -15,6 +15,7 @@ mod import;
 mod markers;
 mod organic;
 mod silhouette;
+mod space;
 mod stone;
 pub(crate) use batch::{batch_items, batch_tool_names, MAX_BATCH_ITEMS};
 pub(crate) use collision::{collision_build, finish_reply as collision_reply};
@@ -24,6 +25,7 @@ pub(crate) use import::{
 pub(crate) use markers::marker_kind;
 pub(crate) use organic::{organic_writes, Organic};
 pub(crate) use silhouette::{hull_writes, paint_writes, session_palette};
+pub(crate) use space::{is_world, space_prop, to_local, to_world_reply, WORLD_METHODS};
 pub(crate) use stone::{cavity_writes, stone_writes, Stone};
 
 use crate::state::{Cell, GlassMode, Session};
@@ -817,6 +819,9 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
     } else {
         params.clone()
     };
+    if is_world(&params)? {
+        return apply_world(session, method, &params);
+    }
     match method {
         "document.new" => {
             session.replace_empty();
@@ -1065,7 +1070,8 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
             let mirror_bones = opt_bool(&params, "mirrorBones")?.unwrap_or(false);
             let (created, bones) =
                 session.mirror_object(index as usize, axis, &name, position, mirror_bones)?;
-            Ok(json!({"index": created, "name": name, "bones": bones}))
+            let at = session.objects[created].translation;
+            Ok(json!({"index": created, "name": name, "bones": bones, "position": [at.0, at.1, at.2]}))
         }
         "render" => render_scene(session, &params),
         "render.flat" => model_view(session, &params),
@@ -1159,6 +1165,32 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
             "unknown method `{other}`; `control.methods` lists them"
         )),
     }
+}
+
+/// A tool with `space: "world"`: its world cells become the local cells of
+/// the object it edits (the active one; `split_object`'s source), and the
+/// reply's coordinates world cells again.
+fn apply_world(session: &mut Session, method: &str, params: &Value) -> Result<Value, String> {
+    let object = match method {
+        "object.split" => edit::object_arg(session, params, "index")?.unwrap_or(session.selected),
+        _ => session
+            .selected
+            .min(session.objects.len().saturating_sub(1)),
+    };
+    let offset = session.objects[object].translation;
+    let local = to_local(method, params, offset)?;
+    let mut reply = apply(session, method, &local)?;
+    let reply_offset = match method {
+        // The bounds of a split are the target's local cells.
+        "object.split" => {
+            let at = &reply["position"];
+            let axis = |i: usize| at[i].as_i64().unwrap_or(0) as i32;
+            (axis(0), axis(1), axis(2))
+        }
+        _ => offset,
+    };
+    space::to_world_reply(&mut reply, reply_offset);
+    Ok(reply)
 }
 
 fn export_mesh(session: &Session, params: &Value) -> Result<Value, String> {

@@ -122,7 +122,24 @@ offset back, so MagicaVoxel still opens the parts in place. Bone pivots are
 fractional world coordinates: a joint may sit on a corner, a cell centre, or
 anywhere between cells. Palette
 index `0` is empty and erases a cell. Indices `1..255` are colors. A cell
-must lie in `[-1024, 1024)`. A write that would make the active object longer
+must lie in `[-1024, 1024)`.
+
+`space: "world"` gives a tool world cells instead. The handler subtracts the
+active object's position (for `split_object`, the source's) before the tool
+runs, and the reply's `x`, `y`, `z`, `cells`, `bounds`, and `origin` come
+back in world cells, with `space` and `position` stated. So the same box
+lands on the same place whichever part it is sent to, and stays right after
+a save and reopen has moved the objects. `get_voxel`, `set_voxel`,
+`set_voxels`, `get_voxels`, `fill_box`, `fill_ellipsoid`,
+`fill_rounded_box`, `fill_tube`, `carve`, `smooth`, `loft`, `brush`,
+`carve_from_views`, `project_paint`, and `split_object` take it; it moves
+corners `x0`..`z1`, cells `x`, `y`, `z`, `points`, `cells`, `origin`,
+`boxes`, and `exclude`. `space: "local"` is the default. Other tools refuse
+`world`. In a `batch` each item takes its own `space`.
+
+```json
+{"x0": 12, "y0": -6, "z0": 4, "x1": 15, "y1": -3, "z1": 6, "palette": 7, "mode": "paint", "space": "world"}
+``` A write that would make the active object longer
 than 256 on any axis is refused and changes nothing.
 
 Every tool that writes a file (`save_file`, `render`, `model_view`,
@@ -189,7 +206,7 @@ tracer. A file with no scene graph still loads its first model.
 | `add_object` | — | Empty object. Optional `name`, world `position` `[x, y, z]` (default `[0, 0, 0]`), `size` `[x, y, z]` (capacity hint, each axis 1..=256), `make_active` (default true). Returns the index. One undo step |
 | `set_object` | `index` | Optional `name`, world `position`, `hidden`. Moving changes the scene-graph translation, so voxels move in the world. One undo step |
 | `remove_object` | `index` | Remove the object and its voxels. Its bone stays; the binding goes. Later indices decrease by one. Refuses the last object. One undo step |
-| `mirror_object` | `index`, `axis`, `name` | Copy the object mirrored across `x`, `y`, or `z` through the origin. Optional world `position` and `mirrorBones` (default false). One undo step |
+| `mirror_object` | `index`, `axis`, `name` | Copy the object mirrored across `x`, `y`, or `z` through the origin. Optional world `position` and `mirrorBones` (default false). Replies with the copy's `index`, `name`, `bones`, and world `position`. One undo step |
 | `split_object` | `boxes` or `slots` | Move (or `copy`) the cells of an object (`index`, an index or a name; default the active one) inside one or more inclusive local boxes, or of some `slots`, or both, into a new object (`name`) or an existing one (`into`), each cell keeping its world position. `invert` takes the rest. `makeActive` selects the target. Replies with `target`, `name`, `created`, `cells`, `replaced`, `position`, `sourceVoxels`, `targetVoxels`, `bounds`. One undo step |
 | `add_bone` | `name`, `pivot` | Add a bone. `pivot` is a fractional world coordinate `[x, y, z]`. Optional `parent` (omit or null for a root) and `rotation` quaternion `[x, y, z, w]` (default identity `[0, 0, 0, 1]`). One undo step |
 | `set_bone` | `name` | Optional `parent` (null makes a root; omit leaves it), world `pivot`, `rotation` `[x, y, z, w]`, `rename`. One undo step |
@@ -1171,7 +1188,9 @@ last remaining object cannot be removed.
 world coordinate `c` on that axis lands at `-c - 1` (cell `(2, 0, 0)`
 mirrored on X becomes world x −3). The other axes stay. Omit `position`
 and the copy's translation is the minimum corner of those mirrored cells;
-local cells are relative to it. A `position` is that corner instead, and
+local cells are relative to it, so they are not the source's local cells
+with a sign: the reply's `position` is that corner. Edit the copy with
+`space: "world"` to aim at the mirrored world cells without subtracting it. A `position` is that corner instead, and
 the locals are the mirrored world cells minus it. `mirrorBones` defaults
 to false, and the copy is unbound. `true` requires a bound object and
 copies that bone plus its descendants. A name ending in `_l` becomes
@@ -1606,7 +1625,8 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `set_palette` | Palette dock (colour and alpha) and the Material section (motion) |
 | `set_active_object`, `add_object`, `set_object`, `remove_object` | Objects tree and the Object inspector |
 | `mirror_object` | Object inspector: Mirror X, Y, Z and Mirror bones too |
-| `split_object` | Split object section: Boxes (one per line), Slots, Invert, Copy, Into (New object with a Name, or an existing object), Split |
+| `split_object` | Split object section: Boxes (one per line), World cells, Slots, Invert, Copy, Into (New object with a Name, or an existing object), Split |
+| `space` | World cells in Split object, World beside Origin in Carve from views and beside Box in Paint from view; the viewport tools pick cells in place, so they need none |
 | `add_bone`, `set_bone`, `remove_bone`, `bind_object`, `list_bones` | Bones tree, the Bone inspector, the Object inspector's Bone |
 | `set_pose`, `clear_pose` | Pose section |
 | `add_clip`, `set_clip_keys`, `list_clips`, `remove_clip` | Clips section: Add, Key pose at a time, Delete |
