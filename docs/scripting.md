@@ -143,7 +143,7 @@ y, then z; each is four numbers, so the array limit allows about 1 000.
 ### World cells
 
 `get_voxels`, `set_voxels`, the fills, the carves, `smooth`, `loft`, `brush`,
-`carve_from_views`, `project_paint`, and `split_object` take `space:
+`carve_from_views`, `project_paint`, `decal`, and `split_object` take `space:
 "world"` in their options map, as over MCP: the coordinates are world cells,
 and the position the object had when the run started is subtracted first.
 `get_voxels` then returns world cells, and so do the `bounds` of
@@ -255,7 +255,7 @@ map with `space` (see World cells).
 ### Mirror
 
 `set_voxels`, the fills (any `mode` but `intersect`), `recolor`,
-`surface_stroke`, and `project_paint` take `mirror` in their options map,
+`surface_stroke`, `project_paint`, and `decal` take `mirror` in their options map,
 as over MCP and on the same code path: `true` (across x), `"x"`, `"y"`, or
 `"z"`, or `#{axis: "x", at: 16.0}` with the plane's coordinate in cells (a
 multiple of 0.5; cell `c` spans `c..c+1`). Without `at` the plane is the
@@ -611,6 +611,37 @@ or `yaw` and `pitch` in the options for an oblique projection. Options:
 It returns `#{changed, cells, covered, rays, steep, bounds: #{min, max}}`;
 `bounds` is `()` when nothing is painted. `examples/painted_shell.rhai`
 paints a shell's plates onto a dome from the top.
+
+### Decal
+
+```rhai
+let report = decal(["..llll..", ".l....l.", "..eeee.."], #{legend: #{l: 3, e: 4}, point: [9, 2, 18], size: 8});
+let report = decal(rows, #{palette: 6, ray: #{origin: [12, -30, 14], direction: [0, 1, 0]}, size: [12, 4], up: [0, 0, 1], mirror: true});
+```
+
+MCP `decal` on the object being written, on the same code path: the
+picture (`rows` and a `legend`; over MCP it may be a PNG crop) is laid onto
+the surface around a point, following the surface so it keeps its size and
+shape on a round head. Cells are never added or removed. Options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `point` | — | `[x, y, z]` near the surface; the nearest surface cell within `reach`. |
+| `ray` | — | `#{origin, direction}`: the first solid cell it meets, instead of `point`. |
+| `size` | — | Cells across along the surface (height from the picture), or `[across, down]`. |
+| `up` | `[0, 0, 1]` | The picture's up, laid onto the surface at the point. |
+| `legend`, `flip` | none, `false` | As `project_paint` takes them. |
+| `palette`, `slots`, `coverage` | the legend, 1..255, `0.5` | As `project_paint` takes them. |
+| `depth` | `1` | Cells painted into the solid along the normal, 1..16. |
+| `reach` | `8` | How far `point` may be from the surface, 0..64. |
+| `normalLimit` | `90` | Degrees: stop where the surface turns further than this from the point's normal. |
+| `only` | every slot | Slots that may be repainted. |
+| `space`, `mirror` | local, off | World cells; both sides of a plane (see Mirror). |
+
+It returns `#{changed, cells, covered, missed, reached, centre, bounds}`
+(and `mirrored` with a mirror); `missed` counts inked picture cells no
+surface cell landed on. `examples/decal_face.rhai` lays a sleepy eye (and
+its mirror) and a smile on a made-up round head.
 
 ### Fit to views
 
@@ -1252,7 +1283,7 @@ Any function that is not listed on this page is not registered.
 A script describes a family; MCP `export_variants` (or `froxel variants`,
 or the Export panel's **Export variants…**) bakes it once per parameter set
 and writes a `.vox`, a `.glb`, and a manifest with each set's parameters,
-markers, and bounds. Scripts themselves never write files, and they read none: `carve_from_views`, `project_paint`, and `fit_to_views` take rows, not PNGs.
+markers, and bounds. Scripts themselves never write files, and they read none: `carve_from_views`, `project_paint`, `decal`, and `fit_to_views` take rows, not PNGs.
 
 ```json
 [

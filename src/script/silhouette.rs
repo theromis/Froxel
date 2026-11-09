@@ -94,7 +94,35 @@ const PAINT: &[&str] = &[
     "keepLargest",
 ];
 
+const DECAL: &[&str] = &[
+    "point",
+    "ray",
+    "size",
+    "up",
+    "legend",
+    "background",
+    "tolerance",
+    "flip",
+    "palette",
+    "slots",
+    "coverage",
+    "depth",
+    "reach",
+    "normalLimit",
+    "only",
+    "space",
+    "mirror",
+];
+
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
+    {
+        let state = scratch.clone();
+        engine.register_fn("decal", move |rows: Array, opts: Map| -> Fallible<Map> {
+            let mut args = options(&opts, DECAL, "decal")?;
+            args.insert("rows".into(), json(&Dynamic::from_array(rows))?);
+            state.borrow_mut().decal_view(args).map_err(runtime)
+        });
+    }
     let paint = {
         let state = scratch.clone();
         move |view: Option<&str>, rows: Array, opts: &Map| -> Fallible<Map> {
@@ -274,6 +302,31 @@ impl Scratch {
         if let Some(mirrored) = counts.get("mirrored").and_then(Value::as_i64) {
             reply.insert("mirrored".into(), Dynamic::from_int(mirrored));
         }
+        Ok(reply)
+    }
+
+    /// One picture laid onto the surface of the object being written. The
+    /// reply holds `changed`, `cells`, `covered`, `missed`, `reached`,
+    /// `centre`, `bounds` as `#{min, max}`, and `mirrored` with a mirror.
+    fn decal_view(&mut self, args: Args) -> Result<Map, String> {
+        self.keep_going()?;
+        let palette = self.run_palette();
+        let (args, offset) = self.localize("voxel.decal", args)?;
+        let (writes, counts) = remote::decal_writes(self.cells(), &palette, &args, false)?;
+        let mut counts = Value::Object(counts);
+        if let Some(offset) = offset {
+            remote::to_world_reply(&mut counts, offset);
+        }
+        let changed = self.apply(&writes)?;
+        let mut reply = Map::new();
+        reply.insert("changed".into(), Dynamic::from_int(changed));
+        for key in ["cells", "covered", "missed", "reached", "mirrored"] {
+            if let Some(value) = counts.get(key).and_then(Value::as_i64) {
+                reply.insert(key.into(), Dynamic::from_int(value));
+            }
+        }
+        reply.insert("centre".into(), corner(&counts["centre"]));
+        reply.insert("bounds".into(), bounds_map(&counts["bounds"]));
         Ok(reply)
     }
 

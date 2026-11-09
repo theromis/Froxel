@@ -27,7 +27,7 @@ pub(crate) use import::{
 };
 pub(crate) use markers::marker_kind;
 pub(crate) use organic::{organic_writes, Organic};
-pub(crate) use silhouette::{fit_writes, hull_writes, paint_writes, session_palette};
+pub(crate) use silhouette::{decal_writes, fit_writes, hull_writes, paint_writes, session_palette};
 pub(crate) use space::{is_world, space_prop, to_local, to_world_reply, WORLD_METHODS};
 pub(crate) use stone::{cavity_writes, stone_writes, Stone};
 
@@ -907,6 +907,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "voxel.brush" => organic::apply_organic(session, &params, Organic::Brush),
         "voxel.carve_from_views" => silhouette::carve_from_views(session, &params),
         "voxel.project_paint" => silhouette::project_paint(session, &params),
+        "voxel.decal" => silhouette::decal(session, &params),
         "voxel.fit_to_views" => silhouette::fit_to_views(session, &params),
         "render.compare_silhouette" => silhouette::compare_silhouette(session, &params),
         "mesh.import" => import::apply_import(session, &params),
@@ -1546,6 +1547,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.brush", "op, points, radius?, strength?, falloff?, only?, palette?, vector?, spacing?", "Sculpt brush dabs along points: inflate, deflate, smooth, flatten, or grab"),
     ("voxel.carve_from_views", "views, size?, origin?, cellsPerPixel?, palette? | slots?, coverage?, shell?, smooth?, mode?", "Fill the visual hull of 2 or 3 orthographic views (front, side, top): each a PNG path or rows, with crop, cellsPerPixel or size, and a background rule"),
     ("voxel.project_paint", "view | yaw + pitch, path + crop? | rows + legend?, background?, cellsPerPixel? | imageSize?, origin?, size?, palette? | slots?, coverage?, depth?, normalLimit?, only?, mirror?", "Recolour the active object's visible surface from one image projected along a view: never adds or removes cells"),
+    ("voxel.decal", "point | ray, size, path + crop? | rows + legend?, up?, background?, flip?, palette? | slots?, coverage?, depth?, reach?, normalLimit?, only?, mirror?", "Lay one picture onto the active object's curved surface around a point, keeping its size and shape: never adds or removes cells"),
     ("voxel.fit_to_views", "views, path?, background?, tolerance?, alphaThreshold?, align?, slots?, coverage?, iterations?, seed?, margin?, maskWeight?, colorWeight?, depthWeight?, smoothWeight?, shape?, recolor?, normalLimit?, keep?, sharedScale?, roundWeight?, roundness?, roundAxes?, reference?, isolate?", "Refine the active object so its orthographic views match a views sheet: clears excess rays, fills missing ones, follows a reference's depth, and recolours the visible cells from the slots. One undo step"),
     ("render.compare_silhouette", "path, concept, crop?, background?, tolerance?, alphaThreshold?, excludeColors?, excludeTolerance?, flood?, mask?, erase?, keepLargest?, flip?, align?, preset?, view?, yaw?, pitch?, orthographic?, fov?, margin?, object?, isolate?, width?, height?, lighting?, pose?", "Compare the model's preview silhouette with a concept mask: IoU, missing and excess shares, and an overlay PNG"),
     ("mesh.import", "path, size? | scale? | voxelSize?, upAxis?, rotation?, position?, anchor?, fill?, colors?, palette? | slots?, maxNewSlots?, tolerance?, mode?, newObject?, name?", "Voxelize a .glb, .gltf, or .obj into the active object or a new one, colours quantized into the palette. One undo step"),

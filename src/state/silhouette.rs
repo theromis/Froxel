@@ -463,10 +463,109 @@ pub struct SilhouetteOverlay {
     pub epoch: u64,
 }
 
+/// The Decal section: one picture laid onto the surface around a point.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DecalPanel {
+    pub path: String,
+    /// `x y w h` in pixels; empty is the whole image.
+    pub crop: String,
+    pub flip: bool,
+    pub background: BackgroundField,
+    /// `x y z` near the surface.
+    pub point: String,
+    /// The point is a world cell (MCP `space: "world"`).
+    pub world: bool,
+    /// `x y z` of the picture's up.
+    pub up: String,
+    /// Cells across along the surface.
+    pub size: f32,
+    pub depth: i32,
+    pub reach: f32,
+    /// Degrees from the point's normal where the decal stops.
+    pub normal_limit: f32,
+    /// Slots that may be repainted, separated by spaces; empty is all.
+    pub only: String,
+    /// Colour from the image; off paints the active slot.
+    pub colour_image: bool,
+    pub mirror: super::edit::MirrorField,
+}
+
+impl Default for DecalPanel {
+    fn default() -> Self {
+        Self {
+            path: String::new(),
+            crop: String::new(),
+            flip: false,
+            background: BackgroundField::default(),
+            point: String::new(),
+            world: false,
+            up: "0 0 1".into(),
+            size: 8.0,
+            depth: 1,
+            reach: 8.0,
+            normal_limit: 90.0,
+            only: String::new(),
+            colour_image: true,
+            mirror: super::edit::MirrorField::default(),
+        }
+    }
+}
+
+impl DecalPanel {
+    /// The MCP `decal` arguments. `active` is the slot used when the colour
+    /// does not come from the image.
+    pub(crate) fn args(&self, active: u8) -> Result<Value, String> {
+        if self.path.trim().is_empty() {
+            return Err("Decal: choose an image.".into());
+        }
+        let vector = |what: &str, text: &str| -> Result<Vec<f64>, String> {
+            let parts: Vec<f64> = text
+                .split(|c: char| c == ',' || c.is_whitespace())
+                .filter(|part| !part.is_empty())
+                .map(|part| {
+                    part.parse::<f64>()
+                        .map_err(|_| format!("Decal: {what} `{part}` is not a number"))
+                })
+                .collect::<Result<_, _>>()?;
+            if parts.len() != 3 {
+                return Err(format!("Decal: {what} is x y z"));
+            }
+            Ok(parts)
+        };
+        let mut args = json!({
+            "path": self.path.trim(),
+            "flip": self.flip,
+            "point": vector("Point", &self.point)?,
+            "up": vector("Up", &self.up)?,
+            "size": self.size,
+            "depth": self.depth.max(1),
+            "reach": self.reach,
+            "normalLimit": self.normal_limit,
+        });
+        if let Some(crop) = numbers("Crop", &self.crop, 4)? {
+            args["crop"] = json!(crop);
+        }
+        self.background.write(&mut args);
+        if self.world {
+            args["space"] = json!("world");
+        }
+        let only = super::edit::slot_field("Decal", &self.only)?;
+        if !only.is_empty() {
+            args["only"] = json!(only);
+        }
+        if !self.colour_image {
+            args["palette"] = json!(active.max(1));
+        }
+        self.mirror.write(&mut args)?;
+        Ok(args)
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SilhouettePanels {
     pub carve: CarvePanel,
     pub paint: PaintPanel,
+    pub decal: DecalPanel,
     pub fit: FitPanel,
     pub compare: ComparePanel,
     pub overlay: Option<SilhouetteOverlay>,
@@ -831,6 +930,60 @@ impl Session {
         if let Some(path) = super::dialog::pick_open("PNG", &["png"]) {
             self.silhouette.paint.path = path.display().to_string();
         }
+    }
+
+    /// Choose the PNG of Decal.
+    pub fn pick_decal_image(&mut self) {
+        if let Some(path) = super::dialog::pick_open("PNG", &["png"]) {
+            self.silhouette.decal.path = path.display().to_string();
+        }
+    }
+
+    /// The Decal button: MCP `decal` on the active object.
+    pub fn decal_from_panel(&mut self) {
+        let args = match self.silhouette.decal.args(self.active_slot) {
+            Ok(args) => args,
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
+        self.status = match crate::remote::apply(self, "voxel.decal", &args) {
+            Ok(reply) => {
+                let mut text = format!(
+                    "Laid {} cells ({} changed) around {}{}.",
+                    reply["cells"],
+                    reply["changed"],
+                    reply["centre"],
+                    super::edit::mirrored_note(&reply)
+                );
+                if reply["missed"].as_u64().unwrap_or(0) > 0 {
+                    text.push_str(&format!(
+                        " {} picture cells ran off the surface.",
+                        reply["missed"]
+                    ));
+                }
+                text
+            }
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// The selection's centre as the decal's point.
+    pub fn decal_point_at_selection(&mut self) {
+        let Some((min, max)) = super::geom::cell_bounds(self.picked.iter().copied()) else {
+            self.status = "Decal: select cells first.".into();
+            return;
+        };
+        let centre = |a: i32, b: i32| f64::from(a + b) / 2.0;
+        self.silhouette.decal.point = format!(
+            "{} {} {}",
+            centre(min.0, max.0),
+            centre(min.1, max.1),
+            centre(min.2, max.2)
+        );
+        self.silhouette.decal.world = false;
     }
 
     /// Choose the concept PNG of Compare.

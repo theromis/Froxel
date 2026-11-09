@@ -30,6 +30,7 @@ pub(crate) const WORLD_METHODS: &[&str] = &[
     "voxel.brush",
     "voxel.carve_from_views",
     "voxel.project_paint",
+    "voxel.decal",
     "object.split",
 ];
 
@@ -51,7 +52,8 @@ pub(crate) fn is_world(params: &Value) -> Result<bool, String> {
 /// The arguments of `method` with world cells turned into local cells of an
 /// object at `offset`, and `space` removed. Corners `x0..z1`, cells `x`,
 /// `y`, `z`, `points` and `cells` (lists or maps; a list's first three
-/// numbers), `origin`, `boxes`, `exclude`, and a `mirror`'s `at` move;
+/// numbers), `origin`, `boxes`, `exclude`, a decal's `point` and `ray`
+/// origin, and a `mirror`'s `at` move;
 /// everything else stays.
 pub(crate) fn to_local(method: &str, params: &Value, offset: Cell) -> Result<Value, String> {
     if !WORLD_METHODS.contains(&method) {
@@ -79,6 +81,15 @@ pub(crate) fn to_local(method: &str, params: &Value, offset: Cell) -> Result<Val
     }
     if let Some(origin @ Value::Array(_)) = map.get_mut("origin") {
         shift_point(origin, by, -1, "origin")?;
+    }
+    // A decal's point and its ray's origin.
+    if let Some(point @ Value::Array(_)) = map.get_mut("point") {
+        shift_point(point, by, -1, "point")?;
+    }
+    if let Some(Value::Object(ray)) = map.get_mut("ray") {
+        if let Some(origin) = ray.get_mut("origin") {
+            shift_point(origin, by, -1, "ray origin")?;
+        }
     }
     // A mirror plane given at a world coordinate.
     if let Some(Value::Object(mirror)) = map.get_mut("mirror") {
@@ -110,7 +121,7 @@ pub(crate) fn to_local(method: &str, params: &Value, offset: Cell) -> Result<Val
 }
 
 /// The reply of a tool run in local cells of an object at `offset`, with
-/// `x`, `y`, `z`, `cells`, `bounds`, and `origin` in world cells, and
+/// `x`, `y`, `z`, `cells`, `bounds`, `origin`, and `centre` in world cells, and
 /// `space` stated, and `position` unless the reply has one.
 pub(crate) fn to_world_reply(reply: &mut Value, offset: Cell) {
     let by = [offset.0, offset.1, offset.2];
@@ -134,8 +145,10 @@ pub(crate) fn to_world_reply(reply: &mut Value, offset: Cell) {
             }
         }
     }
-    if let Some(origin @ Value::Array(_)) = map.get_mut("origin") {
-        let _ = shift_point(origin, by, 1, "origin");
+    for key in ["origin", "centre"] {
+        if let Some(point @ Value::Array(_)) = map.get_mut(key) {
+            let _ = shift_point(point, by, 1, key);
+        }
     }
     map.insert("space".into(), json!("world"));
     map.entry("position").or_insert(json!(by));

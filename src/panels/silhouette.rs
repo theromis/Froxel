@@ -1,5 +1,6 @@
 //! Inspector sections of the silhouette tools: Carve from views (MCP
-//! `carve_from_views`), Paint from view (MCP `project_paint`), Fit to views
+//! `carve_from_views`), Paint from view (MCP `project_paint`), Decal (MCP
+//! `decal`), Fit to views
 //! (MCP `fit_to_views`), and Compare silhouette (MCP `compare_silhouette`),
 //! whose overlay the viewport shows.
 
@@ -312,6 +313,106 @@ pub(super) fn paint(ui: &mut Ui, session: &mut Session) {
         }
         if pick {
             session.pick_paint_image();
+        }
+    });
+}
+
+/// MCP `decal`: one picture laid onto the surface around a point.
+pub(super) fn decal(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Decal");
+        let (mut pick, mut point) = (false, false);
+        let panel = &mut session.silhouette.decal;
+        egui::Grid::new("decal-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Image", "The picture to lay on the surface: an eye, a mouth, a marking. Background pixels leave the surface alone.");
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut panel.path)
+                            .hint_text("eye.png")
+                            .desired_width(150.0),
+                    );
+                    if ui.button("…").on_hover_text("Choose the PNG.").clicked() {
+                        pick = true;
+                    }
+                    ui.checkbox(&mut panel.flip, "Flip")
+                        .on_hover_text("Mirror the picture left to right.");
+                });
+                ui.end_row();
+                label(ui, "Crop", "The image's rectangle in pixels: x y width height. Empty is the whole image.");
+                ui.add(
+                    egui::TextEdit::singleline(&mut panel.crop)
+                        .hint_text("x y w h")
+                        .desired_width(90.0),
+                );
+                ui.end_row();
+                label(ui, "Background", "Which pixels of the image are background.");
+                background(ui, "decal-background", &mut panel.background);
+                ui.end_row();
+                label(ui, "Point", "x y z near the surface, in the active object's local cells (or world cells with World): the decal centres on the nearest surface cell.");
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut panel.point)
+                            .hint_text("x y z")
+                            .desired_width(90.0),
+                    );
+                    if ui.button("At selection").on_hover_text("The selection's centre.").clicked() {
+                        point = true;
+                    }
+                    ui.checkbox(&mut panel.world, "World");
+                });
+                ui.end_row();
+                label(ui, "Up", "x y z: the picture's up, laid onto the surface at the point. 0 0 1 keeps a face upright.");
+                ui.add(
+                    egui::TextEdit::singleline(&mut panel.up)
+                        .hint_text("0 0 1")
+                        .desired_width(90.0),
+                );
+                ui.end_row();
+                label(ui, "Size", "Cells across along the surface; the height follows the picture.");
+                ui.add(egui::DragValue::new(&mut panel.size).range(1.0..=crate::tools::MAX_DECAL_SIZE as f32).speed(0.1));
+                ui.end_row();
+                label(ui, "Depth", "Cells painted into the solid along the normal; 1 is the surface alone.");
+                ui.add(egui::DragValue::new(&mut panel.depth).range(1..=crate::tools::MAX_DECAL_DEPTH as i32));
+                ui.end_row();
+                label(ui, "Reach", "How far the point may be from the surface, in cells.");
+                ui.add(egui::DragValue::new(&mut panel.reach).range(0.0..=crate::tools::MAX_DECAL_REACH as f32).speed(0.1));
+                ui.end_row();
+                label(ui, "Normal limit", "Degrees: the decal stops where the surface turns further than this from the point's normal, so it never wraps round a thin part.");
+                ui.add(
+                    egui::DragValue::new(&mut panel.normal_limit)
+                        .range(1.0..=180.0)
+                        .speed(0.5)
+                        .suffix("°"),
+                );
+                ui.end_row();
+                label(ui, "Only", "Slots that may be repainted, such as 3 4; other cells keep theirs. Empty is every slot.");
+                ui.add(
+                    egui::TextEdit::singleline(&mut panel.only)
+                        .hint_text("all slots")
+                        .desired_width(90.0),
+                );
+                ui.end_row();
+                label(ui, "Colour", "From the image: each pixel quantised to the nearest palette slot. Off paints the active slot where the image is inked.");
+                ui.checkbox(&mut panel.colour_image, "From image");
+                ui.end_row();
+                super::edit::mirror_row(ui, "decal-mirror", &mut panel.mirror);
+            });
+        if ui
+            .button("Lay decal")
+            .on_hover_text("MCP decal: lay the picture on the surface around the point, following the surface so it keeps its size and shape on a curved form. Never adds or removes cells. One undo step.")
+            .clicked()
+        {
+            session.decal_from_panel();
+        }
+        if pick {
+            session.pick_decal_image();
+        }
+        if point {
+            session.decal_point_at_selection();
         }
     });
 }

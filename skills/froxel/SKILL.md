@@ -23,7 +23,7 @@ If the tools are missing, the server is not configured. Point the user to
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `components`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` with its image as rows and a legend, `fit_to_views` with views as rows and a legend, and `marker`,
+  (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `components`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` and `decal` with the image as rows and a legend, `fit_to_views` with views as rows and a legend, and `marker`,
   `collision_box`, `connector`, `collision_from_voxels`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `split_object`, `clear_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -68,7 +68,7 @@ If the tools are missing, the server is not configured. Point the user to
   = local cell + the object's `position`. Switch with `set_active_object`.
   Pass `space: "world"` (fills, `carve`, `set_voxels`, `get_voxels`,
   `smooth`, `loft`, `brush`, `carve_from_views`, `project_paint`,
-  `split_object`) to give world cells instead; parts that moved after a
+  `decal`, `split_object`) to give world cells instead; parts that moved after a
   save and reopen, or a `mirror_object` copy, need no subtraction then.
 - Palette `0` erases. Slots `1..255` are colours; set them with `set_palette`
   (`entries` sets many at once) before you fill. A colour is `color:
@@ -88,7 +88,7 @@ If the tools are missing, the server is not configured. Point the user to
 - Symmetric features (cheeks, eyes, flippers, horns, side stripes): draw one
   side and pass `mirror: true` (x about the object's centre), an axis, or
   `{axis, at}` to `set_voxels`, the fills (not mode intersect), `recolor`,
-  `surface_stroke`, or `project_paint`. The far side is done on its own
+  `surface_stroke`, `project_paint`, or `decal`. The far side is done on its own
   surface, mirrored, in the same undo step; `mirrored` in the reply counts
   its cells. Do not place the second side by hand.
 - To empty an object and start it again, call `clear_object` (index or
@@ -143,7 +143,10 @@ If the tools are missing, the server is not configured. Point the user to
    (1 is the surface), `normalLimit` (e.g. 60, so steep sides get no
    streaks), and `only` (the slots it may repaint). It never adds or removes
    cells; do not paint layer by layer with `carve_from_views` `mode: paint`
-   and dummy views. To finish a blockout (from `carve_from_views` or
+   and dummy views. Eyes, a mouth, nostrils, or a badge on a round head or
+   body are a `decal` (picture, `point` or `ray`, `size` in cells along the
+   surface, `up`, `only`, `mirror: true` for the pair of eyes), not a
+   `project_paint`, which smears them on the slopes; check `missed` is 0. To finish a blockout (from `carve_from_views` or
    `import_mesh`) against the approved views sheet, call `fit_to_views`
    with the same crops (front, side, top, back) and `slots`: it clears rays
    that should be background, fills rays the sheet inks, follows a

@@ -132,14 +132,16 @@ lands on the same place whichever part it is sent to, and stays right after
 a save and reopen has moved the objects. `get_voxel`, `set_voxel`,
 `set_voxels`, `get_voxels`, `fill_box`, `fill_ellipsoid`,
 `fill_rounded_box`, `fill_tube`, `carve`, `smooth`, `loft`, `brush`,
-`carve_from_views`, `project_paint`, and `split_object` take it; it moves
-corners `x0`..`z1`, cells `x`, `y`, `z`, `points`, `cells`, `origin`,
-`boxes`, and `exclude`. `space: "local"` is the default. Other tools refuse
+`carve_from_views`, `project_paint`, `decal`, and `split_object` take it;
+it moves corners `x0`..`z1`, cells `x`, `y`, `z`, `points`, `cells`,
+`origin`, `boxes`, `exclude`, a decal's `point` and `ray` origin, and a
+`mirror`'s `at`. `space: "local"` is the default. Other tools refuse
 `world`. In a `batch` each item takes its own `space`.
 
 `mirror` paints or edits both sides of a plane in one call. `set_voxels`,
 `fill_box`, `fill_ellipsoid`, `fill_rounded_box`, `fill_tube` (any `mode`
-but `intersect`), `recolor`, `surface_stroke`, and `project_paint` take it:
+but `intersect`), `recolor`, `surface_stroke`, `project_paint`, and `decal`
+take it:
 `true` (across x), an axis `"x"`, `"y"`, or `"z"`, or `{"axis": "x", "at":
 16}`. `at` is the plane's coordinate in local cells (world cells with
 `space` `world`), a multiple of 0.5: cell `c` spans `c..c+1`, so `at` 16
@@ -249,6 +251,7 @@ tracer. A file with no scene graph still loads its first model.
 | `model_view` | `path` | Flat model view PNG: each pixel is the palette colour of the first cell hit, no light, no tonemap. Fitted like `render`. `width` and `height` default to 512 (up to 4096). Orthographic by default. Optional `view`, `yaw`, `pitch`, `zoom`, `margin`, `target`, `pixelsPerVoxel`, `distance`, `orthographic`, `background`, `views`, `pose`, `showBones` |
 | `preview` | `path` | Fast lit PNG: the viewport's mesh and light rasterised on the CPU in well under a second, fitted to the model or one object with a margin. `width` and `height` default to 1024 (up to 4096). Optional `view`, `yaw`, `pitch`, `preset` (`game`: orthographic, yaw −135, pitch 32), `presets` (an object or a JSON file; the user's `camera_presets.json` is read too), `placementYaw` (the asset's turn about up where it is placed in a level), `orthographic`, `fov`, `margin`, `object`, `isolate`, `background`, `antialias`, `pose`. `inputs`, `variants`, or `reference` (with `columns`, `labels`) make a labelled contact sheet of several models and a concept image. `overlay` (`true`, or `boxes`, `points`, `connectors`) draws the markers over the model with their names (`overlayLabels`). `lighting` (`old_pond`, or a name from `lightingPresets` or the user's `lighting_presets.json`, or fields: sun direction, colour, and energy, ambient colour and energy, exposure, background, a LUT) lights it as a game does. Replies `previewTriangles` (the unmerged mesh it draws) and `export` (`triangles` and `quads` that `export_mesh` writes with the options in `export`, such as `colorAtlas`); `countsLabel` writes both on the image. See [preview.md](preview.md). `glb` draws a written `.glb` instead of the document, unlit, as a game draws a baked file |
 | `project_paint` | `view` or `yaw` + `pitch`, `path` or `rows` | Recolour the active object's existing surface from one image projected along a view: never adds or removes cells. The image is a PNG `path` with `crop`, `background`, `tolerance`, `alphaThreshold`, `flip`, or `rows` with a `legend`; background pixels leave the surface alone. Optional `origin` and `size` (the box that may be painted; defaults to the object's bounds), `cellsPerPixel` or `imageSize`, `palette` or `slots`, `coverage`, `depth` (cells below the visible surface, default 1), `normalLimit` (degrees; steeper surfaces are skipped), `only` (slots that may be repainted), `mirror` (both sides of a plane). Replies with `cells`, `changed`, `bounds`, `origin`, `size`, `grid`, `covered`, `rays`, and `steep`. One undo step. See [Silhouettes](#silhouettes) |
+| `decal` | `point` or `ray`, `size`, `path` or `rows` | Lay one picture onto the active object's curved surface around a point, so it keeps its size and shape on a round head: the surface is unrolled around the point and each surface cell takes the picture's ink under it. `ray` `{origin, direction}` takes the first solid cell instead. Optional `up` (default +Z), `crop`, `background`, `tolerance`, `flip`, `legend`, `palette` or `slots`, `coverage`, `depth` (cells into the solid, default 1), `reach` (default 8), `normalLimit` (degrees from the point's normal, default 90), `only`, `mirror`. Never adds or removes cells. Replies with `cells`, `changed`, `bounds`, `centre`, `normal`, `grid`, `covered`, `missed`, `reached`. One undo step. See [Silhouettes](#silhouettes) |
 | `compare_silhouette` | `path`, `concept` | Compare the model's `preview` silhouette from a camera (`preset`, `presets`, `placementYaw`, `view`, `yaw`, `pitch`, `orthographic`, `fov`, `margin`, `object`, `isolate`, `pose`) with a mask cut from a concept PNG (`crop`, `background`, `tolerance`, `alphaThreshold`, `flip`) and cleaned by the [mask edits](#masking-a-concept) (`excludeColors`, `excludeTolerance`, `flood`, `mask`, `erase`, `keepLargest`; the reply's `maskEdits` counts them). `align` `fit` (default), `height`, `width`, or `{scale, offset}` places the concept with one uniform scale. Replies with `iou`, `missing`, `excess`, `pixels`, `align`, `conceptBounds`, `modelBounds`, and `aspect`, and writes an overlay PNG. Optional `width`, `height`, `lighting`, `antialias`. See [Silhouettes](#silhouettes) |
 | `set_view` | — | Move the session camera; connected, the window's. Optional `view`, `yaw`, `pitch`, `preset`, `presets`, `placementYaw`, `frame`, `distance`, `orthographic`, `bones`. Not an edit |
 | `screenshot` | — | PNG of the whole editor window. Connected mode only |
@@ -1628,6 +1631,41 @@ several pixels takes the commonest.
  "cellsPerPixel": 0.18, "slots": [3, 4, 5], "only": [3], "normalLimit": 60}
 ```
 
+`decal` lays one picture onto a curved surface around a point, so an eye,
+a mouth, or a badge keeps its size and shape on a round head, where
+`project_paint`'s parallel rays stretch it across the slopes (an eye drawn
+from the front smears sideways on a cheek seen at 3/4). It unrolls the
+surface around the point (a discrete exponential map): surface cells are
+visited outward by their distance along the surface, and each takes picture
+coordinates from its settled neighbours, stepped by the part of the step
+in their own tangent plane, with the tangent frame carried from cell to
+cell along the normal. Each surface cell then takes the picture's ink under
+its footprint and paints `depth` cells (default 1, at most 16) into the
+solid along its normal. Cells are never added or removed.
+
+`point` `[x, y, z]` (a whole number is a cell's centre) snaps to the
+nearest surface cell within `reach` (default 8); `ray` `{origin,
+direction}` instead takes the first solid cell the ray meets, so a point
+picked on screen is aimed from the camera. `size` is the width in cells
+along the surface (the height follows the picture's aspect) or `[across,
+down]`. `up` (default `[0, 0, 1]`) is laid onto the surface at the point;
+image right is up × outward normal, so on a face looking along −Y image
+right is +X, as in the front view. `normalLimit` (degrees, default 90)
+stops the decal where the surface turns further than that from the point's
+normal, so it never wraps round an ear or a thin fin. The picture is a
+`path` with a `crop` and the background rule above (`flip` mirrors it), or
+`rows` and a `legend`; colours quantise to `slots`, or `palette` paints one
+slot. `only` keeps other slots as they are, and `mirror` lays the mirrored
+picture on the far side of the plane too (a left eye for a right one).
+The reply's `missed` counts inked picture cells no surface cell landed on,
+so a decal that ran off the surface says so; `centre` is the surface cell
+it is centred on and `normal` the outward normal there.
+
+```json
+{"rows": ["..llllll..", ".l......l.", "l.eeeeee.l", "..eeeeee.."], "legend": {"l": 3, "e": 4},
+ "point": [9, 2, 18], "size": 10, "only": [2], "mirror": true}
+```
+
 `fit_to_views` refines the active object, a blockout from
 `carve_from_views` or `import_mesh`, so that its orthographic views match
 an approved views sheet, with colours from a palette. It follows the idea
@@ -1750,7 +1788,8 @@ file, so scripts do not have it. `froxel compare` is the same from the
 command line, `froxel carve` runs `carve_from_views` from a JSON file (depth
 maps included; relative `path`, `depthPath`, and `depth` paths are relative
 to it), and
-`froxel paint` runs `project_paint` from one on a copy of a `.vox`.
+`froxel paint` runs `project_paint` (or `decal` with `--tool decal`) from
+one on a copy of a `.vox`.
 
 ### Masking a concept
 
@@ -2050,6 +2089,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `carve_from_views` | Carve from views section: three view rows (on, side, Image…, crop, Flip, depth map…), Cells / px, Size, Origin (World), Background (Auto, Alpha, Key with tolerance), Colour from views or the active slot, Shell, Smooth, Depth (Hull or Box, Invert, Back, tolerance), Depth parts (Auto curve, Regions, Edge), Depth detail…, Intersect (Keep inside only), Carve |
 | `mode` `intersect` | Intersect section: Shape (Box, Ellipsoid, Rounded box with Radius) inscribed in the selection's box, Keep inside |
 | `project_paint` | Paint from view section: View, Flip, Image…, Crop, Background, Scale (Fit box or Cells / px), Box origin and size, Depth, Normal limit, Only, Colour from image or the active slot, Mirror, Paint |
+| `decal` | Decal section: Image…, Flip, Crop, Background, Point (At selection, World), Up, Size, Depth, Reach, Normal limit, Only, Colour from image or the active slot, Mirror, Lay decal |
 | `compare_silhouette` | Compare silhouette section: Concept Image…, Crop, Background, Flip, Exclude (colours and tolerance), Flood (and its step), Mask (…, Invert), Erase (one rectangle per line), Largest only, Camera (Viewport, Game, Front, Left, Top), Align (Fit, Height, Width), Compare; the overlay shows in the viewport's bottom-right corner until Hide overlay; MCP `compare_silhouette` over the control port shows it there too |
 | `import_mesh` | File > Import Mesh… and the Import mesh section: File, Size, Voxel, or Scale, File is Z-up, Rotation, Position, Anchor, Solid, Parity, or Shell, Texture or Vertex colour, Slots, New slots, Tolerance, Mode, New object |
 | `carve` | Remove mode with Box, Generator, or Tube |

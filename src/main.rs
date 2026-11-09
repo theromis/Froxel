@@ -715,7 +715,7 @@ usage: froxel [--control PORT] [--bridge PORT] [file.vox]
        froxel export --input <file.vox> --output <file.glb>
        froxel bake-scene --scene <scene.json> --output <file.glb> (--help for its format)
        froxel carve --views <views.json> --out <file.vox> (--help for its flags)
-       froxel paint --args <paint.json> --input <base.vox> --out <file.vox> (--help for its flags)
+       froxel paint --args <paint.json> --input <base.vox> --out <file.vox> [--tool project_paint|decal] (--help for its flags)
        froxel fit --args <fit.json> --input <base.vox> --out <file.vox> (--help for its flags)
        froxel compare --input <file.vox> --concept <concept.png> --out <overlay.png> (--help for its flags)
        froxel import --mesh <file.glb|.obj> --output <file.vox> (--help for its flags)

@@ -111,7 +111,13 @@ off the flat views.
    steep sides alone so they get no streaks, and `only` keeps other slots
    (the eyes, the belly) as they are. With the `origin` and
    `cellsPerPixel` that carved the form, the same crop lands on the same
-   cells.
+   cells. A feature on a curved part (an eye, a mouth, a nostril, a badge)
+   is a `decal`, not a projection: it lays the picture onto the surface
+   around a `point` (or a `ray` from the camera), `size` cells across along
+   the surface with `up` upright, so it keeps its shape where a front
+   projection would smear it sideways on the cheek. `mirror: true` lays the
+   mirrored eye on the other side in the same call; `missed` in the reply
+   says whether the picture ran off the surface.
 5. **Fit it to the views.** `fit_to_views` takes the same crops (front,
    side, top, back) and refines the blockout, whether it came from
    `carve_from_views` or from `import_mesh`, so that its orthographic views

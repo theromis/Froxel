@@ -1231,16 +1231,22 @@ fn carve_args(
     Ok(Some((input, output, params)))
 }
 
-/// `froxel paint`: MCP `project_paint` from a JSON file of its arguments,
-/// on a copy of a `.vox`.
+/// The paint tools `froxel paint --tool` runs, by MCP name.
+const PAINT_TOOLS: &[(&str, &str)] = &[
+    ("project_paint", "voxel.project_paint"),
+    ("decal", "voxel.decal"),
+];
+
+/// `froxel paint`: MCP `project_paint` (or another paint tool, `--tool`)
+/// from a JSON file of its arguments, on a copy of a `.vox`.
 pub fn paint(args: &[String]) -> i32 {
     match paint_args(args) {
         Ok(None) => 0,
-        Ok(Some((input, output, params))) => {
+        Ok(Some((input, output, params, method))) => {
             let mut session = Session::new();
             let done = session
                 .open_vox(&input)
-                .and_then(|()| crate::remote::apply(&mut session, "voxel.project_paint", &params))
+                .and_then(|()| crate::remote::apply(&mut session, method, &params))
                 .and_then(|reply| {
                     session.write_vox(&output)?;
                     Ok(reply)
@@ -1248,12 +1254,11 @@ pub fn paint(args: &[String]) -> i32 {
             match done {
                 Ok(reply) => {
                     eprintln!(
-                        "wrote {} ({} cells painted, {} changed, grid {}, {} steep rays)",
+                        "wrote {} ({} cells painted, {} changed, grid {})",
                         output.display(),
                         reply["cells"],
                         reply["changed"],
                         reply["grid"],
-                        reply["steep"]
                     );
                     0
                 }
@@ -1271,18 +1276,27 @@ pub fn paint(args: &[String]) -> i32 {
 }
 
 const PAINT_HELP: &str = "\
-usage: froxel paint --args <paint.json> --input <base.vox> --out <file.vox>
+usage: froxel paint --args <paint.json> --input <base.vox> --out <file.vox> [--tool <name>]
 
-Recolours the active object's visible surface from one image projected
-along a view, as MCP project_paint does, and saves the .vox. Cells are never
-added or removed. paint.json holds that tool's arguments: {view | yaw +
-pitch, path, crop, background, tolerance, flip, cellsPerPixel | imageSize,
-origin, size, palette | slots, coverage, depth, normalLimit, only, mirror}.
+Recolours the active object's surface with one MCP paint tool and saves the
+.vox. Cells are never added or removed. paint.json holds that tool's
+arguments. --tool picks it:
+  project_paint (default)  one image projected along a view: {view | yaw +
+      pitch, path, crop, background, tolerance, flip, cellsPerPixel |
+      imageSize, origin, size, palette | slots, coverage, depth,
+      normalLimit, only, mirror}
+  decal  one picture laid onto the curved surface around a point, keeping
+      its size and shape: {point | ray {origin, direction}, size, up, path,
+      crop, background, tolerance, flip, palette | slots, coverage, depth,
+      reach, normalLimit, only, mirror}
 mirror (true, an axis, or {axis, at}) paints both sides of a plane. A
 relative path is relative to paint.json.";
 
-fn paint_args(args: &[String]) -> Result<Option<(PathBuf, PathBuf, serde_json::Value)>, String> {
+type PaintArgs = (PathBuf, PathBuf, serde_json::Value, &'static str);
+
+fn paint_args(args: &[String]) -> Result<Option<PaintArgs>, String> {
     let (mut file, mut output, mut input) = (None, None, None);
+    let mut method = "voxel.project_paint";
     let mut index = 0;
     while index < args.len() {
         let value = |index: &mut usize| -> Result<String, String> {
@@ -1299,6 +1313,16 @@ fn paint_args(args: &[String]) -> Result<Option<(PathBuf, PathBuf, serde_json::V
             "--args" => file = Some(PathBuf::from(value(&mut index)?)),
             "--out" | "--output" => output = Some(PathBuf::from(value(&mut index)?)),
             "--input" => input = Some(PathBuf::from(value(&mut index)?)),
+            "--tool" => {
+                let name = value(&mut index)?;
+                method = PAINT_TOOLS
+                    .iter()
+                    .find(|(tool, _)| *tool == name)
+                    .map(|(_, method)| *method)
+                    .ok_or_else(|| {
+                        format!("--tool must be project_paint or decal, not `{name}`")
+                    })?;
+            }
             other => return Err(format!("unknown argument `{other}`\n\n{PAINT_HELP}")),
         }
         index += 1;
@@ -1316,7 +1340,7 @@ fn paint_args(args: &[String]) -> Result<Option<(PathBuf, PathBuf, serde_json::V
             params["path"] = serde_json::json!(base.join(path).display().to_string());
         }
     }
-    Ok(Some((input, output, params)))
+    Ok(Some((input, output, params, method)))
 }
 
 /// `froxel fit`: MCP `fit_to_views` from a JSON file of its arguments, on

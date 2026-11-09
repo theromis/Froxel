@@ -283,6 +283,7 @@ pub(crate) const MIRROR_METHODS: &[&str] = &[
     "voxel.recolor",
     "voxel.surface_stroke",
     "voxel.project_paint",
+    "voxel.decal",
 ];
 
 /// The schema property of `mirror`.

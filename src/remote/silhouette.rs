@@ -275,6 +275,128 @@ pub(crate) fn paint_writes(
     Ok((writes, reply))
 }
 
+/// MCP handler `decal`: lay one picture onto the active object's surface
+/// around a point, one undo step.
+pub(super) fn decal(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let palette = session_palette(session);
+    let (writes, mut reply) = decal_writes(&session.active().cells, &palette, params, true)?;
+    let changed = session.write_cells(&writes)?;
+    reply.insert("changed".into(), json!(changed));
+    reply.insert("voxels".into(), json!(session.voxel_count()));
+    Ok(Value::Object(reply))
+}
+
+/// The writes of `decal` against `cells` and its reply. With `files` false
+/// (Rhai) the picture must be `rows`.
+pub(crate) fn decal_writes(
+    cells: &HashMap<Cell, u8>,
+    palette: &[[u8; 3]; 256],
+    params: &Value,
+    files: bool,
+) -> Result<(Writes, Map<String, Value>), String> {
+    let spec = decal_spec(params, files)?;
+    let mirror = super::edit::mirror_arg(cells, params)?;
+    let (writes, done, mirrored) = crate::tools::mirrored(cells, mirror, |cells| {
+        let done = crate::tools::decal(cells, &spec, palette)?;
+        let writes: Writes = done
+            .cells
+            .iter()
+            .map(|(cell, slot)| (cell.0, cell.1, cell.2, i32::from(*slot)))
+            .collect();
+        Ok((writes, done))
+    })?;
+    let mut reply = Map::new();
+    if mirror.is_some() {
+        reply.insert("mirrored".into(), json!(mirrored));
+    }
+    reply.insert("cells".into(), json!(writes.len()));
+    reply.insert(
+        "bounds".into(),
+        super::bounds_json(writes.iter().map(|w| (w.0, w.1, w.2))),
+    );
+    reply.insert(
+        "centre".into(),
+        json!([done.centre.0, done.centre.1, done.centre.2]),
+    );
+    reply.insert(
+        "normal".into(),
+        json!(done.normal.map(|c| (c * 1000.0).round() / 1000.0)),
+    );
+    reply.insert("grid".into(), json!(done.grid));
+    reply.insert("covered".into(), json!(done.covered));
+    reply.insert("missed".into(), json!(done.missed));
+    reply.insert("reached".into(), json!(done.reached));
+    Ok((writes, reply))
+}
+
+/// `[x, y, z]` of numbers.
+fn vec3_arg(value: &Value, what: &str) -> Result<[f64; 3], String> {
+    value
+        .as_array()
+        .filter(|items| items.len() == 3)
+        .and_then(|items| Some([items[0].as_f64()?, items[1].as_f64()?, items[2].as_f64()?]))
+        .ok_or_else(|| format!("{what} must be [x, y, z]"))
+}
+
+fn decal_spec(params: &Value, files: bool) -> Result<crate::tools::DecalSpec, String> {
+    use crate::tools::Target;
+    let target = match (params.get("point"), params.get("ray")) {
+        (Some(point), None) if !point.is_null() => Target::Point(vec3_arg(point, "point")?),
+        (None, Some(ray)) if !ray.is_null() => Target::Ray {
+            origin: vec3_arg(ray.get("origin").unwrap_or(&Value::Null), "ray origin")?,
+            direction: vec3_arg(
+                ray.get("direction").unwrap_or(&Value::Null),
+                "ray direction",
+            )?,
+        },
+        (Some(_), Some(_)) => return Err("pass point or ray, not both".into()),
+        _ => return Err("needs point [x, y, z] or ray {origin, direction}".into()),
+    };
+    let (width, height) = match params.get("size") {
+        Some(Value::Array(pair)) if pair.len() == 2 => (
+            pair[0]
+                .as_f64()
+                .ok_or("size must be cells across or [across, down]")?,
+            Some(
+                pair[1]
+                    .as_f64()
+                    .ok_or("size must be cells across or [across, down]")?,
+            ),
+        ),
+        Some(found) if found.is_number() => (found.as_f64().unwrap_or(0.0), None),
+        None | Some(Value::Null) => {
+            return Err("size is required: cells across, or [across, down]".into())
+        }
+        Some(_) => return Err("size must be cells across or [across, down]".into()),
+    };
+    let up = match params.get("up") {
+        None | Some(Value::Null) => [0.0, 0.0, 1.0],
+        Some(found) => vec3_arg(found, "up")?,
+    };
+    let whole = |key: &str, default: u32| -> Result<u32, String> {
+        match params.get(key) {
+            None | Some(Value::Null) => Ok(default),
+            Some(found) => found
+                .as_u64()
+                .map(|n| n.min(u64::from(u32::MAX)) as u32)
+                .ok_or_else(|| format!("{key} must be a whole number of cells")),
+        }
+    };
+    Ok(crate::tools::DecalSpec {
+        mask: view_mask(params, files, &mut HashMap::new())?,
+        target,
+        width,
+        height,
+        up,
+        colour: colour_arg(params)?,
+        coverage: opt_f64(params, "coverage")?.unwrap_or(0.5) as f32,
+        depth: whole("depth", 1)?,
+        reach: opt_f64(params, "reach")?.unwrap_or(8.0),
+        normal_limit: opt_f64(params, "normalLimit")?.unwrap_or(90.0),
+        only: slot_list(params, "only")?,
+    })
+}
+
 fn paint_spec(params: &Value, files: bool) -> Result<crate::tools::PaintSpec, String> {
     use crate::tools::Toward;
     let toward = match opt_str(params, "view")? {
