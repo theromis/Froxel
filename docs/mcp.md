@@ -256,8 +256,16 @@ that already hold the requested index are not an undo step.
 By default every fill writes every cell inside its shape, empty ones
 included. `mode` changes that on `fill_box`, `fill_ellipsoid`,
 `fill_rounded_box`, and `fill_tube`: `replace` (the default) writes every
-cell, `empty` writes only empty cells so existing detail stays, and `paint`
-recolours only cells that are already solid.
+cell, `empty` writes only empty cells so existing detail stays, `paint`
+recolours only cells that are already solid, and `intersect` keeps only the
+object's solid cells inside the shape, as they are, and erases every other
+solid cell (`palette` is not needed then): a boxy visual hull cut to an
+ellipsoid dome, or a blockout trimmed to a rounded box. `intersect` never
+adds a cell, so a shape larger than the object changes nothing.
+
+```json
+{"x0": 0, "y0": 0, "z0": -9, "x1": 21, "y1": 27, "z1": 8, "mode": "intersect"}
+```
 `fill_ellipsoid` and `fill_rounded_box` use that same inclusive box. A cell
 is solid when its centre lies inside the shape. The ellipsoid is centred on
 the box and touches the middle of each face. `fill_rounded_box` measures
@@ -1450,7 +1458,10 @@ corner is `origin` (default `[0, 0, 0]`).
 
 The hull is the outer limit of the form: a concave part (the gap between
 two legs seen from the side) stays filled until `carve` cuts it. Shape it
-from there with `carve`, `fill_tube`, `smooth`, and `set_voxels`.
+from there with `carve`, `fill_tube`, `smooth`, and `set_voxels`. `mode`
+`intersect` turns the call around: nothing is filled, and the object's solid
+cells outside the hull are erased, so an existing form (a dome, an imported
+mesh) is cut to the views and keeps its colours.
 
 `project_paint` recolours the surface one view sees from a single image: a
 turtle shell's plates from the top view, face markings from the front. It
@@ -1710,7 +1721,8 @@ command line, with `--replace`.
 
 Every tool that edits or writes the document has a place in the editor
 window, and the two share one code path. The window's Add, Remove, and
-Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
+Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
+`intersect` is the Intersect section.
 
 | Tool | Editor |
 |---|---|
@@ -1723,7 +1735,8 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `fill_tube` | Tube tool: drag from the start radius to the end radius; Chain adds a point per drag and Smooth curves through them until Finish; Flatten, Roll, and Blade shape it; Solid, Rings, Stripes, or Random with a second slot |
 | `sweep` | Sweep section: Points (one per line, Point at selection adds the selection's centre), Smooth, Rectangle (Width, Height, Radius) or Polygon, Palettes, Bands, Rings, or Random, Period, Mode, Seed |
 | `trim_outline` | Trim section: Outline (one point per line, Point at selection adds the selection's centre), Smooth, Inset, Only, New skin, Slot, Thickness; Trim inside the selection's box or on the whole object |
-| `carve_from_views` | Carve from views section: three view rows (on, side, Image…, crop, Flip), Cells / px, Size, Origin, Background (Auto, Alpha, Key with tolerance), Colour from views or the active slot, Shell, Smooth, Carve |
+| `carve_from_views` | Carve from views section: three view rows (on, side, Image…, crop, Flip), Cells / px, Size, Origin (World), Background (Auto, Alpha, Key with tolerance), Colour from views or the active slot, Shell, Smooth, Intersect (Keep inside only), Carve |
+| `mode` `intersect` | Intersect section: Shape (Box, Ellipsoid, Rounded box with Radius) inscribed in the selection's box, Keep inside |
 | `project_paint` | Paint from view section: View, Flip, Image…, Crop, Background, Scale (Fit box or Cells / px), Box origin and size, Depth, Normal limit, Only, Colour from image or the active slot, Paint |
 | `compare_silhouette` | Compare silhouette section: Concept Image…, Crop, Background, Flip, Camera (Viewport, Game, Front, Left, Top), Align (Fit, Height, Width), Compare; the overlay shows in the viewport's bottom-right corner until Hide overlay; MCP `compare_silhouette` over the control port shows it there too |
 | `import_mesh` | File > Import Mesh… and the Import mesh section: File, Size, Voxel, or Scale, File is Z-up, Rotation, Position, Anchor, Solid or Shell, Texture or Vertex colour, Slots, New slots, Tolerance, Mode, New object |

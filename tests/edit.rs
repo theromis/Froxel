@@ -530,3 +530,126 @@ fn clear_object_runs_from_a_script_a_batch_and_the_panel() {
     session.clear_from_panel();
     assert!(session.objects[0].cells.is_empty(), "{}", session.status);
 }
+
+/// A solid 8 x 8 x 8 cube of slot 3 in a fresh session.
+fn cube() -> Session {
+    let mut session = Session::new();
+    session.replace_empty();
+    apply(
+        &mut session,
+        "voxel.fill",
+        &json!({"x0": 0, "y0": 0, "z0": 0, "x1": 7, "y1": 7, "z1": 7, "palette": 3}),
+    )
+    .unwrap();
+    session
+}
+
+#[test]
+fn intersect_keeps_only_the_cells_inside_the_shape() {
+    let mut session = cube();
+    // A dome: the ellipsoid of a box twice the cube's height, sunk to its base.
+    let reply = apply(
+        &mut session,
+        "voxel.ellipsoid",
+        &json!({"x0": 0, "y0": 0, "z0": -8, "x1": 7, "y1": 7, "z1": 7, "mode": "intersect"}),
+    )
+    .unwrap();
+    let removed = reply["changed"].as_i64().unwrap();
+    assert!(removed > 0 && removed < 512, "{removed}");
+    let cells = &session.objects[0].cells;
+    assert!(cells.contains_key(&(3, 3, 7)));
+    assert!(!cells.contains_key(&(0, 0, 7)));
+    assert!(
+        cells.values().all(|slot| *slot == 3),
+        "no cell is repainted"
+    );
+    // Nothing is added: a box larger than the object keeps all of it.
+    let before = cells.len();
+    let reply = apply(
+        &mut session,
+        "voxel.fill",
+        &json!({"x0": -4, "y0": -4, "z0": -4, "x1": 12, "y1": 12, "z1": 12, "mode": "intersect"}),
+    )
+    .unwrap();
+    assert_eq!(reply["changed"], 0);
+    assert_eq!(session.objects[0].cells.len(), before);
+    // A rounded box and a tube, one undo step each.
+    apply(
+        &mut session,
+        "voxel.rounded",
+        &json!({"x0": 0, "y0": 0, "z0": 0, "x1": 7, "y1": 7, "z1": 3, "radius": 2, "mode": "intersect"}),
+    )
+    .unwrap();
+    assert!(session.objects[0].cells.keys().all(|c| c.2 <= 3));
+    apply(&mut session, "edit.undo", &json!({})).unwrap();
+    assert_eq!(session.objects[0].cells.len(), before);
+    apply(
+        &mut session,
+        "voxel.tube",
+        &json!({"points": [[3.5, 3.5, 0], [3.5, 3.5, 7]], "radius": 2, "mode": "intersect"}),
+    )
+    .unwrap();
+    let cells = &session.objects[0].cells;
+    assert!(cells
+        .keys()
+        .all(|c| (c.0 - 3).abs() <= 2 && (c.1 - 3).abs() <= 2));
+    // Tools that only add refuse it.
+    let err = apply(
+        &mut session,
+        "voxel.loft",
+        &json!({"points": [[0, 0, 0], [4, 0, 0]], "radius": 1, "palette": 2, "mode": "intersect"}),
+    )
+    .unwrap_err();
+    assert!(err.contains("intersect"), "{err}");
+}
+
+#[test]
+fn carve_from_views_intersects_a_blockout_with_its_hull() {
+    let mut session = cube();
+    // Seen from the front, a triangle; from the side, a square.
+    let views = json!([
+        {"view": "front", "rows": ["...xx...", "..xxxx..", ".xxxxxx.", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"]},
+        {"view": "side", "rows": vec!["xxxxxxxx"; 8]}
+    ]);
+    let reply = apply(
+        &mut session,
+        "voxel.carve_from_views",
+        &json!({"views": views, "cellsPerPixel": 1, "palette": 5, "mode": "intersect"}),
+    )
+    .unwrap();
+    assert!(reply["changed"].as_i64().unwrap() > 0);
+    let cells = &session.objects[0].cells;
+    assert!(!cells.contains_key(&(0, 0, 7)));
+    assert!(cells.contains_key(&(3, 0, 7)));
+    assert!(cells.values().all(|slot| *slot == 3));
+}
+
+#[test]
+fn intersect_runs_from_a_script_and_the_panel() {
+    let mut session = cube();
+    session
+        .set_script(
+            0,
+            "fill_box(0, 0, 0, 7, 7, 7, 3);\nfill_ellipsoid(0, 0, 0, 7, 7, 7, 0, #{mode: \"intersect\"});",
+        )
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    let ellipsoid = session.objects[0].cells.len();
+    assert!(ellipsoid < 512 && ellipsoid > 200, "{ellipsoid}");
+    session.set_script(0, "").unwrap();
+    apply(
+        &mut session,
+        "voxel.fill",
+        &json!({"x0": 0, "y0": 0, "z0": 0, "x1": 7, "y1": 7, "z1": 7, "palette": 3}),
+    )
+    .unwrap();
+    session.picked = [(0, 0, 0), (7, 7, 7)].into_iter().collect();
+    session.edit.intersect.shape = 1;
+    session.intersect_from_panel();
+    assert_eq!(
+        session.objects[0].cells.len(),
+        ellipsoid,
+        "{}",
+        session.status
+    );
+}

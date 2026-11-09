@@ -61,7 +61,12 @@ off the flat views.
    top views as crops of the sheet and fills their visual hull: the cells
    every view covers. Give the cells per pixel, or the box `size` in cells
    at the game's scale (0.08 m voxels: a 4 m log is 50 cells long). Each
-   cell takes the colour of the nearest view, quantised to `slots`.
+   cell takes the colour of the nearest view, quantised to `slots`. Three
+   flat views give a boxy hull; round it with `fill_ellipsoid` (or
+   `fill_rounded_box`) in `mode` `intersect`, which keeps only the cells
+   inside the shape, so a turtle's shell becomes a dome in one call.
+   `carve_from_views` in `mode` `intersect` does the reverse: it cuts an
+   existing form to the views.
 2. **Measure it.** `compare_silhouette` draws the model from a camera and
    scores it against one concept view: `iou`, the share of the concept
    `missing`, and the model's `excess`, with an overlay PNG that shows

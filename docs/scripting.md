@@ -187,7 +187,14 @@ fill_tube(points, slot_or_slots, #{radius: 1.5, curve: "smooth"});
 
 Each returns the number of cells that changed. `mode` is `"replace"` (the
 default: every cell of the shape), `"empty"` (only empty cells, to add
-around existing detail), or `"paint"` (only solid cells, to recolour).
+around existing detail), `"paint"` (only solid cells, to recolour), or
+`"intersect"` (keep only the solid cells inside the shape, as they are, and
+erase the rest; the slot is not used).
+
+```rhai
+fill_box(0, 0, 0, 21, 27, 8, 3);
+fill_ellipsoid(0, 0, -9, 21, 27, 8, 0, #{mode: "intersect"}); // the box becomes a dome
+```
 Slot `0` erases. `fill_box` with seven arguments is the original fill: no
 options, no return value, and no cell cap.
 
@@ -478,7 +485,7 @@ or `bottom`; `flip: true` mirrors one. A view may also carry its own
 | `coverage` | `0.5` | Share of a cell's footprint that must be inked. |
 | `shell` | solid | Keep only cells within this many cells of the outside, 1..64. |
 | `smooth` | `0` | Smooth passes over the hull, 0..64. |
-| `mode` | `"replace"` | `"empty"` adds only into empty cells; `"paint"` recolours solid ones. |
+| `mode` | `"replace"` | `"empty"` adds only into empty cells; `"paint"` recolours solid ones; `"intersect"` keeps only the object's cells inside the hull and erases the rest. |
 
 A view smaller than the box is centred across and stands on the box's
 bottom. Each cell takes the colour of the view whose visible surface is

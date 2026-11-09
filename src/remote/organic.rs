@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use serde_json::{json, Map, Value};
 
 use super::stone::Writes;
-use super::{box_corners, fill_mode, opt_f64, opt_str, req_i32, slot_list, FillMode};
+use super::{add_mode, box_corners, opt_f64, opt_str, req_i32, slot_list, FillMode};
 use crate::state::{Cell, Session};
 
 /// An organic tool, by its `voxel.*` method.
@@ -358,13 +358,14 @@ fn loft_writes(cells: &HashMap<Cell, u8>, params: &Value) -> Result<(Writes, usi
             ))
         }
     };
-    let mode = fill_mode(params)?;
+    let mode = add_mode(params)?;
     let lofted = crate::tools::loft(&points, curve, caps, seed)?;
     let length = crate::tools::loft_length(&points, curve);
     let count = lofted.len();
     let writes = lofted
         .iter()
         .filter(|c| match mode {
+            FillMode::Intersect => unreachable!("add_mode refuses intersect"),
             FillMode::Replace => true,
             FillMode::Empty => !cells.contains_key(&c.cell),
             FillMode::Paint => cells.contains_key(&c.cell),

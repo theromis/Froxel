@@ -13,7 +13,7 @@ use std::path::Path;
 use serde_json::{json, Map, Value};
 
 use super::stone::Writes;
-use super::{fill_mode, opt_bool, opt_f64, opt_str, FillMode};
+use super::{fill_mode, intersect_writes, opt_bool, opt_f64, opt_str, FillMode};
 use crate::state::{Cell, Session};
 use crate::tools::{Background, CarveSpec, Colour, Crop, Ink, Mask, Scale, Side, View};
 
@@ -43,16 +43,22 @@ pub(crate) fn hull_writes(
     let spec = carve_spec(params, files)?;
     let mode = fill_mode(params)?;
     let carved = crate::tools::carve_from_views(&spec, palette)?;
-    let writes: Writes = carved
-        .cells
-        .iter()
-        .filter(|(cell, _)| match mode {
-            FillMode::Replace => true,
-            FillMode::Empty => !cells.contains_key(cell),
-            FillMode::Paint => cells.contains_key(cell),
-        })
-        .map(|(cell, slot)| (cell.0, cell.1, cell.2, i32::from(*slot)))
-        .collect();
+    let writes: Writes = if mode == FillMode::Intersect {
+        let inside: std::collections::HashSet<Cell> =
+            carved.cells.iter().map(|(cell, _)| *cell).collect();
+        intersect_writes(cells, &inside)
+    } else {
+        carved
+            .cells
+            .iter()
+            .filter(|(cell, _)| match mode {
+                FillMode::Replace | FillMode::Intersect => true,
+                FillMode::Empty => !cells.contains_key(cell),
+                FillMode::Paint => cells.contains_key(cell),
+            })
+            .map(|(cell, slot)| (cell.0, cell.1, cell.2, i32::from(*slot)))
+            .collect()
+    };
     let mut reply = Map::new();
     reply.insert("cells".into(), json!(carved.cells.len()));
     reply.insert(

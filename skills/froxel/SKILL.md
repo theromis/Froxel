@@ -104,7 +104,11 @@ If the tools are missing, the server is not configured. Point the user to
    `carve_from_views`: the front, side, and top views as PNG crops of the
    sheet (`crop`, `cellsPerPixel` or a box `size`, a background rule) fill
    their visual hull, coloured from the nearest view. Do not copy cells from
-   the flat views by hand. The hull is the outer limit: carve the concave
+   the flat views by hand. To round the boxy hull, intersect it: `fill_ellipsoid`
+   (or `fill_rounded_box`, `fill_box`, `fill_tube`) with `mode: "intersect"`
+   keeps only the cells inside the shape (a dome over a shell), and
+   `carve_from_views` `mode: "intersect"` cuts an existing form to the
+   views. Do not erase the corners with many carves. The hull is the outer limit: carve the concave
    parts (gaps between legs, under a log) afterwards. Paint a pattern one
    view shows (a shell's plates from the top, face markings from the front)
    with ONE `project_paint` call: `view`, the image crop, `slots`, `depth`

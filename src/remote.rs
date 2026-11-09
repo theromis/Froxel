@@ -1932,6 +1932,10 @@ pub(crate) fn fill_writes(
     sculpt: Sculpt,
 ) -> Result<Vec<(i32, i32, i32, i32)>, String> {
     let mode = fill_mode(params)?;
+    if mode == FillMode::Intersect {
+        let inside: HashSet<Cell> = sculpt_cells(params, sculpt)?.into_iter().collect();
+        return Ok(intersect_writes(cells, &inside));
+    }
     let mut writes: Vec<(i32, i32, i32, i32)> = if sculpt == Sculpt::Tube {
         tube_writes(params)?
     } else {
@@ -2021,12 +2025,14 @@ fn shape_cells(params: &Value, rounded: bool) -> Result<Vec<Cell>, String> {
 }
 
 /// `mode` of a fill: `replace` writes every cell of the shape, `empty` only
-/// the empty ones, `paint` only the solid ones.
+/// the empty ones, `paint` only the solid ones, and `intersect` erases the
+/// solid cells outside the shape, keeping those inside as they are.
 #[derive(Clone, Copy, PartialEq)]
 enum FillMode {
     Replace,
     Empty,
     Paint,
+    Intersect,
 }
 
 fn fill_mode(params: &Value) -> Result<FillMode, String> {
@@ -2034,10 +2040,34 @@ fn fill_mode(params: &Value) -> Result<FillMode, String> {
         None | Some("replace") => Ok(FillMode::Replace),
         Some("empty") => Ok(FillMode::Empty),
         Some("paint") => Ok(FillMode::Paint),
+        Some("intersect") => Ok(FillMode::Intersect),
         Some(other) => Err(format!(
-            "mode must be replace, empty, or paint, not `{other}`"
+            "mode must be replace, empty, paint, or intersect, not `{other}`"
         )),
     }
+}
+
+/// `mode` of a tool that takes replace, empty, or paint but not intersect.
+fn add_mode(params: &Value) -> Result<FillMode, String> {
+    match fill_mode(params)? {
+        FillMode::Intersect => Err("mode intersect is taken by fill_box, fill_ellipsoid, fill_rounded_box, fill_tube, and carve_from_views; this tool takes replace, empty, or paint".into()),
+        mode => Ok(mode),
+    }
+}
+
+/// `mode: "intersect"`: erase every solid cell of `cells` outside `inside`.
+/// The cells inside keep their slots; nothing is added.
+fn intersect_writes(
+    cells: &HashMap<Cell, u8>,
+    inside: &HashSet<Cell>,
+) -> Vec<(i32, i32, i32, i32)> {
+    let mut writes: Vec<_> = cells
+        .keys()
+        .filter(|cell| !inside.contains(cell))
+        .map(|&(x, y, z)| (x, y, z, 0))
+        .collect();
+    writes.sort_unstable();
+    writes
 }
 
 /// The tube in `params`: `points` of `[x, y, z]`, `[x, y, z, radius]`, or

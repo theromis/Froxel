@@ -82,6 +82,8 @@ pub struct CarvePanel {
     /// 0 is solid.
     pub shell: i32,
     pub smooth: i32,
+    /// MCP `mode: "intersect"`: keep the cells inside the hull only.
+    pub intersect: bool,
 }
 
 impl Default for CarvePanel {
@@ -103,6 +105,7 @@ impl Default for CarvePanel {
             colour_views: true,
             shell: 0,
             smooth: 0,
+            intersect: false,
         }
     }
 }
@@ -464,6 +467,9 @@ impl CarvePanel {
         }
         if self.smooth > 0 {
             args["smooth"] = json!(self.smooth);
+        }
+        if self.intersect {
+            args["mode"] = json!("intersect");
         }
         Ok(args)
     }

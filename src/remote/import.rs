@@ -11,7 +11,7 @@ use std::path::Path;
 
 use serde_json::{json, Map, Value};
 
-use super::{fill_mode, opt_bool, opt_f64, opt_str, req_str, slot_list, FillMode};
+use super::{add_mode, opt_bool, opt_f64, opt_str, req_str, slot_list, FillMode};
 use crate::import::{Anchor, Colors, Fit, Mesh, Up, Voxelize};
 use crate::state::{Cell, PaletteChange, Session};
 
@@ -116,7 +116,7 @@ pub(crate) fn import_plan(
     used: &[bool; 256],
 ) -> Result<ImportPlan, String> {
     let options = voxelize_options(params, up)?;
-    let mode = fill_mode(params)?;
+    let mode = add_mode(params)?;
     let slots = slot_list(params, "slots")?;
     let one = match params.get("palette") {
         None | Some(Value::Null) => None,
@@ -169,6 +169,7 @@ pub(crate) fn import_plan(
         .cells
         .iter()
         .filter(|(cell, _)| match mode {
+            FillMode::Intersect => unreachable!("add_mode refuses intersect"),
             FillMode::Replace => true,
             FillMode::Empty => !cells.contains_key(cell),
             FillMode::Paint => cells.contains_key(cell),

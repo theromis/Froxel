@@ -1,6 +1,7 @@
 // A pond turtle blocked out in one piece, then cut into its rig parts.
 // The body, head, flippers, and tail are filled together, as a
-// carve_from_views blockout would come out. recolor gives the underside
+// carve_from_views blockout would come out, and the boxy shell is cut to a
+// dome with mode intersect. recolor gives the underside
 // its own slot with no shape change, and split_object moves the cells
 // inside boxes into one object per part. Each cell keeps its world
 // position, so nothing is carved twice. On a rerun the parts exist:
@@ -26,7 +27,10 @@ let x1 = width - 1;
 let y1 = length - 1;
 
 // The blockout: shell, head, four flippers, and a tail, all in one object.
-fill_ellipsoid(0, 0, 0, x1, y1, height - 1, 3);
+// The shell starts as a box, as three flat views give it, and intersect
+// keeps only its cells inside a dome sunk to the box's floor.
+fill_box(0, 0, 0, x1, y1, height - 1, 3);
+fill_ellipsoid(0, 0, -height, x1, y1, height - 1, 0, #{mode: "intersect"});
 fill_ellipsoid(width / 2 - 3, y1 - 2, 1, width / 2 + 3, y1 + neck, 6, 2);
 for side in [-1, 1] {
     let x = if side < 0 { -flipper } else { x1 };

@@ -932,7 +932,7 @@ pub struct Session {
 
 pub(super) const IDLE: &str = "Right-drag orbits, scroll zooms, left-drag edits with the active tool. Render mode path-traces the scene.";
 
-pub use edit::{EditPanels, SplitInto, SplitSpec};
+pub use edit::{EditPanels, SplitInto, SplitSpec, INTERSECT_SHAPES};
 pub use foliage::{FoliagePanel, FOLIAGE_SOURCES};
 pub use geom::palette_slot_at;
 #[allow(unused_imports)] // keeps `crate::state::raycast` after the move into geom

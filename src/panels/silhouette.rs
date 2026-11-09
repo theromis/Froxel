@@ -120,6 +120,9 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
                 label(ui, "Smooth", "Smooth passes over the hull.");
                 ui.add(egui::DragValue::new(&mut panel.smooth).range(0..=crate::tools::MAX_CARVE_PASSES as i32));
                 ui.end_row();
+                label(ui, "Intersect", "MCP mode intersect: keep only the active object's cells inside the hull, as they are, and erase the rest, instead of filling the hull.");
+                ui.checkbox(&mut panel.intersect, "Keep inside only");
+                ui.end_row();
             });
         if ui
             .button("Carve")

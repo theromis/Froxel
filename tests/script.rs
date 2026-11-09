@@ -608,7 +608,7 @@ fn shape_calls_refuse_bad_options_and_coordinates() {
     assert!(err.contains("no option `mod`"), "{err}");
     let err = run_cells(r#"fill_box(0, 0, 0, 4, 4, 4, 1, #{mode: "under"});"#).unwrap_err();
     assert!(
-        err.contains("mode must be replace, empty, or paint"),
+        err.contains("mode must be replace, empty, paint, or intersect"),
         "{err}"
     );
     let err = run_cells(r#"carve_box(0, 0, 0, 600, 4, 4);"#).unwrap_err();

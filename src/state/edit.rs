@@ -349,11 +349,45 @@ impl RecolorPanel {
     }
 }
 
+/// The Intersect section: a shape over the selection's box that the active
+/// object is cut to.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct IntersectPanel {
+    /// 0 box, 1 ellipsoid, 2 rounded box.
+    pub shape: usize,
+    pub radius: f32,
+}
+
+/// The shapes of the Intersect section and their MCP methods.
+pub const INTERSECT_SHAPES: [(&str, &str); 3] = [
+    ("Box", "voxel.fill"),
+    ("Ellipsoid", "voxel.ellipsoid"),
+    ("Rounded box", "voxel.rounded"),
+];
+
+impl IntersectPanel {
+    /// The MCP arguments of the shape's fill with `mode: "intersect"` over
+    /// the inclusive box `min`..`max`, and its method.
+    pub(crate) fn args(&self, min: Cell, max: Cell) -> (&'static str, Value) {
+        let (_, method) = INTERSECT_SHAPES[self.shape.min(INTERSECT_SHAPES.len() - 1)];
+        let mut args = json!({
+            "x0": min.0, "y0": min.1, "z0": min.2,
+            "x1": max.0, "y1": max.1, "z1": max.2,
+            "mode": "intersect"
+        });
+        if method == "voxel.rounded" {
+            args["radius"] = json!(self.radius.max(0.0));
+        }
+        (method, args)
+    }
+}
+
 /// The fields of the Object edits sections.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct EditPanels {
     pub split: SplitPanel,
     pub recolor: RecolorPanel,
+    pub intersect: IntersectPanel,
 }
 
 impl Session {
@@ -373,6 +407,21 @@ impl Session {
                 "Recoloured {} of {} matching cells.",
                 reply["changed"], reply["matched"]
             ),
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// The Intersect button: the active object cut to the shape inscribed
+    /// in the selection's box (MCP fill with `mode: "intersect"`).
+    pub fn intersect_from_panel(&mut self) {
+        let Some((min, max)) = cell_bounds(self.picked.iter().copied()) else {
+            self.status = "Intersect: select the box the shape fills first.".into();
+            return;
+        };
+        let (method, args) = self.edit.intersect.args(min, max);
+        self.status = match crate::remote::apply(self, method, &args) {
+            Ok(reply) => format!("Kept the cells inside; {} removed.", reply["changed"]),
             Err(err) => err,
         };
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);

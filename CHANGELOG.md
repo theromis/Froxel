@@ -15,6 +15,14 @@
 
 ### Added
 
+- Intersect mode: `mode: "intersect"` on MCP `fill_box`, `fill_ellipsoid`,
+  `fill_rounded_box`, `fill_tube`, and `carve_from_views` (and their Rhai
+  options) keeps only the object's solid cells inside the shape and erases
+  the rest, as they are, so a boxy visual hull becomes an ellipsoid dome in
+  one call. The Intersect section cuts the active object to a box, an
+  ellipsoid, or a rounded box over the selection, and Carve from views has
+  Keep inside only. `palette` is no longer required by the box fills in that
+  mode; other tools refuse it.
 - Clear object: MCP `clear_object`, Rhai `clear_object()` and
   `clear_object(object)`, and the Clear object section empty an object of
   every cell in one undo step, with no 2000000-cell box limit; its name,

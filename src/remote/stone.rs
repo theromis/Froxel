@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use serde_json::{json, Map, Value};
 
 use super::{
-    box_corners, exclude_boxes, fill_mode, opt_f64, opt_str, range_pair, req_i32, slot_list,
+    add_mode, box_corners, exclude_boxes, opt_f64, opt_str, range_pair, req_i32, slot_list,
     FillMode,
 };
 use crate::state::{Cell, Session};
@@ -828,7 +828,7 @@ fn sweep_writes(cells: &HashMap<Cell, u8>, params: &Value) -> Result<(Writes, us
         ));
     }
     let seed = seed(params)?;
-    let mode = fill_mode(params)?;
+    let mode = add_mode(params)?;
     let erase = palettes == [0];
     if erase && mode == FillMode::Empty {
         return Err("palette 0 erases solid cells, so mode empty would change nothing".into());
@@ -839,6 +839,7 @@ fn sweep_writes(cells: &HashMap<Cell, u8>, params: &Value) -> Result<(Writes, us
     let writes = swept
         .into_iter()
         .filter(|c| match mode {
+            FillMode::Intersect => unreachable!("add_mode refuses intersect"),
             FillMode::Replace => !erase || cells.contains_key(&c.cell),
             FillMode::Empty => !cells.contains_key(&c.cell),
             FillMode::Paint => cells.contains_key(&c.cell),

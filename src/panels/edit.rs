@@ -1,11 +1,11 @@
 //! Inspector sections of the whole-object edits: Split object (MCP
-//! `split_object`), Clear object (MCP `clear_object`), and Recolor (MCP
-//! `recolor`).
+//! `split_object`), Clear object (MCP `clear_object`), Recolor (MCP
+//! `recolor`), and Intersect (the fills' `mode: "intersect"`).
 
 use egui::{RichText, Ui};
 
 use super::{section, DIM};
-use crate::state::{EditorMode, Session};
+use crate::state::{EditorMode, Session, INTERSECT_SHAPES};
 
 fn label(ui: &mut Ui, text: &str, tip: &str) {
     ui.label(RichText::new(text).small().color(DIM))
@@ -127,6 +127,42 @@ pub(super) fn clear(ui: &mut Ui, session: &mut Session) {
             .clicked()
         {
             session.clear_from_panel();
+        }
+    });
+}
+
+/// The fills' `mode: "intersect"`: the active object cut to a shape.
+pub(super) fn intersect(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Intersect");
+        let panel = &mut session.edit.intersect;
+        egui::Grid::new("intersect-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Shape", "The shape inscribed in the selection's box. The active object keeps its cells inside it, as they are, and loses the rest.");
+                egui::ComboBox::from_id_salt("intersect-shape")
+                    .width(110.0)
+                    .selected_text(INTERSECT_SHAPES[panel.shape.min(INTERSECT_SHAPES.len() - 1)].0)
+                    .show_ui(ui, |ui| {
+                        for (index, (name, _)) in INTERSECT_SHAPES.iter().enumerate() {
+                            ui.selectable_value(&mut panel.shape, index, *name);
+                        }
+                    });
+                ui.end_row();
+                if panel.shape == 2 {
+                    label(ui, "Radius", "Edge bevel of the rounded box in cells.");
+                    ui.add(egui::DragValue::new(&mut panel.radius).range(0.0..=64.0).speed(0.1));
+                    ui.end_row();
+                }
+            });
+        if ui
+            .button("Keep inside")
+            .on_hover_text("MCP fill_box, fill_ellipsoid, or fill_rounded_box with mode intersect over the selection's box: a boxy hull cut to a dome. One undo step.")
+            .clicked()
+        {
+            session.intersect_from_panel();
         }
     });
 }
