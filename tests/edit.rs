@@ -352,3 +352,84 @@ fn world_space_splits_and_runs_in_scripts() {
         .unwrap_err();
     assert!(err.contains("local cells"), "{err}");
 }
+
+fn slots(session: &Session, index: usize) -> [usize; 10] {
+    let mut counts = [0; 10];
+    for slot in session.objects[index].cells.values() {
+        counts[*slot as usize] += 1;
+    }
+    counts
+}
+
+#[test]
+fn recolor_swaps_slots_in_a_box_or_everywhere_without_a_shape_change() {
+    let mut session = bar([3, 0, 0]);
+    let reply = apply(&mut session, "voxel.recolor", &json!({"from": 3, "to": 7})).unwrap();
+    assert_eq!(
+        (reply["matched"].clone(), reply["changed"].clone()),
+        (json!(8), json!(8))
+    );
+    assert_eq!(slots(&session, 0)[7], 8);
+    // A map applies to the cells as they were, so it swaps.
+    apply(
+        &mut session,
+        "voxel.recolor",
+        &json!({"map": {"7": 5, "5": 7}}),
+    )
+    .unwrap();
+    assert_eq!((slots(&session, 0)[5], slots(&session, 0)[7]), (8, 8));
+    assert_eq!(session.objects[0].cells.get(&(0, 0, 0)), Some(&5));
+    // In a box (here in world cells) only.
+    let reply = apply(
+        &mut session,
+        "voxel.recolor",
+        &json!({"map": [[5, 9], [7, 9]], "x0": 3, "y0": 0, "z0": 0, "x1": 3, "y1": 1, "z1": 1, "space": "world"}),
+    )
+    .unwrap();
+    assert_eq!(reply["changed"], 4);
+    assert_eq!(session.voxel_count(), 16);
+    // One undo step.
+    apply(&mut session, "edit.undo", &json!({})).unwrap();
+    assert_eq!(slots(&session, 0)[9], 0);
+    // 0 erases; a slot mapped twice and a partial box are refused.
+    apply(&mut session, "voxel.recolor", &json!({"from": 7, "to": 0})).unwrap();
+    assert_eq!(session.voxel_count(), 8);
+    let err = apply(
+        &mut session,
+        "voxel.recolor",
+        &json!({"map": [[5, 1], [5, 2]]}),
+    )
+    .unwrap_err();
+    assert!(err.contains("twice"), "{err}");
+    let err = apply(
+        &mut session,
+        "voxel.recolor",
+        &json!({"from": 5, "to": 1, "x0": 0}),
+    )
+    .unwrap_err();
+    assert!(err.contains("all of x0"), "{err}");
+}
+
+#[test]
+fn recolor_runs_from_a_script_a_batch_and_the_panel() {
+    let mut session = bar([0, 0, 0]);
+    session
+        .set_script(
+            0,
+            "fill_box(0, 0, 0, 3, 0, 0, 3);\nlet r = recolor(3, 4, #{x0: 0, y0: 0, z0: 0, x1: 1, y1: 0, z1: 0});\nif r.changed != 2 { throw \"recolor\"; }\nrecolor([[4, 6]]);",
+        )
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    assert_eq!(slots(&session, 0)[6], 2);
+    assert_eq!(slots(&session, 0)[3], 2);
+    let reply = apply(
+        &mut session,
+        "voxel.batch",
+        &json!({"operations": [{"tool": "recolor", "arguments": {"from": 6, "to": 2}}]}),
+    )
+    .unwrap();
+    assert_eq!(reply["changed"], 2);
+    session.edit.recolor.map = "2>8, 3>8".into();
+    session.recolor_from_panel();
+    assert_eq!(slots(&session, 0)[8], 4, "{}", session.status);
+}

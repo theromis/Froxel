@@ -28,7 +28,9 @@ It is how agents should model living things through MCP.
    and knock off single-cell spikes. Then use `set_voxels` to cut, add, and
    recolour single cells: the
    face, eyes, fins, scales, colour breaks. One `set_voxels` call takes many
-   cells and is one undo step.
+   cells and is one undo step. To change a whole slot (the blockout's slot
+   to the shell's, the belly to a paler one), call `recolor` with `from` and
+   `to` or a `map`, in a box or everywhere: the shape stays as it is.
 4. **Repeat** steps 2 and 3. Render after every step and compare again. A
    first blockout is never the result.
 5. **Save.** `save_file`. Froxel saves retain world voxel and marker positions

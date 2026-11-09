@@ -1,5 +1,5 @@
 //! Inspector sections of the whole-object edits: Split object (MCP
-//! `split_object`).
+//! `split_object`) and Recolor (MCP `recolor`).
 
 use egui::{RichText, Ui};
 
@@ -84,6 +84,33 @@ pub(super) fn split(ui: &mut Ui, session: &mut Session) {
             .clicked()
         {
             session.split_from_panel();
+        }
+    });
+}
+
+/// MCP `recolor`: palette slots swapped with no shape change.
+pub(super) fn recolor(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Recolor");
+        egui::Grid::new("recolor-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Slots", "Pairs from>to, such as 3>5 4>6: every cell of slot 3 becomes 5. 0 as the target erases. The pairs apply at once, so 3>4 4>3 swaps.");
+                ui.add(
+                    egui::TextEdit::singleline(&mut session.edit.recolor.map)
+                        .hint_text("3>5")
+                        .desired_width(120.0),
+                );
+                ui.end_row();
+            });
+        if ui
+            .button("Recolor")
+            .on_hover_text("MCP recolor over the selection's box, or the whole object: the slots change, the shape does not. One undo step.")
+            .clicked()
+        {
+            session.recolor_from_panel();
         }
     });
 }

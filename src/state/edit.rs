@@ -272,13 +272,78 @@ pub(crate) fn slot_field(what: &str, text: &str) -> Result<Vec<u8>, String> {
         .collect()
 }
 
+/// The Recolor section: palette slot pairs `from>to`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct RecolorPanel {
+    /// Pairs such as `3>5 4>6`, separated by spaces or commas.
+    pub map: String,
+}
+
+impl RecolorPanel {
+    /// The MCP `recolor` arguments over the inclusive box `region`, or the
+    /// whole object.
+    pub(crate) fn args(&self, region: Option<(Cell, Cell)>) -> Result<Value, String> {
+        let mut pairs = Vec::new();
+        for part in self
+            .map
+            .split(|c: char| c == ',' || c.is_whitespace())
+            .filter(|part| !part.is_empty())
+        {
+            let (from, to) = part
+                .split_once('>')
+                .ok_or_else(|| format!("Recolor: `{part}` is not from>to, such as 3>5"))?;
+            let slot = |text: &str| {
+                text.trim()
+                    .parse::<u8>()
+                    .map_err(|_| format!("Recolor: `{text}` is not a slot 0..255"))
+            };
+            pairs.push([slot(from)?, slot(to)?]);
+        }
+        if pairs.is_empty() {
+            return Err("Recolor: give pairs from>to, such as 3>5".into());
+        }
+        let mut args = json!({"map": pairs});
+        if let Some((min, max)) = region {
+            for (key, value) in ["x0", "y0", "z0", "x1", "y1", "z1"]
+                .iter()
+                .zip([min.0, min.1, min.2, max.0, max.1, max.2])
+            {
+                args[*key] = json!(value);
+            }
+        }
+        Ok(args)
+    }
+}
+
 /// The fields of the Object edits sections.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct EditPanels {
     pub split: SplitPanel,
+    pub recolor: RecolorPanel,
 }
 
 impl Session {
+    /// The Recolor button: MCP `recolor` over the selection's box, or the
+    /// whole active object.
+    pub fn recolor_from_panel(&mut self) {
+        let region = cell_bounds(self.picked.iter().copied());
+        let args = match self.edit.recolor.args(region) {
+            Ok(args) => args,
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
+        self.status = match crate::remote::apply(self, "voxel.recolor", &args) {
+            Ok(reply) => format!(
+                "Recoloured {} of {} matching cells.",
+                reply["changed"], reply["matched"]
+            ),
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
     /// The Split object button: MCP `split_object` on the active object.
     pub fn split_from_panel(&mut self) {
         let args = match self.edit.split.args(self.selected) {

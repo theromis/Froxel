@@ -1,6 +1,6 @@
 //! The MCP shape tools in Rhai: `fill_ellipsoid`, `fill_rounded_box`,
-//! `fill_tube`, `fill_box` with a mode, `carve_*`, `smooth`, `break_end`,
-//! and `scatter`.
+//! `fill_tube`, `fill_box` with a mode, `carve_*`, `recolor`, `smooth`,
+//! `break_end`, and `scatter`.
 //!
 //! Each call turns its arguments into the MCP tool's arguments and runs the
 //! same parser and shape code (`remote::fill_writes`, `remote::carve_writes`,
@@ -24,6 +24,7 @@ const TUBE: &[&str] = &[
     "mode", "radius", "curve", "aspect", "roll", "profile", "pattern", "period", "sectors", "seed",
     "space",
 ];
+const RECOLOR: &[&str] = &["x0", "y0", "z0", "x1", "y1", "z1", "space"];
 const SMOOTH: &[&str] = &["iterations", "fillAt", "removeAt", "space"];
 const BREAK: &[&str] = &[
     "depth",
@@ -154,6 +155,35 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
         }
     }
 
+    for with_opts in [false, true] {
+        let state = scratch.clone();
+        let run = move |from: INT, to: INT, opts: &Map| -> Fallible<Map> {
+            let mut args = options(opts, RECOLOR, "recolor")?;
+            args.insert("from".into(), from.into());
+            args.insert("to".into(), to.into());
+            state.borrow_mut().recolor(args).map_err(runtime)
+        };
+        if with_opts {
+            engine.register_fn("recolor", move |from: INT, to: INT, opts: Map| {
+                run(from, to, &opts)
+            });
+        } else {
+            engine.register_fn("recolor", move |from: INT, to: INT| {
+                run(from, to, &Map::new())
+            });
+        }
+        let state = scratch.clone();
+        let run = move |pairs: Array, opts: &Map| -> Fallible<Map> {
+            let mut args = options(opts, RECOLOR, "recolor")?;
+            args.insert("map".into(), json(&Dynamic::from_array(pairs))?);
+            state.borrow_mut().recolor(args).map_err(runtime)
+        };
+        if with_opts {
+            engine.register_fn("recolor", move |pairs: Array, opts: Map| run(pairs, &opts));
+        } else {
+            engine.register_fn("recolor", move |pairs: Array| run(pairs, &Map::new()));
+        }
+    }
     for (name, shape) in [("carve_box", "box"), ("carve_ellipsoid", "ellipsoid")] {
         let state = scratch.clone();
         engine.register_fn(
@@ -340,6 +370,14 @@ impl Scratch {
         }
         .ok_or("space world needs an object of the document; an object this run creates takes local cells")?;
         Ok((remote::to_local(method, &args, offset)?, Some(offset)))
+    }
+
+    fn recolor(&mut self, args: Args) -> Result<Map, String> {
+        self.keep_going()?;
+        let (args, _) = self.localize("voxel.recolor", args)?;
+        let (writes, matched) = remote::recolor_writes(self.cells(), &args)?;
+        let changed = self.apply(&writes)?;
+        Ok(reply([("changed", changed), ("matched", matched as INT)]))
     }
 
     fn smooth(&mut self, args: Args) -> Result<Map, String> {

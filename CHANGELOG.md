@@ -15,6 +15,10 @@
 
 ### Added
 
+- Recolor: MCP `recolor`, Rhai `recolor(from, to, opts)` and
+  `recolor(pairs, opts)`, and the Recolor section replace one palette slot
+  with another, or a map of several (a swap included), in a box or the whole
+  object, in one undo step and with no shape change. It runs in `batch`.
 - World cells: `space: "world"` on MCP `get_voxel`, `set_voxel`,
   `set_voxels`, `get_voxels`, `fill_box`, `fill_ellipsoid`,
   `fill_rounded_box`, `fill_tube`, `carve`, `smooth`, `loft`, `brush`,

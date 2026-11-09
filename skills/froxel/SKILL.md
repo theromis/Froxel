@@ -23,7 +23,7 @@ If the tools are missing, the server is not configured. Point the user to
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` with its image as rows and a legend, and `marker`,
+  (`fill_tube`, `carve_*`, `recolor`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` with its image as rows and a legend, and `marker`,
   `collision_box`, `connector`, `collision_from_voxels`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `split_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -78,6 +78,10 @@ If the tools are missing, the server is not configured. Point the user to
   overwriting; `mode: "paint"` recolours only existing cells.
 - `set_voxels` takes `[x, y, z, palette]` rows, up to 200000 per call. Batch
   detail into few calls.
+- To swap palette slots with no shape change (a blockout slot to the shell
+  slot, two shades into one, a belly re-tinted), call `recolor` (`from`/`to`
+  or `map`, optional box): do not fake it with `weather` or a `mode: "paint"`
+  fill.
 - `batch` takes a list of `{tool, arguments}` editing calls (`fill_*`, `sweep`,
   `carve`, `set_voxels`, `set_palette`, the surface tools) and applies them
   in order as one undo step. Use it instead of many single calls: it is

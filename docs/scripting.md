@@ -238,6 +238,22 @@ removed. The shapes are those of the fills.
 carve_tube([[-1, 0, 4], [12, 1, 4]], #{radius: 2.5});
 ```
 
+`carve_box`, `carve_ellipsoid`, and `carve_rounded_box` also take a trailing
+map with `space` (see World cells).
+
+### Recolor
+
+```rhai
+let report = recolor(3, 6);                          // every cell of slot 3 becomes 6
+let report = recolor([[3, 6], [4, 6]], #{x0: 0, y0: 0, z0: 0, x1: 21, y1: 27, z1: 1});
+```
+
+MCP `recolor` on the object being written: cells of a mapped slot take the
+new slot, and the shape stays (a target of `0` erases). The pairs apply to
+the cells as they were, so `[[3, 4], [4, 3]]` swaps. Options are the box
+corners `x0`..`z1` (all six, or none for the whole object) and `space`. It
+returns `#{changed, matched}`.
+
 ### Smooth
 
 ```rhai

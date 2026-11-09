@@ -161,6 +161,8 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
                     ui.separator();
                     edit::split(ui, session);
                     ui.separator();
+                    edit::recolor(ui, session);
+                    ui.separator();
                     import::import(ui, session);
                     ui.separator();
                     stone::markers(ui, session);

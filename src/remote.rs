@@ -19,6 +19,7 @@ mod space;
 mod stone;
 pub(crate) use batch::{batch_items, batch_tool_names, MAX_BATCH_ITEMS};
 pub(crate) use collision::{collision_build, finish_reply as collision_reply};
+pub(crate) use edit::recolor_writes;
 pub(crate) use import::{
     import_plan, used_slots, DEFAULT_IMPORT_SIZE, DEFAULT_MAX_NEW_SLOTS, DEFAULT_TOLERANCE,
 };
@@ -881,6 +882,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "voxel.rounded" => sculpt_fill(session, &params, Sculpt::RoundedBox),
         "voxel.tube" => sculpt_fill(session, &params, Sculpt::Tube),
         "voxel.carve" => carve(session, &params),
+        "voxel.recolor" => edit::recolor(session, &params),
         "voxel.smooth" => smooth(session, &params),
         "voxel.break" => break_end(session, &params),
         "voxel.scatter" => scatter(session, &params),
@@ -1506,6 +1508,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("object.add", "name?, position?, size?, make_active?", "Empty object at a world position. Active unless make_active is false"),
     ("object.set", "index, name?, position?, hidden?", "Rename, move, or hide. position is world voxels; local cells stay put"),
     ("object.remove", "index", "Remove an object and its voxels. Later indices shift. The last object stays"),
+    ("voxel.recolor", "from + to | map, x0..z1?", "Replace palette slots of the active object's cells (one, or a map of several), in a box or everywhere, with no shape change. One undo step"),
     ("object.split", "boxes? | slots?, index?, invert?, copy?, into? | name?, makeActive?", "Move or copy the cells of an object inside boxes or of some slots into a new or existing object, keeping their world positions. One undo step"),
     ("object.mirror", "index, axis, name, position?, mirrorBones?", "Copy an object mirrored across x, y, or z. mirrorBones copies the bound subtree and swaps _l/_r"),
     ("edit.undo", "", "Undo the last edit"),

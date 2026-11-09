@@ -1,11 +1,14 @@
-//! MCP handlers of the whole-object edits: `split_object`.
+//! MCP handlers of the whole-object edits: `split_object` and `recolor`.
 //!
 //! Rhai records `split_object` as a document call and runs it through this
-//! same handler after its voxels are written.
+//! same handler after its voxels are written; its `recolor` runs
+//! [`recolor_writes`] on the object being written.
+
+use std::collections::HashMap;
 
 use serde_json::{json, Value};
 
-use super::{opt_bool, opt_str, slot_list};
+use super::{as_i32, box_corners, opt_bool, opt_str, slot_list};
 use crate::state::{Cell, Session, SplitInto, SplitSpec};
 
 /// Most boxes one `split_object` call takes.
@@ -132,6 +135,108 @@ pub(super) fn split_object(session: &mut Session, params: &Value) -> Result<Valu
         "bounds": super::bounds_json(session.objects[split.target].cells.keys().copied()),
         "activeObject": session.selected,
     }))
+}
+
+/// The slot map of `recolor`: `from` and `to`, or `map`, an object of
+/// `"from": to` or a list of `[from, to]` pairs. A slot maps once; `to` 0
+/// erases.
+pub(crate) fn recolor_map(params: &Value) -> Result<[Option<u8>; 256], String> {
+    let slot = |value: &Value, what: &str, low: i32| -> Result<u8, String> {
+        as_i32(value)
+            .filter(|slot| (low..=255).contains(slot))
+            .map(|slot| slot as u8)
+            .ok_or_else(|| format!("{what} must be a palette index {low}..255"))
+    };
+    let mut pairs = Vec::new();
+    match (params.get("from"), params.get("map")) {
+        (Some(_), Some(_)) => return Err("pass from and to, or map, not both".into()),
+        (Some(from), None) => {
+            let to = params.get("to").ok_or("to is required with from")?;
+            pairs.push((slot(from, "from", 1)?, slot(to, "to", 0)?));
+        }
+        (None, Some(Value::Object(map))) => {
+            for (key, to) in map {
+                let from: i32 = key
+                    .trim()
+                    .parse()
+                    .map_err(|_| format!("map key `{key}` is not a palette index"))?;
+                pairs.push((
+                    slot(&json!(from), "a map key", 1)?,
+                    slot(to, "a map value", 0)?,
+                ));
+            }
+        }
+        (None, Some(Value::Array(items))) => {
+            for item in items {
+                let pair = item
+                    .as_array()
+                    .filter(|pair| pair.len() == 2)
+                    .ok_or("map must be {\"from\": to} or a list of [from, to]")?;
+                pairs.push((slot(&pair[0], "from", 1)?, slot(&pair[1], "to", 0)?));
+            }
+        }
+        (None, Some(_)) => return Err("map must be {\"from\": to} or a list of [from, to]".into()),
+        (None, None) => return Err("pass from and to, or map".into()),
+    }
+    if pairs.is_empty() {
+        return Err("map is empty".into());
+    }
+    let mut table = [None; 256];
+    for (from, to) in pairs {
+        if table[from as usize].is_some_and(|before| before != to) {
+            return Err(format!("slot {from} is mapped twice"));
+        }
+        table[from as usize] = Some(to);
+    }
+    Ok(table)
+}
+
+/// The writes of `recolor` against `cells`: each solid cell whose slot is
+/// in the map takes its new slot, inside the inclusive box `x0..z1` when
+/// one is given. No shape changes unless a slot maps to 0. Also returns how
+/// many cells matched.
+pub(crate) fn recolor_writes(
+    cells: &HashMap<Cell, u8>,
+    params: &Value,
+) -> Result<(Vec<(i32, i32, i32, i32)>, usize), String> {
+    let table = recolor_map(params)?;
+    let corners = ["x0", "y0", "z0", "x1", "y1", "z1"];
+    let given = corners
+        .iter()
+        .filter(|key| params.get(**key).is_some())
+        .count();
+    let region = match given {
+        0 => None,
+        6 => Some(box_corners(params)?),
+        _ => {
+            return Err(
+                "pass all of x0, y0, z0, x1, y1, z1 for a box, or none for the whole object".into(),
+            )
+        }
+    };
+    let mut matched = 0;
+    let mut writes = Vec::new();
+    for (&(x, y, z), &slot) in cells {
+        if let Some((x0, y0, z0, x1, y1, z1)) = region {
+            if !((x0..=x1).contains(&x) && (y0..=y1).contains(&y) && (z0..=z1).contains(&z)) {
+                continue;
+            }
+        }
+        if let Some(to) = table[slot as usize] {
+            matched += 1;
+            if to != slot {
+                writes.push((x, y, z, i32::from(to)));
+            }
+        }
+    }
+    Ok((writes, matched))
+}
+
+/// MCP `recolor`: replace palette slots in the active object, one undo step.
+pub(super) fn recolor(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let (writes, matched) = recolor_writes(&session.active().cells, params)?;
+    let changed = session.write_cells(&writes)?;
+    Ok(json!({"matched": matched, "changed": changed, "voxels": session.voxel_count()}))
 }
 
 #[cfg(test)]
