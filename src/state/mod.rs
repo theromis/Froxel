@@ -631,6 +631,7 @@ impl UiRegion {
 mod dialog;
 mod document;
 mod drag;
+mod edit;
 mod files;
 mod foliage;
 mod geom;
@@ -787,6 +788,7 @@ pub struct Session {
     pub(crate) sculpt_stroke: Option<organic::SculptStroke>,
     /// Carve from views and Compare silhouette, and the overlay.
     pub silhouette: SilhouettePanels,
+    pub edit: EditPanels,
     /// The Import mesh panel.
     pub import: ImportPanel,
     /// Smooth: passes and the neighbour thresholds of MCP `smooth`.
@@ -930,6 +932,7 @@ pub struct Session {
 
 pub(super) const IDLE: &str = "Right-drag orbits, scroll zooms, left-drag edits with the active tool. Render mode path-traces the scene.";
 
+pub use edit::{EditPanels, SplitInto, SplitSpec};
 pub use foliage::{FoliagePanel, FOLIAGE_SOURCES};
 pub use geom::palette_slot_at;
 #[allow(unused_imports)] // keeps `crate::state::raycast` after the move into geom

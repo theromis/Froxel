@@ -156,6 +156,25 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
             record(&state, &ctx, "remove_object", "object.remove", params)
         },
     );
+    let state = scratch.clone();
+    engine.register_fn(
+        "split_object",
+        move |ctx: NativeCallContext, object: Dynamic, opts: Map| -> Fallible<()> {
+            let mut args = options(
+                &opts,
+                &["boxes", "slots", "invert", "copy", "into", "name"],
+                "split_object",
+            )?;
+            args.insert("index".into(), object_ref(&state, &object, false)?);
+            record(
+                &state,
+                &ctx,
+                "split_object",
+                "object.split",
+                Value::Object(args),
+            )
+        },
+    );
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |ctx: &NativeCallContext,

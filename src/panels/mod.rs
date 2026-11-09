@@ -159,6 +159,8 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
                     ui.separator();
                     silhouette::compare(ui, session);
                     ui.separator();
+                    edit::split(ui, session);
+                    ui.separator();
                     import::import(ui, session);
                     ui.separator();
                     stone::markers(ui, session);
@@ -599,6 +601,7 @@ pub(super) fn material_slider_i32(
     });
 }
 
+mod edit;
 mod foliage;
 mod import;
 mod organic;

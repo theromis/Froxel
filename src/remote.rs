@@ -9,6 +9,7 @@ use serde_json::{json, Map, Value};
 
 mod batch;
 mod collision;
+mod edit;
 mod foliage;
 mod import;
 mod markers;
@@ -1044,6 +1045,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
             session.remove_clip(&name)?;
             Ok(json!({"name": name}))
         }
+        "object.split" => edit::split_object(session, &params),
         "object.mirror" => {
             let index = req_i32(&params, "index")?;
             if index < 0 {
@@ -1472,6 +1474,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("object.add", "name?, position?, size?, make_active?", "Empty object at a world position. Active unless make_active is false"),
     ("object.set", "index, name?, position?, hidden?", "Rename, move, or hide. position is world voxels; local cells stay put"),
     ("object.remove", "index", "Remove an object and its voxels. Later indices shift. The last object stays"),
+    ("object.split", "boxes? | slots?, index?, invert?, copy?, into? | name?, makeActive?", "Move or copy the cells of an object inside boxes or of some slots into a new or existing object, keeping their world positions. One undo step"),
     ("object.mirror", "index, axis, name, position?, mirrorBones?", "Copy an object mirrored across x, y, or z. mirrorBones copies the bound subtree and swaps _l/_r"),
     ("edit.undo", "", "Undo the last edit"),
     ("edit.redo", "", "Redo the last undone edit"),

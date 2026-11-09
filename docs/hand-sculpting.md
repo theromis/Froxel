@@ -427,3 +427,15 @@ only `width` (up to 4096) and the height follows its shape.
 
 **Mirror.** Sculpt one side of a paired part and copy it with
 `mirror_object`; `mirrorBones` copies its bones too.
+
+**Split into rig parts.** A creature carved in one piece from its views
+(`carve_from_views`) is cut into its parts with `split_object`: the cells
+inside boxes, or of some slots, move into a new object (or `into` an
+existing one) and keep their world positions, so nothing needs carving
+twice. Cut the head, the flippers, and the tail off the body, then bind
+each part to its bone.
+
+```
+split_object   index="turtle" boxes=[[0, 30, 6, 23, 41, 20]] name="head"
+split_object   index="turtle" boxes=[[16, -6, 2, 23, 0, 8]] name="tail"
+```

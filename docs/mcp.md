@@ -190,6 +190,7 @@ tracer. A file with no scene graph still loads its first model.
 | `set_object` | `index` | Optional `name`, world `position`, `hidden`. Moving changes the scene-graph translation, so voxels move in the world. One undo step |
 | `remove_object` | `index` | Remove the object and its voxels. Its bone stays; the binding goes. Later indices decrease by one. Refuses the last object. One undo step |
 | `mirror_object` | `index`, `axis`, `name` | Copy the object mirrored across `x`, `y`, or `z` through the origin. Optional world `position` and `mirrorBones` (default false). One undo step |
+| `split_object` | `boxes` or `slots` | Move (or `copy`) the cells of an object (`index`, an index or a name; default the active one) inside one or more inclusive local boxes, or of some `slots`, or both, into a new object (`name`) or an existing one (`into`), each cell keeping its world position. `invert` takes the rest. `makeActive` selects the target. Replies with `target`, `name`, `created`, `cells`, `replaced`, `position`, `sourceVoxels`, `targetVoxels`, `bounds`. One undo step |
 | `add_bone` | `name`, `pivot` | Add a bone. `pivot` is a fractional world coordinate `[x, y, z]`. Optional `parent` (omit or null for a root) and `rotation` quaternion `[x, y, z, w]` (default identity `[0, 0, 0, 1]`). One undo step |
 | `set_bone` | `name` | Optional `parent` (null makes a root; omit leaves it), world `pivot`, `rotation` `[x, y, z, w]`, `rename`. One undo step |
 | `remove_bone` | `name` | Delete a bone. Objects bound to it become unbound. Children keep its parent. One undo step |
@@ -1181,6 +1182,28 @@ limb remains on the spine. The pivot's component on the axis is negated
 axes that are not the mirror axis. The new bone name must not already
 exist. Objects and bones are one undo step.
 
+`split_object` cuts one object into parts: a `carve_from_views` blockout of
+a creature into its head, flippers, and tail, without carving each part
+again and erasing its complement. It takes the cells of the source
+(`index`, an index or a name, default the active object) that lie inside
+any of `boxes` (one inclusive box `[x0, y0, z0, x1, y1, z1]` in the source's
+local cells, or a list of up to 64) and hold one of `slots` (one index or a
+list; omit for every slot). Give `boxes`, `slots`, or both; `invert` takes
+every other cell instead. The cells move, or stay in the source too with
+`copy`. Without `into` they go into a new object named `name` (default the
+source's name with `_part`) at the source's world position, so the part's
+local cells are the source's local cells. With `into` (an index or a name)
+they go into that object at its own offset, `world - position`, replacing
+any cell it holds there (`replaced` counts the changed ones). Either way
+each cell keeps its world cell. A selection with no cell, a target that is
+the source, or a target longer than 256 on an axis is refused before
+anything changes. The new object is not active unless `makeActive` is true.
+
+```json
+{"index": "turtle", "boxes": [[0, 30, 6, 23, 41, 20]], "name": "head"}
+{"index": "turtle", "boxes": [[-14, 6, 4, -1, 20, 9], [24, 6, 4, 37, 20, 9]], "name": "flippers_front"}
+```
+
 `set_pose` replaces the window preview. `pose` maps a bone name to a
 quaternion `[x, y, z, w]` in voxel space, or to an object with optional
 `rotation` (that quaternion) and `scale` `[x, y, z]` (each 0 to 16, default
@@ -1583,6 +1606,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`.
 | `set_palette` | Palette dock (colour and alpha) and the Material section (motion) |
 | `set_active_object`, `add_object`, `set_object`, `remove_object` | Objects tree and the Object inspector |
 | `mirror_object` | Object inspector: Mirror X, Y, Z and Mirror bones too |
+| `split_object` | Split object section: Boxes (one per line), Slots, Invert, Copy, Into (New object with a Name, or an existing object), Split |
 | `add_bone`, `set_bone`, `remove_bone`, `bind_object`, `list_bones` | Bones tree, the Bone inspector, the Object inspector's Bone |
 | `set_pose`, `clear_pose` | Pose section |
 | `add_clip`, `set_clip_keys`, `list_clips`, `remove_clip` | Clips section: Add, Key pose at a time, Delete |

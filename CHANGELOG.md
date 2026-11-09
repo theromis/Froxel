@@ -15,6 +15,11 @@
 
 ### Added
 
+- Split object: MCP `split_object`, Rhai `split_object(object, opts)`, and
+  the Split object section move (or copy) the cells of an object inside one
+  or more boxes, or of some slots, into a new or an existing object, each
+  keeping its world position, in one undo step: one `carve_from_views`
+  blockout is cut into its rig parts. `invert` takes the rest.
 - Baked light: the export option `bake` (MCP `export_mesh`, `export_models`,
   `export_variants`; `--bake` on `froxel export`, `variants`, `preview`, and
   `bridge`; Bake light in the Export panel) paints occlusion from real rays

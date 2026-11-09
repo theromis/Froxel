@@ -1127,7 +1127,7 @@ fn clip_name(name: &str) -> Result<String, String> {
     Ok(name.to_string())
 }
 
-fn check_object_name(name: &str) -> Result<String, String> {
+pub(super) fn check_object_name(name: &str) -> Result<String, String> {
     let name = name.trim();
     if name.is_empty() {
         return Err("name is empty".into());

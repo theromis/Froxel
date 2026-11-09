@@ -84,6 +84,7 @@ impl Session {
             sculpt: SculptBrush::default(),
             sculpt_stroke: None,
             silhouette: SilhouettePanels::default(),
+            edit: EditPanels::default(),
             import: ImportPanel::default(),
             smooth_iterations: 1,
             smooth_fill_at: 17,

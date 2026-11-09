@@ -912,6 +912,8 @@ set_object(object, #{name: "arm_r", position: [0, 0, 4], hidden: false});
 remove_object(object);                       // not the script's own object
 mirror_object(object, "x", "arm_l");         // axis "x", "y", or "z"
 mirror_object(object, "x", "arm_l", #{position: [-6, 0, 0], mirrorBones: true});
+split_object(object, #{boxes: [[0, 30, 6, 23, 41, 20]], name: "head"});
+split_object(object, #{slots: [6], into: "shell", copy: false, invert: false});
 
 add_bone(name, pivot);                       // pivot [x, y, z], fractional world cells
 add_bone(name, pivot, #{parent: "hip", rotation: [0.0, 0.0, 0.0, 1.0]});
@@ -936,7 +938,7 @@ They change the document, not the scratch objects, so the run records them
 and applies them after the script finishes: first the voxels, `set_slot`,
 and `set_motion`, then these calls in the order the script made them,
 through the MCP tools themselves, all in the same undo step. So
-`mirror_object` copies an object's final voxels, an object made with
+`mirror_object` copies and `split_object` cuts an object's final voxels, an object made with
 `object("name")` can be named in them, and an index means the object at
 that index when the call runs, after any earlier `remove_object`. A call
 that fails stops the regenerate: the error names the script line and the
@@ -947,7 +949,9 @@ these calls.
 read the document as it was when the run started; a call recorded earlier
 in the same run is not visible to them. Regenerate replays the calls on the
 current document, and `add_bone`, `add_clip`, and `mirror_object` fail on a
-name that already exists, as the MCP tools do, so guard them for a rerun:
+name that already exists, as the MCP tools do, so guard them for a rerun
+(`split_object` into a new name makes another part on each rerun, so guard
+it with `has_object` too):
 
 ```rhai
 object("arm");
