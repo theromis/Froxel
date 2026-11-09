@@ -1,6 +1,6 @@
 //! Inspector sections of the silhouette tools: Carve from views (MCP
-//! `carve_from_views`), Paint from view (MCP `project_paint`), and Compare
-//! silhouette (MCP `compare_silhouette`),
+//! `carve_from_views`), Paint from view (MCP `project_paint`), Fit to views
+//! (MCP `fit_to_views`), and Compare silhouette (MCP `compare_silhouette`),
 //! whose overlay the viewport shows.
 
 use egui::{RichText, Ui};
@@ -240,6 +240,107 @@ pub(super) fn paint(ui: &mut Ui, session: &mut Session) {
         }
         if pick {
             session.pick_paint_image();
+        }
+    });
+}
+
+/// MCP `fit_to_views`: refine the active object to match the views of
+/// Carve from views.
+pub(super) fn fit(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Fit to views");
+        ui.label(
+            RichText::new("Uses the views, crops, and background of Carve from views.")
+                .small()
+                .color(DIM),
+        );
+        let panel = &mut session.silhouette.fit;
+        egui::Grid::new("fit-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Align", "How each view's crop is placed over the object's projection, once, before the fit: Fit finds the scale and offset with the most overlap; Height and Width match that extent, bottoms and centres lined up.");
+                egui::ComboBox::from_id_salt("fit-align")
+                    .selected_text(["Fit", "Height", "Width"][panel.align.min(2)])
+                    .show_ui(ui, |ui| {
+                        for (index, name) in ["Fit", "Height", "Width"].iter().enumerate() {
+                            ui.selectable_value(&mut panel.align, index, *name);
+                        }
+                    });
+                ui.end_row();
+                label(ui, "Moves", "Shape adds and removes cells along the view rays (excess rays cleared, missing ones filled, rough cells tidied); Colour gives every cell a view sees the slot nearest the sheet's colours.");
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut panel.shape, "Shape");
+                    ui.checkbox(&mut panel.recolor, "Colour");
+                });
+                ui.end_row();
+                label(ui, "Colour from", "Which views of Carve from views (in their row order) recolour cells; a view turned off here still shapes the object. Turn the side view off when its features would land beside the front view's (a face's eyes).");
+                ui.horizontal(|ui| {
+                    for (index, paints) in panel.paint_views.iter_mut().enumerate() {
+                        ui.checkbox(paints, format!("{}", index + 1))
+                            .on_hover_text("Carve from views row");
+                    }
+                });
+                ui.end_row();
+                label(ui, "Normal limit", "Degrees: a view recolours only cells whose surface faces it within this angle; a seen cell no view faces takes the view facing it most. 90 is no limit.");
+                ui.add(
+                    egui::DragValue::new(&mut panel.normal_limit)
+                        .range(0.0..=90.0)
+                        .speed(0.5)
+                        .suffix("°"),
+                );
+                ui.end_row();
+                label(ui, "Keep", "Slots whose cells the fit never removes or recolours, such as hand-set eyes 9 10. They still cover and hide.");
+                ui.add(
+                    egui::TextEdit::singleline(&mut panel.keep)
+                        .hint_text("none")
+                        .desired_width(90.0),
+                );
+                ui.end_row();
+                label(ui, "Sweeps", "Most shape sweeps; the fit stops sooner when a sweep keeps no move. 0 only recolours.");
+                ui.add(egui::DragValue::new(&mut panel.iterations).range(0..=crate::tools::MAX_FIT_ITERATIONS as i32));
+                ui.end_row();
+                label(ui, "Seed", "Shuffles the order rays are visited in; the same seed gives the same result.");
+                ui.add(egui::DragValue::new(&mut panel.seed).range(0..=i32::MAX));
+                ui.end_row();
+                label(ui, "Slots", "Palette slots the colours may take, such as 3 4 7. Empty is the slots the object already holds.");
+                ui.add(
+                    egui::TextEdit::singleline(&mut panel.slots)
+                        .hint_text("object's slots")
+                        .desired_width(90.0),
+                );
+                ui.end_row();
+                label(ui, "Reference", "An object index or name, such as a mesh imported with import_mesh into a new object, whose front surface each view's rays should meet: the depth target. Empty is none.");
+                ui.add(
+                    egui::TextEdit::singleline(&mut panel.reference)
+                        .hint_text("none")
+                        .desired_width(90.0),
+                );
+                ui.end_row();
+                label(ui, "Isolate", "Off: other visible objects cover and hide in the views but never change. On: the active object is fitted alone.");
+                ui.checkbox(&mut panel.isolate, "Active object only");
+                ui.end_row();
+                label(ui, "Weights", "Mask: a missing or excess view pixel. Colour: the first visible cell against the sheet (up to 1 at 255 RGB apart). Depth: up to 1 at 8 cells from the reference. Smooth: each exposed cell face.");
+                ui.horizontal(|ui| {
+                    for (value, tip) in [
+                        (&mut panel.mask_weight, "Mask weight"),
+                        (&mut panel.color_weight, "Colour weight"),
+                        (&mut panel.depth_weight, "Depth weight"),
+                        (&mut panel.smooth_weight, "Smooth weight"),
+                    ] {
+                        ui.add(egui::DragValue::new(value).range(0.0..=100.0).speed(0.01))
+                            .on_hover_text(tip);
+                    }
+                });
+                ui.end_row();
+            });
+        if ui
+            .button("Fit")
+            .on_hover_text("MCP fit_to_views: refine the active object so its orthographic views match the sheet, colours from the palette. One undo step.")
+            .clicked()
+        {
+            session.fit_from_panel();
         }
     });
 }

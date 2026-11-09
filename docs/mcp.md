@@ -1394,9 +1394,10 @@ step and a failure anywhere leaves the document as it was (`scripting.md`).
 ### Silhouettes
 
 Copying cells from flat sheet views gives blobs, and comparing heights
-says little about whether a model reads like its concept. Three tools work
+says little about whether a model reads like its concept. Four tools work
 from the views instead: `carve_from_views` makes the form, `project_paint`
-paints one view's pattern onto it, and `compare_silhouette` measures it.
+paints one view's pattern onto it, `fit_to_views` refines a blockout until
+its views match the sheet, and `compare_silhouette` measures it.
 
 `carve_from_views` turns a turnaround sheet into the rough form. Each of
 2 or 3 views is extruded through a box along its depth axis, and the cells
@@ -1477,6 +1478,88 @@ several pixels takes the commonest.
 {"view": "top", "path": "sheet.png", "crop": [40, 420, 520, 180],
  "cellsPerPixel": 0.18, "slots": [3, 4, 5], "only": [3], "normalLimit": 60}
 ```
+
+`fit_to_views` refines the active object, a blockout from
+`carve_from_views` or `import_mesh`, so that its orthographic views match
+an approved views sheet, with colours from a palette. It follows the idea
+of Voxify3D (Huang et al., "Voxify3D: Pixel Art Meets Volumetric
+Rendering", CVPR 2026): orthographic parallel rays, so one view pixel is
+one column of cells, and per view a colour loss on the first visible cell,
+a mask loss that keeps the background empty, and an optional depth loss
+against a reference. It is an independent implementation on the CPU with
+no neural network: a deterministic discrete search instead of per-cell
+Gumbel-Softmax logits.
+
+`views` are 1 to 6 views, one per side, given as `carve_from_views` takes
+them (a PNG `path` and `crop` with the background rule, or `rows` and a
+`legend`; `flip`); a top-level `path`, `background`, `tolerance`, and
+`alphaThreshold` apply to every view without its own. Each is placed once over the object's current projection
+(cells along the view's two axes, over the object's bounds plus `margin`
+empty cells, default 15% of the largest extent, at least 4) with
+`compare_silhouette`'s `align`: `fit` (default), `height`, `width`, or
+`{scale, offset}`, at the top level or on a view. The crop is then sampled
+to one target per cell column: inside when at least `coverage` (default
+0.5) of its footprint is inked, with the mean colour of the inked pixels (a
+legend's slot gives its palette colour). The energy of one view pixel is:
+
+| Case | Cost |
+|---|---|
+| target inside, no cell on the ray (missing) | `maskWeight` (default 1) |
+| target background, a cell on the ray (excess) | `maskWeight` |
+| both, with a `reference` covering the pixel | `depthWeight` (0.5) × min(\|d − dRef\|, 8) / 8 |
+| both, in the colour pass | `colorWeight` (1) × min(RGB distance / 255, 1) |
+
+where `d` is the first cell's distance from the camera side, and each
+exposed cell face adds `smoothWeight` (0.1). The search has two phases.
+Shape (`shape`, default on) counts mask, depth, and smoothness only, so a
+colour is never a reason to carve: an excess ray is cleared; a missing ray
+is filled with a run of cells every other view sees inside (within the
+reference's depth span, or that of the rays around it), or one such cell
+touching the body; with a reference, a covered ray's front is moved to the
+reference's front; and a cell with four or more exposed faces may go, an
+empty one with four or more solid neighbours may fill. A move is kept only
+when it lowers the energy of what it touches, in sweeps whose order `seed`
+shuffles, until a sweep keeps none or `iterations` (default 8, 0..64) run
+out. Colour (`recolor`, default on) gives every cell a view sees the slot of
+`slots` (default: the slots the object holds) with the least summed colour
+cost over the views that see it and face it within `normalLimit` (default
+60 degrees; a seen cell no view faces takes the view facing it most), the
+exact optimum for that shape. A column's colour is the majority slot of
+its pixels, so a sheet's thin outlines and cube bevels do not tint the
+fill (and a line under half a cell drops out). A view with `color: false`
+shapes the object but does not colour it, and `keep` lists slots whose
+cells are never removed or recoloured. Views placed with `fit` share one
+scale, the median of their own, with offsets refitted at it
+(`sharedScale`, default on), since a sheet is drawn at one scale.
+
+A feature that two views draw at places that do not meet on the model,
+such as a face's eyes in the front and side views of a boxy head, comes out
+twice. Fit such a part with `recolor: false` (its shape follows the sheet
+and its hand-set face stays), `keep` its face slots, or turn the side
+view's `color` off. Other
+visible objects cover and hide in the views but never change, unless
+`isolate`; `reference` (an object index or name, such as a mesh imported
+with `import_mesh` `newObject`) gives the depth target. One undo step.
+
+```json
+{"views": [
+  {"view": "front", "crop": [42, 178, 535, 265]},
+  {"view": "left", "crop": [645, 177, 586, 266]},
+  {"view": "top", "crop": [42, 568, 543, 590]},
+  {"view": "back", "crop": [673, 775, 536, 269]}
+ ],
+ "path": "views.png", "background": "#ff00ff", "tolerance": 90, "slots": [2, 3, 4, 5, 6, 7], "reference": "mesh"}
+```
+
+The reply's `views` give each view's `grid`, its `align` (pass it back to
+hold the placement), and `before` and `after`: `iou`, `missing`, `excess`,
+`colorError` (mean RGB distance over the columns both cover), `depthError`
+with a reference, and the pixel counts. It also has `energy` before and
+after, `added`, `removed`, `recolored`, `changed`, `sweeps`, `moves`,
+`palette` (`[{slot, cells}]` of the object after), and the box's `origin`
+and `size`. The fit matches the views, not the sides none of them sees, so
+look at a `preview` and refine by hand after it. `froxel fit` runs it from a
+JSON file on a copy of a `.vox`.
 
 `compare_silhouette` scores the model against one concept view from a
 camera, as a number and a picture. The model is drawn with `preview` and

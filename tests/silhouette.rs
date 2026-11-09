@@ -822,3 +822,277 @@ fn the_painted_shell_example_runs() {
     let top = cells.keys().map(|c| c.2).max().unwrap();
     assert_ne!(cells[&(11, 14, top)], 2);
 }
+
+/// A 6-cell cube of slot 1 with `extra` cells added and `missing` removed.
+fn fit_cube(extra: &[Cell], missing: &[Cell]) -> Session {
+    let mut session = empty_session();
+    let mut writes = Vec::new();
+    for z in 0..6 {
+        for y in 0..6 {
+            for x in 0..6 {
+                if !missing.contains(&(x, y, z)) {
+                    writes.push((x, y, z, 1));
+                }
+            }
+        }
+    }
+    writes.extend(extra.iter().map(|c| (c.0, c.1, c.2, 1)));
+    session.write_cells(&writes).unwrap();
+    session
+}
+
+fn square_rows() -> Value {
+    json!(["xxxxxx", "xxxxxx", "xxxxxx", "xxxxxx", "xxxxxx", "xxxxxx"])
+}
+
+fn fit_views(offsets: [[i32; 2]; 3]) -> Value {
+    json!([
+        {"view": "front", "rows": square_rows(), "align": {"scale": 1, "offset": offsets[0]}},
+        {"view": "left", "rows": square_rows(), "align": {"scale": 1, "offset": offsets[1]}},
+        {"view": "top", "rows": square_rows(), "align": {"scale": 1, "offset": offsets[2]}}
+    ])
+}
+
+#[test]
+fn fitting_clears_an_excess_spike() {
+    let spike = [(2, 2, 6), (2, 2, 7), (2, 2, 8)];
+    let mut session = fit_cube(&spike, &[]);
+    // margin 2: the box runs from -2; front and left rows count down from
+    // z = 10, top rows from y = 7.
+    let views = fit_views([[2, 5], [2, 5], [2, 2]]);
+    let reply = apply(
+        &mut session,
+        "voxel.fit_to_views",
+        json!({"views": views, "margin": 2}),
+    );
+    assert_eq!(reply["removed"], 3, "{reply}");
+    assert_eq!(reply["added"], 0, "{reply}");
+    for view in reply["views"].as_array().unwrap() {
+        assert_eq!(view["after"]["iou"], 1.0, "{view}");
+    }
+    assert!(reply["views"][0]["before"]["iou"].as_f64().unwrap() < 1.0);
+    assert!(spike
+        .iter()
+        .all(|c| !session.active().cells.contains_key(c)));
+    assert_eq!(session.active().cells.len(), 216);
+    // One undo step puts the spike back.
+    session.undo();
+    assert_eq!(session.active().cells.len(), 219);
+
+    // A script runs the same code on rows.
+    let source = r#"
+        let cells = [];
+        for z in 0..6 { for y in 0..6 { for x in 0..6 { cells.push([x, y, z, 1]); } } }
+        cells.push([2, 2, 6, 1]); cells.push([2, 2, 7, 1]); cells.push([2, 2, 8, 1]);
+        set_voxels(cells);
+        let sq = ["xxxxxx", "xxxxxx", "xxxxxx", "xxxxxx", "xxxxxx", "xxxxxx"];
+        let done = fit_to_views([
+            #{view: "front", rows: sq, align: #{scale: 1, offset: [2, 5]}},
+            #{view: "left", rows: sq, align: #{scale: 1, offset: [2, 5]}},
+            #{view: "top", rows: sq, align: #{scale: 1, offset: [2, 2]}}
+        ], #{margin: 2});
+        if done.removed != 3 { throw "removed " + done.removed; }
+        if done.views[0].after.iou != 1.0 { throw "iou"; }
+    "#;
+    let mut scripted = empty_session();
+    scripted.set_script(0, source).unwrap();
+    scripted.regenerate_script(0).unwrap();
+    assert_eq!(scripted.active().cells.len(), 216);
+    let err = scripted
+        .set_script(0, r#"fit_to_views([#{view: "top", path: "a.png"}]);"#)
+        .and_then(|_| scripted.regenerate_script(0))
+        .unwrap_err();
+    assert!(err.contains("cannot read files"), "{err}");
+}
+
+#[test]
+fn fitting_fills_a_missing_column_and_recolours_from_the_palette() {
+    let column: Vec<Cell> = (0..6).map(|z| (5, 5, z)).collect();
+    let mut session = fit_cube(&[], &column);
+    let mut views = fit_views([[2, 2], [2, 2], [2, 2]]);
+    views[2]["rows"] = json!(["bbbbbb", "bbbbbb", "bbbbbb", "bbbbbb", "bbbbbb", "bbbbbb"]);
+    views[2]["legend"] = json!({"b": 2});
+    let reply = apply(
+        &mut session,
+        "voxel.fit_to_views",
+        json!({"views": views, "margin": 2, "slots": [1, 2]}),
+    );
+    assert_eq!(reply["added"], 6, "{reply}");
+    assert_eq!(reply["removed"], 0, "{reply}");
+    assert_eq!(
+        reply["views"][2]["before"]["missing"].as_f64().unwrap() > 0.0,
+        true
+    );
+    assert_eq!(reply["views"][2]["after"]["iou"], 1.0);
+    assert_eq!(reply["views"][2]["after"]["colorError"], 0.0);
+    let cells = &session.active().cells;
+    assert_eq!(cells.len(), 216);
+    // The top layer takes the top view's slot; the sides have no colour,
+    // and the filled column took the slot of the view that filled it.
+    for y in 0..6 {
+        for x in 0..6 {
+            assert_eq!(cells[&(x, y, 5)], 2);
+            assert_eq!(cells[&(x, y, 4)], if (x, y) == (5, 5) { 2 } else { 1 });
+        }
+    }
+    let palette: Vec<(u64, u64)> = reply["palette"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| (p["slot"].as_u64().unwrap(), p["cells"].as_u64().unwrap()))
+        .collect();
+    assert_eq!(palette, vec![(1, 175), (2, 41)]);
+    // Only recolouring changes no shape; the same seed gives the same cells.
+    let mut again = fit_cube(&[], &column);
+    let reply = apply(
+        &mut again,
+        "voxel.fit_to_views",
+        json!({"views": views, "margin": 2, "slots": [1, 2], "shape": false}),
+    );
+    assert_eq!(
+        (reply["added"].as_u64(), reply["removed"].as_u64()),
+        (Some(0), Some(0))
+    );
+    assert_eq!(reply["recolored"], 35);
+}
+
+#[test]
+fn a_reference_object_sets_the_depth_and_others_stay_put() {
+    let mut session = fit_cube(&[], &[]);
+    apply(&mut session, "object.add", json!({"name": "ref"}));
+    let mut writes = Vec::new();
+    for z in 0..6 {
+        for y in 2..6 {
+            for x in 0..6 {
+                writes.push((x, y, z, 3));
+            }
+        }
+    }
+    session.write_cells(&writes).unwrap();
+    session.objects[1].translation = session.objects[0].translation;
+    session.selected = 0;
+    let views =
+        json!([{"view": "front", "rows": square_rows(), "align": {"scale": 1, "offset": [2, 2]}}]);
+    let reply = apply(
+        &mut session,
+        "voxel.fit_to_views",
+        json!({"views": views, "margin": 2, "reference": "ref", "depthWeight": 1, "smoothWeight": 0}),
+    );
+    assert_eq!(reply["views"][0]["before"]["depthError"], 2.0, "{reply}");
+    assert_eq!(reply["views"][0]["after"]["depthError"], 0.0, "{reply}");
+    assert_eq!(reply["removed"], 72);
+    assert!(session.active().cells.keys().all(|c| c.1 >= 2));
+    assert_eq!(session.objects[1].cells.len(), 144);
+
+    // Without the reference, the other object is context: it covers the
+    // front view and never changes.
+    let mut session = fit_cube(&[], &[]);
+    apply(&mut session, "object.add", json!({"name": "wing"}));
+    session.write_cells(&[(6, 0, 0, 4), (7, 0, 0, 4)]).unwrap();
+    session.objects[1].translation = session.objects[0].translation;
+    session.selected = 0;
+    let rows = json!(["xxxxxx..", "xxxxxx..", "xxxxxx..", "xxxxxx..", "xxxxxx..", "xxxxxxxx"]);
+    let views = json!([{"view": "front", "rows": rows, "align": {"scale": 1, "offset": [2, 2]}}]);
+    let reply = apply(
+        &mut session,
+        "voxel.fit_to_views",
+        json!({"views": views, "margin": 2}),
+    );
+    assert_eq!(reply["views"][0]["before"]["iou"], 1.0, "{reply}");
+    assert_eq!(reply["changed"], 0);
+    let isolated = crate::remote::apply(
+        &mut session,
+        "voxel.fit_to_views",
+        &json!({"views": views, "margin": 2, "isolate": true, "iterations": 0}),
+    )
+    .unwrap();
+    assert!(isolated["views"][0]["before"]["missing"].as_f64().unwrap() > 0.0);
+    assert_eq!(session.objects[1].cells.len(), 2);
+}
+
+#[test]
+fn fit_calls_are_checked_and_the_panel_builds_arguments() {
+    let mut session = fit_cube(&[], &[]);
+    let one = json!({"view": "top", "rows": square_rows()});
+    for (params, want) in [
+        (json!({"views": [one, one]}), "two views look from the top"),
+        (json!({"views": []}), "1 to 6 views"),
+        (
+            json!({"views": [one], "iterations": 99}),
+            "iterations must be",
+        ),
+        (json!({"views": [one], "slots": [0]}), "slots must be"),
+        (json!({"views": [one], "reference": 0}), "another object"),
+        (
+            json!({"views": [{"view": "top", "rows": ["...."]}]}),
+            "mask is empty",
+        ),
+    ] {
+        let err = crate::remote::apply(&mut session, "voxel.fit_to_views", &params).unwrap_err();
+        assert!(err.contains(want), "{err} / {want}");
+    }
+    let mut panel = crate::state::SilhouettePanels::default();
+    assert!(panel.fit.args(&panel.carve).is_err());
+    panel.carve.views[0].path = "sheet.png".into();
+    panel.carve.views[0].crop = "1 2 3 4".into();
+    panel.carve.views[1].on = false;
+    panel.fit.slots = "3 4".into();
+    panel.fit.reference = "blockout".into();
+    let args = panel.fit.args(&panel.carve).unwrap();
+    assert_eq!(args["views"][0]["crop"], json!([1, 2, 3, 4]));
+    assert_eq!(args["views"].as_array().unwrap().len(), 1);
+    assert_eq!(args["slots"], json!([3, 4]));
+    assert_eq!(args["reference"], "blockout");
+    assert_eq!(args["align"], "fit");
+}
+
+#[test]
+fn the_fitted_beetle_example_runs() {
+    let mut session = empty_session();
+    session
+        .set_script(0, include_str!("../examples/fitted_beetle.rhai"))
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    let cells = &session.active().cells;
+    // The box is cut down to the beetle, coloured from its four slots.
+    assert!(cells.len() < 12 * 16 * 6, "{}", cells.len());
+    for slot in [3, 4, 5] {
+        assert!(cells.values().any(|s| *s == slot), "slot {slot}");
+    }
+    // The top view's corners are background: the box's corners are gone.
+    assert!(!cells.contains_key(&(0, 0, 5)));
+}
+
+#[test]
+fn kept_slots_and_shape_only_views_leave_colours_alone() {
+    let mut session = fit_cube(&[], &[]);
+    session.write_cells(&[(2, 0, 5, 9)]).unwrap();
+    let mut views = fit_views([[2, 2], [2, 2], [2, 2]]);
+    views[2]["rows"] = json!(["bbbbbb", "bbbbbb", "bbbbbb", "bbbbbb", "bbbbbb", "bbbbbb"]);
+    views[2]["legend"] = json!({"b": 2});
+    let base = json!({"views": views, "margin": 2, "slots": [1, 2]});
+    // keep: the slot-9 cell stays, the rest of the top recolours.
+    let mut kept = base.clone();
+    kept["keep"] = json!([9]);
+    let reply = apply(&mut session, "voxel.fit_to_views", kept);
+    assert_eq!(reply["recolored"], 35, "{reply}");
+    assert_eq!(session.active().cells[&(2, 0, 5)], 9);
+    assert_eq!(session.active().cells[&(0, 0, 5)], 2);
+    // A top view with color false shapes but paints nothing.
+    let mut session = fit_cube(&[], &[]);
+    let mut shape_only = base.clone();
+    shape_only["views"][2]["color"] = json!(false);
+    let reply = apply(&mut session, "voxel.fit_to_views", shape_only);
+    assert_eq!(reply["changed"], 0, "{reply}");
+    // The panel passes a row's Colour box and Keep through.
+    let mut panel = crate::state::SilhouettePanels::default();
+    panel.carve.views[0].path = "sheet.png".into();
+    panel.carve.views[1].path = "sheet.png".into();
+    panel.fit.paint_views = [true, false, true];
+    panel.fit.keep = "9".into();
+    let args = panel.fit.args(&panel.carve).unwrap();
+    assert_eq!(args["views"][0].get("color"), None);
+    assert_eq!(args["views"][1]["color"], false);
+    assert_eq!(args["keep"], json!([9]));
+    assert_eq!(args["normalLimit"], 60.0);
+}

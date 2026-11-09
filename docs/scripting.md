@@ -519,6 +519,50 @@ It returns `#{changed, cells, covered, rays, steep, bounds: #{min, max}}`;
 `bounds` is `()` when nothing is painted. `examples/painted_shell.rhai`
 paints a shell's plates onto a dome from the top.
 
+### Fit to views
+
+```rhai
+let report = fit_to_views(views);
+let report = fit_to_views(views, #{slots: [3, 4, 5], iterations: 8, smoothWeight: 0.1});
+let report = fit_to_views(views, #{reference: "mesh", depthWeight: 1.0});
+```
+
+MCP `fit_to_views`: the object being written is refined so that its
+orthographic views match `views` (1 to 6, one per side, each a map of
+`view`, `rows`, `legend`, `flip`, `align`, and `color` (`false` shapes
+only), as `carve_from_views` takes them; over MCP a view may be a PNG crop, on this same code path). One row
+character is one column of cells. Each view is placed once over the
+object's projection (`align`: `"fit"`, `"height"`, `"width"`, or
+`#{scale, offset}`), then shape moves (excess rays cleared, missing rays
+filled with cells every other view sees inside, rough single cells
+tidied) and a colour pass (each seen cell takes the slot nearest the
+colours of the views that see it) lower the energy described in
+[mcp.md](mcp.md#silhouettes). A script sees no other objects: the fit
+covers only the object being written. Options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `align` | `"fit"` | How every view without its own `align` is placed. |
+| `slots` | the object's slots | Slots the colours may take. |
+| `coverage` | `0.5` | Share of a cell column's footprint that must be inked. |
+| `iterations` | `8` | Most shape sweeps, 0..64; 0 only recolours. |
+| `seed` | `1` | Shuffles the order rays are visited in. |
+| `margin` | 15% of the extent, at least 4 | Empty cells around the bounds the fit may fill, 0..64. |
+| `maskWeight` | `1` | Cost of a missing or excess view pixel. |
+| `colorWeight` | `1` | Cost of a colour 255 RGB apart. |
+| `depthWeight` | `0.5` | Cost of a first cell 8 or more cells from the reference's. |
+| `smoothWeight` | `0.1` | Cost of each exposed cell face. |
+| `shape`, `recolor` | `true` | Add and remove cells; recolour the seen cells. |
+| `normalLimit` | `60` | Degrees: a view recolours only cells facing it within this angle. |
+| `keep` | none | Slots whose cells are never removed or recoloured. |
+| `sharedScale` | `true` | Views placed with `"fit"` share one scale. |
+| `reference` | none | The name (or index) of another object this run builds: the depth target. |
+
+It returns `#{changed, added, removed, recolored, sweeps, views}`, where
+each of `views` is `#{view, before, after}` and `before` and `after` hold
+`iou`, `missing`, `excess`, and `colorError`. `examples/fitted_beetle.rhai`
+fits a boxy blockout to a beetle's front, side, and top rows.
+
 MCP `compare_silhouette` writes a file, so it has no script form; check a
 script's result with it over MCP.
 
@@ -1094,7 +1138,7 @@ Any function that is not listed on this page is not registered.
 A script describes a family; MCP `export_variants` (or `froxel variants`,
 or the Export panel's **Export variants…**) bakes it once per parameter set
 and writes a `.vox`, a `.glb`, and a manifest with each set's parameters,
-markers, and bounds. Scripts themselves never write files, and they read none: `carve_from_views` and `project_paint` take rows, not PNGs.
+markers, and bounds. Scripts themselves never write files, and they read none: `carve_from_views`, `project_paint`, and `fit_to_views` take rows, not PNGs.
 
 ```json
 [

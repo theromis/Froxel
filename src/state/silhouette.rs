@@ -1,5 +1,5 @@
 //! The Silhouette panels: the fields of MCP `carve_from_views`,
-//! `project_paint`, and `compare_silhouette`, and the comparison overlay the viewport shows.
+//! `project_paint`, `fit_to_views`, and `compare_silhouette`, and the comparison overlay the viewport shows.
 //! Each button builds the MCP arguments and runs the MCP handler.
 
 use std::path::PathBuf;
@@ -233,6 +233,129 @@ fn signed(what: &str, text: &str) -> Result<Option<[i64; 3]>, String> {
     Ok(Some(out))
 }
 
+/// The Fit to views panel: the Carve from views panel's views, and the
+/// options of MCP `fit_to_views`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FitPanel {
+    /// 0 fit, 1 height, 2 width.
+    pub align: usize,
+    pub iterations: i32,
+    pub seed: i32,
+    /// Slots colours may take, separated by spaces; empty is the object's.
+    pub slots: String,
+    /// An object index or name for depth; empty is none.
+    pub reference: String,
+    pub isolate: bool,
+    pub shape: bool,
+    pub recolor: bool,
+    pub mask_weight: f32,
+    pub color_weight: f32,
+    pub depth_weight: f32,
+    pub smooth_weight: f32,
+    /// Degrees; 90 is no limit.
+    pub normal_limit: f32,
+    /// Slots never removed or recoloured, separated by spaces.
+    pub keep: String,
+    /// Per Carve from views row: its colours recolour cells.
+    pub paint_views: [bool; 3],
+}
+
+impl Default for FitPanel {
+    fn default() -> Self {
+        let spec = crate::tools::FitSpec::default();
+        Self {
+            align: 0,
+            iterations: spec.iterations as i32,
+            seed: spec.seed as i32,
+            slots: String::new(),
+            reference: String::new(),
+            isolate: false,
+            shape: spec.shape,
+            recolor: spec.recolor,
+            mask_weight: spec.mask_weight,
+            color_weight: spec.color_weight,
+            depth_weight: spec.depth_weight,
+            smooth_weight: spec.smooth_weight,
+            normal_limit: spec.normal_limit,
+            keep: String::new(),
+            paint_views: [true; 3],
+        }
+    }
+}
+
+impl FitPanel {
+    /// The MCP `fit_to_views` arguments, with the views of `carve`.
+    pub(crate) fn args(&self, carve: &CarvePanel) -> Result<Value, String> {
+        let carved = carve.args(1)?;
+        let align = ["fit", "height", "width"][self.align.min(2)];
+        let mut args = json!({
+            "views": carved["views"],
+            "align": align,
+            "iterations": self.iterations.max(0),
+            "seed": self.seed.max(0),
+            "isolate": self.isolate,
+            "shape": self.shape,
+            "recolor": self.recolor,
+            "maskWeight": self.mask_weight,
+            "colorWeight": self.color_weight,
+            "depthWeight": self.depth_weight,
+            "smoothWeight": self.smooth_weight
+        });
+        if args["views"]
+            .as_array()
+            .is_none_or(|views| views.is_empty())
+        {
+            return Err("Fit to views: turn on a view in Carve from views.".into());
+        }
+        // The views that are on, in row order, with their Colour boxes.
+        let painting: Vec<bool> = carve
+            .views
+            .iter()
+            .zip(self.paint_views)
+            .filter(|(row, _)| row.on)
+            .map(|(_, paints)| paints)
+            .collect();
+        if let Some(views) = args["views"].as_array_mut() {
+            for (view, paints) in views.iter_mut().zip(painting) {
+                if !paints {
+                    view["color"] = json!(false);
+                }
+            }
+        }
+        args["normalLimit"] = json!(self.normal_limit.clamp(0.0, 90.0));
+        for (key, what, text) in [
+            ("slots", "Slots", &self.slots),
+            ("keep", "Keep", &self.keep),
+        ] {
+            let parts: Vec<&str> = text
+                .split(|c: char| c == ',' || c.is_whitespace())
+                .filter(|part| !part.is_empty())
+                .collect();
+            if parts.is_empty() {
+                continue;
+            }
+            let list = parts
+                .iter()
+                .map(|part| {
+                    part.parse::<u8>()
+                        .ok()
+                        .filter(|slot| *slot > 0)
+                        .ok_or_else(|| format!("{what}: `{part}` is not a slot 1..255"))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            args[key] = json!(list);
+        }
+        let reference = self.reference.trim();
+        if !reference.is_empty() {
+            args["reference"] = match reference.parse::<u64>() {
+                Ok(index) => json!(index),
+                Err(_) => json!(reference),
+            };
+        }
+        Ok(args)
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ComparePanel {
     pub path: String,
@@ -263,6 +386,7 @@ pub struct SilhouetteOverlay {
 pub struct SilhouettePanels {
     pub carve: CarvePanel,
     pub paint: PaintPanel,
+    pub fit: FitPanel,
     pub compare: ComparePanel,
     pub overlay: Option<SilhouetteOverlay>,
 }
@@ -422,6 +546,44 @@ impl Session {
                     ));
                 }
                 text
+            }
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// The Fit to views panel's button: MCP `fit_to_views` on the active
+    /// object, with the views of the Carve from views panel.
+    pub fn fit_from_panel(&mut self) {
+        let args = match self.silhouette.fit.args(&self.silhouette.carve) {
+            Ok(args) => args,
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
+        self.status = match crate::remote::apply(self, "voxel.fit_to_views", &args) {
+            Ok(reply) => {
+                let views: Vec<String> = reply["views"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|view| {
+                        format!(
+                            "{} IoU {} → {}",
+                            view["view"].as_str().unwrap_or("?"),
+                            view["before"]["iou"],
+                            view["after"]["iou"]
+                        )
+                    })
+                    .collect();
+                format!(
+                    "Fitted: {}; {} added, {} removed, {} recoloured.",
+                    views.join(", "),
+                    reply["added"],
+                    reply["removed"],
+                    reply["recolored"]
+                )
             }
             Err(err) => err,
         };

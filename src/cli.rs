@@ -1,5 +1,6 @@
 //! `froxel render`, `froxel preview`, `froxel export`, `froxel import`,
-//! `froxel carve`, `froxel paint`, `froxel compare`, and `froxel voxrt`.
+//! `froxel carve`, `froxel paint`, `froxel fit`, `froxel compare`, and
+//! `froxel voxrt`.
 
 use std::path::{Path, PathBuf};
 
@@ -1313,6 +1314,130 @@ fn paint_args(args: &[String]) -> Result<Option<(PathBuf, PathBuf, serde_json::V
         }
     }
     Ok(Some((input, output, params)))
+}
+
+/// `froxel fit`: MCP `fit_to_views` from a JSON file of its arguments, on
+/// a copy of a `.vox`.
+pub fn fit(args: &[String]) -> i32 {
+    match fit_args(args) {
+        Ok(None) => 0,
+        Ok(Some((input, output, object, params))) => {
+            let mut session = Session::new();
+            let done = session
+                .open_vox(&input)
+                .and_then(|()| {
+                    if let Some(object) = &object {
+                        session.selected = crate::preview::find_object(&session, object)?;
+                    }
+                    crate::remote::apply(&mut session, "voxel.fit_to_views", &params)
+                })
+                .and_then(|reply| {
+                    session.write_vox(&output)?;
+                    Ok(reply)
+                });
+            match done {
+                Ok(reply) => {
+                    for view in reply["views"].as_array().into_iter().flatten() {
+                        eprintln!(
+                            "{}: IoU {} -> {}, colour error {} -> {}",
+                            view["view"].as_str().unwrap_or("?"),
+                            view["before"]["iou"],
+                            view["after"]["iou"],
+                            view["before"]["colorError"],
+                            view["after"]["colorError"]
+                        );
+                    }
+                    eprintln!(
+                        "wrote {} ({} added, {} removed, {} recoloured, {} sweeps)",
+                        output.display(),
+                        reply["added"],
+                        reply["removed"],
+                        reply["recolored"],
+                        reply["sweeps"]
+                    );
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&reply).unwrap_or_default()
+                    );
+                    0
+                }
+                Err(err) => {
+                    eprintln!("{err}");
+                    1
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            2
+        }
+    }
+}
+
+const FIT_HELP: &str = "\
+usage: froxel fit --args <fit.json> --input <base.vox> --out <file.vox> [--object <index|name>]
+
+Refines the active object (or --object) so its orthographic views match a
+views sheet, as MCP fit_to_views does, saves the .vox, and prints the reply
+(per-view IoU, missing, excess, and colour error before and after, the
+cells added, removed, and recoloured, and the palette used). fit.json holds
+that tool's arguments: {views: [{view, path, crop, background, tolerance,
+flip, align, color}, ...], path, background, tolerance (for every view
+without its own), align, slots, coverage, iterations, seed, margin,
+maskWeight, colorWeight, depthWeight, smoothWeight, shape, recolor,
+normalLimit, keep, sharedScale, reference, isolate}. Fit a part with a
+hand-set face with recolor false, so the front and side views do not
+paint its eyes twice.
+A relative path is relative to fit.json.";
+
+type FitArgs = (PathBuf, PathBuf, Option<String>, serde_json::Value);
+
+fn fit_args(args: &[String]) -> Result<Option<FitArgs>, String> {
+    let (mut file, mut output, mut input, mut object) = (None, None, None, None);
+    let mut index = 0;
+    while index < args.len() {
+        let value = |index: &mut usize| -> Result<String, String> {
+            *index += 1;
+            args.get(*index)
+                .cloned()
+                .ok_or_else(|| format!("{} needs a value", args[*index - 1]))
+        };
+        match args[index].as_str() {
+            "-h" | "--help" => {
+                eprintln!("{FIT_HELP}");
+                return Ok(None);
+            }
+            "--args" => file = Some(PathBuf::from(value(&mut index)?)),
+            "--out" | "--output" => output = Some(PathBuf::from(value(&mut index)?)),
+            "--input" => input = Some(PathBuf::from(value(&mut index)?)),
+            "--object" => object = Some(value(&mut index)?),
+            other => return Err(format!("unknown argument `{other}`\n\n{FIT_HELP}")),
+        }
+        index += 1;
+    }
+    let file = file.ok_or_else(|| format!("--args is required\n\n{FIT_HELP}"))?;
+    let input = input.ok_or_else(|| format!("--input is required\n\n{FIT_HELP}"))?;
+    let output = output.ok_or_else(|| format!("--out is required\n\n{FIT_HELP}"))?;
+    let text = std::fs::read_to_string(&file)
+        .map_err(|err| format!("Could not read {}: {err}", file.display()))?;
+    let mut params: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|err| format!("{} is not JSON: {err}", file.display()))?;
+    let base = file.parent().unwrap_or(Path::new(""));
+    if let Some(list) = params.get_mut("views").and_then(|v| v.as_array_mut()) {
+        for view in list {
+            if let Some(path) = view.get("path").and_then(|p| p.as_str()) {
+                if Path::new(path).is_relative() {
+                    view["path"] = serde_json::json!(base.join(path).display().to_string());
+                }
+            }
+        }
+    }
+    if let Some(path) = params.get("path").and_then(|p| p.as_str()) {
+        if Path::new(path).is_relative() {
+            params["path"] = serde_json::json!(base.join(path).display().to_string());
+        }
+    }
+    Ok(Some((input, output, object, params)))
 }
 
 /// `froxel compare`: MCP `compare_silhouette` on a `.vox`.

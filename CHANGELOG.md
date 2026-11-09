@@ -39,6 +39,19 @@
   material is `KHR_materials_unlit`, off by default, and deterministic. MCP
   `preview` `glb` and `froxel preview --input file.glb` draw a written file
   unlit. `examples/stacked_blocks.rhai` is a model to try it on.
+- Fit to views: MCP `fit_to_views`, Rhai `fit_to_views(views, opts)`,
+  `froxel fit`, and the Fit to views section refine the active object so its
+  orthographic views match an approved views sheet (the crops of
+  `carve_from_views`), with colours from a palette, in one undo step:
+  excess rays are cleared, missing rays filled with cells every other view
+  sees inside, a `reference` object's depth followed, rough cells tidied,
+  and every seen cell recoloured to the nearest slot. Other visible objects
+  count as cover and never change. `normalLimit`, a view's `color: false`,
+  and `keep` decide which views colour which cells; a part with a hand-set
+  face is fitted with `recolor: false`. The reply gives each view's IoU,
+  missing, excess, and colour error before and after. Inspired by Voxify3D
+  (CVPR 2026), as a deterministic CPU search with no neural network.
+  `examples/fitted_beetle.rhai` fits a boxy blockout to a beetle's views.
 - Projected paint: MCP `project_paint`, Rhai `project_paint(view, rows,
   opts)`, `froxel paint`, and the Paint from view section recolour the
   active object's existing surface from one image projected along a view

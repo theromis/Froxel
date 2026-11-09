@@ -1,10 +1,11 @@
-//! MCP `carve_from_views`, `project_paint`, and `compare_silhouette`,
+//! MCP `carve_from_views`, `project_paint`, `fit_to_views`, and
+//! `compare_silhouette`,
 //! their arguments, and their replies.
 //!
 //! A view or a concept is an image `path` with a `crop` and a background
 //! rule, or `rows` of characters with a `legend`. Rhai scripts have no file
 //! access, so they pass rows; [`hull_writes`] and [`paint_writes`] are the
-//! code paths MCP and Rhai share.
+//! code paths MCP and Rhai share, as is [`fit_writes`].
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -569,4 +570,218 @@ pub(crate) fn compare_reply(
         reply["pixelsPerVoxel"] = json!(ppv);
     }
     reply
+}
+
+/// MCP handler `fit_to_views`: refine the active object so its views match
+/// a views sheet, one undo step. Other visible objects (unless `isolate`)
+/// cover and hide but do not change; `reference` (an object index or name)
+/// gives the depth target.
+pub(super) fn fit_to_views(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let palette = session_palette(session);
+    let active = session.selected;
+    let shift = |from: usize| {
+        let (a, b) = (
+            session.objects[from].translation,
+            session.objects[active].translation,
+        );
+        (a.0 - b.0, a.1 - b.1, a.2 - b.2)
+    };
+    let reference = match params.get("reference") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(name)) => Some(crate::preview::find_object(session, name)?),
+        Some(Value::Number(n)) => Some(crate::preview::find_object(
+            session,
+            &n.as_u64()
+                .ok_or("reference must be an object index or name")?
+                .to_string(),
+        )?),
+        Some(_) => return Err("reference must be an object index or name".into()),
+    };
+    if reference == Some(active) {
+        return Err("reference must be another object than the active one".into());
+    }
+    let reference_cells: Option<Vec<Cell>> = reference.map(|index| {
+        let d = shift(index);
+        session.objects[index]
+            .cells
+            .keys()
+            .map(|c| (c.0 + d.0, c.1 + d.1, c.2 + d.2))
+            .collect()
+    });
+    let mut context = Vec::new();
+    if !opt_bool(params, "isolate")?.unwrap_or(false) {
+        for (index, object) in session.objects.iter().enumerate() {
+            if index == active || Some(index) == reference || object.hidden {
+                continue;
+            }
+            let d = shift(index);
+            context.extend(
+                object
+                    .cells
+                    .iter()
+                    .map(|(c, slot)| ((c.0 + d.0, c.1 + d.1, c.2 + d.2), *slot)),
+            );
+        }
+    }
+    let (writes, mut reply) = fit_writes(
+        &session.active().cells,
+        &context,
+        reference_cells.as_deref(),
+        &palette,
+        params,
+        true,
+    )?;
+    let changed = session.write_cells(&writes)?;
+    reply.insert("changed".into(), json!(changed));
+    reply.insert("voxels".into(), json!(session.voxel_count()));
+    Ok(Value::Object(reply))
+}
+
+/// The writes of `fit_to_views` against `cells` and its reply. With
+/// `files` false (Rhai) a view must pass `rows`.
+pub(crate) fn fit_writes(
+    cells: &HashMap<Cell, u8>,
+    context: &[(Cell, u8)],
+    reference: Option<&[Cell]>,
+    palette: &[[u8; 3]; 256],
+    params: &Value,
+    files: bool,
+) -> Result<(Writes, Map<String, Value>), String> {
+    let spec = fit_spec(params, files)?;
+    let fitted = crate::tools::fit_to_views(cells, context, reference, &spec, palette)?;
+    let writes: Writes = fitted
+        .writes
+        .iter()
+        .map(|(cell, slot)| (cell.0, cell.1, cell.2, i32::from(*slot)))
+        .collect();
+    let score = |s: &crate::tools::ViewScore| {
+        let mut out = json!({
+            "iou": round(s.iou, 4),
+            "missing": round(s.missing, 4),
+            "excess": round(s.excess, 4),
+            "colorError": round(s.color_error, 2),
+            "pixels": {"target": s.target, "model": s.model, "overlap": s.overlap}
+        });
+        if let Some(depth) = s.depth_error {
+            out["depthError"] = json!(round(depth, 3));
+        }
+        out
+    };
+    let mut reply = Map::new();
+    reply.insert(
+        "views".into(),
+        json!(fitted
+            .views
+            .iter()
+            .map(|view| json!({
+                "view": view.side.name(),
+                "grid": view.grid,
+                "align": {
+                    "scale": round(view.scale, 4),
+                    "offset": [round(view.offset[0], 2), round(view.offset[1], 2)]
+                },
+                "before": score(&view.before),
+                "after": score(&view.after)
+            }))
+            .collect::<Vec<_>>()),
+    );
+    let k = 1000.0;
+    reply.insert(
+        "energy".into(),
+        json!({
+            "before": (fitted.energy[0] * k).round() / k,
+            "after": (fitted.energy[1] * k).round() / k
+        }),
+    );
+    reply.insert("added".into(), json!(fitted.added));
+    reply.insert("removed".into(), json!(fitted.removed));
+    reply.insert("recolored".into(), json!(fitted.recolored));
+    reply.insert("sweeps".into(), json!(fitted.sweeps));
+    reply.insert("moves".into(), json!(fitted.moves));
+    reply.insert(
+        "palette".into(),
+        json!(fitted
+            .palette
+            .iter()
+            .map(|(slot, n)| json!({"slot": slot, "cells": n}))
+            .collect::<Vec<_>>()),
+    );
+    reply.insert(
+        "origin".into(),
+        json!([fitted.origin.0, fitted.origin.1, fitted.origin.2]),
+    );
+    reply.insert("size".into(), json!(fitted.size));
+    Ok((writes, reply))
+}
+
+fn fit_spec(params: &Value, files: bool) -> Result<crate::tools::FitSpec, String> {
+    use crate::tools::{FitSpec, FitView};
+    let list = params
+        .get("views")
+        .and_then(Value::as_array)
+        .ok_or("views must be a list of 1 to 6 {view, path | rows, ...}")?;
+    let default_align = align_arg(params)?;
+    let mut images = HashMap::new();
+    let mut views = Vec::with_capacity(list.len());
+    for (i, item) in list.iter().enumerate() {
+        if !item.is_object() {
+            return Err(format!("view {i} must be an object"));
+        }
+        // Sheet-wide keys at the top level fill a view's missing ones.
+        let mut item = item.clone();
+        for key in ["path", "background", "tolerance", "alphaThreshold"] {
+            let given = params.get(key).filter(|v| !v.is_null());
+            if let (Some(value), Some(map)) = (given, item.as_object_mut()) {
+                if !map.contains_key(key) && !(key == "path" && map.contains_key("rows")) {
+                    map.insert(key.into(), value.clone());
+                }
+            }
+        }
+        let item = &item;
+        let side =
+            Side::parse(&opt_str(item, "view")?.ok_or_else(|| format!("view {i} needs view"))?)?;
+        let mask = view_mask(item, files, &mut images).map_err(|err| format!("view {i}: {err}"))?;
+        let align = match item.get("align") {
+            None | Some(Value::Null) => default_align,
+            Some(_) => align_arg(item).map_err(|err| format!("view {i}: {err}"))?,
+        };
+        let color = opt_bool(item, "color")?.unwrap_or(true);
+        views.push(FitView {
+            side,
+            mask,
+            align,
+            color,
+        });
+    }
+    let whole = |key: &str| -> Result<Option<u64>, String> {
+        match params.get(key) {
+            None | Some(Value::Null) => Ok(None),
+            Some(found) => found
+                .as_u64()
+                .map(Some)
+                .ok_or_else(|| format!("{key} must be a whole number")),
+        }
+    };
+    let defaults = FitSpec::default();
+    let weight = |key: &str, default: f32| -> Result<f32, String> {
+        Ok(opt_f64(params, key)?.map_or(default, |w| w as f32))
+    };
+    Ok(FitSpec {
+        views,
+        slots: slot_list(params, "slots")?,
+        coverage: opt_f64(params, "coverage")?.unwrap_or(0.5) as f32,
+        iterations: whole("iterations")?
+            .map_or(defaults.iterations, |n| n.min(u64::from(u32::MAX)) as u32),
+        seed: whole("seed")?.unwrap_or(defaults.seed),
+        margin: whole("margin")?.map(|n| n.min(u64::from(u32::MAX)) as u32),
+        mask_weight: weight("maskWeight", defaults.mask_weight)?,
+        color_weight: weight("colorWeight", defaults.color_weight)?,
+        depth_weight: weight("depthWeight", defaults.depth_weight)?,
+        smooth_weight: weight("smoothWeight", defaults.smooth_weight)?,
+        shape: opt_bool(params, "shape")?.unwrap_or(true),
+        recolor: opt_bool(params, "recolor")?.unwrap_or(true),
+        normal_limit: opt_f64(params, "normalLimit")?.map_or(defaults.normal_limit, |n| n as f32),
+        keep: slot_list(params, "keep")?.unwrap_or_default(),
+        shared_scale: opt_bool(params, "sharedScale")?.unwrap_or(true),
+    })
 }

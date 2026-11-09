@@ -79,6 +79,25 @@ off the flat views.
    (the eyes, the belly) as they are. With the `origin` and
    `cellsPerPixel` that carved the form, the same crop lands on the same
    cells.
+5. **Fit it to the views.** `fit_to_views` takes the same crops (front,
+   side, top, back) and refines the blockout, whether it came from
+   `carve_from_views` or from `import_mesh`, so that its orthographic views
+   match the sheet: each view pixel is one column of cells, rays that
+   should be background are cleared, rays the sheet inks but the model
+   misses are filled with cells every other view sees inside, and rough
+   single cells are tidied (`smoothWeight`). Then every cell a view sees
+   takes the slot (from `slots`, by default the object's own) nearest the
+   sheet's colours. With a mesh imported into a separate object, pass it as
+   `reference` so the rays' front follows its depth. Other visible objects
+   (the head, the flippers) count as cover but never change, so each part
+   is fitted in turn. The reply gives each view's `iou`, `missing`,
+   `excess`, and `colorError` before and after, the cells added, removed,
+   and recoloured, and the palette in use; pass its `align` back to hold
+   the placement. A part with a hand-set face is fitted with
+   `recolor: false` (or its face slots in `keep`): the front and side views
+   draw the same eyes at places that do not meet on a boxy head, and
+   colouring from both gives four. Then refine by hand: the fit matches
+   views, not the sides no view sees.
 
 ```
 carve_from_views     views=[{view: "front", path: "sheet.png", crop: [40, 60, 520, 300]},
@@ -89,6 +108,10 @@ compare_silhouette   path="front-vs.png" concept="sheet.png" crop=[40, 60, 520, 
 compare_silhouette   path="hero-vs.png" concept="hero.png" preset="game"
 project_paint        view="top" path="sheet.png" crop=[40, 420, 520, 180] size=[96, 34, 56]
                      slots=[3, 4, 5] only=[3] normalLimit=60
+fit_to_views         views=[{view: "front", path: "sheet.png", crop: [40, 60, 520, 300]},
+                            {view: "side",  path: "sheet.png", crop: [620, 60, 180, 300]},
+                            {view: "top",   path: "sheet.png", crop: [40, 420, 520, 180]}]
+                     slots=[3, 4, 5, 6] reference="mesh"
 ```
 
 `preset="game"` is the gameplay camera; a project redefines it with `presets`
@@ -96,10 +119,11 @@ project_paint        view="top" path="sheet.png" crop=[40, 420, 520, 180] size=[
 a level from that same camera, in `preview` too ([preview.md](preview.md)).
 
 `examples/carved_stump.rhai` does the same in a script, with the views as
-rows, and `examples/painted_shell.rhai` paints a shell's plates from a top
-view. In the editor, the Carve from views, Paint from view, and Compare
-silhouette sections hold the same fields, and the comparison shows over the
-viewport.
+rows, `examples/painted_shell.rhai` paints a shell's plates from a top
+view, and `examples/fitted_beetle.rhai` fits a boxy blockout to its views.
+In the editor, the Carve from views, Paint from view, Fit to views (on the
+Carve from views section's views), and Compare silhouette sections hold the
+same fields, and the comparison shows over the viewport.
 
 ## Start from a mesh
 

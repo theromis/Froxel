@@ -251,8 +251,11 @@ outline and both in colour. `froxel carve --views views.json --out
 model.vox` fills the visual hull of a turnaround sheet's front, side, and
 top views, and `froxel paint --args paint.json --input model.vox --out
 painted.vox` recolours the surface one view sees from a single image (a
-shell's plates from the top). MCP `compare_silhouette`, `carve_from_views`,
-and `project_paint` are the same; see
+shell's plates from the top). `froxel fit --args fit.json --input
+blockout.vox --out fitted.vox` refines a blockout so its orthographic views
+match the sheet's, with colours from its palette slots, and prints each
+view's IoU and colour error before and after. MCP `compare_silhouette`,
+`carve_from_views`, `project_paint`, and `fit_to_views` are the same; see
 [docs/mcp.md](docs/mcp.md#silhouettes).
 
 ```sh

@@ -241,6 +241,9 @@ fn main(
     if args.first().is_some_and(|arg| arg == "paint") {
         std::process::exit(cli::paint(&args[1..]));
     }
+    if args.first().is_some_and(|arg| arg == "fit") {
+        std::process::exit(cli::fit(&args[1..]));
+    }
     if args.first().is_some_and(|arg| arg == "compare") {
         std::process::exit(cli::compare(&args[1..]));
     }
@@ -710,6 +713,7 @@ usage: froxel [--control PORT] [--bridge PORT] [file.vox]
        froxel bake-scene --scene <scene.json> --output <file.glb> (--help for its format)
        froxel carve --views <views.json> --out <file.vox> (--help for its flags)
        froxel paint --args <paint.json> --input <base.vox> --out <file.vox> (--help for its flags)
+       froxel fit --args <fit.json> --input <base.vox> --out <file.vox> (--help for its flags)
        froxel compare --input <file.vox> --concept <concept.png> --out <overlay.png> (--help for its flags)
        froxel import --mesh <file.glb|.obj> --output <file.vox> (--help for its flags)
        froxel variants --input <file.vox> --variants <sets.json> --out <dir>

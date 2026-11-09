@@ -23,7 +23,7 @@ If the tools are missing, the server is not configured. Point the user to
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `recolor`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` with its image as rows and a legend, and `marker`,
+  (`fill_tube`, `carve_*`, `recolor`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` with its image as rows and a legend, `fit_to_views` with views as rows and a legend, and `marker`,
   `collision_box`, `connector`, `collision_from_voxels`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `split_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -107,7 +107,17 @@ If the tools are missing, the server is not configured. Point the user to
    (1 is the surface), `normalLimit` (e.g. 60, so steep sides get no
    streaks), and `only` (the slots it may repaint). It never adds or removes
    cells; do not paint layer by layer with `carve_from_views` `mode: paint`
-   and dummy views.
+   and dummy views. To finish a blockout (from `carve_from_views` or
+   `import_mesh`) against the approved views sheet, call `fit_to_views`
+   with the same crops (front, side, top, back) and `slots`: it clears rays
+   that should be background, fills rays the sheet inks, follows a
+   `reference` object's depth (an `import_mesh` result kept as its own
+   object), and recolours what the views see. Fit each part in turn (other
+   visible objects count as cover and stay put), read each view's
+   `before`/`after` `iou` and `colorError` in the reply, look at the
+   preview, and then refine by hand. Fit a part with a hand-set face (a
+   head) with `recolor: false` or its face slots in `keep`: colouring it
+   from both the front and the side view duplicates the eyes.
 2. **Block out.** For a unique organic asset (a fallen tree, a creature, a
    hero rock) with a mesh sculpted in Blender or generated from the concept
    by an image-to-3D tool, start with `import_mesh` (`voxelSize` 0.08 for

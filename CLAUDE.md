@@ -13,7 +13,8 @@ and undo), `pointer`,
 UI. `tools/` is brush shapes, generators, and the MCP sculpt shapes
 (`sculpt.rs`: `fill_tube`, `carve`, `smooth`; `loft.rs`, `deform.rs`, and
 `brush.rs`: `loft`, `deform`, and the sculpt `brush`; `collision.rs`: the box cover of MCP
-`collision_from_voxels`). `mesh.rs` and `gpu.rs` draw the
+`collision_from_voxels`; `fit.rs`: MCP `fit_to_views`, the views-fitting
+search). `mesh.rs` and `gpu.rs` draw the
 edit-mode mesh. `trace/` is the CPU path tracer. `trace_gpu.rs` plus
 `trace.wgsl` and `blit.wgsl` are the wgpu tracer used by Render mode.
 `import/` reads `.glb`, `.gltf`, and `.obj` meshes and voxelizes them
