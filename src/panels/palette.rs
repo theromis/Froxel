@@ -18,6 +18,26 @@ pub(super) fn active_color(ui: &mut Ui, session: &mut Session) {
         if resp.drag_stopped() || (resp.changed() && !resp.dragged()) {
             session.end_edit();
         }
+        let [r, g, b, a] = session.palette[session.active_slot as usize];
+        let current = if a == 255 {
+            format!("#{r:02x}{g:02x}{b:02x}")
+        } else {
+            format!("#{r:02x}{g:02x}{b:02x}{a:02x}")
+        };
+        let field = ui
+            .add(
+                egui::TextEdit::singleline(&mut session.edit.hex)
+                    .hint_text(current)
+                    .desired_width(78.0)
+                    .font(egui::TextStyle::Monospace),
+            )
+            .on_hover_text("Type #rrggbb or #rrggbbaa and press Return: MCP set_palette color on the active slot.");
+        if field.lost_focus()
+            && ui.input(|input| input.key_pressed(egui::Key::Enter))
+            && !session.edit.hex.trim().is_empty()
+        {
+            session.palette_hex_from_panel();
+        }
     });
 }
 

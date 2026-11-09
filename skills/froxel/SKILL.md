@@ -71,7 +71,9 @@ If the tools are missing, the server is not configured. Point the user to
   `split_object`) to give world cells instead; parts that moved after a
   save and reopen, or a `mirror_object` copy, need no subtraction then.
 - Palette `0` erases. Slots `1..255` are colours; set them with `set_palette`
-  (`entries` sets many at once) before you fill.
+  (`entries` sets many at once) before you fill. A colour is `color:
+  "#rrggbb"` (or `"#rrggbbaa"`) or `r`, `g`, `b`, so a concept's hex codes
+  go in as they are.
 - An object is at most 256 cells per axis. A cell lies in `[-1024, 1024)`.
 - `fill_box`, `fill_rounded_box`, `fill_ellipsoid`, and `fill_tube` write
   **every** cell in the shape, empty ones too. `mode: "empty"` adds without

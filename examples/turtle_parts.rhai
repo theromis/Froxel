@@ -20,7 +20,7 @@ let height = param_int("height", 9, 5, 24);
 set_slot(2, [92, 104, 56]); // skin
 set_slot(3, [104, 92, 50]); // shell
 set_slot(4, [168, 150, 92]); // plastron
-set_slot(5, [58, 50, 28]); // seam
+set_slot(5, "#3a321c"); // seam, as a concept sheet's hex code
 
 let neck = length / 5;
 let flipper = width / 3;

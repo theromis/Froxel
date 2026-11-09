@@ -46,6 +46,7 @@ It is how agents should model living things through MCP.
 ```
 new_document
 set_palette          entries=[{index: 1, r: 74, g: 92, b: 58}, {index: 2, r: 196, g: 184, b: 120}]
+set_palette          entries=[{index: 3, color: "#5c6838"}]   # or a hex colour
 fill_rounded_box     x0=0 y0=0 z0=0 x1=11 y1=5 z1=4 palette=1 radius=2    # body
 fill_ellipsoid       x0=2 y0=1 z0=0 x1=9 y1=4 z1=1 palette=2              # belly, see the tip below
 render               path="step1.png" yaw=-90 pitch=10

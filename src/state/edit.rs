@@ -468,6 +468,8 @@ pub struct EditPanels {
     pub recolor: RecolorPanel,
     pub intersect: IntersectPanel,
     pub stroke: StrokePanel,
+    /// The palette dock's hex field for the active slot.
+    pub hex: String,
 }
 
 impl Session {
@@ -553,6 +555,24 @@ impl Session {
             points.push('\n');
         }
         points.push_str(&line);
+    }
+
+    /// The palette dock's hex field: MCP `set_palette` with `color` on the
+    /// active slot.
+    pub fn palette_hex_from_panel(&mut self) {
+        let args = json!({"index": self.active_slot, "color": self.edit.hex.trim()});
+        self.status = match crate::remote::apply(self, "palette.set", &args) {
+            Ok(_) => {
+                self.edit.hex.clear();
+                format!(
+                    "Slot {} is {}.",
+                    self.active_slot,
+                    args["color"].as_str().unwrap_or("")
+                )
+            }
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
     }
 
     /// The Split object button: MCP `split_object` on the active object.

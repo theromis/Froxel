@@ -1847,11 +1847,21 @@ fn view_angles(params: &Value) -> Result<(Option<f64>, Option<f64>), String> {
 /// `#rrggbb`, `#rrggbbaa`, `[r, g, b]`, or `[r, g, b, a]`. Defaults to
 /// transparent.
 pub(crate) fn background(params: &Value) -> Result<[u8; 4], String> {
-    let bad = || "background must be #rrggbb, #rrggbbaa, or [r, g, b, a?] in 0..255".to_string();
     match params.get("background") {
         None | Some(Value::Null) => Ok([0, 0, 0, 0]),
-        Some(Value::String(text)) => {
-            let hex = text.strip_prefix('#').unwrap_or(text);
+        Some(value) => rgba_value(value, "background").map(|(rgba, _)| rgba),
+    }
+}
+
+/// A colour as the tools take one: `#rrggbb` or `#rrggbbaa` (the `#` may be
+/// left out), or `[r, g, b]` or `[r, g, b, a]` in whole 0..255. Alpha is 255
+/// when not given; the flag says whether it was.
+pub(crate) fn rgba_value(value: &Value, what: &str) -> Result<([u8; 4], bool), String> {
+    let bad = || format!("{what} must be #rrggbb, #rrggbbaa, or [r, g, b, a?] in 0..255");
+    match value {
+        Value::String(text) => {
+            let hex = text.trim();
+            let hex = hex.strip_prefix('#').unwrap_or(hex);
             if !(hex.len() == 6 || hex.len() == 8) || !hex.is_ascii() {
                 return Err(bad());
             }
@@ -1859,9 +1869,9 @@ pub(crate) fn background(params: &Value) -> Result<[u8; 4], String> {
             for (i, channel) in rgba.iter_mut().enumerate().take(hex.len() / 2) {
                 *channel = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).map_err(|_| bad())?;
             }
-            Ok(rgba)
+            Ok((rgba, hex.len() == 8))
         }
-        Some(Value::Array(items)) if items.len() == 3 || items.len() == 4 => {
+        Value::Array(items) if items.len() == 3 || items.len() == 4 => {
             let mut rgba = [0, 0, 0, 255];
             for (channel, item) in rgba.iter_mut().zip(items) {
                 *channel = item
@@ -1869,9 +1879,9 @@ pub(crate) fn background(params: &Value) -> Result<[u8; 4], String> {
                     .filter(|value| *value <= 255)
                     .ok_or_else(bad)? as u8;
             }
-            Ok(rgba)
+            Ok((rgba, items.len() == 4))
         }
-        Some(_) => Err(bad()),
+        _ => Err(bad()),
     }
 }
 
@@ -2649,7 +2659,7 @@ fn palette_slots(params: &Value) -> Result<Vec<crate::state::PaletteChange>, Str
     let one = params.get("index").is_some();
     let many = params.get("entries").is_some();
     if one == many {
-        return Err("pass index, r, g, b or entries, not both".into());
+        return Err("pass index with color or r, g, b, or entries, not both".into());
     }
     if one {
         return Ok(vec![one_slot(params)?]);
@@ -2673,12 +2683,31 @@ fn one_slot(value: &Value) -> Result<crate::state::PaletteChange, String> {
     if !(0..=255).contains(&index) {
         return Err("palette index must be 0..255".into());
     }
-    let r = byte(value, "r")?;
-    let g = byte(value, "g")?;
-    let b = byte(value, "b")?;
-    let a = match value.get("a") {
-        None => 255,
-        Some(_) => byte(value, "a")?,
+    let channels = ["r", "g", "b"].iter().any(|key| value.get(*key).is_some());
+    let [r, g, b, a] = match value.get("color") {
+        Some(color) => {
+            if channels {
+                return Err("pass color or r, g, b, not both".into());
+            }
+            let (rgba, has_alpha) = rgba_value(color, "color")?;
+            match value.get("a") {
+                Some(_) if has_alpha => {
+                    return Err("color #rrggbbaa already gives alpha; leave out a".into())
+                }
+                Some(_) => [rgba[0], rgba[1], rgba[2], byte(value, "a")?],
+                None => rgba,
+            }
+        }
+        None if !channels => return Err("pass color (\"#rrggbb\") or r, g, b".into()),
+        None => [
+            byte(value, "r")?,
+            byte(value, "g")?,
+            byte(value, "b")?,
+            match value.get("a") {
+                None => 255,
+                Some(_) => byte(value, "a")?,
+            },
+        ],
     };
     let motion = match value.get("motion") {
         None => None,

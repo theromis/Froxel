@@ -92,6 +92,7 @@ an error that names the entry; the stored list does not change.
 
 ```rhai
 set_slot(1, [40, 160, 60]);          // index 1..255, alpha is left as it was
+set_slot(2, "#5c6838");              // or a hex colour
 set_motion(1, "sway", 1.5);          // "none", "sway", or "bob"; amount 0..4
 ```
 
@@ -99,7 +100,8 @@ set_motion(1, "sway", 1.5);          // "none", "sway", or "bob"; amount 0..4
 paintable slot.
 
 `set_palette` is MCP `set_palette`: one entry, or a list of them, each
-`#{index, r, g, b, a, motion, motion_amount}` with `a`, `motion`, and
+`#{index, r, g, b, a, motion, motion_amount}` or `#{index, color, …}` with
+`color` a `"#rrggbb"` or `"#rrggbbaa"` string, and `a`, `motion`, and
 `motion_amount` optional (`a` defaults to 255). It sets alpha, which
 `set_slot` leaves alone. It is a document call: it runs after the script
 (see "Document calls").
@@ -107,6 +109,7 @@ paintable slot.
 ```rhai
 set_palette(#{index: 9, r: 120, g: 200, b: 255, a: 96});   // a glassy slot
 set_palette([#{index: 5, r: 40, g: 160, b: 60, motion: "sway", motion_amount: 1.5}]);
+set_palette(#{index: 10, color: "#78c8ff60"});            // hex, with alpha
 ```
 
 ## Voxels

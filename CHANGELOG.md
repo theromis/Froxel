@@ -15,6 +15,11 @@
 
 ### Added
 
+- Hex palette colours: MCP `set_palette` (and its `entries`, and Rhai
+  `set_palette`) takes `color` as `"#rrggbb"` or `"#rrggbbaa"`, or
+  `[r, g, b, a?]`, besides `r`, `g`, `b`, as `background` and legends take
+  colours. Rhai `set_slot(index, "#rrggbb")` and a hex field beside the
+  palette dock's active colour do the same.
 - Surface stroke: MCP `surface_stroke`, Rhai `surface_stroke(points, slot,
   opts)`, and the Surface stroke section paint a stroke through points that
   snaps to the object's nearest surface cells, with a `width`, a `depth`,

@@ -443,6 +443,19 @@ fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     );
     let state = scratch.clone();
     engine.register_fn(
+        "set_slot",
+        move |index: INT, hex: &str| -> Result<(), Box<EvalAltResult>> {
+            let (rgba, _) = crate::remote::rgba_value(&serde_json::json!(hex), "set_slot colour")
+                .map_err(runtime)?;
+            let color: Array = rgba[..3]
+                .iter()
+                .map(|channel| Dynamic::from_int(INT::from(*channel)))
+                .collect();
+            state.borrow_mut().set_slot(index, &color).map_err(runtime)
+        },
+    );
+    let state = scratch.clone();
+    engine.register_fn(
         "set_motion",
         move |index: INT, kind: &str, amount: f64| -> Result<(), Box<EvalAltResult>> {
             state

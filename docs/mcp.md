@@ -203,7 +203,7 @@ tracer. A file with no scene graph still loads its first model.
 | `vines` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Vine strands hanging from top edges, graded through `palettes` to the tip, with optional `blooms`. Optional `amount`, `length`, `bloomChance`, `noise`, `faces`, `facing`, `band`, `only`, `exclude`, `seed`. Replies with `added`, `strands`, `blooms`. One undo step |
 | `smooth` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Majority filter in an inclusive box of at most 2000000 cells that keeps colours. Optional `iterations` (1..=8), `fillAt`, `removeAt`. Replies with `filled`, `removed`, `iterations`. One undo step |
 | `get_voxels` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Non-empty **local** cells inside an inclusive box, at most 100000 |
-| `set_palette` | `index`, `r`, `g`, `b` or `entries` | Replace one slot, or many via `entries`, as one undo step. `a` defaults to 255. Optional `motion` (`none`, `sway`, `bob`) and `motion_amount` (0..4) |
+| `set_palette` | `index` and `color` or `r`, `g`, `b`; or `entries` | Replace one slot, or many via `entries`, as one undo step. `color` is `"#rrggbb"` or `"#rrggbbaa"` (or `[r, g, b, a?]`), as the other tools take colours. `a` defaults to 255. Optional `motion` (`none`, `sway`, `bob`) and `motion_amount` (0..4) |
 | `set_active_object` | `index` | Edit a different object. Later voxel tools use its local cells |
 | `add_object` | — | Empty object. Optional `name`, world `position` `[x, y, z]` (default `[0, 0, 0]`), `size` `[x, y, z]` (capacity hint, each axis 1..=256), `make_active` (default true). Returns the index. One undo step |
 | `set_object` | `index` | Optional `name`, world `position`, `hidden`. Moving changes the scene-graph translation, so voxels move in the world. One undo step |
@@ -802,9 +802,17 @@ never removes. Each pass reads the one before; `iterations` (1..=8) stops
 early when a pass changes nothing. Features one cell thick (a twig, a thin
 wall) have few neighbours and are removed, so keep them out of the box.
 
-`set_palette` takes either one slot (`index`, `r`, `g`, `b`, optional `a`) or
-`entries`: an array of those objects, at most 256. Pass one form or the other,
-not both. Optional `motion` is `none`, `sway`, or `bob`. Optional
+`set_palette` takes either one slot (`index` with `color`, or `r`, `g`, `b`;
+optional `a`) or `entries`: an array of those objects, at most 256. Pass one
+form or the other, not both. `color` is a hex string, `"#rrggbb"` or
+`"#rrggbbaa"` (the `#` may be left out), or `[r, g, b]` or `[r, g, b, a]` in
+0..255, as `background` and a legend take colours; give it or `r`, `g`, `b`,
+not both. `a` sets the alpha of a six-digit `color` and is refused beside an
+eight-digit one.
+
+```json
+{"entries": [{"index": 2, "color": "#5c6838"}, {"index": 3, "color": "#685c32"}, {"index": 9, "color": "#78c8ff60"}]}
+``` Optional `motion` is `none`, `sway`, or `bob`. Optional
 `motion_amount` is a number from 0 to 4. Omit either field to leave it.
 A call that changes nothing does not push undo. Motion is stored on the
 slot's material and is one undo step together with the color.
@@ -1778,7 +1786,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `foliage` | Foliage section: Volume (Ellipsoids, with Ellipsoid at selection, or From slots), Palettes, Core, Size, Gap, Flatten, Ragged, Light, Dark, Masses, Groove, Keep, Seed; Grow crown within the selection's box, or the whole crown with nothing selected |
 | `moss`, `algae`, `vines` | Growth section: Moss (Caps or Cushions), Algae, or Vines, Palettes, Amount, Noise, Faces, Facing, Band, Only, Paint, Curtains, Thickness, Size, Gap, Exposure, Drapes, Length, Blooms, Bloom chance, Seed, over the selection's box or the whole object |
 | `smooth` | Smooth section: Passes, Fill at, Remove at, over the selection or the whole object |
-| `set_palette` | Palette dock (colour and alpha) and the Material section (motion) |
+| `set_palette` | Palette dock (colour and alpha, and a hex field: `#rrggbb` or `#rrggbbaa` and Return) and the Material section (motion) |
 | `set_active_object`, `add_object`, `set_object`, `remove_object` | Objects tree and the Object inspector |
 | `mirror_object` | Object inspector: Mirror X, Y, Z and Mirror bones too |
 | `clear_object` | Clear object section: Clear empties the active object |

@@ -801,3 +801,56 @@ fn surface_stroke_runs_in_world_space_from_a_script_a_batch_and_the_panel() {
         .count();
     assert_eq!(count as i64, local["cells"].as_i64().unwrap());
 }
+
+#[test]
+fn set_palette_takes_hex_colours() {
+    let mut session = Session::new();
+    session.replace_empty();
+    apply(
+        &mut session,
+        "palette.set",
+        &json!({"index": 3, "color": "#5c6838"}),
+    )
+    .unwrap();
+    assert_eq!(session.palette[3], [0x5c, 0x68, 0x38, 255]);
+    apply(
+        &mut session,
+        "palette.set",
+        &json!({"entries": [{"index": 4, "color": "a8965c80"}, {"index": 5, "color": [1, 2, 3]}, {"index": 6, "color": "#102030", "a": 7}, {"index": 7, "r": 9, "g": 8, "b": 7}]}),
+    )
+    .unwrap();
+    assert_eq!(session.palette[4], [0xa8, 0x96, 0x5c, 0x80]);
+    assert_eq!(session.palette[5], [1, 2, 3, 255]);
+    assert_eq!(session.palette[6], [0x10, 0x20, 0x30, 7]);
+    assert_eq!(session.palette[7], [9, 8, 7, 255]);
+    for (bad, says) in [
+        (json!({"index": 3, "color": "#12345"}), "#rrggbb"),
+        (json!({"index": 3, "color": "#zz0000"}), "#rrggbb"),
+        (json!({"index": 3, "color": "#102030", "r": 1}), "not both"),
+        (json!({"index": 3, "color": "#10203040", "a": 1}), "alpha"),
+        (json!({"index": 3}), "color"),
+    ] {
+        let err = apply(&mut session, "palette.set", &bad).unwrap_err();
+        assert!(err.contains(says), "{bad}: {err}");
+    }
+    // Rhai: set_palette passes the same map, and set_slot takes a hex string.
+    session
+        .set_script(
+            0,
+            "set_palette(#{index: 8, color: \"#0a0b0c\"});\nset_slot(9, \"#c0ffee\");\nset(0, 0, 0, 9);",
+        )
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    assert_eq!(session.palette[8], [10, 11, 12, 255]);
+    assert_eq!(&session.palette[9][..3], &[0xc0, 0xff, 0xee]);
+    // The palette dock's hex field.
+    session.active_slot = 10;
+    session.edit.hex = "#abcdef".into();
+    session.palette_hex_from_panel();
+    assert_eq!(
+        session.palette[10],
+        [0xab, 0xcd, 0xef, 255],
+        "{}",
+        session.status
+    );
+}
