@@ -1096,3 +1096,36 @@ fn kept_slots_and_shape_only_views_leave_colours_alone() {
     assert_eq!(args["keep"], json!([9]));
     assert_eq!(args["normalLimit"], 60.0);
 }
+
+#[test]
+fn rounding_removes_corners_no_view_sees_and_keeps_every_silhouette() {
+    let reply_of = |round: f64| {
+        let mut session = fit_cube(&[], &[]);
+        let views = fit_views([[2, 2], [2, 2], [2, 2]]);
+        let reply = apply(
+            &mut session,
+            "voxel.fit_to_views",
+            json!({"views": views, "margin": 2, "roundWeight": round, "roundAxes": "z"}),
+        );
+        (reply, session.active().cells.clone())
+    };
+    let (plain, cells) = reply_of(0.0);
+    assert_eq!(plain["rounded"], 0);
+    assert_eq!(cells.len(), 216);
+    let (round, cells) = reply_of(0.3);
+    assert!(round["rounded"].as_u64().unwrap() > 0, "{round}");
+    for view in round["views"].as_array().unwrap() {
+        assert_eq!(view["after"]["iou"], 1.0, "{view}");
+    }
+    // The vertical edges are cut in plan, at every height but the one the
+    // top view still needs, and the middle of each face stays.
+    assert!((0..6).filter(|z| cells.contains_key(&(0, 0, *z))).count() <= 1);
+    assert!(cells.contains_key(&(0, 2, 3)) && cells.contains_key(&(3, 5, 3)));
+    let err = crate::remote::apply(
+        &mut fit_cube(&[], &[]),
+        "voxel.fit_to_views",
+        &json!({"views": fit_views([[2, 2], [2, 2], [2, 2]]), "roundAxes": "w"}),
+    )
+    .unwrap_err();
+    assert!(err.contains("roundAxes"), "{err}");
+}

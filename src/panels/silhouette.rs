@@ -298,6 +298,20 @@ pub(super) fn fit(ui: &mut Ui, session: &mut Session) {
                         .desired_width(90.0),
                 );
                 ui.end_row();
+                label(ui, "Rounding", "Weight and superellipse exponent of the rounding prior. Three axis views cannot see a round head's diagonal corners; cells outside the superellipse inscribed in each cross-section (or outside the Reference) go wherever no silhouette needs them. Weight 0 keeps the box-like hull; exponent 2 is an ellipse, larger is squarer.");
+                ui.horizontal(|ui| {
+                    ui.add(egui::DragValue::new(&mut panel.round_weight).range(0.0..=100.0).speed(0.01))
+                        .on_hover_text("Round weight");
+                    ui.add(egui::DragValue::new(&mut panel.roundness).range(1.0..=16.0).speed(0.05))
+                        .on_hover_text("Roundness exponent");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut panel.round_axes)
+                            .hint_text("yz")
+                            .desired_width(32.0),
+                    )
+                    .on_hover_text("Axes whose cross-sections are rounded: y front sections, z the plan, x side sections (through a neck).");
+                });
+                ui.end_row();
                 label(ui, "Sweeps", "Most shape sweeps; the fit stops sooner when a sweep keeps no move. 0 only recolours.");
                 ui.add(egui::DragValue::new(&mut panel.iterations).range(0..=crate::tools::MAX_FIT_ITERATIONS as i32));
                 ui.end_row();

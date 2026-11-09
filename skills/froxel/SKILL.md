@@ -121,7 +121,11 @@ If the tools are missing, the server is not configured. Point the user to
    `before`/`after` `iou` and `colorError` in the reply, look at the
    preview, and then refine by hand. Fit a part with a hand-set face (a
    head) with `recolor: false` or its face slots in `keep`: colouring it
-   from both the front and the side view duplicates the eyes.
+   from both the front and the side view duplicates the eyes. A round part
+   comes out of three axis views as a box (no view sees its diagonal
+   corners): fit it with `roundWeight: 0.3` (`roundAxes` "yz" by default),
+   which removes those corners while every silhouette stays; leave it off
+   for domes with a flat rim and for plates.
 2. **Block out.** For a unique organic asset (a fallen tree, a creature, a
    hero rock) with a mesh sculpted in Blender or generated from the concept
    by an image-to-3D tool, start with `import_mesh` (`voxelSize` 0.08 for

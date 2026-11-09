@@ -96,7 +96,10 @@ off the flat views.
    the placement. A part with a hand-set face is fitted with
    `recolor: false` (or its face slots in `keep`): the front and side views
    draw the same eyes at places that do not meet on a boxy head, and
-   colouring from both gives four. Then refine by hand: the fit matches
+   colouring from both gives four. A round part (a head) comes out of the
+   visual hull as a box, since no axis view sees its diagonal corners:
+   fit it with `roundWeight: 0.3` and they go while every view stays the
+   same. Then refine by hand: the fit matches
    views, not the sides no view sees.
 
 ```

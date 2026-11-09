@@ -698,6 +698,7 @@ pub(crate) fn fit_writes(
     reply.insert("recolored".into(), json!(fitted.recolored));
     reply.insert("sweeps".into(), json!(fitted.sweeps));
     reply.insert("moves".into(), json!(fitted.moves));
+    reply.insert("rounded".into(), json!(fitted.rounded));
     reply.insert(
         "palette".into(),
         json!(fitted
@@ -783,5 +784,22 @@ fn fit_spec(params: &Value, files: bool) -> Result<crate::tools::FitSpec, String
         normal_limit: opt_f64(params, "normalLimit")?.map_or(defaults.normal_limit, |n| n as f32),
         keep: slot_list(params, "keep")?.unwrap_or_default(),
         shared_scale: opt_bool(params, "sharedScale")?.unwrap_or(true),
+        round_weight: weight("roundWeight", defaults.round_weight)?,
+        roundness: weight("roundness", defaults.roundness)?,
+        round_axes: match opt_str(params, "roundAxes")? {
+            None => defaults.round_axes,
+            Some(text) => {
+                let mut axes = [false; 3];
+                for c in text.chars() {
+                    match c {
+                        'x' => axes[0] = true,
+                        'y' => axes[1] = true,
+                        'z' => axes[2] = true,
+                        _ => return Err("roundAxes must be letters of xyz, such as \"z\"".into()),
+                    }
+                }
+                axes
+            }
+        },
     })
 }

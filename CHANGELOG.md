@@ -52,7 +52,10 @@
   and every seen cell recoloured to the nearest slot. Other visible objects
   count as cover and never change. `normalLimit`, a view's `color: false`,
   and `keep` decide which views colour which cells; a part with a hand-set
-  face is fitted with `recolor: false`. The reply gives each view's IoU,
+  face is fitted with `recolor: false`. `roundWeight` rounds the diagonal
+  corners three axis views cannot see (a round head that the hull leaves a
+  box) with superellipses in each section, or a `reference` object, while
+  every silhouette stays. The reply gives each view's IoU,
   missing, excess, and colour error before and after. Inspired by Voxify3D
   (CVPR 2026), as a deterministic CPU search with no neural network.
   `examples/fitted_beetle.rhai` fits a boxy blockout to a beetle's views.

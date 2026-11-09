@@ -104,6 +104,19 @@ pub struct FitSpec {
     /// Views placed with `fit` share one scale (the median of their own),
     /// with offsets refitted at it: a sheet is drawn at one scale.
     pub shared_scale: bool,
+    /// Cost of keeping a cell the rounding prior puts outside the form, so
+    /// cells no axis view can see (a box's diagonal corners) go while
+    /// every silhouette stays; 0 (the default) keeps the maximal hull. It
+    /// suits a round part such as a head; a flat-bottomed dome or a plate
+    /// loses its rim to it.
+    pub round_weight: f32,
+    /// Exponent of the superellipse inscribed in each cross-section: 2 is
+    /// an ellipse, larger is squarer.
+    pub roundness: f32,
+    /// The axes whose cross-sections the rounding prior rounds: y (front
+    /// sections) and z (plan) by default. An x section runs along a
+    /// creature facing −Y, through its neck, so its ellipse cuts the face.
+    pub round_axes: [bool; 3],
 }
 
 impl Default for FitSpec {
@@ -124,6 +137,9 @@ impl Default for FitSpec {
             normal_limit: 60.0,
             keep: Vec::new(),
             shared_scale: true,
+            round_weight: 0.0,
+            roundness: 2.5,
+            round_axes: [false, true, true],
         }
     }
 }
@@ -171,6 +187,8 @@ pub struct Fitted {
     pub sweeps: u32,
     /// Shape moves kept.
     pub moves: usize,
+    /// Cells the rounding prior removed.
+    pub rounded: usize,
     pub views: Vec<FitViewReport>,
     /// Total energy (mask, depth, and colour) before and after.
     pub energy: [f64; 2],
@@ -204,6 +222,8 @@ struct Fit<'a> {
     /// Cells of other objects: they cover and hide, but the object grows
     /// only from its own cells.
     context: Vec<bool>,
+    /// Cost of each cell being solid: the rounding or reference prior.
+    prior: Vec<f32>,
     views: Vec<ViewGrid>,
     palette: &'a [[u8; 3]; 256],
     spec: &'a FitSpec,
@@ -311,8 +331,111 @@ impl Fit<'_> {
 
     fn total(&self) -> f64 {
         let faces: u64 = (0..self.occ.len()).map(|i| u64::from(self.faces(i))).sum();
+        let prior: f64 = self
+            .prior
+            .iter()
+            .zip(&self.occ)
+            .filter(|(_, slot)| **slot != 0)
+            .map(|(cost, _)| f64::from(*cost))
+            .sum();
         self.energy.iter().flatten().sum::<f64>()
             + f64::from(self.spec.smooth_weight) * faces as f64
+            + prior
+    }
+
+    /// The prior's cost of the cells in `changes` as they are now.
+    fn prior_of(&self, changes: &[(usize, u8, u8)]) -> f64 {
+        if self.prior.is_empty() {
+            return 0.0;
+        }
+        changes
+            .iter()
+            .filter(|(i, _, _)| self.occ[*i] != 0)
+            .map(|(i, _, _)| f64::from(self.prior[*i]))
+            .sum()
+    }
+
+    /// The rounding prior: per axis, each cross-section of the object's own
+    /// cells gets the superellipse inscribed in its bounds, and a cell
+    /// costs `round_weight` for each axis whose section it lies outside.
+    /// With a reference, a cell outside the reference costs three times
+    /// `round_weight` instead: the reference is the shape where the views
+    /// say nothing.
+    fn build_prior(&mut self, reference: &[bool]) {
+        let w = self.spec.round_weight;
+        if w <= 0.0 {
+            return;
+        }
+        let total = self.occ.len();
+        if !reference.is_empty() {
+            self.prior = (0..total)
+                .map(|i| if reference[i] { 0.0 } else { 3.0 * w })
+                .collect();
+            return;
+        }
+        let p = f64::from(self.spec.roundness);
+        let mut prior = vec![0.0f32; total];
+        for axis in (0..3).filter(|a| self.spec.round_axes[*a]) {
+            let (a, b) = ((axis + 1) % 3, (axis + 2) % 3);
+            // Bounds of the own cells in each section along `axis`.
+            let mut bounds: Vec<Option<[usize; 4]>> = vec![None; self.dims[axis]];
+            for i in 0..total {
+                if self.occ[i] == 0 || self.context[i] {
+                    continue;
+                }
+                let q = self.point(i);
+                let found = &mut bounds[q[axis]];
+                *found = Some(match *found {
+                    None => [q[a], q[a], q[b], q[b]],
+                    Some([a0, a1, b0, b1]) => {
+                        [a0.min(q[a]), a1.max(q[a]), b0.min(q[b]), b1.max(q[b])]
+                    }
+                });
+            }
+            for (i, cost) in prior.iter_mut().enumerate() {
+                let q = self.point(i);
+                let outside = match bounds[q[axis]] {
+                    None => true,
+                    Some([a0, a1, b0, b1]) => {
+                        let term = |v: usize, lo: usize, hi: usize| -> f64 {
+                            let centre = (lo + hi + 1) as f64 / 2.0;
+                            let radius = (hi + 1 - lo) as f64 / 2.0;
+                            ((v as f64 + 0.5 - centre) / radius).abs().powf(p)
+                        };
+                        term(q[a], a0, a1) + term(q[b], b0, b1) > 1.0 + 1e-9
+                    }
+                };
+                if outside {
+                    *cost += w;
+                }
+            }
+        }
+        self.prior = prior;
+    }
+
+    /// Remove surface cells the prior puts outside the form wherever no
+    /// view loses for it, until none goes or `rounds` passes run out.
+    fn round(&mut self, rounds: u32) -> usize {
+        if self.prior.is_empty() {
+            return 0;
+        }
+        let mut removed = 0;
+        for _ in 0..rounds {
+            let mut kept = 0;
+            for i in 0..self.occ.len() {
+                if self.occ[i] == 0 || self.fixed[i] || self.prior[i] <= 0.0 || self.faces(i) == 0 {
+                    continue;
+                }
+                if self.attempt(&[(i, 0)]) {
+                    kept += 1;
+                }
+            }
+            removed += kept;
+            if kept == 0 {
+                break;
+            }
+        }
+        removed
     }
 
     /// The face neighbours of cell `i` inside the box.
@@ -383,8 +506,9 @@ impl Fit<'_> {
         let surface = |fit: &Self| -> f64 {
             smooth * near.iter().map(|i| f64::from(fit.faces(*i))).sum::<f64>()
         };
-        let before: f64 =
-            touched.iter().map(|&(v, p)| self.energy[v][p]).sum::<f64>() + surface(self);
+        let before: f64 = touched.iter().map(|&(v, p)| self.energy[v][p]).sum::<f64>()
+            + surface(self)
+            + self.prior_of(&changes);
         for &(i, slot, _) in &changes {
             self.occ[i] = slot;
         }
@@ -392,7 +516,7 @@ impl Fit<'_> {
             .iter()
             .map(|&(v, p)| self.pixel_energy(v, p))
             .collect();
-        if after.iter().sum::<f64>() + surface(self) < before - 1e-9 {
+        if after.iter().sum::<f64>() + surface(self) + self.prior_of(&changes) < before - 1e-9 {
             for (&(v, p), e) in touched.iter().zip(after) {
                 self.energy[v][p] = e;
             }
@@ -927,6 +1051,12 @@ pub fn fit_to_views(
             return Err(format!("{name} must be 0..100"));
         }
     }
+    if !(0.0..=100.0).contains(&spec.round_weight) {
+        return Err("roundWeight must be 0..100".into());
+    }
+    if !(1.0..=16.0).contains(&spec.roundness) {
+        return Err("roundness must be 1..16".into());
+    }
     if !(0.0..=90.0).contains(&spec.normal_limit) {
         return Err("normalLimit must be 0..90 degrees".into());
     }
@@ -1016,6 +1146,7 @@ pub fn fit_to_views(
         dims,
         occ,
         context: (0..own.len()).map(|i| fixed[i] && !own[i]).collect(),
+        prior: Vec::new(),
         fixed,
         views: Vec::new(),
         palette,
@@ -1108,11 +1239,13 @@ pub fn fit_to_views(
         grid.scale = scale;
         grid.offset = offset;
     }
+    fit.build_prior(&refs);
     fit.recompute();
     let energy_before = fit.total();
     let before: Vec<ViewScore> = (0..fit.views.len()).map(|v| fit.score(v)).collect();
     let mut sweeps = 0;
     let mut moves = 0;
+    let mut rounded = 0;
     if spec.shape {
         let fill_slot = {
             let mut tally: HashMap<u8, usize> = HashMap::new();
@@ -1135,6 +1268,7 @@ pub fn fit_to_views(
                 break;
             }
         }
+        rounded = fit.round(spec.iterations.max(1) * 4);
         fit.colour = true;
     }
     if spec.recolor {
@@ -1193,6 +1327,7 @@ pub fn fit_to_views(
         recolored,
         sweeps,
         moves,
+        rounded,
         views,
         energy: [energy_before, energy_after],
         palette: palette_usage,

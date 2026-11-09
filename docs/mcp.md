@@ -1539,6 +1539,22 @@ cells are never removed or recoloured. Views placed with `fit` share one
 scale, the median of their own, with offsets refitted at it
 (`sharedScale`, default on), since a sheet is drawn at one scale.
 
+Three axis views cannot see the diagonal corners of a round form: the
+visual hull keeps every cell no view rules out, so a round head comes out
+a box with only its axis edges rounded, and those corner cells cost the
+view terms nothing. `roundWeight` (default 0, off) adds a prior for them:
+each cross-section along the `roundAxes` (default `yz`: front sections and
+the plan) gets the superellipse inscribed in its bounds, with exponent
+`roundness` (default 2.5; 2 is an ellipse), and a solid cell costs
+`roundWeight` for each section it lies outside. After the shape sweeps,
+surface cells outside are removed wherever no silhouette loses for it, so
+every axis view stays as it was. With a `reference` object the prior is
+the reference itself (cells outside it cost three times `roundWeight`), as
+Voxify3D takes a mesh for the shape the views leave open. 0.3 suits a
+round part such as a head; a flat-bottomed dome or a thin plate loses its
+rim to it, so fit those parts without it. The reply's `rounded` counts the
+cells it removed.
+
 A feature that two views draw at places that do not meet on the model,
 such as a face's eyes in the front and side views of a boxy head, comes out
 twice. Fit such a part with `recolor: false` (its shape follows the sheet

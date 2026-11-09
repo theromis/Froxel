@@ -52,6 +52,9 @@ const FIT: &[&str] = &[
     "normalLimit",
     "keep",
     "sharedScale",
+    "roundWeight",
+    "roundness",
+    "roundAxes",
     "reference",
 ];
 
@@ -199,7 +202,7 @@ impl Scratch {
         let changed = self.apply(&writes)?;
         let mut reply = Map::new();
         reply.insert("changed".into(), Dynamic::from_int(changed));
-        for key in ["added", "removed", "recolored", "sweeps"] {
+        for key in ["added", "removed", "recolored", "sweeps", "rounded"] {
             reply.insert(
                 key.into(),
                 Dynamic::from_int(counts[key].as_i64().unwrap_or(0)),

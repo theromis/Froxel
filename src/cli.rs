@@ -1385,7 +1385,9 @@ that tool's arguments: {views: [{view, path, crop, background, tolerance,
 flip, align, color}, ...], path, background, tolerance (for every view
 without its own), align, slots, coverage, iterations, seed, margin,
 maskWeight, colorWeight, depthWeight, smoothWeight, shape, recolor,
-normalLimit, keep, sharedScale, reference, isolate}. Fit a part with a
+normalLimit, keep, sharedScale, roundWeight, roundness, roundAxes,
+reference,
+isolate}. Fit a part with a
 hand-set face with recolor false, so the front and side views do not
 paint its eyes twice.
 A relative path is relative to fit.json.";

@@ -258,6 +258,10 @@ pub struct FitPanel {
     pub keep: String,
     /// Per Carve from views row: its colours recolour cells.
     pub paint_views: [bool; 3],
+    pub round_weight: f32,
+    pub roundness: f32,
+    /// Axes whose sections the rounding prior rounds, such as `yz`.
+    pub round_axes: String,
 }
 
 impl Default for FitPanel {
@@ -279,6 +283,9 @@ impl Default for FitPanel {
             normal_limit: spec.normal_limit,
             keep: String::new(),
             paint_views: [true; 3],
+            round_weight: spec.round_weight,
+            roundness: spec.roundness,
+            round_axes: "yz".into(),
         }
     }
 }
@@ -299,8 +306,13 @@ impl FitPanel {
             "maskWeight": self.mask_weight,
             "colorWeight": self.color_weight,
             "depthWeight": self.depth_weight,
-            "smoothWeight": self.smooth_weight
+            "smoothWeight": self.smooth_weight,
+            "roundWeight": self.round_weight,
+            "roundness": self.roundness
         });
+        if !self.round_axes.trim().is_empty() {
+            args["roundAxes"] = json!(self.round_axes.trim());
+        }
         if args["views"]
             .as_array()
             .is_none_or(|views| views.is_empty())

@@ -557,9 +557,11 @@ covers only the object being written. Options:
 | `normalLimit` | `60` | Degrees: a view recolours only cells facing it within this angle. |
 | `keep` | none | Slots whose cells are never removed or recoloured. |
 | `sharedScale` | `true` | Views placed with `"fit"` share one scale. |
+| `roundWeight` | `0` | Rounding prior for cells no axis view sees (0.3 for a round head). |
+| `roundness`, `roundAxes` | `2.5`, `"yz"` | Superellipse exponent and the axes whose sections it rounds. |
 | `reference` | none | The name (or index) of another object this run builds: the depth target. |
 
-It returns `#{changed, added, removed, recolored, sweeps, views}`, where
+It returns `#{changed, added, removed, recolored, sweeps, rounded, views}`, where
 each of `views` is `#{view, before, after}` and `before` and `after` hold
 `iou`, `missing`, `excess`, and `colorError`. `examples/fitted_beetle.rhai`
 fits a boxy blockout to a beetle's front, side, and top rows.
