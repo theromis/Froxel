@@ -237,10 +237,34 @@ pub(crate) fn import_plan(
     if let Some(oriented) = oriented {
         reply.insert("orientation".into(), Value::Object(oriented));
     }
+    let (writes, new_slots) = match params.get("clean") {
+        None | Some(Value::Null) | Some(Value::Bool(false)) => (writes, new_slots),
+        Some(clean) => {
+            let (writes, new_slots, report) = clean_import(clean, writes, new_slots, palette, used)
+                .map_err(|err| format!("clean: {err}"))?;
+            let mut written: Vec<u8> = writes.iter().map(|w| w.3 as u8).collect();
+            written.sort_unstable();
+            written.dedup();
+            reply.insert("slots".into(), json!(written));
+            reply.insert(
+                "newSlots".into(),
+                json!(new_slots
+                    .iter()
+                    .filter(|(slot, _)| written.contains(slot))
+                    .map(|(slot, rgb)| json!({"index": slot, "color": rgb}))
+                    .collect::<Vec<_>>()),
+            );
+            reply.insert("clean".into(), report);
+            (writes, new_slots)
+        }
+    };
     // Only slots a cell lands on are written to the palette.
+    let mut landed: Vec<u8> = writes.iter().map(|w| w.3 as u8).collect();
+    landed.sort_unstable();
+    landed.dedup();
     let new_slots = new_slots
         .into_iter()
-        .filter(|(slot, _)| written.contains(slot))
+        .filter(|(slot, _)| landed.contains(slot))
         .collect();
     Ok(ImportPlan {
         writes,
@@ -276,6 +300,67 @@ fn orient_mesh(
         rotation
     });
     Ok(reply)
+}
+
+/// `import_mesh`'s `clean`: MCP `reduce_palette` (`true` is `{colors: 8,
+/// despeckle: 1}`) over the cells the import writes, before anything is
+/// written. The import's new slots are its own, so clusters take them over
+/// in place; colours it needs beyond them take free slots.
+fn clean_import(
+    clean: &Value,
+    writes: Vec<(i32, i32, i32, i32)>,
+    mut new_slots: Vec<(u8, [u8; 3])>,
+    palette: &[[u8; 4]; 256],
+    used: &[bool; 256],
+) -> Result<(Vec<(i32, i32, i32, i32)>, Vec<(u8, [u8; 3])>, Value), String> {
+    let clean = match clean {
+        Value::Bool(true) => json!({"colors": 8, "despeckle": 1}),
+        Value::Object(_) => clean.clone(),
+        _ => return Err("clean must be true or the options of reduce_palette".into()),
+    };
+    let mut rgb: [[u8; 3]; 256] =
+        std::array::from_fn(|s| [palette[s][0], palette[s][1], palette[s][2]]);
+    let mut taken = *used;
+    let mut exclusive = [false; 256];
+    for (slot, colour) in &new_slots {
+        rgb[*slot as usize] = *colour;
+        taken[*slot as usize] = true;
+        exclusive[*slot as usize] = true;
+    }
+    for w in &writes {
+        taken[w.3 as usize] = true;
+    }
+    taken[0] = true;
+    let mut shades = crate::tools::Shades {
+        colors: std::array::from_fn(|s| [rgb[s][0], rgb[s][1], rgb[s][2], palette[s][3].max(1)]),
+        materials: [crate::state::Material::default(); 256],
+        used: taken,
+        created: Vec::new(),
+    };
+    let cells: HashMap<Cell, u8> = writes
+        .iter()
+        .map(|w| ((w.0, w.1, w.2), w.3 as u8))
+        .collect();
+    let (changes, recoloured, report) =
+        super::edit::reduce_writes(&cells, &rgb, &clean, &mut shades, &exclusive)?;
+    let mut next = cells;
+    for (x, y, z, slot) in changes {
+        next.insert((x, y, z), slot as u8);
+    }
+    for (slot, colour) in recoloured {
+        if let Some(found) = new_slots.iter_mut().find(|(s, _)| *s == slot) {
+            found.1 = colour;
+        }
+    }
+    for shade in &shades.created {
+        new_slots.push((shade.slot, [shade.rgba[0], shade.rgba[1], shade.rgba[2]]));
+    }
+    let mut writes: Vec<(i32, i32, i32, i32)> = next
+        .into_iter()
+        .map(|(c, s)| (c.0, c.1, c.2, i32::from(s)))
+        .collect();
+    writes.sort_unstable();
+    Ok((writes, new_slots, report))
 }
 
 fn round(value: f64, places: i32) -> f64 {

@@ -17,7 +17,9 @@ UI. `tools/` is brush shapes, generators, and the MCP sculpt shapes
 `collision_from_voxels`; `fit.rs`: MCP `fit_to_views`, the views-fitting
 search; `sheet_measure.rs`: MCP `measure_sheet`, a views sheet's crops,
 cube pitch, checks, and parts; `mask_edit.rs`: the mask edits of `compare_silhouette` and the views,
-`excludeColors`, `flood`, `mask`, `erase`, `keepLargest`). `mesh.rs` and `gpu.rs` draw the
+`excludeColors`, `flood`, `mask`, `erase`, `keepLargest`; `paint_views.rs`: MCP `paint_from_views`;
+`reduce.rs`: MCP `reduce_palette` and `import_mesh` `clean`; `colors.rs`: Oklab, median cut,
+k-means, and the accent guard they share). `mesh.rs` and `gpu.rs` draw the
 edit-mode mesh. `trace/` is the CPU path tracer. `trace_gpu.rs` plus
 `trace.wgsl` and `blit.wgsl` are the wgpu tracer used by Render mode.
 `import/` reads `.glb`, `.gltf`, and `.obj` meshes and voxelizes them

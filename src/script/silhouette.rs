@@ -275,7 +275,9 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
 impl Scratch {
     /// The document palette a run quantises to: as it was when the run
     /// started, with the run's `palette` calls on top.
-    fn run_palette(&self) -> [[u8; 3]; 256] {
+    /// The palette as the run leaves it: the document's, the run's
+    /// `palette` calls, and the slots its tools made.
+    pub(super) fn run_palette(&self) -> [[u8; 3]; 256] {
         let mut palette = if self.view.palette.len() == 256 {
             std::array::from_fn(|slot| self.view.palette[slot])
         } else {
@@ -283,6 +285,9 @@ impl Scratch {
         };
         for (slot, rgb) in &self.palette {
             palette[*slot as usize] = *rgb;
+        }
+        for shade in &self.shades {
+            palette[shade.slot as usize] = [shade.rgba[0], shade.rgba[1], shade.rgba[2]];
         }
         palette
     }

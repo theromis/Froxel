@@ -2,7 +2,8 @@
 //! `split_object`), Clear object (MCP `clear_object`), Recolor (MCP
 //! `recolor`), Intersect (the fills' `mode: "intersect"`), Surface
 //! stroke (MCP `surface_stroke`), Shell plates (MCP `shell_plates`),
-//! Components (MCP `components`), and De-terrace (MCP `deterrace`).
+//! Components (MCP `components`), De-terrace (MCP `deterrace`), and Reduce
+//! palette (MCP `reduce_palette`).
 
 use egui::{RichText, Ui};
 
@@ -479,6 +480,57 @@ pub(super) fn deterrace(ui: &mut Ui, session: &mut Session) {
             .clicked()
         {
             session.deterrace_from_panel();
+        }
+    });
+}
+
+/// MCP `reduce_palette`: the object's colours clustered or snapped, and
+/// its surface despeckled.
+pub(super) fn reduce(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.editor_mode == EditorMode::Model && !session.active().cells.is_empty();
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Reduce palette");
+        let panel = &mut session.edit.reduce;
+        egui::Grid::new("reduce-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Colours", "Cluster: the object's colours become Colors clusters (k-means in Oklab), with small distinct accents such as eyes kept. Snap: every colour takes the nearest of the Palette list. Despeckle: only the majority filter.");
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut panel.mode, 0, "Cluster");
+                    ui.selectable_value(&mut panel.mode, 1, "Snap");
+                    ui.selectable_value(&mut panel.mode, 2, "Despeckle");
+                });
+                ui.end_row();
+                if panel.mode == 0 {
+                    label(ui, "Colors", "How many colours the object keeps, plus accents.");
+                    ui.horizontal(|ui| {
+                        ui.add(egui::DragValue::new(&mut panel.colors).range(1..=64));
+                        ui.checkbox(&mut panel.accents, "Keep accents")
+                            .on_hover_text("Small distinct colours (eyes, a mouth) keep a slot of their own.");
+                    });
+                    ui.end_row();
+                } else if panel.mode == 1 {
+                    label(ui, "Palette", "Slots or #rrggbb colours to snap to, such as 3 4 #e8822a.");
+                    ui.add(egui::TextEdit::singleline(&mut panel.palette).hint_text("3 4 #e8822a").desired_width(120.0));
+                    ui.end_row();
+                }
+                label(ui, "Despeckle", "Passes of the majority filter: a surface cell whose slot fewer than Min same of its surface neighbours share takes the slot most of them hold. 0 is off.");
+                ui.add(egui::DragValue::new(&mut panel.despeckle).range(0..=16));
+                ui.end_row();
+                label(ui, "Min same", "A surface cell keeps its slot when at least this many surface neighbours share it, so lines and patches stay.");
+                ui.add(egui::DragValue::new(&mut panel.min_same).range(0..=26));
+                ui.end_row();
+                label(ui, "Protect", "Slots both passes leave alone, such as the eyes.");
+                ui.add(egui::TextEdit::singleline(&mut panel.protect).hint_text("none").desired_width(90.0));
+                ui.end_row();
+            });
+        if ui
+            .button("Reduce palette")
+            .on_hover_text("MCP reduce_palette over the selection's box, or the whole object. One undo step.")
+            .clicked()
+        {
+            session.reduce_from_panel();
         }
     });
 }

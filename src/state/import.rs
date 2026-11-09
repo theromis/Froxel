@@ -31,6 +31,9 @@ pub struct ImportPanel {
     pub new_object: bool,
     /// Turn the mesh to the Carve from views views first (MCP `orient`).
     pub orient: bool,
+    /// Reduce and despeckle the colours with the Reduce palette section's
+    /// options (MCP `clean`).
+    pub clean: bool,
 }
 
 impl Default for ImportPanel {
@@ -53,6 +56,7 @@ impl Default for ImportPanel {
             mode: 0,
             new_object: true,
             orient: false,
+            clean: false,
         }
     }
 }
@@ -106,6 +110,9 @@ impl Session {
         let args = self.import.args().and_then(|mut args| {
             if self.import.orient {
                 args["orient"] = self.silhouette.orient.search_args(&self.silhouette.carve)?;
+            }
+            if self.import.clean {
+                args["clean"] = self.edit.reduce.args(None)?;
             }
             Ok(args)
         });

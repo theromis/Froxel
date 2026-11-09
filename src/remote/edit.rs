@@ -863,3 +863,180 @@ pub(super) fn deterrace(session: &mut Session, params: &Value) -> Result<Value, 
 #[cfg(test)]
 #[path = "../../tests/edit.rs"]
 mod tests;
+
+/// The spec of MCP `reduce_palette` (and `import_mesh`'s `clean`):
+/// `colors` or `palette`, the accent guard (`accents`, `minShare`,
+/// `contrast`, `maxAccents`), `despeckle`, `minSame`, `protect`, and an
+/// optional box `x0..z1`.
+pub(crate) fn reduce_spec(params: &Value) -> Result<crate::tools::ReduceSpec, String> {
+    use crate::tools::{Reduce, ReduceSpec, SnapTo};
+    let reduce = match (params.get("colors"), params.get("palette")) {
+        (Some(c), Some(p)) if !c.is_null() && !p.is_null() => {
+            return Err("pass colors or palette, not both".into())
+        }
+        (Some(c), _) if !c.is_null() => Reduce::Clusters(
+            c.as_u64()
+                .ok_or("colors must be a whole number of colours")?
+                .min(1 << 16) as usize,
+        ),
+        (_, Some(Value::Array(list))) => {
+            let mut out = Vec::with_capacity(list.len());
+            for item in list {
+                out.push(match item {
+                    Value::String(_) => {
+                        let rgba =
+                            super::background(&json!({"background": item})).map_err(|_| {
+                                "palette entries must be slots 1..255 or #rrggbb".to_string()
+                            })?;
+                        SnapTo::Rgb([rgba[0], rgba[1], rgba[2]])
+                    }
+                    found => SnapTo::Slot(
+                        found
+                            .as_u64()
+                            .filter(|s| (1..=255).contains(s))
+                            .ok_or("palette entries must be slots 1..255 or #rrggbb")?
+                            as u8,
+                    ),
+                });
+            }
+            Reduce::Snap(out)
+        }
+        (_, Some(found)) if !found.is_null() => {
+            return Err("palette must be a list of slots or #rrggbb colours".into())
+        }
+        _ => Reduce::Keep,
+    };
+    let whole = |key: &str, default: u32| -> Result<u32, String> {
+        match params.get(key) {
+            None | Some(Value::Null) => Ok(default),
+            Some(Value::Bool(true)) if key == "despeckle" => Ok(1),
+            Some(Value::Bool(false)) if key == "despeckle" => Ok(0),
+            Some(found) => found
+                .as_u64()
+                .map(|n| n.min(1 << 16) as u32)
+                .ok_or_else(|| format!("{key} must be a whole number")),
+        }
+    };
+    let protect = match params.get("protect") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::Array(list)) => list
+            .iter()
+            .map(|v| {
+                v.as_u64()
+                    .filter(|s| (1..=255).contains(s))
+                    .map(|s| s as u8)
+                    .ok_or_else(|| "protect must be palette indices 1..255".to_string())
+            })
+            .collect::<Result<_, _>>()?,
+        Some(_) => return Err("protect must be a list of palette indices".into()),
+    };
+    let corners = ["x0", "y0", "z0", "x1", "y1", "z1"];
+    let region = match corners.iter().filter(|k| params.get(**k).is_some()).count() {
+        0 => None,
+        6 => {
+            let (x0, y0, z0, x1, y1, z1) = box_corners(params)?;
+            Some(((x0, y0, z0), (x1, y1, z1)))
+        }
+        _ => return Err("pass all of x0, y0, z0, x1, y1, z1 for a box, or none".into()),
+    };
+    Ok(ReduceSpec {
+        reduce,
+        guard: match params.get("accents") {
+            Some(Value::Bool(false)) => None,
+            _ => Some(super::silhouette::accent_guard(params)?),
+        },
+        despeckle: whole("despeckle", 0)?,
+        min_same: whole("minSame", 2)?,
+        protect,
+        region,
+    })
+}
+
+/// The writes of `reduce_palette` against `cells`, the slots recoloured in
+/// place, and the reply's counts. New slots go into `shades.created`. A
+/// slot in `exclusive` is used by no cell the call leaves alone, so a
+/// cluster may take it over. Rhai scripts and `import_mesh` `clean` call
+/// this.
+pub(crate) fn reduce_writes(
+    cells: &HashMap<Cell, u8>,
+    palette: &[[u8; 3]; 256],
+    params: &Value,
+    shades: &mut crate::tools::Shades,
+    exclusive: &[bool; 256],
+) -> Result<(Vec<(i32, i32, i32, i32)>, Vec<(u8, [u8; 3])>, Value), String> {
+    let spec = reduce_spec(params)?;
+    let done = crate::tools::reduce_palette(cells, &spec, palette, shades, exclusive)?;
+    let hex = |rgb: [u8; 3]| format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2]);
+    let mut reply = json!({
+        "slots": {"before": done.slots[0], "after": done.slots[1]},
+        "clusters": done.clusters.iter().map(|(slot, rgb, n)| json!({"slot": slot, "color": hex(*rgb), "cells": n})).collect::<Vec<_>>(),
+        "despeckled": done.despeckled,
+        "recolored": done.recoloured.iter().map(|(slot, rgb)| json!({"slot": slot, "color": hex(*rgb)})).collect::<Vec<_>>(),
+        "newSlots": shades.created.iter().map(|s| json!({"slot": s.slot, "color": hex([s.rgba[0], s.rgba[1], s.rgba[2]])})).collect::<Vec<_>>(),
+    });
+    if matches!(spec.reduce, crate::tools::Reduce::Clusters(_)) {
+        reply["accents"] = json!(done.accents);
+    }
+    let writes = done
+        .writes
+        .iter()
+        .map(|(c, s)| (c.0, c.1, c.2, i32::from(*s)))
+        .collect();
+    Ok((writes, done.recoloured, reply))
+}
+
+/// The slots only the active object's cells inside `params`' box use, and
+/// no other cell of any object.
+fn exclusive_slots(session: &Session, params: &Value) -> Result<[bool; 256], String> {
+    let region = reduce_spec(params)?.region;
+    let inside = |c: &Cell| {
+        region.is_none_or(|(a, b)| {
+            c.0 >= a.0 && c.0 <= b.0 && c.1 >= a.1 && c.1 <= b.1 && c.2 >= a.2 && c.2 <= b.2
+        })
+    };
+    let mut mine = [false; 256];
+    let mut other = [false; 256];
+    for (index, object) in session.objects.iter().enumerate() {
+        for (cell, slot) in &object.cells {
+            if index == session.selected && inside(cell) {
+                mine[*slot as usize] = true;
+            } else {
+                other[*slot as usize] = true;
+            }
+        }
+    }
+    Ok(std::array::from_fn(|s| s > 0 && mine[s] && !other[s]))
+}
+
+/// MCP `reduce_palette`: reduce and despeckle the active object's colours,
+/// palette and cells in one undo step.
+pub(super) fn reduce_palette(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let palette = super::session_palette(session);
+    let mut shades = session.shades();
+    let exclusive = exclusive_slots(session, params)?;
+    let (writes, recoloured, mut reply) = reduce_writes(
+        &session.active().cells,
+        &palette,
+        params,
+        &mut shades,
+        &exclusive,
+    )?;
+    let changed = session.transaction(|session| {
+        session.begin_edit();
+        for (slot, rgb) in &recoloured {
+            let alpha = session.palette[*slot as usize][3].max(1);
+            session.palette[*slot as usize] = [rgb[0], rgb[1], rgb[2], alpha];
+        }
+        for shade in &shades.created {
+            session.palette[shade.slot as usize] = shade.rgba;
+            session.materials[shade.slot as usize] = session.materials[shade.from as usize];
+        }
+        let changed = session.write_cells(&writes);
+        session.end_edit();
+        changed
+    })?;
+    session.mesh_epoch = session.mesh_epoch.wrapping_add(1);
+    reply["changed"] = json!(changed);
+    reply["voxels"] = json!(session.voxel_count());
+    Ok(reply)
+}

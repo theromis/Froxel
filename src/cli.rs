@@ -1859,6 +1859,7 @@ usage: froxel import --mesh <file.glb|.gltf|.obj> --output <file.vox>
                      [--fill solid|parity|shell | --shell] [--vertex-colors] [--palette SLOT | --slots A,B,...]
                      [--max-new-slots N] [--tolerance D] [--mode replace|empty|paint]
                      [--new-object] [--name NAME] [--orient <orient.json>]
+                     [--clean true|JSON]
 
 MCP import_mesh from the command line: voxelize the mesh into the first object
 of --input (or a new document), or a new object with --new-object, and save
@@ -1874,8 +1875,11 @@ at most --max-new-slots (default 32) in slots no cell uses; --slots maps to
 those slots only, --palette paints one. --orient reads a views sheet's
 orient_to_views arguments (views, turns, yawStep, ...; paths relative to the
 file) and turns the mesh to the axis-aligned turn and yaw whose silhouettes
-match the views best before voxelizing it. Prints the import report as
-JSON.";
+match the views best before voxelizing it. --clean runs MCP reduce_palette
+over the imported cells before they are written: true is
+{\"colors\": 8, \"despeckle\": 1}, or pass its options as JSON (colors |
+palette, accents, minShare, contrast, maxAccents, despeckle, minSame,
+protect). Prints the import report as JSON.";
 
 /// `froxel import`: a mesh voxelized into a `.vox` with the `import_mesh`
 /// options.
@@ -1993,6 +1997,11 @@ fn import_args(
             }
             "--anchor" => params["anchor"] = json!(value()?),
             "--orient" => params["orient"] = read_views_json(Path::new(value()?))?,
+            "--clean" => {
+                let text = value()?;
+                params["clean"] = serde_json::from_str(&text)
+                    .map_err(|err| format!("--clean must be true or JSON: {err}"))?;
+            }
             "--mode" => params["mode"] = json!(value()?),
             "--name" => params["name"] = json!(value()?),
             "--z-up" => params["upAxis"] = json!("z"),
@@ -2259,6 +2268,82 @@ pub fn deterrace(args: &[String]) -> i32 {
             "voxel.deterrace",
             &params,
         ),
+        Err(err) => {
+            eprintln!("{err}");
+            2
+        }
+    }
+}
+
+const REDUCE_HELP: &str = "\
+usage: froxel reduce-palette --input <file.vox> --out <file.vox> [--object <index|name>]
+                             [--colors N | --palette A,B,#rrggbb,...] [--accents 0|1]
+                             [--min-share F] [--contrast F] [--max-accents N]
+                             [--despeckle PASSES] [--min-same N] [--protect A,B,...]
+
+MCP reduce_palette on the active object (or --object) of a .vox, saved to
+--out, with the reply printed as JSON: --colors clusters the object's
+colours into N (k-means in Oklab over the surface) and keeps up to
+--max-accents small distinct colours (eyes, a mouth) their own slot when
+they hold --min-share of the surface and lie --contrast (Oklab) from every
+cluster; --palette snaps them to slots or #rrggbb colours instead. Then
+--despeckle passes of a majority filter recolour surface cells whose slot
+fewer than --min-same of their surface neighbours share. --protect lists
+slots both passes leave alone.";
+
+/// `froxel reduce-palette`: MCP `reduce_palette` on a `.vox`.
+pub fn reduce_palette(args: &[String]) -> i32 {
+    // --palette may hold #rrggbb entries, which edit_args does not parse.
+    let mut rest = Vec::new();
+    let mut palette = None;
+    let mut index = 0;
+    while index < args.len() {
+        if args[index] == "--palette" && index + 1 < args.len() {
+            palette = Some(args[index + 1].clone());
+            index += 2;
+        } else {
+            rest.push(args[index].clone());
+            index += 1;
+        }
+    }
+    let flags = [
+        "--colors",
+        "--accents",
+        "--min-share",
+        "--contrast",
+        "--max-accents",
+        "--despeckle",
+        "--min-same",
+        "--protect",
+    ];
+    match edit_args(&rest, REDUCE_HELP, &flags) {
+        Ok(None) => 0,
+        Ok(Some((input, output, object, mut params))) => {
+            if let Some(list) = palette {
+                params["palette"] = list
+                    .split(',')
+                    .map(|item| {
+                        let item = item.trim();
+                        item.parse::<u64>()
+                            .map(serde_json::Value::from)
+                            .unwrap_or_else(|_| serde_json::Value::from(item))
+                    })
+                    .collect();
+            }
+            if let Some(n) = params.get("accents").and_then(|v| v.as_i64()) {
+                params["accents"] = serde_json::json!(n != 0);
+            }
+            if let Some(n) = params.get("protect").and_then(|v| v.as_i64()) {
+                params["protect"] = serde_json::json!([n]);
+            }
+            edit_vox(
+                &input,
+                &output,
+                object.as_deref(),
+                "voxel.reduce_palette",
+                &params,
+            )
+        }
         Err(err) => {
             eprintln!("{err}");
             2

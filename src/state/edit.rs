@@ -778,10 +778,92 @@ impl TerracePanel {
     }
 }
 
+/// The Reduce palette section: MCP `reduce_palette` on the active object.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReducePanel {
+    /// 0 cluster into Colors, 1 snap to the Palette list, 2 despeckle only.
+    pub mode: usize,
+    pub colors: i32,
+    /// Slots or #rrggbb colours, for snapping.
+    pub palette: String,
+    pub accents: bool,
+    pub despeckle: i32,
+    pub min_same: i32,
+    pub protect: String,
+}
+
+impl Default for ReducePanel {
+    fn default() -> Self {
+        Self {
+            mode: 0,
+            colors: 8,
+            palette: String::new(),
+            accents: true,
+            despeckle: 1,
+            min_same: 2,
+            protect: String::new(),
+        }
+    }
+}
+
+impl ReducePanel {
+    /// The MCP `reduce_palette` arguments (also `import_mesh`'s `clean`),
+    /// over `region` when given.
+    pub(crate) fn args(&self, region: Option<(Cell, Cell)>) -> Result<Value, String> {
+        let mut args = json!({
+            "despeckle": self.despeckle.clamp(0, 16),
+            "minSame": self.min_same.clamp(0, 26),
+        });
+        match self.mode {
+            0 => {
+                args["colors"] = json!(self.colors.clamp(1, 64));
+                args["accents"] = json!(self.accents);
+            }
+            1 => {
+                let list: Vec<Value> = self
+                    .palette
+                    .split(|c: char| c == ',' || c.is_whitespace())
+                    .filter(|p| !p.is_empty())
+                    .map(|p| {
+                        p.parse::<u64>()
+                            .map(Value::from)
+                            .unwrap_or_else(|_| json!(p))
+                    })
+                    .collect();
+                if list.is_empty() {
+                    return Err(
+                        "Reduce palette: list the slots or #rrggbb colours to snap to.".into(),
+                    );
+                }
+                args["palette"] = json!(list);
+            }
+            _ => {}
+        }
+        let protect = slot_field("Reduce palette", &self.protect)?;
+        if !protect.is_empty() {
+            args["protect"] = json!(protect);
+        }
+        if let Some((min, max)) = region {
+            for (key, value) in [
+                ("x0", min.0),
+                ("y0", min.1),
+                ("z0", min.2),
+                ("x1", max.0),
+                ("y1", max.1),
+                ("z1", max.2),
+            ] {
+                args[key] = json!(value);
+            }
+        }
+        Ok(args)
+    }
+}
+
 /// The fields of the Object edits sections.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct EditPanels {
     pub terrace: TerracePanel,
+    pub reduce: ReducePanel,
     pub components: ComponentsPanel,
     pub split: SplitPanel,
     pub recolor: RecolorPanel,
@@ -830,6 +912,30 @@ impl Session {
         let (method, args) = self.edit.intersect.args(min, max);
         self.status = match crate::remote::apply(self, method, &args) {
             Ok(reply) => format!("Kept the cells inside; {} removed.", reply["changed"]),
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// The Reduce palette button: MCP `reduce_palette` over the selection's
+    /// box, or the whole object.
+    pub fn reduce_from_panel(&mut self) {
+        let region = cell_bounds(self.picked.iter().copied());
+        let args = match self.edit.reduce.args(region) {
+            Ok(args) => args,
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
+        self.status = match crate::remote::apply(self, "voxel.reduce_palette", &args) {
+            Ok(reply) => format!(
+                "Slots {} → {}; {} cells changed, {} despeckled.",
+                reply["slots"]["before"],
+                reply["slots"]["after"],
+                reply["changed"],
+                reply["despeckled"]
+            ),
             Err(err) => err,
         };
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);

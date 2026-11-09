@@ -23,7 +23,10 @@ It is how agents should model living things through MCP.
    at its thinnest neck. A smooth mesh comes out of the voxelizer with
    one-cell contour terraces on its gentle slopes, stripes the style rules
    forbid: `deterrace` `stagger` breaks them into seeded teeth, and
-   `blocks` (`size` 2 or 3) re-quantizes the form into chunky cubes. Otherwise build the large
+   `blocks` (`size` 2 or 3) re-quantizes the form into chunky cubes. Its
+   texture comes in as a score of noisy slots: `reduce_palette` `colors` 6
+   to 8 with `despeckle` 1 or 2 (or `clean` on `import_mesh`) cuts it to a
+   few colours and keeps the eyes. Otherwise build the large
    forms with `fill_box`,
    `fill_rounded_box`, and `fill_ellipsoid`. Grow limbs, roots, branches,
    tails, and twigs with `fill_tube`. Cut hollows, tunnels, and pits with
@@ -208,6 +211,7 @@ import_mesh          path="fallen_tree.glb" voxelSize=0.08 anchor="bottom" newOb
                                      {view: "side", path: "sheet.png", crop: [620, 60, 180, 300]}],
                              yawStep: 5}
 components           op="remove_small" minCells=40                  # floaters and foam bits
+reduce_palette       colors=6 despeckle=2                            # a few clean colours, eyes kept
 deterrace            mode="stagger" seed=4                           # no contour bands on the slopes
 preview              path="tree_import.png"
 model_view           path="tree_side.png" view="left"                # compare with the concept

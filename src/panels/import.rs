@@ -116,6 +116,9 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                 label(ui, "Orient", "MCP import_mesh orient: turn the mesh to the axis-aligned turn and fine yaw whose silhouettes best match the views of Carve from views (with the Orient to views options) before voxelizing it.");
                 ui.checkbox(&mut panel.orient, "Orient to views");
                 ui.end_row();
+                label(ui, "Clean", "MCP import_mesh clean: reduce the imported colours and despeckle them with the Reduce palette section's options before they are written.");
+                ui.checkbox(&mut panel.clean, "Reduce palette");
+                ui.end_row();
             });
         if browse {
             session.import_mesh_dialog();

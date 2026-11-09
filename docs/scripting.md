@@ -345,6 +345,24 @@ surface, split by painted or grooved seams. Every option is the MCP one:
 It returns `#{changed, cells, taken, unreached, plates, seams}`.
 `examples/plated_dome.rhai` paints a made-up oval dome.
 
+### Reduce palette
+
+```rhai
+let report = reduce_palette(#{colors: 6, despeckle: 2});
+let report = reduce_palette(#{palette: [3, 4, "#e8822a"], protect: [9]});
+let report = reduce_palette(#{despeckle: 1, minSame: 2, x0: 0, y0: 0, z0: 8, x1: 31, y1: 31, z1: 15});
+```
+
+MCP `reduce_palette` on the object being written, with the MCP tool's
+options: `colors` clusters the colours in Oklab (the accent guard keeps
+eyes and mouths), `palette` snaps them to slots or `#rrggbb` colours, and
+`despeckle` passes of a surface majority filter recolour lone specks. New
+cluster colours take free slots of the palette as the run leaves it, as
+`cavity_tint`'s shades do (a script never recolours a slot in place). It
+returns `#{changed, slots, clusters, accents, despeckled, recolored,
+newSlots}`. `voxelize` takes `clean` with the same options.
+`examples/speckled_pebble.rhai` cleans a made-up noisy pebble.
+
 ### De-terrace
 
 ```rhai

@@ -255,9 +255,10 @@ tracer. A file with no scene graph still loads its first model.
 | `brush` | `op`, `points` | Sculpt brush dabs along **local** points: `inflate`, `deflate` (`dig`), `smooth`, `flatten`, or `grab` (`drag`). Optional `radius`, `strength`, `falloff` (`smooth`, `linear`, `constant`), `only`, `palette`, `vector` (grab), `spacing`. Replies with `dabs`, `added`, `removed`. One undo step |
 | `carve_from_views` | `views` | Fill the visual hull of 2 to 6 orthographic views (front, side, top) of a concept's turnaround sheet into the active object: each view's silhouette is extruded along its depth axis and the cells every view covers are kept. A view's `depth` (or the top-level `depthPath`), a grey depth map with white near, carves away the cells in front of its surface, so a round head is round; one view with depth is enough. See [Depth maps](#depth-maps). A view is a PNG `path` with `crop`, `background` (`auto`, `alpha`, or a key colour with `tolerance`), and `cellsPerPixel` or `size`, or `rows` with a `legend`. Optional `path`, `background`, `tolerance`, `alphaThreshold` (for every view without its own), `depthPath`, `depthTolerance`, `size`, `origin`, `cellsPerPixel`, `palette` or `slots`, `coverage`, `shell`, `smooth`, `mode`. Replies with `cells`, `bounds`, `size`, and each view's `grid`, `covered`, and `depth` (its calibration and the cells it carved). At most 4000000 cells in the box, one undo step. See [Silhouettes](#silhouettes) |
 | `orient_to_views` | `views` | Turn the active object to the axis-aligned turn (of 24, or 4 with `turns` `upright`), plus fine steps (`yawStep`, `yawRange`, `fineAxes`), whose silhouettes best match a views sheet by IoU, and scale it (`size`, `height`, or `scale`). Views as `fit_to_views` takes them, with `weight`. Optional `resolution`, `apply` (false only reports). Replies with `before` and `after` (`score`, per-view `iou`), `rotation` (`euler`, `axes`, `yaw`, `fine`, `matrix`), `candidates`, `margin`, `scale`, `cells`, `bounds`. One undo step. See [Turning a mesh to the views](#turning-a-mesh-to-the-views) |
-| `import_mesh` | `path` | Voxelize a `.glb`, `.gltf`, or `.obj` (with its `.mtl` and textures) into the active object, or a new one with `newObject` (and `name`). Optional `size`, `scale`, or `voxelSize`; `upAxis`, `rotation`, `position`, `anchor` (`min`, `center`, `bottom`), `fill` (`solid`, `parity`, `shell`), `colors` (`auto`, `vertex`), `palette` or `slots`, `maxNewSlots`, `tolerance`, `mode`, `orient` (turn the mesh to a views sheet first, see [Turning a mesh to the views](#turning-a-mesh-to-the-views)). Replies with `cells`, `shell`, `interior`, `openEdges`, `written`, `changed`, `slots`, `newSlots`, `bounds`, `scale`, `triangles`, `primitives`, `textures`, `warnings`. At most 256 cells per axis and 2000000 cells, one undo step |
+| `import_mesh` | `path` | Voxelize a `.glb`, `.gltf`, or `.obj` (with its `.mtl` and textures) into the active object, or a new one with `newObject` (and `name`). Optional `size`, `scale`, or `voxelSize`; `upAxis`, `rotation`, `position`, `anchor` (`min`, `center`, `bottom`), `fill` (`solid`, `parity`, `shell`), `colors` (`auto`, `vertex`), `palette` or `slots`, `maxNewSlots`, `tolerance`, `mode`, `clean` (reduce and despeckle the colours first, see [Cleaning up colours](#cleaning-up-colours)), `orient` (turn the mesh to a views sheet first, see [Turning a mesh to the views](#turning-a-mesh-to-the-views)). Replies with `cells`, `shell`, `interior`, `openEdges`, `written`, `changed`, `slots`, `newSlots`, `bounds`, `scale`, `triangles`, `primitives`, `textures`, `warnings`. At most 256 cells per axis and 2000000 cells, one undo step |
 | `components` | | The connected parts of the active object, for a generated mesh that came with extras. `op` `list` (default), `keep_largest` (`keep`, default 1), `remove_small` (`minCells`), or `delete`, `move` (`offset`), `split` (`name` or `into`, `copy`, `makeActive`, `index`) of the part holding `seed`; with `anchor`, that part is first cut at its thinnest neck from the anchor's. Optional `connectivity` (6, 18, 26, the default), `reach` (default 8), `radius`. Replies with `count`, `largest`, `components`, `selected`, `seed`, `anchor`, `cut`, `changed`, `voxels`. One undo step. See [Cleaning up a generated mesh](#cleaning-up-a-generated-mesh) |
 | `deterrace` | | Remove the one-cell contour terraces of a voxelized smooth mesh: `mode` `blocks` (default) re-quantizes the active object into cubes of `size` cells (2..=4, default 2) on a grid through `origin`, solid where at least `fill` (default 0.5) of a cube is, within `tolerance` cells of the surface (default `size`); `stagger` moves the edges of one-cell steps on the top surface in teeth `run` cells long (default 2), `jitter` (default 0.3) of them left in place, by `seed`. Optional box `x0`..`z1`. Replies with `added`, `removed`, `steps` and `longestRun` before and after, `kept`, `changed`, `voxels`. One undo step. See [Terraces](#terraces) |
+| `reduce_palette` | | Clean up the colours of a voxelized mesh on the active object: `colors` clusters them into N (median cut and k-means in Oklab over the surface) with an accent guard (`accents`, `minShare`, `contrast`, `maxAccents`) that keeps eyes and mouths, or `palette` snaps them to slots or `#rrggbb` colours; `despeckle` passes of a surface majority filter (`minSame`, default 2) then recolour lone specks. `protect` slots stay. Optional box `x0`..`z1`. Replies with `slots` (before, after), `clusters`, `accents`, `despeckled`, `recolored`, `newSlots`, `changed`, `voxels`. One undo step. See [Cleaning up colours](#cleaning-up-colours) |
 | `surface_stroke` | `points`, `palette` | Paint a stroke through 2..=1024 **local** points that snaps to the active object's nearest surface cells: seams between shell plates, markings on a curved body. Optional `curve` (`polyline`, `smooth`), `width` (cells across, default 1), `depth` (cells into the solid, default 1), `reach` (default 8), `only`, `mirror`. `palette` `0` cuts a groove. Replies with `cells`, `changed`, `samples`, `missed`, `snap`, `length`, `voxels`. One undo step |
 | `shell_plates` | `palettes` | Paint a turtle-shell plate pattern over the active object's dome: a central plate, `rings` of plates, an outer `band` of `bandCount` plates, and a `rim`, split by seams `seamWidth` wide in the `seam` slot or grooved `seamDepth` deep with `seam` 0. Placed by distance along the surface from the apex, on the surface cells facing up within `facing` (default 80). Optional `layout` (`rings`, `voronoi`), `central`, `band`, `bandCount`, `rim`, `center`, `depth`, `zRange`, `x0`..`z1`, `only`, `jitter`, `symmetric`, `seed`. Replies with `cells`, `changed`, `taken`, `unreached`, `plates`, `seams`, `apex`, `kinds`, `voxels`. One undo step |
 | `recolor` | `from` and `to`, or `map` | Replace palette slot `from` with `to` (or every pair of `map`, `{"3": 5}` or `[[3, 5]]`) in the active object's solid cells, inside an inclusive box `x0`..`z1` or everywhere (with `mirror`, the box and its mirror). No cell is added; `to` `0` erases. Replies with `matched`, `changed`, `voxels`. One undo step |
@@ -768,6 +769,44 @@ optional box `x0`..`z1` limits the change.
 ```
 
 `froxel deterrace` runs it on a `.vox`.
+
+#### Cleaning up colours
+
+An image-to-3D texture voxelizes into a score of slots a shade or two apart,
+scattered cell by cell: an SF3D toad comes in with 20 to 50 noisy oranges.
+`reduce_palette` cleans the active object's colours in two passes, with no
+cell added or removed.
+
+The reduction, `colors` N, clusters the object's colours into N: median cut
+then k-means in the Oklab perceptual space, each slot weighted by its
+surface cells (the interior is not seen). A small but distinct colour (an
+eye, a mouth, a nostril) would melt into a big cluster, so the accent guard
+keeps up to `maxAccents` (default 4) of them a slot of their own when they
+hold at least `minShare` (default 0.002) of the surface and lie further than
+`contrast` (an Oklab distance, default 0.12) from every cluster; `accents:
+false` turns it off. Each cluster takes over in place the commonest of its
+slots that no cell outside the call uses (so the palette does not grow),
+or else a free slot; `recolored` and `newSlots` in the reply list them.
+`palette` instead snaps every colour to the nearest of a list of slots or
+`#rrggbb` colours (a colour not yet in the palette takes a free slot).
+
+The despeckle, `despeckle` passes (default 0; `true` is 1), is a majority
+filter on the surface: a surface cell whose slot fewer than `minSame`
+(default 2) of its 26 surface neighbours share takes the slot more than
+half of them hold. A lone speck or a pair goes; a line one cell wide or a 2
+x 2 eye keeps its slot. `protect` lists slots both passes leave alone, and
+a box `x0`..`z1` limits the call.
+
+```json
+{"colors": 6, "despeckle": 2}
+{"palette": [3, 4, "#e8822a", "#3a2a1c"], "despeckle": 1, "protect": [9]}
+```
+
+`import_mesh` takes the same options as `clean` (`true` is `{"colors": 8,
+"despeckle": 1}`), run over the imported cells before they are written, in
+the same undo step; the import's new slots are then taken over in place, so
+only the cleaned colours reach the palette. `froxel reduce-palette` runs it on
+a `.vox`, and `froxel import --clean` at import.
 
 #### Cleaning up a generated mesh
 
@@ -2388,6 +2427,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `carve` | Remove mode with Box, Generator, or Tube |
 | `components` | Components section: Joined by, Keep, Min cells, Seed and Anchor (At selection), Offset, Name; List, Keep largest, Remove small, Delete, Move, Split |
 | `deterrace` | De-terrace section: Mode (Blocks: Size, Fill, Tolerance; Stagger: Run, Jitter, Seed), De-terrace over the selection's box or the whole object |
+| `reduce_palette` | Reduce palette section: Colours (Cluster with Colors and Keep accents, Snap with Palette, Despeckle only), Despeckle passes, Min same, Protect, Reduce palette over the selection's box or the whole object; Import mesh's Clean checkbox uses these options |
 | `surface_stroke` | Surface stroke section: Points (one per line, Point at selection, World), Smooth, Width, Depth, Reach, Only, Groove, Mirror, Stroke with the active slot |
 | `shell_plates` | Shell plates section: Layout (Rings, Voronoi), Rings, Central, Band and its plates, Rim, Plate slots (ring, central, band, rim), Seams (slot or Groove), Seam size, Depth, Facing, Only, Variation (Jitter, Symmetric, Seed), Paint plates over the selection's box or the whole object |
 | `recolor` | Recolor section: Slots (pairs `from>to`), Mirror, Recolor over the selection's box or the whole object |

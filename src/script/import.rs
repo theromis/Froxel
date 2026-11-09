@@ -36,6 +36,7 @@ const VOXELIZE: &[&str] = &[
     "tolerance",
     "mode",
     "orient",
+    "clean",
 ];
 
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {

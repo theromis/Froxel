@@ -29,6 +29,7 @@ mod paint_views;
 mod planks;
 mod plates;
 mod project;
+mod reduce;
 mod relief;
 mod scatter;
 mod sculpt;
@@ -75,6 +76,7 @@ pub use plates::{
     MAX_SEAM_WIDTH,
 };
 pub use project::{project_paint, PaintSpec, Toward, MAX_PAINT_DEPTH};
+pub use reduce::{reduce_palette, Reduce, ReduceSpec, SnapTo};
 pub use relief::{column_relief, relief_facing, ReliefSpec};
 pub use scatter::{scatter, PieceKind, ScatterSpec, Scattered, MAX_PIECES};
 #[cfg(test)]

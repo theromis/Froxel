@@ -31,7 +31,7 @@ server is still running. A server started with `--watch` reloads by itself.
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `shell_plates`, `components`, `deterrace`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` and `decal` with the image as rows and a legend, `paint_from_views` with views as rows and a legend, `fit_to_views` and `orient_to_views` with views as rows and a legend, and `marker`,
+  (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `shell_plates`, `components`, `deterrace`, `reduce_palette`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` and `decal` with the image as rows and a legend, `paint_from_views` with views as rows and a legend, `fit_to_views` and `orient_to_views` with views as rows and a legend, and `marker`,
   `collision_box`, `connector`, `collision_from_voxels`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `split_object`, `clear_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -203,7 +203,10 @@ server is still running. A server started with `--watch` reloads by itself.
    one-cell contour terraces of its gentle slopes, which read as stripes:
    `stagger` keeps the cell size and breaks them into teeth (check
    `longestRun` after, at most 3), `blocks` with `size` 2 or 3 gives the
-   chunky concept-cube look;
+   chunky concept-cube look; then `reduce_palette` its noisy texture
+   colours (`colors` 6 to 8, `despeckle` 1 or 2; check `slots` after and
+   that the eyes are among the accents), or pass the same as `clean` to
+   `import_mesh`;
    tubes and boxes alone make such an asset read as pipes. Otherwise block
    out the large forms with `fill_rounded_box` and
    `fill_ellipsoid`. Grow limbs, roots, branches, and twigs with `fill_tube`

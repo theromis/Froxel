@@ -1,6 +1,6 @@
 //! The MCP shape tools in Rhai: `fill_ellipsoid`, `fill_rounded_box`,
 //! `fill_tube`, `fill_box` with a mode, `carve_*`, `recolor`,
-//! `surface_stroke`, `deterrace`, `smooth`,
+//! `surface_stroke`, `deterrace`, `reduce_palette`, `smooth`,
 //! `break_end`, and `scatter`.
 //!
 //! Each call turns its arguments into the MCP tool's arguments and runs the
@@ -34,6 +34,23 @@ const TERRACE: &[&str] = &[
     "run",
     "jitter",
     "seed",
+    "x0",
+    "y0",
+    "z0",
+    "x1",
+    "y1",
+    "z1",
+];
+const REDUCE: &[&str] = &[
+    "colors",
+    "palette",
+    "accents",
+    "minShare",
+    "contrast",
+    "maxAccents",
+    "despeckle",
+    "minSame",
+    "protect",
     "x0",
     "y0",
     "z0",
@@ -229,6 +246,13 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
         } else {
             engine.register_fn("recolor", move |pairs: Array| run(pairs, &Map::new()));
         }
+    }
+    {
+        let state = scratch.clone();
+        engine.register_fn("reduce_palette", move |opts: Map| -> Fallible<Map> {
+            let args = options(&opts, REDUCE, "reduce_palette")?;
+            state.borrow_mut().reduce_colors(args).map_err(runtime)
+        });
     }
     for with_opts in [false, true] {
         let state = scratch.clone();
@@ -454,6 +478,29 @@ impl Scratch {
         }
         .ok_or("space world needs an object of the document; an object this run creates takes local cells")?;
         Ok((remote::to_local(method, &args, offset)?, Some(offset)))
+    }
+
+    /// MCP `reduce_palette` on the object being written. Clusters take free
+    /// slots of the palette as the run leaves it (an existing slot of
+    /// exactly the colour is reused), never another slot in place.
+    fn reduce_colors(&mut self, args: Args) -> Result<Map, String> {
+        self.keep_going()?;
+        let palette = self.run_palette();
+        let mut shades = self.run_shades();
+        let (writes, _, counts) = remote::reduce_writes(
+            self.cells(),
+            &palette,
+            &Value::Object(args),
+            &mut shades,
+            &[false; 256],
+        )?;
+        self.shades.extend(shades.created.iter().copied());
+        let changed = self.apply(&writes)?;
+        let mut out = super::document::dynamic(&counts)
+            .try_cast::<Map>()
+            .unwrap_or_default();
+        out.insert("changed".into(), Dynamic::from_int(changed));
+        Ok(out)
     }
 
     fn deterrace(&mut self, args: Args) -> Result<Map, String> {

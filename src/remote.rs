@@ -20,8 +20,8 @@ mod stone;
 pub(crate) use batch::{batch_items, batch_tool_names, MAX_BATCH_ITEMS};
 pub(crate) use collision::{collision_build, finish_reply as collision_reply};
 pub(crate) use edit::{
-    components_run, components_spec, mirror_prop, plates_writes, recolor_writes, stroke_writes,
-    terrace_writes, MIRROR_METHODS,
+    components_run, components_spec, mirror_prop, plates_writes, recolor_writes, reduce_writes,
+    stroke_writes, terrace_writes, MIRROR_METHODS,
 };
 pub(crate) use import::{
     import_plan, used_slots, DEFAULT_IMPORT_SIZE, DEFAULT_MAX_NEW_SLOTS, DEFAULT_TOLERANCE,
@@ -897,6 +897,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "voxel.shell_plates" => edit::shell_plates(session, &params),
         "voxel.components" => edit::components(session, &params),
         "voxel.deterrace" => edit::deterrace(session, &params),
+        "voxel.reduce_palette" => edit::reduce_palette(session, &params),
         "voxel.smooth" => smooth(session, &params),
         "voxel.break" => break_end(session, &params),
         "voxel.scatter" => scatter(session, &params),
@@ -1575,6 +1576,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("object.set", "index, name?, position?, hidden?", "Rename, move, or hide. position is world voxels; local cells stay put"),
     ("object.remove", "index", "Remove an object and its voxels. Later indices shift. The last object stays"),
     ("voxel.recolor", "from + to | map, x0..z1?, mirror?", "Replace palette slots of the active object's cells (one, or a map of several), in a box or everywhere, with no shape change. One undo step"),
+    ("voxel.reduce_palette", "colors? | palette?, accents?, minShare?, contrast?, maxAccents?, despeckle?, minSame?, protect?, x0..z1?", "Reduce the active object's colours to colors clusters (k-means in Oklab, small distinct accents kept) or snap them to palette (slots or #rrggbb), then despeckle the surface with a majority filter. One undo step"),
     ("voxel.deterrace", "mode?, size?, fill?, origin?, tolerance?, run?, jitter?, seed?, x0..z1?", "Re-quantize the active object into blocks of size cells (mode blocks), or stagger its one-cell terrace steps in teeth (mode stagger), so a voxelized smooth mesh has no long even contour bands. One undo step"),
     ("voxel.components", "op?, connectivity?, keep?, minCells?, seed?, anchor?, reach?, radius?, offset?, index?, name? | into?, copy?, makeActive?", "List the active object's connected parts, keep the largest, remove floaters smaller than minCells, or delete, move, or split out the part holding seed, cut first from anchor at the thinnest neck. One undo step"),
     ("voxel.shell_plates", "palettes {ring, seam, central?, band?, rim?}, layout?, rings?, central?, band?, bandCount?, rim?, center?, seamWidth?, seamDepth?, depth?, facing?, zRange?, x0..z1?, only?, jitter?, symmetric?, seed?", "Paint a turtle-shell plate pattern over the active object's dome: a central plate, rings of plates, an outer band, and a rim, split by painted or grooved seams that follow the surface. One undo step"),

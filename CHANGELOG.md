@@ -15,6 +15,14 @@
 
 ### Added
 
+- Reduce palette: MCP `reduce_palette`, Rhai `reduce_palette(opts)`, the
+  Reduce palette section, `froxel reduce-palette`, and `import_mesh` `clean`
+  (Rhai `voxelize`, the Import mesh panel's Clean, `froxel import --clean`)
+  clean up the noisy colours of a voxelized mesh in one undo step: `colors`
+  clusters them in Oklab with an accent guard that keeps eyes and mouths
+  (clusters take over their own slots in place), or `palette` snaps them to
+  slots or `#rrggbb` colours, then `despeckle` passes of a surface majority
+  filter recolour lone specks; `protect` keeps slots as they are.
 - Paint from views: MCP `paint_from_views`, Rhai `paint_from_views(views,
   opts)`, the Paint from views section, and `froxel paint --tool
   paint_from_views` recolour every surface cell of an object (or of several

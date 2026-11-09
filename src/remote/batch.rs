@@ -32,6 +32,7 @@ pub(crate) const BATCH_TOOLS: &[(&str, &str)] = &[
     ("shell_plates", "voxel.shell_plates"),
     ("components", "voxel.components"),
     ("deterrace", "voxel.deterrace"),
+    ("reduce_palette", "voxel.reduce_palette"),
     ("clear_object", "object.clear"),
     ("trim_outline", "voxel.trim_outline"),
     ("smooth", "voxel.smooth"),
