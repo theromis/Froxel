@@ -476,7 +476,7 @@ fn the_big_head_frog_example_grows_its_eyes() {
     let mut session = crate::state::Session::new();
     session.replace_empty();
     session
-        .set_script(0, include_str!("../examples/big_head_frog.rhai"))
+        .set_script(0, include_str!("fixtures/examples/big_head_frog.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let eyes = session.objects[0]

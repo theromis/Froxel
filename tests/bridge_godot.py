@@ -16,7 +16,7 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BIN = pathlib.Path(os.environ.get("FROXEL_BIN", ROOT / "target" / "debug" / "froxel"))
-VOX = ROOT / "examples" / "lily_pad.vox"
+VOX = ROOT / "tests" / "fixtures" / "examples" / "lily_pad.vox"
 
 # Bakes once from a node placed in a scene: the node's transform is kept when asked.
 BAKE_PLACED = """extends SceneTree

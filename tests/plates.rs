@@ -301,7 +301,7 @@ fn the_plated_dome_example_paints_every_kind() {
     let mut session = Session::new();
     session.replace_empty();
     session
-        .set_script(0, include_str!("../examples/plated_dome.rhai"))
+        .set_script(0, include_str!("fixtures/examples/plated_dome.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     for slot in [3, 4, 5, 6, 7, 8] {

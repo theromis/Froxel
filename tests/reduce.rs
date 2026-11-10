@@ -221,7 +221,7 @@ fn the_speckled_pebble_example_keeps_the_spot_and_drops_the_specks() {
     let mut session = Session::new();
     session.replace_empty();
     session
-        .set_script(0, include_str!("../examples/speckled_pebble.rhai"))
+        .set_script(0, include_str!("fixtures/examples/speckled_pebble.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let cells = &session.objects[0].cells;

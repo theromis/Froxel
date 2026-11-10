@@ -256,7 +256,7 @@ fn the_cleaned_blockout_example_stands_the_boulder_up_and_cuts_the_snail_off() {
     let mut session = Session::new();
     session.replace_empty();
     session
-        .set_script(0, include_str!("../examples/cleaned_blockout.rhai"))
+        .set_script(0, include_str!("fixtures/examples/cleaned_blockout.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let names: Vec<&str> = session.objects.iter().map(|o| o.name.as_str()).collect();

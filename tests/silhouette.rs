@@ -485,7 +485,7 @@ fn the_carve_panel_builds_mcp_arguments() {
 fn the_carved_stump_example_runs() {
     let mut session = empty_session();
     session
-        .set_script(0, include_str!("../examples/carved_stump.rhai"))
+        .set_script(0, include_str!("fixtures/examples/carved_stump.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let cells = &session.active().cells;
@@ -811,7 +811,7 @@ fn the_paint_panel_paints_from_an_image() {
 fn the_painted_shell_example_runs() {
     let mut session = empty_session();
     session
-        .set_script(0, include_str!("../examples/painted_shell.rhai"))
+        .set_script(0, include_str!("fixtures/examples/painted_shell.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let cells = &session.active().cells;
@@ -1050,7 +1050,7 @@ fn fit_calls_are_checked_and_the_panel_builds_arguments() {
 fn the_fitted_beetle_example_runs() {
     let mut session = empty_session();
     session
-        .set_script(0, include_str!("../examples/fitted_beetle.rhai"))
+        .set_script(0, include_str!("fixtures/examples/fitted_beetle.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let cells = &session.active().cells;

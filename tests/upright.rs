@@ -118,7 +118,7 @@ fn the_tilted_slug_example_stands_level_with_its_head_to_minus_y() {
     let mut session = Session::new();
     session.replace_empty();
     session
-        .set_script(0, include_str!("../examples/tilted_slug.rhai"))
+        .set_script(0, include_str!("fixtures/examples/tilted_slug.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let cells = &session.objects[0].cells;

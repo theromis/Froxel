@@ -631,7 +631,7 @@ defaults of points that leave them out. `falloff` is `smooth` (default),
 inflate grows only from them. Added cells take the nearest solid cell's
 slot, or `palette`. Replies with `dabs`, `added`, and `removed`.
 
-`examples/fallen_tree.rhai` builds a fallen trunk with a root flare and a
+`tests/fixtures/examples/fallen_tree.rhai` builds a fallen trunk with a root flare and a
 forked limb with `loft`, `deform` `displace`, and `brush`.
 
 `import_mesh` brings a form made elsewhere (sculpted in Blender, or made
@@ -916,7 +916,7 @@ a part with no neck thinner than 65536 cells is refused.
 {"op": "split", "seed": [30, 22, 41], "anchor": [30, 22, 10], "name": "frog"}
 ```
 
-`examples/cleaned_blockout.rhai` cleans a boulder that came with a snail
+`tests/fixtures/examples/cleaned_blockout.rhai` cleans a boulder that came with a snail
 and foam bits.
 
 #### Splitting into rig parts
@@ -962,7 +962,7 @@ then `place_joints` rigs it.
 ```
 
 `froxel split-parts` runs it on a `.vox` from a JSON file of its arguments.
-`examples/split_critter.rhai` cuts a made-up critter into eight parts.
+`tests/fixtures/examples/split_critter.rhai` cuts a made-up critter into eight parts.
 
 `column_relief` breaks a cliff face into columns for a fractured cliff.
 `facing` is the face's outward direction along x or y (`+x`, `-x`, `+y`,
@@ -1101,7 +1101,7 @@ a hatch. The same `seed` gives the same boards.
   "ragged": 0.3, "nails": 0.3, "knots": 0.2, "seed": 3}}
 ```
 
-![examples/plank_dock.rhai in the fast preview: separate boards of three tones, staggered end joints, dark gaps, ragged ends, nails and knots, and a hatch left whole](images/plank-dock.png)
+![tests/fixtures/examples/plank_dock.rhai in the fast preview: separate boards of three tones, staggered end joints, dark gaps, ragged ends, nails and knots, and a hatch left whole](images/plank-dock.png)
 
 `foliage` builds a tree crown the way pixel-art broadleaf trees are drawn:
 many separate leaf clumps with sunlit tops, darker undersides, and dark gaps
@@ -1150,7 +1150,7 @@ The same `seed` gives the same crown; at most 4096 clumps.
   "size": [3, 5], "gap": 1, "flatten": 0.7, "ragged": 0.4, "masses": 4, "seed": 3}}
 ```
 
-![examples/clustered_tree.rhai in the fast preview: separate leaf clumps with sunlit tops, dark undersides, and the dark core in the gaps](images/clustered-tree.png)
+![tests/fixtures/examples/clustered_tree.rhai in the fast preview: separate leaf clumps with sunlit tops, dark undersides, and the dark core in the gaps](images/clustered-tree.png)
 
 `moss`, `algae`, and `vines` grow on the exposed faces of the solid cells
 in the box whose face passes the filter: `faces` (`top`, `side`, `bottom`,
@@ -1495,7 +1495,7 @@ shade multiplies in. The file's vertices, triangles and atlas layout are the
 ones `colorAtlas` writes without `bake`.
 
 **Cost.** Time is cell faces × (`rays` + `sunRays`), on every core; the 8 408
-cells of `examples/stacked_blocks.vox` take well under a second. The same input
+cells of `tests/fixtures/examples/stacked_blocks.vox` take well under a second. The same input
 gives the same bytes: every face uses one fixed pattern of rays, so there is no
 seed and no noise. To look at the result, `preview` with `glb` (`froxel preview
 --input file.glb`) draws the written file unlit.
@@ -1572,7 +1572,7 @@ whose folder its relative paths start from), `path` (the `.glb`), and optional
   `firstIndex` and `indexCount`. Markers and collision boxes are not carried:
   read them from each model's own export. A model with bones is refused.
 
-**Costs.** One placement of `examples/stacked_blocks_scene.json` is 3 702
+**Costs.** One placement of `tests/fixtures/examples/stacked_blocks_scene.json` is 3 702
 triangles and 3 780 texels. Triangles are the sum of what each placement
 writes with `colorAtlas`, since nothing merges across placements and faces that a
 neighbour or the ground buries are kept (they come out dark). The atlas is one
@@ -1816,7 +1816,7 @@ deadline). A timeout, a call-depth limit, or any other runtime error leaves the
 voxels, palette, and parameters as they were. The error includes the script
 line. Opening a `.vox` never regenerates; call `regenerate` yourself. The
 language and the `MVSC` chunk are described in `docs/scripting.md`.
-`examples/lily_pad.rhai` is a pad with `radius`, `notch`, `direction`, and
+`tests/fixtures/examples/lily_pad.rhai` is a pad with `radius`, `notch`, `direction`, and
 `seed`.
 
 A creature or other one-off shape is modelled without a script: see
@@ -2540,7 +2540,7 @@ above give 46 boxes that cover 98% of the solid with 71% of their volume empty,
 where 46 boxes written by hand covered 88% with 75% empty, and the hold, the
 hatch, and the hull's hole stay open.
 
-![examples/collision_hull.rhai in the fast preview with overlay boxes: the boxes follow the stepped hull, and the hatch and the hold stay open](images/collision-hull.png)
+![tests/fixtures/examples/collision_hull.rhai in the fast preview with overlay boxes: the boxes follow the stepped hull, and the hatch and the hold stay open](images/collision-hull.png)
 
 A hollow is judged inside each box, so an opening that crosses a step of the
 hull counts only the height a box sees. Keep `holeSize` a little under the

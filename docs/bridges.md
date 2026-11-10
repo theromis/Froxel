@@ -28,11 +28,11 @@ stays as it was.
 ## Headless
 
 ```sh
-froxel bridge --input examples/lily_pad.vox
+froxel bridge --input tests/fixtures/examples/lily_pad.vox
 froxel bridge --input model.vox --port 0
 ```
 
-`examples/lily_pad.vox` has a script with four parameters, so it is a good first
+`tests/fixtures/examples/lily_pad.vox` has a script with four parameters, so it is a good first
 test. A model with no script, like `examples/frog.vox`, still imports but shows
 no sliders.
 
@@ -49,7 +49,7 @@ checked on every request.
 ## Editor
 
 ```sh
-froxel --bridge 29771 examples/lily_pad.vox
+froxel --bridge 29771 tests/fixtures/examples/lily_pad.vox
 ```
 
 `FROXEL_BRIDGE_PORT` is the port when `--bridge` is omitted. The session path

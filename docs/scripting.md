@@ -271,7 +271,7 @@ fill_tube([[9, 12, 21, 2.0], [4, 12, 27, 1.0]], 6, #{mirror: "x"});
 set_voxels([[4, 2, 15, 7]], #{mirror: #{axis: "x", at: 12.0}});
 ```
 
-`examples/mirrored_markings.rhai` paints a made-up critter's stripes,
+`tests/fixtures/examples/mirrored_markings.rhai` paints a made-up critter's stripes,
 spots, belly, and horns on its left half and mirrors each one.
 
 ### Surface stroke
@@ -343,7 +343,7 @@ surface, split by painted or grooved seams. Every option is the MCP one:
 | `space` | `"local"` | `"world"` takes world cells (see World cells). |
 
 It returns `#{changed, cells, taken, unreached, plates, seams}`.
-`examples/plated_dome.rhai` paints a made-up oval dome.
+`tests/fixtures/examples/plated_dome.rhai` paints a made-up oval dome.
 
 ### Reduce palette
 
@@ -361,7 +361,7 @@ cluster colours take free slots of the palette as the run leaves it, as
 `cavity_tint`'s shades do (a script never recolours a slot in place). It
 returns `#{changed, slots, clusters, accents, despeckled, recolored,
 newSlots}`. `voxelize` takes `clean` with the same options.
-`examples/speckled_pebble.rhai` cleans a made-up noisy pebble.
+`tests/fixtures/examples/speckled_pebble.rhai` cleans a made-up noisy pebble.
 
 ### De-terrace
 
@@ -573,7 +573,7 @@ or `[x, y, z]`), `radius`, `falloff`, and with any op `minFeature` (report
 the parts thinner than that many cells afterwards). Defaults and ranges are
 the MCP tool's (`docs/mcp.md`). Slots are kept. It returns
 `#{changed, cells, result, added, removed}`, and `thin` (`#{minFeature,
-cells, count, parts}`) with `minFeature`. `examples/big_head_frog.rhai`
+cells, count, parts}`) with `minFeature`. `tests/fixtures/examples/big_head_frog.rhai`
 grows a small frog's head and eyes and checks its legs.
 
 ### Brush
@@ -647,8 +647,8 @@ bottom. Each cell takes the colour of the view whose visible surface is
 nearest it, so the sides of a stump are bark and its top shows the rings.
 It returns `#{changed, cells, bounds: #{min, max}, size, views}`; `bounds` is `()`
 when nothing is carved (with `downscale` it adds `downscale`), and each of `views` holds `grid`, `covered`, and
-`depth` (`calibrate`, `near`, `far`, `rim`, `carved`) for a depth view. `examples/depth_head.rhai` carves a round head from front, side,
-and top rows with a depth map each. `examples/carved_stump.rhai` carves a stump with
+`depth` (`calibrate`, `near`, `far`, `rim`, `carved`) for a depth view. `tests/fixtures/examples/depth_head.rhai` carves a round head from front, side,
+and top rows with a depth map each. `tests/fixtures/examples/carved_stump.rhai` carves a stump with
 roots from front, side, and top rows.
 
 ### Pixelate views
@@ -670,7 +670,7 @@ grid, inked, thin, source, features}`, ready for `carve_from_views` and
 `()` follows the views' proportions), `colors`, `accents`, `minShare`,
 `contrast`, `maxAccents`, `coverage`, `thin`, `despeckle`, and `features`.
 `carve_from_views` and `paint_from_views` take them as `downscale`.
-`png` is MCP only: scripts write no files. `examples/pixel_toad.rhai`
+`png` is MCP only: scripts write no files. `tests/fixtures/examples/pixel_toad.rhai`
 carves a made-up toad 16 cells long from 56 pixel views with its pupils
 kept.
 
@@ -697,7 +697,7 @@ crops of a sheet, on this same code path). Options are the MCP ones:
 `x0`..`z1`, `space`, and `downscale` (see Pixelate views). `objects` is MCP only: a script paints the object it
 writes. New colours take free slots of the palette as the run leaves it, as
 `cavity_tint`'s shades do. It returns `#{changed, painted, surface, unseen,
-blended, views, slots, newSlots, accents}`. `examples/painted_crate.rhai`
+blended, views, slots, newSlots, accents}`. `tests/fixtures/examples/painted_crate.rhai`
 paints a made-up crate from three views.
 
 ### Project paint
@@ -731,7 +731,7 @@ or `yaw` and `pitch` in the options for an oblique projection. Options:
 | `mirror` | off | Paint again across a plane, the image mirrored (see Mirror). |
 
 It returns `#{changed, cells, covered, rays, steep, bounds: #{min, max}}`;
-`bounds` is `()` when nothing is painted. `examples/painted_shell.rhai`
+`bounds` is `()` when nothing is painted. `tests/fixtures/examples/painted_shell.rhai`
 paints a shell's plates onto a dome from the top.
 
 ### Decal
@@ -762,7 +762,7 @@ shape on a round head. Cells are never added or removed. Options:
 
 It returns `#{changed, cells, covered, missed, reached, centre, bounds}`
 (and `mirrored` with a mirror); `missed` counts inked picture cells no
-surface cell landed on. `examples/decal_face.rhai` lays a sleepy eye (and
+surface cell landed on. `tests/fixtures/examples/decal_face.rhai` lays a sleepy eye (and
 its mirror) and a smile on a made-up round head.
 
 ### Fit to views
@@ -810,7 +810,7 @@ covers only the object being written. Options:
 
 It returns `#{changed, added, removed, recolored, sweeps, rounded, views}`, where
 each of `views` is `#{view, before, after}` and `before` and `after` hold
-`iou`, `missing`, `excess`, and `colorError`. `examples/fitted_beetle.rhai`
+`iou`, `missing`, `excess`, and `colorError`. `tests/fixtures/examples/fitted_beetle.rhai`
 fits a boxy blockout to a beetle's front, side, and top rows.
 
 MCP `compare_silhouette` writes a file, so it has no script form; check a
@@ -848,8 +848,8 @@ tool's (`turns`, `yawStep`, `yawRange`, `fineAxes`, `resolution`, `size`,
 `changed`). `voxelize` takes the same search as its `orient` option, and
 `orient: "upright"` (or `upright: true` in the search, with `maxTilt`) stands
 a tilted mesh level from its shape, the taller end of its long axis to −Y;
-`examples/tilted_slug.rhai` stands up a tilted slug and cleans its colours.
-`examples/cleaned_blockout.rhai` stands up a boulder that came in on its
+`tests/fixtures/examples/tilted_slug.rhai` stands up a tilted slug and cleans its colours.
+`tests/fixtures/examples/cleaned_blockout.rhai` stands up a boulder that came in on its
 side.
 
 ### Voxelize
@@ -887,9 +887,9 @@ options are the MCP tool's except `path`, `newObject`, and `name`:
 It returns the MCP reply as a map: `#{changed, cells, shell, interior,
 openEdges, written, slots, newSlots, bounds, scale, triangles, ...}`, where `bounds`
 is `#{min, max, size}`. A mesh is at most 4 096 positions and 4 096
-triangles (the array limit). `examples/faceted_boulder.rhai` builds a
+triangles (the array limit). `tests/fixtures/examples/faceted_boulder.rhai` builds a
 lumpy sphere, voxelizes it, and weathers and mosses it.
-`examples/finned_fish.rhai` voxelizes a small fish with fins a third of a
+`tests/fixtures/examples/finned_fish.rhai` voxelizes a small fish with fins a third of a
 cell thick by every touched cell, by `coverage` alone, and with `keepThin`.
 
 ### Column relief
@@ -1173,48 +1173,48 @@ weathers while the top stays flat: no refill after the dressing.
 
 ### Example
 
-`examples/hollow_log.rhai` (baked in `examples/hollow_log.vox`) builds a
+`tests/fixtures/examples/hollow_log.rhai` builds a
 fallen hollow log with every shape call: a tube trunk with `bark` plates, `smooth`,
 buttress roots built with `push`, `break_end` at the far end, a carved
 hollow, a ground slab, and `scatter` debris under the break.
 
-`examples/fallen_tree.rhai` (baked in `examples/fallen_tree.vox`) builds a
+`tests/fixtures/examples/fallen_tree.rhai` builds a
 fallen tree with the organic tools: a `loft` trunk that tapers, sags, and is
 egg-shaped and flattened where it rests, flat `loft` roots in a flare at the
 torn root plate, a forked limb of three lofts, `deform` `displace` bark
 lumps, and `brush` calls that smooth the limb joint, raise a burl, dig a rot
 pocket, and grab the root plate back.
 
-`examples/plank_dock.rhai` (baked in `examples/plank_dock.vox`) is a dock:
+`tests/fixtures/examples/plank_dock.rhai` is a dock:
 posts, beams, and `planks` with staggered joints, dirt in the gaps, ragged ends,
 nails, and knots, around a hatch kept whole by `exclude`.
 
-`examples/barked_trunk.rhai` (baked in `examples/barked_trunk.vox`) is a
+`tests/fixtures/examples/barked_trunk.rhai` is a
 fallen trunk dressed by its form instead of painted stripes: one tube
 slot, `bark` along the trunk's own points and along a branch stub,
 `cavity_tint` making darker shades in the fissures and the root flare and
 lighter ones on the plate ridges, and `moss` cushions on the upper side
 with drapes over the edge.
 
-`examples/clustered_tree.rhai` (baked in `examples/clustered_tree.vox`) is
+`tests/fixtures/examples/clustered_tree.rhai` is
 a broadleaf tree whose crown is separate leaf clumps: a tube trunk and
 branches, then `foliage` over three ellipsoids in four masses, with lit
 tops, dark undersides, a dark core in the gaps, and leaf slots that sway
 while the wood stays still.
 
-`examples/swept_cut.rhai` (baked in `examples/swept_cut.vox`) cuts a block
+`tests/fixtures/examples/swept_cut.rhai` cuts a block
 with `sweep` and slot `0`: a slanted side along a curved outline and a round
 channel over the top.
 
-`examples/trimmed_hull.rhai` (baked in `examples/trimmed_hull.vox`) narrows a
+`tests/fixtures/examples/trimmed_hull.rhai` narrows a
 hollow boat hull toward its keel with one `trim_outline` and seals it with a skin.
 
-`examples/gorge_wall.rhai` (baked in `examples/gorge_wall.vox`) is a gorge
+`tests/fixtures/examples/gorge_wall.rhai` is a gorge
 cliff wall built with the stone tools: a profile swept along a curve,
 `column_relief` columns, a ledge swept over them and kept flat with
 `exclude`, `joints` columns, `weather`, `moss`, `algae` at the waterline,
 `vines` with blooms, and markers for the ledge, the top, collision boxes,
-and both ends. `examples/gorge_wall_variants.json` is a parameter set list
+and both ends. `tests/fixtures/examples/gorge_wall_variants.json` is a parameter set list
 for `export_variants` and `froxel variants`; exporting a subset of it
 again updates the manifest by name and keeps the other entries.
 
@@ -1249,7 +1249,7 @@ MCP `collision_from_voxels` from a script, with the same options (`prefix`,
 the same reply as a map. It covers the cells of the object being written as
 they are at that point, so call it last. It builds collision box markers that
 keep a hold, a hatch, and a hole open, so the colliders follow the model on
-every rerun. `examples/collision_hull.rhai` is a hull with a deck, a hold, and
+every rerun. `tests/fixtures/examples/collision_hull.rhai` is a hull with a deck, a hold, and
 vines the boxes leave out.
 
 ## Objects
@@ -1318,7 +1318,7 @@ function, and the whole document is put back. A run makes at most 4 096 of
 these calls. `split_parts` takes MCP `split_parts`' parts (`point`,
 `points`, `bone`, or `marker`, and `planes`) and options; it removes the
 emptied source, so name a part like the script's own object (as
-`examples/split_critter.rhai` does) or pass `removeSource: false` to keep
+`tests/fixtures/examples/split_critter.rhai` does) or pass `removeSource: false` to keep
 the script.
 
 `list_bones`, `list_clips`, and `has_bone`, `has_clip`, and `has_object`

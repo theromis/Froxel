@@ -299,14 +299,14 @@ has them.
 ```json
 {"name": "preview", "arguments": {
   "path": "out/gorge_sheet.png", "preset": "game", "width": 420, "height": 300,
-  "variants": "examples/gorge_wall_variants.json",
+  "variants": "tests/fixtures/examples/gorge_wall_variants.json",
   "reference": {"path": "concepts/gorge_cliffs_v01.png", "label": "concept"}}}
 ```
 
 ![The gorge wall example's three variants at the game preset, with markers](images/preview-contact-sheet.png)
 
-`froxel preview --input examples/gorge_wall.vox --variants
-examples/gorge_wall_variants.json --preset game --overlay all --width 480
+`froxel preview --input tests/fixtures/examples/gorge_wall.vox --variants
+tests/fixtures/examples/gorge_wall_variants.json --preset game --overlay all --width 480
 --height 340 --columns 3` draws the sheet above.
 
 The Render section's Sheet of files… and Sheet of variants… buttons make
@@ -348,7 +348,7 @@ sets.json` (baked from the one `--input`) and `--reference concept.png`
 `--overlay KIND` (repeatable) and `--no-overlay-labels` draw the markers.
 
 ```sh
-froxel preview --input examples/gorge_wall.vox --variants examples/gorge_wall_variants.json \
+froxel preview --input tests/fixtures/examples/gorge_wall.vox --variants tests/fixtures/examples/gorge_wall_variants.json \
   --reference concept.png --reference-label concept --preset game \
   --width 420 --height 300 --out gorge_sheet.png
 ```

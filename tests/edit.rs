@@ -163,7 +163,7 @@ fn the_turtle_parts_example_cuts_the_same_parts_on_a_rerun() {
     let mut session = Session::new();
     session.replace_empty();
     session
-        .set_script(0, include_str!("../examples/turtle_parts.rhai"))
+        .set_script(0, include_str!("fixtures/examples/turtle_parts.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let names: Vec<&str> = session.objects.iter().map(|o| o.name.as_str()).collect();

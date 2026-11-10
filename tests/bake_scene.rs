@@ -460,7 +460,7 @@ fn a_bad_scene_is_refused_with_its_reason() {
 fn the_example_scene_bakes_through_the_tool_with_paths_from_its_folder() {
     let scene = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/examples/stacked_blocks_scene.json"
+        "/tests/fixtures/examples/stacked_blocks_scene.json"
     );
     let path = temp("example.glb");
     let reply = crate::remote::bake_scene(&json!({
@@ -479,10 +479,13 @@ fn the_example_scene_bakes_through_the_tool_with_paths_from_its_folder() {
 #[test]
 fn the_command_lines_take_the_bake() {
     let args = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-    let vox = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/stacked_blocks.vox");
+    let vox = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/examples/stacked_blocks.vox"
+    );
     let scene = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/examples/stacked_blocks_scene.json"
+        "/tests/fixtures/examples/stacked_blocks_scene.json"
     );
     let file = temp("bake.json");
     std::fs::write(&file, r#"{"rays": 4, "distance": 3}"#).unwrap();

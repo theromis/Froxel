@@ -311,7 +311,7 @@ fn the_pixel_toad_example_keeps_its_pupils() {
     let mut session = Session::new();
     session.replace_empty();
     session
-        .set_script(0, include_str!("../examples/pixel_toad.rhai"))
+        .set_script(0, include_str!("fixtures/examples/pixel_toad.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let pupils = session.objects[0]

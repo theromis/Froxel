@@ -300,7 +300,7 @@ fn the_mirrored_markings_example_is_symmetric() {
     let mut session = Session::new();
     session.replace_empty();
     session
-        .set_script(0, include_str!("../examples/mirrored_markings.rhai"))
+        .set_script(0, include_str!("fixtures/examples/mirrored_markings.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let plane = Mirror::about_centre(0, session.active().cells.keys().copied()).unwrap();

@@ -182,7 +182,7 @@ fn the_split_critter_example_makes_eight_parts_at_world_origin() {
     )
     .unwrap();
     session
-        .set_script(0, include_str!("../examples/split_critter.rhai"))
+        .set_script(0, include_str!("fixtures/examples/split_critter.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let names = [

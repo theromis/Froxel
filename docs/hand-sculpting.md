@@ -203,10 +203,10 @@ fit_to_views         views=[{view: "front", path: "sheet.png", crop: [40, 60, 52
 (an object or a JSON file), and `placementYaw` checks an asset placed turned in
 a level from that same camera, in `preview` too ([preview.md](preview.md)).
 
-`examples/carved_stump.rhai` does the same in a script, with the views as
-rows, `examples/painted_shell.rhai` paints a shell's plates from a top
-view, `examples/fitted_beetle.rhai` fits a boxy blockout to its views,
-and `examples/depth_head.rhai` carves a round head from three views with a
+`tests/fixtures/examples/carved_stump.rhai` does the same in a script, with the views as
+rows, `tests/fixtures/examples/painted_shell.rhai` paints a shell's plates from a top
+view, `tests/fixtures/examples/fitted_beetle.rhai` fits a boxy blockout to its views,
+and `tests/fixtures/examples/depth_head.rhai` carves a round head from three views with a
 depth map each (its `depth` parameter at 0 shows the boxy hull without).
 In the editor, the Carve from views, Paint from view, Fit to views (on the
 Carve from views section's views), and Compare silhouette sections hold the
@@ -317,16 +317,16 @@ kerb that bends with no corners. Give a rounded rectangle (`width`,
 per point to lean or taper it. `palettes` with `pattern: "bands"` lays
 horizontal strata.
 `palette` `0` erases the solid cells the same shape covers: the sweep is the
-cut, and `examples/swept_cut.rhai` slopes a block's side and cuts a channel.
+cut, and `tests/fixtures/examples/swept_cut.rhai` slopes a block's side and cuts a channel.
 
 `trim_outline` reshapes a finished form from outside, and it is the way to
 narrow a boat hull toward the water: give the closed plan `outline` and `[z,
 inset]` pairs once, and every solid cell outside that surface goes. `skin` and
 `thickness` lay a new skin along the cut and seal a hollow it opened, leaving
 the rim and any port alone, so there is no second `sweep` to rebuild it.
-`examples/trimmed_hull.rhai` does this to a hollow block in one call.
+`tests/fixtures/examples/trimmed_hull.rhai` does this to a hollow block in one call.
 
-`examples/gorge_wall.rhai` puts the stone tools together in order: sweep,
+`tests/fixtures/examples/gorge_wall.rhai` puts the stone tools together in order: sweep,
 column relief, the ledge, joints, weather, moss, algae, vines, then markers.
 
 `column_relief` breaks a cliff face into columns of random width that
@@ -376,7 +376,7 @@ pipe with a stripe. Build the trunk, branch, or root with one slot, then:
   `facing` and no `faces` every face is considered. A call that grows
   nothing replies with a `warning` saying why.
 
-`examples/barked_trunk.rhai` puts them together on a fallen trunk.
+`tests/fixtures/examples/barked_trunk.rhai` puts them together on a fallen trunk.
 
 A deck, floor, or dock is not 50 `fill_box` and `carve` calls, and not painted
 stripes. `planks` lays separate boards over a rectangle at a height: real gaps
@@ -384,7 +384,7 @@ down to a `dirt` slot, end joints staggered between neighbouring rows, a tone pe
 board from `palettes` (at least two), and with `ragged` and `dark` worn ends and a
 few nails and knots. For a curved hull, fill the deck to its outline in one slot
 and pass that slot as `only`; an `exclude` box keeps a hatch whole.
-`examples/plank_dock.rhai` is a whole dock.
+`tests/fixtures/examples/plank_dock.rhai` is a whole dock.
 
 ```
 planks               x0=0 y0=0 x1=71 y1=31 z=14 axis=x palettes=[3, 4, 5] dirt=6 dark=7 length=[10, 24] ragged=0.3 seed=3   # boards, not stripes
@@ -402,7 +402,7 @@ the clumps into a few lobes split by deeper grooves. The wood is never
 written, so branches show through the gaps; an `exclude` box keeps the
 space in front of the trunk open. To re-cluster a crown that is already
 sculpted, pass its leaf slots as `from`. Give the leaf slots and the core
-the same sway. `examples/clustered_tree.rhai` is a whole tree.
+the same sway. `tests/fixtures/examples/clustered_tree.rhai` is a whole tree.
 
 ```
 foliage              palettes=[3, 4, 5, 6, 7] core=3 ellipsoids=[[1, 0, 30, 15, 13.5, 9], [-7, 4, 34, 9, 9, 7], [7, -4, 34, 9, 8, 7]] size=[3, 5] masses=4 seed=3   # clumps, not a blob
@@ -469,7 +469,7 @@ preview              path="log.png"
 Every tool above is also a Rhai function (`docs/scripting.md`, "Shapes"),
 with the MCP options in a trailing map, so a family of organic pieces can
 be a script with parameters instead of a list of calls. This is the core of
-`examples/hollow_log.rhai`, the log above with parameters for its length,
+`tests/fixtures/examples/hollow_log.rhai`, the log above with parameters for its length,
 radius, wall, roots, and seed:
 
 ```rhai
@@ -497,7 +497,7 @@ The order matters as it does for the tools: smooth while the trunk is
 solid, add the roots before carving so the hollow cuts them out of the
 opening, and add the ground after the break.
 
-`examples/fallen_tree.rhai` is a fallen tree that does not read as a pipe:
+`tests/fixtures/examples/fallen_tree.rhai` is a fallen tree that does not read as a pipe:
 
 ```rhai
 loft([

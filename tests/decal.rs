@@ -231,7 +231,7 @@ fn the_decal_face_example_lays_a_mirrored_pair_of_eyes_and_a_smile() {
     let mut session = Session::new();
     session.replace_empty();
     session
-        .set_script(0, include_str!("../examples/decal_face.rhai"))
+        .set_script(0, include_str!("fixtures/examples/decal_face.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let plane =

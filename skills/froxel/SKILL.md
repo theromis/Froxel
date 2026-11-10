@@ -40,10 +40,10 @@ server is still running. A server started with `--watch` reloads by itself.
   `has_clip`, and `has_object` so a rerun does not fail. Only file-writing
   tools have no script form, and `import_mesh` (scripts read no files):
   `voxelize(#{positions, triangles, colors}, opts)` voxelizes a mesh the
-  script builds (`examples/faceted_boulder.rhai`). Name things in loops with `"ledge_" + i` or
+  script builds (`tests/fixtures/examples/faceted_boulder.rhai`). Name things in loops with `"ledge_" + i` or
   `` `ledge_${i}` ``. See `docs/scripting.md`,
-  `examples/hollow_log.rhai`, `examples/barked_trunk.rhai`, and
-  `examples/plank_dock.rhai`.
+  `tests/fixtures/examples/hollow_log.rhai`, `tests/fixtures/examples/barked_trunk.rhai`, and
+  `tests/fixtures/examples/plank_dock.rhai`.
 
 - **Markers** for game data: `set_marker` names a ledge point, a collision
   `box`, or a `connector` (a joining end) on an object; scripts call
@@ -66,7 +66,7 @@ server is still running. A server started with `--watch` reloads by itself.
   0..255, or 0..1 only with a decimal point (`[1, 1, 1]` is near black).
   A later call into the same manifest merges by name: re-export only the
   variant to redo and the others stay listed (`replace: true` starts the
-  manifest fresh). `froxel variants` is the command-line form. `examples/gorge_wall.rhai`
+  manifest fresh). `froxel variants` is the command-line form. `tests/fixtures/examples/gorge_wall.rhai`
   shows the stone tools and markers together.
 
 ## Coordinates and rules
@@ -230,12 +230,12 @@ server is still running. A server started with `--watch` reloads by itself.
    `displace` for burls and lumps, and `scale` to make a small creature's head, eyes, or fins larger
    than life about a `point` with a smooth `falloff`; `minFeature: 2` reports parts one cell thin), and refine the silhouette with `brush`
    (`inflate`, `deflate`, `smooth`, `flatten`, `grab` along points; see
-   `examples/fallen_tree.rhai`). Cut
+   `tests/fixtures/examples/fallen_tree.rhai`). Cut
    hollows, tunnels, and pits with `carve`, and a slanted side along a
    curved or closed outline with `sweep` and `palette` 0. Narrow a finished
    form from outside, such as a hull toward its keel, with `trim_outline`: a
    closed plan `outline`, `[z, inset]` pairs, and `skin` to seal the cut
-   (`examples/trimmed_hull.rhai`), not tubes fitted to the surface. Snap wood with `break_end` (a
+   (`tests/fixtures/examples/trimmed_hull.rhai`), not tubes fitted to the surface. Snap wood with `break_end` (a
    ragged face with splinters) instead of cutting it clean, sweep curved
    walls, banks, and ledges with `sweep` (a profile along a smooth path),
    and pile debris
@@ -261,14 +261,14 @@ server is still running. A server started with `--watch` reloads by itself.
    separate boards with real gaps down to a `dirt` slot, staggered end
    joints, a tone per board (`palettes`, at least two), and optional
    `ragged` ends and `dark` nails and knots; for a curved hull, fill the
-   deck in one slot and pass it as `only` (`examples/plank_dock.rhai`).
+   deck in one slot and pass it as `only` (`tests/fixtures/examples/plank_dock.rhai`).
    Build a broadleaf crown with `foliage`, never
    a blob of `fill_ellipsoid` calls with noise or grooves: after the trunk
    and branches, `foliage` over a few ellipsoids (or `from` an existing
    crown's leaf slots) packs separate clumps with sunlit tops, dark
    undersides, and a dark `core` in the gaps (`palettes` darkest first,
    `size`, `gap`, `masses` for lobes; the wood stays whole;
-   `examples/clustered_tree.rhai`). Give the leaf slots and the core the
+   `tests/fixtures/examples/clustered_tree.rhai`). Give the leaf slots and the core the
    same sway. Pass `exclude` boxes (a ledge top, a
    cave floor, a river bed, with the air above) to these tools and
    `scatter` so walking surfaces stay flat instead of refilling them. Do not compute tubes or carves in

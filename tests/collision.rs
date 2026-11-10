@@ -537,7 +537,7 @@ fn the_collision_hull_example_keeps_its_hollows_open() {
     let mut session = Session::new();
     session.replace_empty();
     session
-        .set_script(0, include_str!("../examples/collision_hull.rhai"))
+        .set_script(0, include_str!("fixtures/examples/collision_hull.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let boxes: Vec<(Cell, Cell)> = session

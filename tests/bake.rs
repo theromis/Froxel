@@ -70,7 +70,10 @@ fn glb(session: &Session, options: &MeshExport, name: &str) -> Vec<u8> {
 #[test]
 fn without_a_bake_the_file_is_byte_for_byte_what_it_was() {
     let mut session = Session::new();
-    let vox = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/stacked_blocks.vox");
+    let vox = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/examples/stacked_blocks.vox"
+    );
     session.open_vox(std::path::Path::new(vox)).unwrap();
     let plain = MeshExport {
         color_atlas: false,
@@ -370,7 +373,10 @@ fn light_passes_translucent_slots_and_other_objects_shadow_each_other() {
 #[test]
 fn the_export_is_deterministic_marked_unlit_and_keeps_its_triangles() {
     let mut session = Session::new();
-    let vox = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/stacked_blocks.vox");
+    let vox = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/examples/stacked_blocks.vox"
+    );
     session.open_vox(std::path::Path::new(vox)).unwrap();
     let bake = parsed(json!({"preset": "old_pond", "sunSoftness": 3, "rays": 16}));
     let baked = options(Some(bake));

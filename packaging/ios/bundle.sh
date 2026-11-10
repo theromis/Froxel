@@ -57,7 +57,7 @@ xcrun actool --compile "$app" --platform "$sdk" --minimum-deployment-target 16.0
   --target-device iphone --target-device ipad --app-icon AppIcon \
   --output-partial-info-plist "$icons/icons.plist" --output-format human-readable-text \
   "$icons/Assets.xcassets" >&2
-cp "$root/examples/frog.vox" "$root/examples/lily_pad.vox" "$app/"
+cp "$root/examples/frog.vox" "$app/"
 cp "$root/packaging/ios/PrivacyInfo.xcprivacy" "$app/"
 cat >"$app/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

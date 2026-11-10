@@ -245,7 +245,7 @@ fn the_painted_crate_example_paints_each_side_from_its_view() {
     let mut session = Session::new();
     session.replace_empty();
     session
-        .set_script(0, include_str!("../examples/painted_crate.rhai"))
+        .set_script(0, include_str!("fixtures/examples/painted_crate.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let count = |slot: u8| {

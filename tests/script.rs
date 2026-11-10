@@ -157,7 +157,7 @@ fn motion_and_a_named_object_are_part_of_one_undo_step() {
 
 #[test]
 fn the_lily_pad_is_two_layers_and_responds_to_its_seed() {
-    let source = include_str!("../examples/lily_pad.rhai");
+    let source = include_str!("fixtures/examples/lily_pad.rhai");
     let mut session = Session::new();
     session.replace_empty();
     session.set_script(0, source).unwrap();
@@ -673,7 +673,7 @@ fn the_hollow_log_is_hollow_snapped_and_rooted() {
     let mut session = Session::new();
     session.replace_empty();
     session
-        .set_script(0, include_str!("../examples/hollow_log.rhai"))
+        .set_script(0, include_str!("fixtures/examples/hollow_log.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let log = cells_of(&session);
@@ -696,7 +696,7 @@ fn the_fallen_tree_has_a_root_flare_a_forked_limb_and_lumps() {
     let mut session = Session::new();
     session.replace_empty();
     session
-        .set_script(0, include_str!("../examples/fallen_tree.rhai"))
+        .set_script(0, include_str!("fixtures/examples/fallen_tree.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let tree = cells_of(&session);
@@ -1048,7 +1048,7 @@ fn the_gorge_wall_is_jointed_overgrown_and_marked() {
     let mut session = Session::new();
     session.replace_empty();
     session
-        .set_script(0, include_str!("../examples/gorge_wall.rhai"))
+        .set_script(0, include_str!("fixtures/examples/gorge_wall.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let wall = cells_of(&session);
@@ -1310,7 +1310,7 @@ fn the_faceted_boulder_example_voxelizes_and_weathers() {
     let mut session = Session::new();
     session.replace_empty();
     session
-        .set_script(0, include_str!("../examples/faceted_boulder.rhai"))
+        .set_script(0, include_str!("fixtures/examples/faceted_boulder.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let cells = &session.active().cells;
@@ -1401,7 +1401,7 @@ fn the_swept_cut_removes_what_the_same_sweep_covers() {
     let mut session = Session::new();
     session.replace_empty();
     session
-        .set_script(0, include_str!("../examples/swept_cut.rhai"))
+        .set_script(0, include_str!("fixtures/examples/swept_cut.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let cut = cells_of(&session);
@@ -1458,7 +1458,7 @@ fn the_trimmed_hull_narrows_toward_its_keel_under_a_new_skin() {
     let mut session = Session::new();
     session.replace_empty();
     session
-        .set_script(0, include_str!("../examples/trimmed_hull.rhai"))
+        .set_script(0, include_str!("fixtures/examples/trimmed_hull.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let hull = cells_of(&session);
@@ -1481,7 +1481,7 @@ fn the_barked_trunk_has_plates_shaded_fissures_and_moss_cushions() {
     let mut session = Session::new();
     session.replace_empty();
     session
-        .set_script(0, include_str!("../examples/barked_trunk.rhai"))
+        .set_script(0, include_str!("fixtures/examples/barked_trunk.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let trunk = cells_of(&session);

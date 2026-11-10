@@ -440,7 +440,7 @@ fn the_depth_head_example_is_round() {
         let mut session = crate::state::Session::new();
         session.replace_empty();
         session
-            .set_script(0, include_str!("../examples/depth_head.rhai"))
+            .set_script(0, include_str!("fixtures/examples/depth_head.rhai"))
             .unwrap();
         session
             .set_script_params(

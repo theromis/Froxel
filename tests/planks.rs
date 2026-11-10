@@ -500,7 +500,7 @@ fn the_plank_dock_example_has_every_slot_and_rebuilds_the_same() {
     let mut session = Session::new();
     session.replace_empty();
     session
-        .set_script(0, include_str!("../examples/plank_dock.rhai"))
+        .set_script(0, include_str!("fixtures/examples/plank_dock.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let cells = session.active().cells.clone();

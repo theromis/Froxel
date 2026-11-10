@@ -260,7 +260,7 @@ fn the_clustered_tree_example_keeps_its_wood_and_sways_its_leaves() {
     let mut session = Session::new();
     session.replace_empty();
     session
-        .set_script(0, include_str!("../examples/clustered_tree.rhai"))
+        .set_script(0, include_str!("fixtures/examples/clustered_tree.rhai"))
         .unwrap();
     session.regenerate_script(0).unwrap();
     let cells = session.active().cells.clone();
