@@ -119,6 +119,28 @@ def wait_for_build(client, app, number, minutes):
         time.sleep(60)
 
 
+def open_submission(client, app, version_id):
+    """An unsubmitted iOS review submission to reuse, and whether it already holds the version.
+
+    A version belongs to one submission at a time, so one left open by an earlier run or
+    by App Store Connect is submitted instead of a new one. Prefer the one holding the
+    version; otherwise any open one, so failed runs do not pile up empty drafts.
+    """
+    open_ones = client.call(
+        "GET",
+        f"/v1/reviewSubmissions?filter[app]={app}&filter[platform]=IOS"
+        "&filter[state]=READY_FOR_REVIEW,UNRESOLVED_ISSUES&limit=20",
+    )["data"]
+    for sub in open_ones:
+        items = client.call("GET", f"/v1/reviewSubmissions/{sub['id']}/items?include=appStoreVersion")["data"]
+        for item in items:
+            linked = (item.get("relationships", {}).get("appStoreVersion", {}).get("data") or {}).get("id")
+            if linked == version_id:
+                return sub["id"], True
+    ready = [s for s in open_ones if s["attributes"]["state"] == "READY_FOR_REVIEW"]
+    return (ready[0]["id"], False) if ready else (None, False)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--version", required=True, help="marketing version, e.g. 0.3.1")
@@ -181,30 +203,35 @@ def main():
     )
     print(f"build {args.build} attached")
 
-    submission = client.call(
-        "POST",
-        "/v1/reviewSubmissions",
-        {
-            "data": {
-                "type": "reviewSubmissions",
-                "attributes": {"platform": "IOS"},
-                "relationships": {"app": {"data": {"type": "apps", "id": app}}},
-            }
-        },
-    )["data"]["id"]
-    client.call(
-        "POST",
-        "/v1/reviewSubmissionItems",
-        {
-            "data": {
-                "type": "reviewSubmissionItems",
-                "relationships": {
-                    "reviewSubmission": {"data": {"type": "reviewSubmissions", "id": submission}},
-                    "appStoreVersion": {"data": {"type": "appStoreVersions", "id": target}},
-                },
-            }
-        },
-    )
+    submission, has_version = open_submission(client, app, target)
+    if submission:
+        print(f"review submission {submission}: reusing the open one")
+    else:
+        submission = client.call(
+            "POST",
+            "/v1/reviewSubmissions",
+            {
+                "data": {
+                    "type": "reviewSubmissions",
+                    "attributes": {"platform": "IOS"},
+                    "relationships": {"app": {"data": {"type": "apps", "id": app}}},
+                }
+            },
+        )["data"]["id"]
+    if not has_version:
+        client.call(
+            "POST",
+            "/v1/reviewSubmissionItems",
+            {
+                "data": {
+                    "type": "reviewSubmissionItems",
+                    "relationships": {
+                        "reviewSubmission": {"data": {"type": "reviewSubmissions", "id": submission}},
+                        "appStoreVersion": {"data": {"type": "appStoreVersions", "id": target}},
+                    },
+                }
+            },
+        )
     client.call(
         "PATCH",
         f"/v1/reviewSubmissions/{submission}",
