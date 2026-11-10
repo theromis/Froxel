@@ -42,6 +42,10 @@ to reach the window does not silently edit a private document.
 }
 ```
 
+Registering the server does not install the agent skill
+(`skills/froxel/SKILL.md`). For Claude Code, copy the `skills/froxel` folder
+into `~/.claude/skills/` (the README has a one-line download).
+
 ### Docker
 
 The `Dockerfile` at the repository root runs the headless server from a

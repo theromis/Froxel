@@ -118,6 +118,15 @@ Add it to Claude Code. On macOS, after installing from the dmg:
 claude mcp add froxel -- /Applications/Froxel.app/Contents/MacOS/froxel mcp
 ```
 
+Also install the agent skill, [skills/froxel/SKILL.md](skills/froxel/SKILL.md),
+which tells the agent when and how to use the tools (block out, preview after
+every step, fit to reference views). Adding the server does not install it:
+copy the `skills/froxel` folder into `~/.claude/skills/`, or without a clone:
+
+```sh
+mkdir -p ~/.claude/skills/froxel && curl -fsSL https://raw.githubusercontent.com/theromis/Froxel/main/skills/froxel/SKILL.md -o ~/.claude/skills/froxel/SKILL.md
+```
+
 Or add it to any MCP client's config:
 
 ```json
@@ -150,11 +159,6 @@ Creatures and other one-off shapes are made by **hand sculpting**: block out
 with box and ellipsoid fills, refine single cells, render after every step,
 and compare with the reference. No script is stored. See
 [docs/hand-sculpting.md](docs/hand-sculpting.md).
-
-[skills/froxel/SKILL.md](skills/froxel/SKILL.md) is an agent skill that
-explains when and how an agent should use these tools. To install it for
-Claude Code, copy the `skills/froxel` folder into `~/.claude/skills/`.
-
 ## Scripting
 
 An object can carry a [Rhai](https://rhai.rs/) script. The editor shows a slider
