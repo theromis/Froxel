@@ -24,6 +24,7 @@ mod joints;
 mod loft;
 mod mask_edit;
 mod mirror;
+mod optimize;
 pub(crate) mod orient;
 mod paint_views;
 mod pixelate;
@@ -67,6 +68,10 @@ pub use mask_edit::{
     MAX_EXCLUDE as MAX_EXCLUDE_COLORS,
 };
 pub use mirror::{mirrored, Mirror};
+pub use optimize::{
+    optimize_to_views, Agreement, OptimizeSpec, OptimizeView, MAX_OPTIMIZE_BAND,
+    MAX_OPTIMIZE_ITERATIONS,
+};
 pub use orient::{
     axis_names, euler_xyz, from_euler_xyz, orient, resample, surface_points, turned, Candidate,
     OrientSpec, OrientView, Oriented, Turns, DEFAULT_ORIENT_RESOLUTION,

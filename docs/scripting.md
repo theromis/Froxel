@@ -674,6 +674,38 @@ grid, inked, thin, source, features}`, ready for `carve_from_views` and
 carves a made-up toad 16 cells long from 56 pixel views with its pupils
 kept.
 
+### Optimize to views
+
+```rhai
+let px = pixelate_views(views, #{size: [(), 20, ()], colors: 5});
+carve_from_views(px.views, #{size: px.size});
+let report = optimize_to_views(px.views);
+let report = optimize_to_views(views, #{downscale: #{colors: 5}, band: 2, minFeature: 2});
+```
+
+MCP `optimize_to_views` on the object being written, a small creature 20 to
+60 cells long: its shape and surface colours are iterated until its
+orthographic views match the pixel-art views (maps of `rows` and a
+`legend`, stretched over the object's box; over MCP they may be PNG crops
+of a sheet, on this same code path). Shape passes clear excess columns and
+add a cell on a missing ray that touches the body and lies inside every
+other view, within `band` cells of the starting surface, connected, never
+thinner than `minFeature`; then every surface cell takes the slot of the
+views' colours that the views seeing it agree on (weighted by how squarely
+each faces it, smoothed by `smooth`, accents such as eyes kept), and
+`colorCarve` rounds off edge cells two views paint differently (see
+[mcp.md](mcp.md#optimizing-to-pixel-art-views)). Options are the MCP ones:
+`downscale`, `fit`, `mirror`, `iterations`, `shape`, `recolor`, `band`,
+`minFeature`, `connected`, `smooth`, `sharpness`, `slots`, `keep`,
+`accents`, `accentShare`, `depthWeight`, `depthTolerance`, `surfaceWeight`,
+and `colorCarve`; a view takes `color` and `weight`. New colours take free
+slots of the palette as the run leaves it. It returns the MCP reply
+(`views` with `before` and `after` `agreement`, `iou`, `color`, and
+`colorError`; `agreement`, `added`, `removed`, `recolored`, `iterations`,
+`blocked`, `colours`, `newSlots`, ...) with `changed`.
+`tests/fixtures/examples/optimized_toad.rhai` carves a made-up toad 20
+cells long and optimises it to its views.
+
 ### Paint from views
 
 ```rhai

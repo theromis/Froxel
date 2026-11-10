@@ -17,6 +17,10 @@
 //! `paint_from_views(views)` and `paint_from_views(views, opts)` run
 //! `remote::views_paint_writes` on the object being written, its new
 //! colours (`newSlots`) in free slots as `cavity_tint` makes shades.
+//! `optimize_to_views(views)` and `optimize_to_views(views, opts)` run
+//! `remote::optimize_writes` on the object being written: its shape and
+//! surface colours iterated toward pixel-art rows views, new colours in
+//! free slots.
 //! `pixelate_views(views, opts)` runs `remote::pixelate_writes` and writes
 //! nothing: it returns the views as pixel art rows at the cell grid
 //! (`opts.size`), for `carve_from_views` and `paint_from_views`, which also
@@ -97,6 +101,28 @@ const CARVE: &[&str] = &[
     "excludeColors",
     "excludeTolerance",
     "keepLargest",
+];
+
+const OPTIMIZE: &[&str] = &[
+    "downscale",
+    "fit",
+    "mirror",
+    "iterations",
+    "shape",
+    "recolor",
+    "band",
+    "minFeature",
+    "connected",
+    "smooth",
+    "sharpness",
+    "slots",
+    "keep",
+    "accents",
+    "accentShare",
+    "depthWeight",
+    "depthTolerance",
+    "surfaceWeight",
+    "colorCarve",
 ];
 
 const FIT: &[&str] = &[
@@ -242,6 +268,23 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
             });
         } else {
             engine.register_fn("fit_to_views", move |views: Array| run(views, &Map::new()));
+        }
+    }
+    for with_opts in [false, true] {
+        let state = scratch.clone();
+        let run = move |views: Array, opts: &Map| -> Fallible<Map> {
+            let mut args = options(opts, OPTIMIZE, "optimize_to_views")?;
+            args.insert("views".into(), json(&Dynamic::from_array(views))?);
+            state.borrow_mut().optimize_views(args).map_err(runtime)
+        };
+        if with_opts {
+            engine.register_fn("optimize_to_views", move |views: Array, opts: Map| {
+                run(views, &opts)
+            });
+        } else {
+            engine.register_fn("optimize_to_views", move |views: Array| {
+                run(views, &Map::new())
+            });
         }
     }
     for with_opts in [false, true] {
@@ -445,6 +488,35 @@ impl Scratch {
         let changed = self.apply(&writes)?;
         let mut reply: Map = counts
             .iter()
+            .map(|(key, value)| (key.as_str().into(), super::document::dynamic(value)))
+            .collect();
+        reply.insert("changed".into(), Dynamic::from_int(changed));
+        Ok(reply)
+    }
+
+    /// The object being written iterated toward its pixel-art views. New
+    /// colours take free slots of the palette as the run leaves it. The
+    /// reply holds `changed` and the MCP reply.
+    fn optimize_views(&mut self, args: Args) -> Result<Map, String> {
+        self.keep_going()?;
+        let palette = self.run_palette();
+        let mut shades = self.run_shades();
+        let (writes, counts) = remote::optimize_writes(
+            self.cells(),
+            &palette,
+            &Value::Object(args),
+            false,
+            &mut shades,
+        )?;
+        self.shades.extend(shades.created.iter().copied());
+        let writes: Vec<(i32, i32, i32, i32)> = writes
+            .iter()
+            .map(|(c, slot)| (c.0, c.1, c.2, i32::from(*slot)))
+            .collect();
+        let changed = self.apply(&writes)?;
+        let mut reply: Map = counts
+            .iter()
+            .filter(|(key, _)| key.as_str() != "millis")
             .map(|(key, value)| (key.as_str().into(), super::document::dynamic(value)))
             .collect();
         reply.insert("changed".into(), Dynamic::from_int(changed));

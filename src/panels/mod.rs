@@ -167,6 +167,8 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
                     ui.separator();
                     silhouette::fit(ui, session);
                     ui.separator();
+                    silhouette::optimize(ui, session);
+                    ui.separator();
                     silhouette::orient(ui, session);
                     ui.separator();
                     silhouette::compare(ui, session);

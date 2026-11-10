@@ -254,8 +254,12 @@ painted.vox` recolours the surface one view sees from a single image (a
 shell's plates from the top). `froxel fit --args fit.json --input
 blockout.vox --out fitted.vox` refines a blockout so its orthographic views
 match the sheet's, with colours from its palette slots, and prints each
-view's IoU and colour error before and after. MCP `compare_silhouette`,
-`carve_from_views`, `project_paint`, and `fit_to_views` are the same; see
+view's IoU and colour error before and after. `froxel optimize --args
+optimize.json --input blockout.vox --out fitted.vox` iterates a small
+creature (20 to 60 cells) until its views match its pixel-art views, shape
+and colours together, and prints each view's agreement before and after.
+MCP `compare_silhouette`, `carve_from_views`, `project_paint`,
+`fit_to_views`, and `optimize_to_views` are the same; see
 [docs/mcp.md](docs/mcp.md#silhouettes).
 
 ```sh

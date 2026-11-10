@@ -409,6 +409,127 @@ impl FitPanel {
     }
 }
 
+/// The Optimize to views panel: the Carve from views panel's views, and
+/// the options of MCP `optimize_to_views`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct OptimizePanel {
+    pub iterations: i32,
+    pub band: i32,
+    pub min_feature: i32,
+    pub shape: bool,
+    pub recolor: bool,
+    pub color_carve: bool,
+    pub smooth: f32,
+    pub sharpness: f32,
+    pub accents: bool,
+    pub accent_share: f32,
+    /// Slots colours land in, separated by spaces; empty makes a slot per
+    /// view colour.
+    pub slots: String,
+    /// Slots never removed or recoloured, separated by spaces.
+    pub keep: String,
+    /// Per Carve from views row: its colours vote.
+    pub paint_views: [bool; 3],
+    /// The pixelation's colours (`downscale.colors`).
+    pub colors: i32,
+}
+
+impl Default for OptimizePanel {
+    fn default() -> Self {
+        let spec = crate::tools::OptimizeSpec::default();
+        Self {
+            iterations: spec.iterations as i32,
+            band: spec.band as i32,
+            min_feature: spec.min_feature as i32,
+            shape: spec.shape,
+            recolor: spec.recolor,
+            color_carve: spec.color_carve,
+            smooth: spec.smooth,
+            sharpness: spec.sharpness,
+            accents: spec.accents.is_some(),
+            accent_share: spec.accents.unwrap_or(0.04),
+            slots: String::new(),
+            keep: String::new(),
+            paint_views: [true; 3],
+            colors: crate::tools::PixelateSpec::default().colors as i32,
+        }
+    }
+}
+
+impl OptimizePanel {
+    /// The MCP `optimize_to_views` arguments, with the views of `carve`
+    /// pixelated at the object's box.
+    pub(crate) fn args(&self, carve: &CarvePanel) -> Result<Value, String> {
+        let carved = carve.args(1)?;
+        let mut args = json!({
+            "views": carved["views"],
+            "downscale": {"colors": self.colors.clamp(1, 32)},
+            "iterations": self.iterations.max(0),
+            "band": self.band.max(0),
+            "minFeature": self.min_feature.max(1),
+            "shape": self.shape,
+            "recolor": self.recolor,
+            "colorCarve": self.color_carve,
+            "smooth": self.smooth,
+            "sharpness": self.sharpness,
+            "accents": self.accents,
+            "accentShare": self.accent_share
+        });
+        if args["views"]
+            .as_array()
+            .is_none_or(|views| views.is_empty())
+        {
+            return Err("Optimize to views: turn on a view in Carve from views.".into());
+        }
+        let painting: Vec<bool> = carve
+            .views
+            .iter()
+            .zip(self.paint_views)
+            .filter(|(row, _)| row.on)
+            .map(|(_, paints)| paints)
+            .collect();
+        if let Some(views) = args["views"].as_array_mut() {
+            for (view, paints) in views.iter_mut().zip(painting) {
+                // Depth maps come with the carve's views; cellsPerPixel and
+                // size do not apply to a view stretched over the box.
+                if let Some(map) = view.as_object_mut() {
+                    map.remove("size");
+                    map.remove("cellsPerPixel");
+                }
+                if !paints {
+                    view["color"] = json!(false);
+                }
+            }
+        }
+        if let Some(t) = carved.get("depthTolerance") {
+            args["depthTolerance"] = t.clone();
+        }
+        for (key, what, text) in [
+            ("slots", "Slots", &self.slots),
+            ("keep", "Keep", &self.keep),
+        ] {
+            let parts: Vec<&str> = text
+                .split(|c: char| c == ',' || c.is_whitespace())
+                .filter(|part| !part.is_empty())
+                .collect();
+            if parts.is_empty() {
+                continue;
+            }
+            let list = parts
+                .iter()
+                .map(|part| {
+                    part.parse::<u8>()
+                        .ok()
+                        .filter(|slot| *slot > 0)
+                        .ok_or_else(|| format!("{what}: `{part}` is not a slot 1..255"))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            args[key] = json!(list);
+        }
+        Ok(args)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ComparePanel {
     pub path: String,
@@ -858,6 +979,7 @@ pub struct SilhouettePanels {
     pub paint_views: PaintViewsPanel,
     pub decal: DecalPanel,
     pub fit: FitPanel,
+    pub optimize: OptimizePanel,
     pub orient: OrientPanel,
     pub compare: ComparePanel,
     pub overlay: Option<SilhouetteOverlay>,
@@ -1136,6 +1258,44 @@ impl Session {
                     .collect();
                 format!(
                     "Fitted: {}; {} added, {} removed, {} recoloured.",
+                    views.join(", "),
+                    reply["added"],
+                    reply["removed"],
+                    reply["recolored"]
+                )
+            }
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// The Optimize to views panel's button: MCP `optimize_to_views` on the
+    /// active object, with the views of the Carve from views panel.
+    pub fn optimize_from_panel(&mut self) {
+        let args = match self.silhouette.optimize.args(&self.silhouette.carve) {
+            Ok(args) => args,
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
+        self.status = match crate::remote::apply(self, "voxel.optimize_to_views", &args) {
+            Ok(reply) => {
+                let views: Vec<String> = reply["views"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|view| {
+                        format!(
+                            "{} {} → {}",
+                            view["view"].as_str().unwrap_or("?"),
+                            view["before"]["agreement"],
+                            view["after"]["agreement"]
+                        )
+                    })
+                    .collect();
+                format!(
+                    "Optimized, agreement {}; {} added, {} removed, {} recoloured.",
                     views.join(", "),
                     reply["added"],
                     reply["removed"],

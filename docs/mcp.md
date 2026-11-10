@@ -308,6 +308,7 @@ tracer. A file with no scene graph still loads its first model.
 | `decal` | `point` or `ray`, `size`, `path` or `rows` | Lay one picture onto the active object's curved surface around a point, so it keeps its size and shape on a round head: the surface is unrolled around the point and each surface cell takes the picture's ink under it. `ray` `{origin, direction}` takes the first solid cell instead. Optional `up` (default +Z), `crop`, `background`, `tolerance`, `flip`, `legend`, `palette` or `slots`, `coverage`, `depth` (cells into the solid, default 1), `reach` (default 8), `normalLimit` (degrees from the point's normal, default 90), `only`, `mirror`. Never adds or removes cells. Replies with `cells`, `changed`, `bounds`, `centre`, `normal`, `grid`, `covered`, `missed`, `reached`. One undo step. See [Silhouettes](#silhouettes) |
 | `compare_silhouette` | `path`, `concept` | Compare the model's `preview` silhouette from a camera (`preset`, `presets`, `placementYaw`, `view`, `yaw`, `pitch`, `orthographic`, `fov`, `margin`, `object`, `isolate`, `pose`) with a mask cut from a concept PNG (`crop`, `background`, `tolerance`, `alphaThreshold`, `flip`) and cleaned by the [mask edits](#masking-a-concept) (`excludeColors`, `excludeTolerance`, `flood`, `mask`, `erase`, `keepLargest`; the reply's `maskEdits` counts them). `align` `fit` (default), `height`, `width`, or `{scale, offset}` places the concept with one uniform scale. Replies with `iou`, `missing`, `excess`, `pixels`, `align`, `conceptBounds`, `modelBounds`, and `aspect`, and writes an overlay PNG. Optional `width`, `height`, `lighting`, `antialias`. See [Silhouettes](#silhouettes) |
 | `pixelate_views` | `views` or `path`, `size` | Turn a views sheet into pixel art at the cell grid, writing no cells: one small shared Oklab palette (`colors`, accent guard), the majority colour per cell, small salient `features` kept at least a cell, `thin` parts kept inked, `despeckle`. Replies with `size`, `colors`, `legend`, and per view `rows`, `legend`, `grid`, `inked`, `thin`, `source`, `stretch`, `features`; `png` writes the pixel art. See [Pixel art for small creatures](#pixel-art-for-small-creatures) |
+| `optimize_to_views` | `views` or `path` | Iterate a small creature (20 to 60 cells long) until its orthographic views match its pixel-art views (see Optimizing to pixel-art views): an excess ray's column goes, a missing ray gains a cell touching the body inside every other view, within `band` cells (default 3) of the starting surface, connected, never thinner than `minFeature`; then every surface cell takes the slot the views that see it agree on, weighted by how squarely each faces it, with a smoothness term (`smooth`) and the accent guard (`accents`, `accentShare`), and `colorCarve` removes an edge cell two views paint differently when both still meet the body. Views are `pixelate_views` rows, or crops pixelated at the object's box (`downscale`). Replies with each view's `agreement`, `iou`, `color`, and `colorError` before and after, `added`, `removed`, `recolored`, `iterations`, `blocked`. Deterministic, one undo step |
 | `measure_sheet` | `path` | Read a views sheet image, writing nothing: each view's tight `crop` (connected inked regions under the background rule and the mask edits, merged within `gap` pixels, regions under `minShare` of the largest in `ignored`), the 2 x 2 `layout` names (front, side, top, back), the cube pitch per view (`pitchX`, `pitchY`, `strength`, `cubes`, `square`) from the autocorrelation of the cube seams, `checks` (front height = side height, front width = top width, side length = top length, in percent of pixels and of cubes, `ok` within `checkTolerance`), `fitViews` for `carve_from_views` and `fit_to_views`, and with `parts` the top view's parts sticking out of its body. See [Measuring a sheet](#measuring-a-sheet) |
 | `reload` | — | Restart this server on the rebuilt binary in place, keeping the connection and the open document, then send `notifications/tools/list_changed`. `force` reloads an unchanged binary. See [Reloading the server](#reloading-the-server) |
 | `set_view` | — | Move the session camera; connected, the window's. Optional `view`, `yaw`, `pitch`, `preset`, `presets`, `placementYaw`, `frame`, `distance`, `orthographic`, `bones`. Not an edit |
@@ -2080,6 +2081,103 @@ then reads each pixelated view whole (`fit` `crop`, `inset` 0).
 `froxel pixelate --sheet views.png --size _,20,_ --png pixels.png` runs it
 from the command line.
 
+#### Optimizing to pixel-art views
+
+A small creature carved from its views is the visual hull, a box where the
+views do not see it, and one pass of `paint_from_views` gives each cell the
+view its normal faces most, so colours streak at the seams and an eye can
+land twice or not at all. `optimize_to_views` iterates the active object
+until its orthographic projections (front, back, left, right, top, bottom;
+the model facing −Y with +Z up, as `model_view` draws them) match the
+pixel-art views, in the spirit of Voxify3D (Huang et al., "Voxify3D: Pixel
+Art Meets Volumetric Rendering", CVPR 2026). It is an independent CPU
+solver with no neural network: a bounded greedy search over the shape,
+then a discrete labelling of the surface colours, deterministic, in one
+undo step. Use it after `carve_from_views`, `import_mesh`, or hand
+sculpting, on a creature 20 to 60 cells long.
+
+The views are stretched over the object's box (each view's ink bounds onto
+the box as the view sees it, as `paint_from_views` does), so a view pixel
+is exactly one column of cells. Pass the `rows` and `legend` of
+`pixelate_views` (made at the object's box), or crops of a sheet (`path`,
+`crop`, the background rule, or a top-level `path` alone for
+`measure_sheet`'s layout), which are pixelated at the object's box first:
+`downscale` is on by default for any view that is not rows, and takes
+`pixelate_views`' options. A missing right view is the left one mirrored
+(`mirror`, default true).
+
+Shape (`shape`, default on), up to `iterations` passes (default 8), each
+move kept only when it lowers the energy of the rays it touches (1 per
+missing or excess pixel, `depthWeight * min(|front - depth| -
+depthTolerance, 4) / 4` against a depth map, and `surfaceWeight` per exposed
+face), so a colour is never a reason to carve:
+
+- an excess ray (the view empty, a cell covering it) has its column
+  cleared;
+- a missing ray gains one cell that touches the body and lies inside every
+  other view's silhouette, nearest the neighbouring rays' depth (or the
+  depth map's surface);
+- with a depth map per view (`depth`, `depthPath`, calibrated against the
+  views' hull as `carve_from_views` does), cells in front of its surface go
+  and a front behind it is filled.
+
+No move reaches more than `band` cells (default 3, at most 8) from the
+starting surface, splits the object (`connected`, default true), or leaves
+a cell thinner than `minFeature` (its shortest solid run along x, y, or z;
+default 1, off; 2 keeps legs and fins two cells thick) unless it already
+was. `keep` slots are never removed or recoloured.
+
+Colour (`recolor`, default on): every surface cell takes the slot that best
+agrees with the views that see it (the first solid cell of each of their
+rays), each view weighted by `max(0, n · view) ^ sharpness` (default 2) so
+the view facing the cell most squarely wins, plus `smooth` (default 0.6)
+times the share of its surface neighbours with another slot, solved by
+iterated conditional modes from the per-cell vote: colour regions stay as
+patches and a speck the views disagree on joins its neighbours. A colour
+under `accentShare` (default 0.04) of the views' coloured pixels is an
+accent (an eye, a pupil, a nostril): a cell a view squarely paints with it
+keeps it, and no cell takes one no view paints there (`accents: false`
+turns this off). The views' colours land in slots of exactly those colours
+(new slots in free palette entries) or, with `slots`, the nearest of those.
+A view's `color: false` uses it for the shape only, and its `weight`
+(default 1) lets a hero view win the edges it shares with another; the
+first view listed wins a tie.
+
+Three axis views see a boxy hull's edge cells twice: the top row of the
+front view and the front row of the top view both land on them. With
+`colorCarve` (default on, with shape and recolor), such a cell goes when
+every ray that sees it still meets the body behind it, the cells it
+uncovers take the colours of the rays that now meet them, and more of
+those rays agree; then the colours are labelled again. Hard edges round
+off where the views ask for it.
+
+The reply holds, per view, `before` and `after` `{agreement, iou, color,
+colorError, depthError, pixels}`: `agreement` is the pixels right in shape
+and colour (within 0.06 in Oklab) over the pixels either covers, `iou` the
+silhouette alone, `color` the right colour over the overlap; `agreement`
+`{before, after}` is their mean. Also `iterations`, `moves`, `colorCarved`,
+`added`, `removed`, `recolored`, `colorSweeps`, `surface`, `unseen`
+(surface cells no view sees), `accentCells`, `blocked` (`band`, `keep`,
+`connected`, `thin`, `gain`, `unreachable`: a missing ray with no cell
+inside every other view, where the views disagree), `energy`, `colours`
+(`{colour, slot, accent, pixels}`), `newSlots`, `downscale`, `origin`,
+`size`, and `millis`.
+
+```json
+{"path": "views.png", "background": "#ff00ff", "tolerance": 90,
+ "views": [{"view": "front", "crop": [86, 76, 485, 497]},
+           {"view": "left", "crop": [666, 104, 498, 469]},
+           {"view": "top", "crop": [119, 675, 416, 482]},
+           {"view": "back", "crop": [671, 676, 496, 495]}]}
+{"views": "<pixelate_views' views>", "band": 2, "minFeature": 2, "keep": [9]}
+```
+
+`froxel optimize --args optimize.json --input blockout.vox --out fitted.vox`
+runs it from the command line. Unlike `fit_to_views`, which places
+full-resolution crops over a blockout of any size by a scale search and
+colours from the object's slots, it works at the pixel-art grid of a small
+creature and needs no placement.
+
 #### Painting from a whole sheet
 
 An image-to-3D shape (SF3D, TRELLIS, Hunyuan) is good from the view it was
@@ -2604,6 +2702,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `paint_from_views` | Paint from views section: Sheet… (empty takes the Carve from views views), Background, Blend (Nearest with Seam, Soft with Sharpness), Mirror missing side, Colours (Used, New with New slots and Keep accents, Slots), Pixel art (Downscale, colours), Inset, Reach, Only, Objects (All visible), Paint from views over the selection's box or the whole object |
 | `decal` | Decal section: Image…, Flip, Crop, Background, Point (At selection, World), Up, Size, Depth, Reach, Normal limit, Only, Colour from image or the active slot, Mirror, Lay decal |
 | `pixelate_views` | Pixelate views section: Sheet… (empty takes the Carve from views views), Background, Size, Colours, Keep (Features, Thin, Despeckle), PNG…, Pixelate (one line per view under it) |
+| `optimize_to_views` | Optimize to views section (the views of Carve from views, pixelated at the object's box): Moves (Shape, Colour, Carve), Colour from (per Carve row), Colours, Passes, Band, Min feature, Smooth, Sharpness, Accents (Guard and share), Slots, Keep, Optimize (each view's agreement before and after in the status) |
 | `measure_sheet` | Measure sheet section: Sheet …, Background, Count parts, Measure (views, checks, and parts listed under it), Use crops (into the Carve from views rows) |
 | `compare_silhouette` | Compare silhouette section: Concept Image…, Crop, Background, Flip, Exclude (colours and tolerance), Flood (and its step), Mask (…, Invert), Erase (one rectangle per line), Largest only, Camera (Viewport, Game, Front, Left, Top), Align (Fit, Height, Width), Compare; the overlay shows in the viewport's bottom-right corner until Hide overlay; MCP `compare_silhouette` over the control port shows it there too |
 | `import_mesh` | File > Import Mesh… and the Import mesh section: File, Size, Voxel, or Scale, File is Z-up, Rotation, Position, Anchor, Solid, Parity, or Shell, Texture or Vertex colour, Slots, New slots, Tolerance, Mode, New object, Orient to views (with the Orient to views options), Clean, Coverage (share, Keep thin), Min feature |

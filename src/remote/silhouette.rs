@@ -2358,3 +2358,283 @@ pub(super) fn paint_from_views(session: &mut Session, params: &Value) -> Result<
     reply.insert("voxels".into(), json!(session.voxel_count()));
     Ok(Value::Object(reply))
 }
+
+/// The spec of `optimize_to_views` for an object whose box is `dims`, and
+/// the pixelation `downscale` made (by default for every view that is not
+/// `rows`).
+pub(crate) fn optimize_spec(
+    params: &Value,
+    files: bool,
+    dims: [u32; 3],
+    palette: &[[u8; 3]; 256],
+) -> Result<(crate::tools::OptimizeSpec, Option<crate::tools::Pixelated>), String> {
+    use crate::tools::{OptimizeSpec, OptimizeView};
+    let list: Vec<Value> = match params.get("views") {
+        Some(Value::Array(list)) => list.clone(),
+        None | Some(Value::Null) if files && params.get("path").is_some_and(|p| p.is_string()) => {
+            sheet_layout(params)?
+        }
+        _ => {
+            return Err(if files {
+                "views must be a list of {view, path | rows, crop?, legend?}, or pass only path to read the sheet's layout as measure_sheet does".into()
+            } else {
+                "views must be a list of {view, rows, legend}".into()
+            })
+        }
+    };
+    if list.is_empty() || list.len() > 6 {
+        return Err("views must hold 1 to 6 views".into());
+    }
+    let mut images = HashMap::new();
+    let mut views = Vec::with_capacity(list.len());
+    for (i, item) in list.iter().enumerate() {
+        if !item.is_object() {
+            return Err(format!("view {i} must be an object"));
+        }
+        let item = &sheet_keys(params, item);
+        let side =
+            Side::parse(&opt_str(item, "view")?.ok_or_else(|| format!("view {i} needs view"))?)?;
+        let (mask, depth) = view_mask_depth(item, params, files, &mut images)
+            .map_err(|err| format!("view {i}: {err}"))?;
+        views.push(OptimizeView {
+            side,
+            mask,
+            depth,
+            source: None,
+            color: opt_bool(item, "color")?.unwrap_or(true),
+            weight: match opt_f64(item, "weight")? {
+                None => 1.0,
+                Some(w) if (0.0..=16.0).contains(&w) => w as f32,
+                Some(_) => return Err(format!("view {i}: weight must be 0..16")),
+            },
+        });
+    }
+    let all_rows = list
+        .iter()
+        .all(|v| v.get("rows").is_some_and(|r| !r.is_null()));
+    let downscale = match params.get("downscale") {
+        None | Some(Value::Null) if !all_rows => Some(json!({})),
+        _ => downscale_arg(params)?,
+    };
+    let downscaled = match downscale {
+        None => None,
+        Some(opts) => {
+            let masks: Vec<(Side, Mask)> = views.iter().map(|v| (v.side, v.mask.clone())).collect();
+            let (pixelated, masks) = downscale_views(&masks, dims.map(Some), &opts, palette)?;
+            for ((view, mask), pv) in views.iter_mut().zip(masks).zip(&pixelated.views) {
+                view.mask = mask;
+                view.source = Some(pv.source);
+            }
+            Some(pixelated)
+        }
+    };
+    let defaults = OptimizeSpec::default();
+    let whole = |key: &str, default: u32| -> Result<u32, String> {
+        match params.get(key) {
+            None | Some(Value::Null) => Ok(default),
+            Some(found) => found
+                .as_u64()
+                .map(|n| n.min(u64::from(u32::MAX)) as u32)
+                .ok_or_else(|| format!("{key} must be a whole number")),
+        }
+    };
+    let number = |key: &str, default: f32| -> Result<f32, String> {
+        Ok(opt_f64(params, key)?.map_or(default, |v| v as f32))
+    };
+    let fit_ink = match opt_str(params, "fit")?.as_deref() {
+        // A pixelated view is its ink's bounds already, at the box's size.
+        _ if downscaled.is_some() => false,
+        None | Some("ink") => true,
+        Some("crop") => false,
+        Some(other) => return Err(format!("fit must be ink or crop, not `{other}`")),
+    };
+    Ok((
+        OptimizeSpec {
+            views,
+            fit_ink,
+            mirror: opt_bool(params, "mirror")?.unwrap_or(defaults.mirror),
+            iterations: whole("iterations", defaults.iterations)?,
+            shape: opt_bool(params, "shape")?.unwrap_or(defaults.shape),
+            recolor: opt_bool(params, "recolor")?.unwrap_or(defaults.recolor),
+            band: whole("band", defaults.band)?,
+            min_feature: whole("minFeature", defaults.min_feature)?,
+            connected: opt_bool(params, "connected")?.unwrap_or(defaults.connected),
+            smooth: number("smooth", defaults.smooth)?,
+            sharpness: number("sharpness", defaults.sharpness)?,
+            slots: slot_list(params, "slots")?,
+            keep: slot_list(params, "keep")?.unwrap_or_default(),
+            accents: match params.get("accents") {
+                Some(Value::Bool(false)) => None,
+                _ => Some(number("accentShare", defaults.accents.unwrap_or(0.04))?),
+            },
+            depth_weight: number("depthWeight", defaults.depth_weight)?,
+            depth_tolerance: number("depthTolerance", defaults.depth_tolerance)?,
+            surface_weight: number("surfaceWeight", defaults.surface_weight)?,
+            color_carve: opt_bool(params, "colorCarve")?.unwrap_or(defaults.color_carve),
+        },
+        downscaled,
+    ))
+}
+
+fn agreement_reply(a: &crate::tools::Agreement) -> Value {
+    let mut out = json!({
+        "agreement": round(a.agreement(), 4),
+        "iou": round(a.iou(), 4),
+        "color": round(a.color(), 4),
+        "colorError": round(a.color_error, 3),
+        "pixels": {"target": a.target, "model": a.model, "overlap": a.overlap, "matched": a.matched},
+    });
+    if let Some(d) = a.depth_error {
+        out["depthError"] = json!(round(d, 2));
+    }
+    out
+}
+
+/// The writes of `optimize_to_views` against `cells` and its reply. New
+/// colours go into `shades.created`; the caller writes them to the
+/// palette in the same undo step. With `files` false (Rhai) the views
+/// must be `rows`.
+pub(crate) fn optimize_writes(
+    cells: &HashMap<Cell, u8>,
+    palette: &[[u8; 3]; 256],
+    params: &Value,
+    files: bool,
+    shades: &mut crate::tools::Shades,
+) -> Result<(Vec<(Cell, u8)>, Map<String, Value>), String> {
+    if cells.is_empty() {
+        return Err("the active object has no cells to optimise".into());
+    }
+    let mut lo = [i32::MAX; 3];
+    let mut hi = [i32::MIN; 3];
+    for &(x, y, z) in cells.keys() {
+        for (a, c) in [x, y, z].into_iter().enumerate() {
+            lo[a] = lo[a].min(c);
+            hi[a] = hi[a].max(c);
+        }
+    }
+    let dims: [u32; 3] = std::array::from_fn(|a| (hi[a] - lo[a] + 1) as u32);
+    let (spec, downscaled) = optimize_spec(params, files, dims, palette)?;
+    let started = std::time::Instant::now();
+    let done = crate::tools::optimize_to_views(cells, &spec, shades)?;
+    let mut reply = Map::new();
+    if let Some(pixelated) = &downscaled {
+        reply.insert(
+            "downscale".into(),
+            Value::Object(pixelate_reply(pixelated, false)),
+        );
+    }
+    reply.insert(
+        "views".into(),
+        json!(done
+            .views
+            .iter()
+            .map(|v| {
+                let mut out = json!({
+                    "view": v.side.name(),
+                    "grid": v.grid,
+                    "mirrored": v.mirrored,
+                    "before": agreement_reply(&v.before),
+                    "after": agreement_reply(&v.after),
+                });
+                if let Some(cal) = &v.depth {
+                    out["depth"] = calibration_reply(cal);
+                }
+                out
+            })
+            .collect::<Vec<_>>()),
+    );
+    let mean = |after: bool| {
+        let n = done.views.len().max(1) as f32;
+        let sum: f32 = done
+            .views
+            .iter()
+            .map(|v| if after { v.after } else { v.before }.agreement())
+            .sum();
+        round(sum / n, 4)
+    };
+    reply.insert(
+        "agreement".into(),
+        json!({"before": mean(false), "after": mean(true)}),
+    );
+    reply.insert("iterations".into(), json!(done.iterations));
+    reply.insert("moves".into(), json!(done.moves));
+    reply.insert("colorCarved".into(), json!(done.color_carved));
+    reply.insert("added".into(), json!(done.added));
+    reply.insert("removed".into(), json!(done.removed));
+    reply.insert("recolored".into(), json!(done.recolored));
+    reply.insert("colorSweeps".into(), json!(done.color_sweeps));
+    reply.insert("surface".into(), json!(done.surface));
+    reply.insert("unseen".into(), json!(done.unseen));
+    reply.insert("accentCells".into(), json!(done.accent_cells));
+    let b = done.blocked;
+    reply.insert(
+        "blocked".into(),
+        json!({
+            "band": b.band, "keep": b.keep, "connected": b.connected, "thin": b.thin,
+            "gain": b.gain, "unreachable": b.unreachable,
+        }),
+    );
+    let k = 1000.0;
+    reply.insert(
+        "energy".into(),
+        json!({
+            "before": (done.energy[0] * k).round() / k,
+            "after": (done.energy[1] * k).round() / k
+        }),
+    );
+    reply.insert(
+        "colours".into(),
+        json!(done
+            .colours
+            .iter()
+            .map(|c| json!({
+                "colour": c.rgb.map(hex),
+                "slot": c.slot,
+                "accent": c.accent,
+                "pixels": c.pixels,
+            }))
+            .collect::<Vec<_>>()),
+    );
+    reply.insert(
+        "newSlots".into(),
+        json!(shades
+            .created
+            .iter()
+            .map(|s| json!({"slot": s.slot, "rgba": s.rgba}))
+            .collect::<Vec<_>>()),
+    );
+    reply.insert(
+        "origin".into(),
+        json!([done.origin.0, done.origin.1, done.origin.2]),
+    );
+    reply.insert("size".into(), json!(done.size));
+    reply.insert("millis".into(), json!(started.elapsed().as_millis() as u64));
+    Ok((done.writes, reply))
+}
+
+/// MCP handler `optimize_to_views`: iterate the active object's shape and
+/// surface colours toward its pixel-art views, one undo step.
+pub(super) fn optimize_to_views(session: &mut Session, params: &Value) -> Result<Value, String> {
+    let palette = session_palette(session);
+    let mut shades = session.shades();
+    let (writes, mut reply) =
+        optimize_writes(&session.active().cells, &palette, params, true, &mut shades)?;
+    let writes: Writes = writes
+        .iter()
+        .map(|(c, slot)| (c.0, c.1, c.2, i32::from(*slot)))
+        .collect();
+    let changed = session.transaction(|session| {
+        session.begin_edit();
+        for shade in &shades.created {
+            session.palette[shade.slot as usize] = shade.rgba;
+            session.materials[shade.slot as usize] = session.materials[shade.from as usize];
+        }
+        let result = session.write_cells(&writes);
+        session.end_edit();
+        result
+    })?;
+    session.mesh_epoch = session.mesh_epoch.wrapping_add(1);
+    reply.insert("changed".into(), json!(changed));
+    reply.insert("voxels".into(), json!(session.voxel_count()));
+    Ok(Value::Object(reply))
+}

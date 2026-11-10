@@ -29,8 +29,8 @@ pub(crate) use import::{
 pub(crate) use markers::marker_kind;
 pub(crate) use organic::{organic_writes, Organic};
 pub(crate) use silhouette::{
-    decal_writes, fit_writes, hull_writes, orient_writes, paint_writes, pixelate_writes,
-    session_palette, views_paint_writes,
+    decal_writes, fit_writes, hull_writes, optimize_writes, orient_writes, paint_writes,
+    pixelate_writes, session_palette, views_paint_writes,
 };
 pub(crate) use space::{is_world, space_prop, to_local, to_world_reply, WORLD_METHODS};
 pub(crate) use stone::{cavity_writes, stone_writes, Stone};
@@ -919,6 +919,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "voxel.paint_from_views" => silhouette::paint_from_views(session, &params),
         "voxel.decal" => silhouette::decal(session, &params),
         "voxel.fit_to_views" => silhouette::fit_to_views(session, &params),
+        "voxel.optimize_to_views" => silhouette::optimize_to_views(session, &params),
         "voxel.orient_to_views" => silhouette::orient_to_views(session, &params),
         "render.compare_silhouette" => silhouette::compare_silhouette(session, &params),
         "image.measure_sheet" => silhouette::measure_sheet(&params),
@@ -1564,6 +1565,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.decal", "point | ray, size, path + crop? | rows + legend?, up?, background?, flip?, palette? | slots?, coverage?, depth?, reach?, normalLimit?, only?, mirror?", "Lay one picture onto the active object's curved surface around a point, keeping its size and shape: never adds or removes cells"),
     ("voxel.orient_to_views", "views, path?, background?, tolerance?, turns?, yawStep?, yawRange?, fineAxes?, resolution?, size? | height? | scale?, apply?", "Turn (and scale) the active object to the axis-aligned turn, plus fine yaw, whose silhouettes best match a views sheet; replies with the IoU per view before and after. One undo step"),
     ("voxel.fit_to_views", "views, path?, background?, tolerance?, alphaThreshold?, align?, slots?, coverage?, iterations?, seed?, margin?, maskWeight?, colorWeight?, depthWeight?, smoothWeight?, shape?, recolor?, normalLimit?, keep?, sharedScale?, roundWeight?, roundness?, roundAxes?, reference?, isolate?", "Refine the active object so its orthographic views match a views sheet: clears excess rays, fills missing ones, follows a reference's depth, and recolours the visible cells from the slots. One undo step"),
+    ("voxel.optimize_to_views", "views | path, downscale?, fit?, mirror?, iterations?, shape?, recolor?, band?, minFeature?, connected?, smooth?, sharpness?, slots?, keep?, accents?, accentShare?, depthPath?, depthWeight?, depthTolerance?, surfaceWeight?", "Iterate a small creature's shape (within a band about its surface, connected, never thinner than minFeature) and surface colours (a facing-weighted vote of the views with a smoothness term and the accent guard) until its orthographic views match its pixel-art views; replies with each view's agreement before and after. One undo step"),
     ("image.pixelate_views", "views | path, size, colors?, accents?, minShare?, contrast?, maxAccents?, coverage?, thin?, features?, png?, pngScale?", "Turn a views sheet into pixel art at the cell grid (a small shared Oklab palette, majority colours, small salient features and thin parts kept): rows and legend per view for carve_from_views and paint_from_views. Writes no voxels"),
     ("image.measure_sheet", "path, crop?, background?, tolerance?, alphaThreshold?, excludeColors?, flood?, erase?, keepLargest?, gap?, minShare?, layout?, pitchRange?, parts?, checkTolerance?", "Read a views sheet: its views' crops, the 2 x 2 layout, the cube pitch per view, the agreement checks, and the parts of the top view. Writes no file"),
     ("render.compare_silhouette", "path, concept, crop?, background?, tolerance?, alphaThreshold?, excludeColors?, excludeTolerance?, flood?, mask?, erase?, keepLargest?, flip?, align?, preset?, view?, yaw?, pitch?, orthographic?, fov?, margin?, object?, isolate?, width?, height?, lighting?, pose?", "Compare the model's preview silhouette with a concept mask: IoU, missing and excess shares, and an overlay PNG"),

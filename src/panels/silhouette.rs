@@ -2,7 +2,7 @@
 //! `pixelate_views`), Carve from views (MCP `carve_from_views`), Paint from view (MCP `project_paint`), Paint from
 //! views (MCP `paint_from_views`), Decal (MCP
 //! `decal`), Fit to views
-//! (MCP `fit_to_views`), and Compare silhouette (MCP `compare_silhouette`),
+//! (MCP `fit_to_views`), Optimize to views (MCP `optimize_to_views`), and Compare silhouette (MCP `compare_silhouette`),
 //! whose overlay the viewport shows.
 
 use egui::{RichText, Ui};
@@ -667,6 +667,89 @@ pub(super) fn fit(ui: &mut Ui, session: &mut Session) {
             .clicked()
         {
             session.fit_from_panel();
+        }
+    });
+}
+
+/// MCP `optimize_to_views`: iterate a small creature toward the pixel-art
+/// views of Carve from views.
+pub(super) fn optimize(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.editor_mode == EditorMode::Model && !session.active().cells.is_empty();
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Optimize to views");
+        ui.label(
+            RichText::new("For a small creature (20 to 60 cells): the views of Carve from views, pixelated at the object's box.")
+                .small()
+                .color(DIM),
+        );
+        let panel = &mut session.silhouette.optimize;
+        egui::Grid::new("optimize-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Moves", "Shape: clear excess rays and add one cell on a missing ray (touching the body, inside every other view), kept only when the views agree better. Colour: every surface cell takes the slot the views that see it agree on, weighted by how squarely each faces it, smoothed into patches. Carve: a cell on an edge two views paint differently goes when both still meet the body behind it and agree better.");
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut panel.shape, "Shape");
+                    ui.checkbox(&mut panel.recolor, "Colour");
+                    ui.checkbox(&mut panel.color_carve, "Carve");
+                });
+                ui.end_row();
+                label(ui, "Colour from", "Which views of Carve from views (in their row order) vote on colours; a view turned off here still shapes the object.");
+                ui.horizontal(|ui| {
+                    for (index, paints) in panel.paint_views.iter_mut().enumerate() {
+                        ui.checkbox(paints, format!("{}", index + 1))
+                            .on_hover_text("Carve from views row");
+                    }
+                });
+                ui.end_row();
+                label(ui, "Colours", "Colours of the pixelation shared by every view (pixelate_views colors), eyes and pupils kept as accents.");
+                ui.add(egui::DragValue::new(&mut panel.colors).range(1..=32));
+                ui.end_row();
+                label(ui, "Passes", "Most shape passes; the solver stops sooner when a pass keeps no move. 0 only recolours.");
+                ui.add(egui::DragValue::new(&mut panel.iterations).range(0..=crate::tools::MAX_OPTIMIZE_ITERATIONS as i32));
+                ui.end_row();
+                label(ui, "Band", "Cells from the starting surface that may be added outside or removed inside.");
+                ui.add(egui::DragValue::new(&mut panel.band).range(0..=crate::tools::MAX_OPTIMIZE_BAND as i32));
+                ui.end_row();
+                label(ui, "Min feature", "No removal leaves a cell thinner than this many cells (its shortest run along x, y, or z) unless it already was. 1 is off; 2 keeps legs and fins at least two cells.");
+                ui.add(egui::DragValue::new(&mut panel.min_feature).range(1..=crate::tools::MAX_MIN_FEATURE as i32));
+                ui.end_row();
+                label(ui, "Smooth", "Weight of the neighbours against the views' vote: higher merges colour patches more and drops specks.");
+                ui.add(egui::DragValue::new(&mut panel.smooth).range(0.0..=4.0).speed(0.01));
+                ui.end_row();
+                label(ui, "Sharpness", "Exponent of a view's facing weight: higher lets the view facing a cell most squarely decide alone.");
+                ui.add(egui::DragValue::new(&mut panel.sharpness).range(0.0..=16.0).speed(0.05));
+                ui.end_row();
+                label(ui, "Accents", "A colour under this share of the views' pixels (eyes, pupils, nostrils) keeps its cells, and no cell takes it unless a view paints it there.");
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut panel.accents, "Guard");
+                    ui.add_enabled(
+                        panel.accents,
+                        egui::DragValue::new(&mut panel.accent_share).range(0.0..=0.5).speed(0.001),
+                    );
+                });
+                ui.end_row();
+                label(ui, "Slots", "Palette slots the view colours land in, nearest first, such as 3 4 7. Empty makes a slot per view colour.");
+                ui.add(
+                    egui::TextEdit::singleline(&mut panel.slots)
+                        .hint_text("view colours")
+                        .desired_width(90.0),
+                );
+                ui.end_row();
+                label(ui, "Keep", "Slots whose cells are never removed or recoloured, such as hand-set eyes 9 10.");
+                ui.add(
+                    egui::TextEdit::singleline(&mut panel.keep)
+                        .hint_text("none")
+                        .desired_width(90.0),
+                );
+                ui.end_row();
+            });
+        if ui
+            .button("Optimize")
+            .on_hover_text("MCP optimize_to_views: iterate the active object's shape and colours until its orthographic views match the pixel-art views; the status shows each view's agreement before and after. One undo step.")
+            .clicked()
+        {
+            session.optimize_from_panel();
         }
     });
 }

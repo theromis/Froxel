@@ -178,6 +178,15 @@ off the flat views.
    same, or pass the views' depth maps (`depthPath`, `depth`), which say
    where the surface is instead of guessing. Then refine by hand: the fit matches
    views, not the sides no view sees.
+   A small creature (20 to 60 cells long) is finished with
+   `optimize_to_views` instead: the same crops (or `pixelate_views`' rows)
+   are pixelated at the object's box, so each view pixel is one column of
+   cells, and the solver iterates the shape (excess columns cleared,
+   missing rays given a cell that touches the body, within `band` cells of
+   the surface, connected, never thinner than `minFeature`) and the colours
+   (each surface cell from a facing-weighted vote of the views that see it,
+   smoothed into patches, eyes and pupils kept as accents) until every
+   view agrees; the reply gives each view's `agreement` before and after.
 
 ```
 carve_from_views     views=[{view: "front", path: "sheet.png", crop: [40, 60, 520, 300]},
@@ -197,6 +206,7 @@ fit_to_views         views=[{view: "front", path: "sheet.png", crop: [40, 60, 52
                             {view: "side",  path: "sheet.png", crop: [620, 60, 180, 300]},
                             {view: "top",   path: "sheet.png", crop: [40, 420, 520, 180]}]
                      slots=[3, 4, 5, 6] reference="mesh"
+optimize_to_views    path="sheet.png" background="#ff00ff" minFeature=2   # a small creature, views and colours together
 ```
 
 `preset="game"` is the gameplay camera; a project redefines it with `presets`

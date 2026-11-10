@@ -244,6 +244,9 @@ fn main(
     if args.first().is_some_and(|arg| arg == "fit") {
         std::process::exit(cli::fit(&args[1..]));
     }
+    if args.first().is_some_and(|arg| arg == "optimize") {
+        std::process::exit(cli::optimize(&args[1..]));
+    }
     if args.first().is_some_and(|arg| arg == "measure") {
         std::process::exit(cli::measure(&args[1..]));
     }
@@ -738,6 +741,7 @@ usage: froxel [--control PORT] [--bridge PORT] [file.vox]
        froxel carve --views <views.json> --out <file.vox> (--help for its flags)
        froxel paint --args <paint.json> --input <base.vox> --out <file.vox> [--tool project_paint|decal|shell_plates|paint_from_views] (--help for its flags)
        froxel fit --args <fit.json> --input <base.vox> --out <file.vox> (--help for its flags)
+       froxel optimize --args <optimize.json> --input <base.vox> --out <file.vox> (--help for its flags)
        froxel compare --input <file.vox> --concept <concept.png> --out <overlay.png> (--help for its flags)
        froxel measure --sheet <views.png> [--parts] (--help for its flags)
        froxel pixelate --args <views.json> --size X,Y,Z [--out views.json] [--png sheet.png] (--help for its flags)

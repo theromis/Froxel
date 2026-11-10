@@ -1429,9 +1429,95 @@ hand-set face with recolor false, so the front and side views do not
 paint its eyes twice.
 A relative path is relative to fit.json.";
 
+/// `froxel optimize`: MCP `optimize_to_views` from a JSON file of its
+/// arguments, on a copy of a `.vox`.
+pub fn optimize(args: &[String]) -> i32 {
+    match views_args(args, OPTIMIZE_HELP) {
+        Ok(None) => 0,
+        Ok(Some((input, output, object, params))) => {
+            let mut session = Session::new();
+            let done = session
+                .open_vox(&input)
+                .and_then(|()| {
+                    if let Some(object) = &object {
+                        session.selected = crate::preview::find_object(&session, object)?;
+                    }
+                    crate::remote::apply(&mut session, "voxel.optimize_to_views", &params)
+                })
+                .and_then(|reply| {
+                    session.write_vox(&output)?;
+                    Ok(reply)
+                });
+            match done {
+                Ok(reply) => {
+                    for view in reply["views"].as_array().into_iter().flatten() {
+                        eprintln!(
+                            "{}: agreement {} -> {}, IoU {} -> {}, colour {} -> {}",
+                            view["view"].as_str().unwrap_or("?"),
+                            view["before"]["agreement"],
+                            view["after"]["agreement"],
+                            view["before"]["iou"],
+                            view["after"]["iou"],
+                            view["before"]["color"],
+                            view["after"]["color"]
+                        );
+                    }
+                    eprintln!(
+                        "wrote {} ({} added, {} removed, {} recoloured, {} iterations, {} ms)",
+                        output.display(),
+                        reply["added"],
+                        reply["removed"],
+                        reply["recolored"],
+                        reply["iterations"],
+                        reply["millis"]
+                    );
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&reply).unwrap_or_default()
+                    );
+                    0
+                }
+                Err(err) => {
+                    eprintln!("{err}");
+                    1
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            2
+        }
+    }
+}
+
+const OPTIMIZE_HELP: &str = "\
+usage: froxel optimize --args <optimize.json> --input <base.vox> --out <file.vox> [--object <index|name>]
+
+Iterates the active object (or --object), a small creature 20 to 60 cells
+long, until its orthographic views match its pixel-art views, as MCP
+optimize_to_views does: cells added or removed within band cells of the
+surface (connected, never thinner than minFeature), and every surface cell
+recoloured by a facing-weighted vote of the views that see it with a
+smoothness term and the accent guard (eyes keep their slot). Saves the .vox
+and prints the reply (per-view agreement, IoU, and colour before and after,
+the cells added, removed, and recoloured). optimize.json holds that tool's
+arguments: {views: [{view, rows, legend} | {view, path, crop, background,
+tolerance, flip, color, depth}, ...], path, background, tolerance,
+downscale, fit, mirror, iterations, shape, recolor, band, minFeature,
+connected, smooth, sharpness, slots, keep, accents, accentShare, depthPath,
+depthWeight, depthTolerance, surfaceWeight}. Crops of a sheet are pixelated
+at the object's box first (downscale); the rows of pixelate_views are used
+as they are.
+A relative path is relative to optimize.json.";
+
 type FitArgs = (PathBuf, PathBuf, Option<String>, serde_json::Value);
 
 fn fit_args(args: &[String]) -> Result<Option<FitArgs>, String> {
+    views_args(args, FIT_HELP)
+}
+
+/// The arguments of `froxel fit` and `froxel optimize`, with `help`.
+fn views_args(args: &[String], help: &str) -> Result<Option<FitArgs>, String> {
     let (mut file, mut output, mut input, mut object) = (None, None, None, None);
     let mut index = 0;
     while index < args.len() {
@@ -1443,20 +1529,20 @@ fn fit_args(args: &[String]) -> Result<Option<FitArgs>, String> {
         };
         match args[index].as_str() {
             "-h" | "--help" => {
-                eprintln!("{FIT_HELP}");
+                eprintln!("{help}");
                 return Ok(None);
             }
             "--args" => file = Some(PathBuf::from(value(&mut index)?)),
             "--out" | "--output" => output = Some(PathBuf::from(value(&mut index)?)),
             "--input" => input = Some(PathBuf::from(value(&mut index)?)),
             "--object" => object = Some(value(&mut index)?),
-            other => return Err(format!("unknown argument `{other}`\n\n{FIT_HELP}")),
+            other => return Err(format!("unknown argument `{other}`\n\n{help}")),
         }
         index += 1;
     }
-    let file = file.ok_or_else(|| format!("--args is required\n\n{FIT_HELP}"))?;
-    let input = input.ok_or_else(|| format!("--input is required\n\n{FIT_HELP}"))?;
-    let output = output.ok_or_else(|| format!("--out is required\n\n{FIT_HELP}"))?;
+    let file = file.ok_or_else(|| format!("--args is required\n\n{help}"))?;
+    let input = input.ok_or_else(|| format!("--input is required\n\n{help}"))?;
+    let output = output.ok_or_else(|| format!("--out is required\n\n{help}"))?;
     let text = std::fs::read_to_string(&file)
         .map_err(|err| format!("Could not read {}: {err}", file.display()))?;
     let mut params: serde_json::Value = serde_json::from_str(&text)

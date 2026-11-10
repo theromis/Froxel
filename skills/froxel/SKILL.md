@@ -31,7 +31,7 @@ server is still running. A server started with `--watch` reloads by itself.
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `shell_plates`, `components`, `deterrace`, `reduce_palette`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` and `decal` with the image as rows and a legend, `paint_from_views` with views as rows and a legend, `pixelate_views` (views as rows; returns pixel art rows), `fit_to_views` and `orient_to_views` with views as rows and a legend, and `marker`,
+  (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `shell_plates`, `components`, `deterrace`, `reduce_palette`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` and `optimize_to_views` with views as rows and a legend, `project_paint` and `decal` with the image as rows and a legend, `paint_from_views` with views as rows and a legend, `pixelate_views` (views as rows; returns pixel art rows), `fit_to_views` and `orient_to_views` with views as rows and a legend, and `marker`,
   `collision_box`, `connector`, `collision_from_voxels`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `split_object`, `split_parts`, `clear_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -191,7 +191,20 @@ server is still running. A server started with `--watch` reloads by itself.
    comes out of three axis views as a box (no view sees its diagonal
    corners): fit it with `roundWeight: 0.3` (`roundAxes` "yz" by default),
    which removes those corners while every silhouette stays; leave it off
-   for domes with a flat rim and for plates.
+   for domes with a flat rim and for plates. For a SMALL creature (20 to 60 cells
+   long), finish instead with ONE `optimize_to_views` call (the sheet `path`
+   and crops, or `pixelate_views`' rows made at the object's box): it
+   pixelates the views at the object's box, then iterates shape (excess
+   columns cleared, missing rays given a cell touching the body, within
+   `band` cells, connected; `minFeature: 2` keeps legs two cells thick) and
+   colours (each surface cell from a facing-weighted vote of the views that
+   see it, smoothed into patches, eyes and pupils kept as accents,
+   `colorCarve` rounding edges two views paint differently) until the views
+   agree. Read each view's `before`/`after` `agreement` (shape and colour
+   right over the pixels either covers) and `blocked.unreachable` (where the
+   views themselves disagree), then look with `preview`; do not chain
+   `paint_from_views` and hand recolouring for it. Pass the hero view first
+   (it wins ties) or give it `weight: 2`.
 2. **Block out.** For a unique organic asset (a fallen tree, a creature, a
    hero rock) with a mesh sculpted in Blender or generated from the concept
    by an image-to-3D tool, start with `import_mesh` (`voxelSize` 0.08 for
