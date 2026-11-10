@@ -170,6 +170,15 @@ exempt, and so are the tools that write files (render, model_view, preview,
 export_mesh, export_models, bake_scene): scripts never write files. A feature is not done
 until all of these exist. (User decision, 2026-11-02.)
 
+## Releases
+
+Before dispatching `release.yml`, set `version` in `Cargo.toml` (and the
+`froxel` entry in `Cargo.lock`) to the release version, move the `Unreleased`
+entries of `CHANGELOG.md` under that version, commit, and push. Then run
+`gh workflow run release.yml` without `-f version`, so the build takes the
+version from `Cargo.toml` and the binary reports the same one
+(`docs/releasing.md`).
+
 ## Git
 
 Commit straight to `main`. Do not create branches.

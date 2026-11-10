@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.2 – 2026-11-10
+
 ### Fixed
 
 - A colour parameter reads one way everywhere (`set_params`, `export_variants`,
