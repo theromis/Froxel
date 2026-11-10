@@ -204,7 +204,11 @@ server is still running. A server started with `--watch` reloads by itself.
    right over the pixels either covers) and `blocked.unreachable` (where the
    views themselves disagree), then look with `preview`; do not chain
    `paint_from_views` and hand recolouring for it. Pass the hero view first
-   (it wins ties) or give it `weight: 2`.
+   (it wins ties) or give it `weight: 2`. `semantic: true` adds a CLIP
+   patch-similarity pass (froxel built with `--features clip-metal`, weights
+   at `models/clip-vit-base-patch32.safetensors` in Froxel's support folder;
+   never download them without the user's yes); read `semantic.before`
+   and `after`.
 2. **Block out.** For a unique organic asset (a fallen tree, a creature, a
    hero rock) with a mesh sculpted in Blender or generated from the concept
    by an image-to-3D tool, start with `import_mesh` (`voxelSize` 0.08 for

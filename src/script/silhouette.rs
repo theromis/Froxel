@@ -123,6 +123,7 @@ const OPTIMIZE: &[&str] = &[
     "depthTolerance",
     "surfaceWeight",
     "colorCarve",
+    "semantic",
 ];
 
 const FIT: &[&str] = &[

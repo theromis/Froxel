@@ -743,6 +743,22 @@ pub(super) fn optimize(ui: &mut Ui, session: &mut Session) {
                         .desired_width(90.0),
                 );
                 ui.end_row();
+                let clip = cfg!(feature = "clip");
+                label(ui, "Semantic", if clip {
+                    "CLIP: compare each view with the model's patch by patch and, in the patches least alike, let each view show its own colours, kept only when the views read more alike (faces, eyes, legs). Needs the CLIP ViT-B/32 weights at models/clip-vit-base-patch32.safetensors in Froxel's support folder. Rounds and patches tried per round."
+                } else {
+                    "CLIP semantic term: this froxel is built without the clip feature (cargo build --release --features clip-metal)."
+                });
+                ui.add_enabled_ui(clip, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut panel.semantic, "CLIP");
+                        ui.add_enabled(panel.semantic, egui::DragValue::new(&mut panel.semantic_rounds).range(0..=8))
+                            .on_hover_text("Rounds");
+                        ui.add_enabled(panel.semantic, egui::DragValue::new(&mut panel.semantic_patches).range(0..=64))
+                            .on_hover_text("Patches tried per round");
+                    });
+                });
+                ui.end_row();
             });
         if ui
             .button("Optimize")

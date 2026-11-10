@@ -121,6 +121,59 @@ pub struct OptimizeSpec {
     /// when both rays still meet the body behind it and more of them then
     /// agree.
     pub color_carve: bool,
+    /// The semantic term: a [`PatchScorer`] (CLIP) compares each view with
+    /// the model's, and the views' votes in the patches that agree least
+    /// weigh up to `1 + weight` more, for `rounds` rounds of recolouring,
+    /// each kept only when the mean similarity rises.
+    pub semantic: Option<Semantic>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Semantic {
+    pub weight: f32,
+    pub rounds: u32,
+    /// The least similar patches tried per round.
+    pub patches: usize,
+}
+
+/// Patches per side of a [`PatchScorer`]'s grid (CLIP ViT-B/32 at 224).
+pub const PATCH_GRID: usize = 7;
+/// Most semantic rounds.
+pub const MAX_SEMANTIC_ROUNDS: u32 = 8;
+
+/// A view as an image: one pixel a cell, `None` empty.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ViewImage {
+    pub width: usize,
+    pub height: usize,
+    pub pixels: Vec<Option<[u8; 3]>>,
+}
+
+/// Patch similarity between image pairs: for each pair, the
+/// [`PATCH_GRID`] x [`PATCH_GRID`] similarities (row-major, about 0..1) of
+/// the images letterboxed onto a square.
+pub trait PatchScorer {
+    fn similarity(&mut self, pairs: &[(ViewImage, ViewImage)]) -> Result<Vec<Vec<f32>>, String>;
+    fn name(&self) -> String;
+}
+
+/// What the semantic term did.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SemanticReport {
+    pub scorer: String,
+    /// Mean patch similarity per view: of the starting model, after the
+    /// colour step, and at the end.
+    pub start: Vec<f32>,
+    pub before: Vec<f32>,
+    pub after: Vec<f32>,
+    pub rounds: u32,
+    /// Rounds whose reweighted recolouring was kept.
+    pub kept: u32,
+    /// Patch moves tried, and kept.
+    pub tried: usize,
+    pub patches: usize,
+    /// Cells the kept rounds recoloured.
+    pub recolored: usize,
 }
 
 impl Default for OptimizeSpec {
@@ -144,6 +197,7 @@ impl Default for OptimizeSpec {
             depth_tolerance: 0.5,
             surface_weight: 0.05,
             color_carve: true,
+            semantic: None,
         }
     }
 }
@@ -257,6 +311,7 @@ pub struct Optimized {
     pub colours: Vec<ViewColour>,
     /// Shape energy before and after.
     pub energy: [f64; 2],
+    pub semantic: Option<SemanticReport>,
     pub origin: Cell,
     pub size: [u32; 3],
 }
@@ -345,6 +400,8 @@ struct View {
     mirrored: bool,
     color: bool,
     weight: f32,
+    /// Per pixel, how much more its vote weighs (the semantic term).
+    vote: Vec<f32>,
     w: usize,
     h: usize,
     steps: usize,
@@ -396,6 +453,9 @@ struct Solver<'a> {
     labs: Vec<Lab>,
     slot_of: Vec<u8>,
     palette: [Lab; 256],
+    rgb: [[u8; 3]; 256],
+    /// Each view colour's RGB.
+    colour_rgb: Vec<[u8; 3]>,
     spec: &'a OptimizeSpec,
     /// Distance in cells from the starting solid (empty cells), and from
     /// the starting empty (solid cells).
@@ -623,7 +683,7 @@ impl Solver<'_> {
                     let n = self.normal(i);
                     let d = view.toward();
                     let facing = (n[0] * d[0] + n[1] * d[1] + n[2] * d[2]).max(0.0) as f32;
-                    (vi, t, facing * view.weight)
+                    (vi, t, facing * view.weight * view.vote[p])
                 })
             })
             .collect();
@@ -956,6 +1016,127 @@ impl Solver<'_> {
         found.get(found.len() / 2).map(|s| *s as f32)
     }
 
+    /// Each view's target and the model's view, as image pairs.
+    fn images(&self) -> Vec<(ViewImage, ViewImage)> {
+        self.views
+            .iter()
+            .map(|view| {
+                let target = view
+                    .target
+                    .iter()
+                    .map(|t| {
+                        t.map(|t| {
+                            if t == PLAIN {
+                                [128, 128, 128]
+                            } else {
+                                self.colour_rgb[t as usize]
+                            }
+                        })
+                    })
+                    .collect();
+                let model = (0..view.w * view.h)
+                    .map(|p| {
+                        view.first(&self.grid, p)
+                            .map(|s| self.rgb[self.grid.occ[view.cell(&self.grid, p, s)] as usize])
+                    })
+                    .collect();
+                let image = |pixels| ViewImage {
+                    width: view.w,
+                    height: view.h,
+                    pixels,
+                };
+                (image(target), image(model))
+            })
+            .collect()
+    }
+
+    /// Mean patch similarity per view, and the patches.
+    fn semantic_score(
+        &self,
+        scorer: &mut dyn PatchScorer,
+    ) -> Result<(Vec<f32>, Vec<Vec<f32>>), String> {
+        let patches = scorer.similarity(&self.images())?;
+        let means = patches
+            .iter()
+            .map(|p| p.iter().sum::<f32>() / p.len().max(1) as f32)
+            .collect();
+        Ok((means, patches))
+    }
+
+    /// Each view pixel's vote weight from its patch: the least similar
+    /// patch of all views weighs `1 + weight`, the most similar 1.
+    fn semantic_votes(&mut self, patches: &[Vec<f32>], weight: f32) {
+        let all = patches.iter().flatten();
+        let lo = all.clone().copied().fold(f32::INFINITY, f32::min);
+        let hi = all.copied().fold(f32::NEG_INFINITY, f32::max);
+        let span = (hi - lo).max(1e-6);
+        for (view, sims) in self.views.iter_mut().zip(patches) {
+            // The view letterboxed onto the square, as the scorer sees it.
+            let side = view.w.max(view.h) as f32;
+            let (ox, oy) = ((side - view.w as f32) / 2.0, (side - view.h as f32) / 2.0);
+            for p in 0..view.w * view.h {
+                let (x, y) = (
+                    (p % view.w) as f32 + 0.5 + ox,
+                    (p / view.w) as f32 + 0.5 + oy,
+                );
+                let px = ((x / side * PATCH_GRID as f32) as usize).min(PATCH_GRID - 1);
+                let py = ((y / side * PATCH_GRID as f32) as usize).min(PATCH_GRID - 1);
+                let s = sims.get(py * PATCH_GRID + px).copied().unwrap_or(hi);
+                view.vote[p] = 1.0 + weight * (hi - s) / span;
+            }
+        }
+    }
+
+    /// The changes that let view `vi` show its own colours over patch `k`
+    /// of its letterboxed grid: every first cell of its rays there whose
+    /// colour differs takes the target's slot, unless it is a kept slot or
+    /// shows an accent another view sees there.
+    fn patch_changes(&self, vi: usize, k: usize, accent: &[bool]) -> Vec<(usize, u8)> {
+        let view = &self.views[vi];
+        if !view.color {
+            return Vec::new();
+        }
+        let side = view.w.max(view.h) as f32;
+        let (ox, oy) = ((side - view.w as f32) / 2.0, (side - view.h as f32) / 2.0);
+        let mut out: Vec<(usize, u8)> = Vec::new();
+        for p in 0..view.w * view.h {
+            let (x, y) = (
+                (p % view.w) as f32 + 0.5 + ox,
+                (p / view.w) as f32 + 0.5 + oy,
+            );
+            let px = ((x / side * PATCH_GRID as f32) as usize).min(PATCH_GRID - 1);
+            let py = ((y / side * PATCH_GRID as f32) as usize).min(PATCH_GRID - 1);
+            if py * PATCH_GRID + px != k || self.matched(vi, p) {
+                continue;
+            }
+            let (Some(t), Some(s)) = (view.target[p], view.first(&self.grid, p)) else {
+                continue;
+            };
+            if t == PLAIN {
+                continue;
+            }
+            let i = view.cell(&self.grid, p, s);
+            let old = self.grid.occ[i];
+            if self.keep[old as usize] {
+                continue;
+            }
+            let shows_accent = self.views.iter().enumerate().any(|(oj, o)| {
+                if oj == vi {
+                    return false;
+                }
+                let q = o.pixel(&self.grid, i);
+                o.first(&self.grid, q)
+                    .is_some_and(|f| o.cell(&self.grid, q, f) == i)
+                    && o.target[q].is_some_and(|ot| ot != PLAIN && accent[ot as usize])
+                    && self.matched(oj, q)
+            });
+            if !shows_accent && !out.iter().any(|(j, _)| *j == i) {
+                out.push((i, self.slot_of[t as usize]));
+            }
+        }
+        out
+    }
+
     /// Agreement of every view with the current grid.
     fn agreements(&self) -> Vec<Agreement> {
         self.views
@@ -1065,7 +1246,9 @@ impl Solver<'_> {
                 let Some(k) = at.get(&i) else { continue };
                 let n = self.normal(i);
                 let facing = (n[0] * toward[0] + n[1] * toward[1] + n[2] * toward[2]).max(0.0);
-                let w = (facing as f32).powf(self.spec.sharpness).max(0.05) * view.weight;
+                let w = (facing as f32).powf(self.spec.sharpness).max(0.05)
+                    * view.weight
+                    * view.vote[p];
                 votes[*k].push((t, w));
             }
         }
@@ -1352,6 +1535,7 @@ fn targets(
             mirrored,
             color,
             weight,
+            vote: vec![1.0; w * h],
             w,
             h,
             steps,
@@ -1439,6 +1623,31 @@ pub fn optimize_to_views(
     spec: &OptimizeSpec,
     shades: &mut Shades,
 ) -> Result<Optimized, String> {
+    optimize_with(cells, spec, shades, None)
+}
+
+/// [`optimize_to_views`] with the semantic term's scorer, which
+/// `spec.semantic` needs.
+pub fn optimize_with(
+    cells: &HashMap<Cell, u8>,
+    spec: &OptimizeSpec,
+    shades: &mut Shades,
+    mut scorer: Option<&mut dyn PatchScorer>,
+) -> Result<Optimized, String> {
+    if let Some(sem) = spec.semantic {
+        if !(0.0..=16.0).contains(&sem.weight) {
+            return Err("semantic weight must be 0..16".into());
+        }
+        if sem.patches > 64 {
+            return Err("semantic patches must be 0..=64".into());
+        }
+        if sem.rounds > MAX_SEMANTIC_ROUNDS {
+            return Err(format!("semantic rounds must be 0..={MAX_SEMANTIC_ROUNDS}"));
+        }
+        if scorer.is_none() {
+            return Err("semantic needs a scorer".into());
+        }
+    }
     if spec.views.is_empty() || spec.views.len() > 6 {
         return Err("views must hold 1 to 6 views".into());
     }
@@ -1575,6 +1784,21 @@ pub fn optimize_to_views(
         labs,
         slot_of,
         palette,
+        rgb: std::array::from_fn(|s| {
+            let c = shades.colors[s];
+            [c[0], c[1], c[2]]
+        }),
+        colour_rgb: colours
+            .iter()
+            .map(|(ink, _)| match ink {
+                Ink::Rgb(rgb) => *rgb,
+                Ink::Slot(s) => {
+                    let c = shades.colors[*s as usize];
+                    [c[0], c[1], c[2]]
+                }
+                Ink::Plain => [128, 128, 128],
+            })
+            .collect(),
         spec,
         out_dist,
         in_dist,
@@ -1583,6 +1807,10 @@ pub fn optimize_to_views(
     };
     let before = solver.agreements();
     let energy_before = solver.energy();
+    let semantic_start = match (spec.semantic, scorer.as_deref_mut()) {
+        (Some(_), Some(scorer)) => Some(solver.semantic_score(scorer)?.0),
+        _ => None,
+    };
     let mut iterations = 0;
     let mut moves = 0;
     if spec.shape {
@@ -1609,6 +1837,88 @@ pub fn optimize_to_views(
             color_sweeps += again.0;
             (surface, unseen, accent_cells) = (again.1, again.2, again.3);
         }
+    }
+    let mut semantic = None;
+    if let (Some(sem), Some(scorer), Some(start)) =
+        (spec.semantic, scorer.as_deref_mut(), semantic_start)
+    {
+        let (mut means, mut patches) = solver.semantic_score(scorer)?;
+        let mut report = SemanticReport {
+            scorer: scorer.name(),
+            start,
+            before: means.clone(),
+            after: Vec::new(),
+            rounds: 0,
+            kept: 0,
+            tried: 0,
+            patches: 0,
+            recolored: 0,
+        };
+        if spec.recolor {
+            for _ in 0..sem.rounds {
+                report.rounds += 1;
+                let saved = solver.grid.occ.clone();
+                solver.semantic_votes(&patches, sem.weight);
+                let again = solver.recolor(&accent);
+                color_sweeps += again.0;
+                let (next, next_patches) = solver.semantic_score(scorer)?;
+                let mean = |m: &[f32]| m.iter().sum::<f32>() / m.len().max(1) as f32;
+                let mut improved = false;
+                if mean(&next) > mean(&means) + 1e-5 {
+                    report.kept += 1;
+                    (surface, unseen, accent_cells) = (again.1, again.2, again.3);
+                    means = next;
+                    patches = next_patches;
+                    improved = true;
+                } else {
+                    solver.grid.occ = saved.clone();
+                }
+                // The patches that agree least, worst first: each view in
+                // turn shows its own colours there, kept when the views
+                // read more alike.
+                let mut worst: Vec<(f32, usize, usize)> = patches
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(vi, p)| p.iter().enumerate().map(move |(k, s)| (*s, vi, k)))
+                    .collect();
+                worst.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
+                for &(_, vi, k) in worst.iter().take(sem.patches) {
+                    let changes = solver.patch_changes(vi, k, &accent);
+                    if changes.is_empty() {
+                        continue;
+                    }
+                    let old: Vec<(usize, u8)> = changes
+                        .iter()
+                        .map(|(i, _)| (*i, solver.grid.occ[*i]))
+                        .collect();
+                    for (i, slot) in &changes {
+                        solver.grid.occ[*i] = *slot;
+                    }
+                    report.tried += 1;
+                    let (next, next_patches) = solver.semantic_score(scorer)?;
+                    if mean(&next) > mean(&means) + 1e-5 {
+                        report.patches += 1;
+                        means = next;
+                        patches = next_patches;
+                        improved = true;
+                    } else {
+                        for (i, slot) in old {
+                            solver.grid.occ[i] = slot;
+                        }
+                    }
+                }
+                report.recolored += saved
+                    .iter()
+                    .zip(&solver.grid.occ)
+                    .filter(|(a, b)| a != b)
+                    .count();
+                if !improved {
+                    break;
+                }
+            }
+        }
+        report.after = means;
+        semantic = Some(report);
     }
     let after = solver.agreements();
     let mut writes = Vec::new();
@@ -1676,6 +1986,7 @@ pub fn optimize_to_views(
         views: reports,
         colours,
         energy: [energy_before, energy_after],
+        semantic,
         origin: (lo[0], lo[1], lo[2]),
         size: n.map(|v| v as u32),
     })

@@ -377,3 +377,132 @@ fn the_optimized_toad_example_agrees_better_and_keeps_its_pupils() {
     assert!(dark(&optimized) >= 2, "{} pupil cells", dark(&optimized));
     assert!(carved.objects[0].cells.len() >= optimized.objects[0].cells.len());
 }
+
+/// A stand-in for CLIP: a patch's similarity is the share of its pixels
+/// whose colours are equal.
+struct SamePixels;
+
+impl super::PatchScorer for SamePixels {
+    fn similarity(
+        &mut self,
+        pairs: &[(super::ViewImage, super::ViewImage)],
+    ) -> Result<Vec<Vec<f32>>, String> {
+        Ok(pairs
+            .iter()
+            .map(|(a, b)| {
+                let side = a.width.max(a.height) as f32;
+                let (ox, oy) = (
+                    (side - a.width as f32) / 2.0,
+                    (side - a.height as f32) / 2.0,
+                );
+                let g = super::PATCH_GRID;
+                let mut same = vec![0.0f32; g * g];
+                let mut all = vec![0.0f32; g * g];
+                for p in 0..a.width * a.height {
+                    let x = (p % a.width) as f32 + 0.5 + ox;
+                    let y = (p / a.width) as f32 + 0.5 + oy;
+                    let k = ((y / side * g as f32) as usize).min(g - 1) * g
+                        + ((x / side * g as f32) as usize).min(g - 1);
+                    all[k] += 1.0;
+                    if a.pixels[p] == b.pixels[p] {
+                        same[k] += 1.0;
+                    }
+                }
+                same.iter()
+                    .zip(&all)
+                    .map(|(s, n)| if *n > 0.0 { s / n } else { 1.0 })
+                    .collect()
+            })
+            .collect())
+    }
+
+    fn name(&self) -> String {
+        "same-pixels".into()
+    }
+}
+
+#[test]
+fn the_semantic_term_only_keeps_what_reads_more_alike() {
+    // A box whose front and top views paint the shared edge differently.
+    let cells = cube([0, 0, 0], [5, 5, 5], 1);
+    let front = mask(6, 6, |x, y| {
+        Some(if y == 0 && x > 1 && x < 4 {
+            DARK
+        } else {
+            ORANGE
+        })
+    });
+    let spec = OptimizeSpec {
+        views: vec![
+            view(Side::Top, full(6, 6)),
+            view(Side::Front, front),
+            view(Side::Left, full(6, 6)),
+        ],
+        fit_ink: false,
+        accents: None,
+        color_carve: false,
+        shape: false,
+        semantic: Some(Semantic {
+            weight: 1.0,
+            rounds: 2,
+            patches: 8,
+        }),
+        ..OptimizeSpec::default()
+    };
+    let mut scorer = SamePixels;
+    let done = super::optimize_with(&cells, &spec, &mut shades(), Some(&mut scorer)).unwrap();
+    let sem = done.semantic.expect("a semantic report");
+    let mean = |v: &[f32]| v.iter().sum::<f32>() / v.len() as f32;
+    assert!(mean(&sem.after) >= mean(&sem.before), "{sem:?}");
+    assert_eq!(sem.scorer, "same-pixels");
+    // Without a scorer the spec is refused.
+    assert!(optimize_to_views(&cells, &spec, &mut shades()).is_err());
+    let again = super::optimize_with(&cells, &spec, &mut shades(), Some(&mut SamePixels)).unwrap();
+    assert_eq!(again.writes, done.writes);
+}
+
+#[cfg(not(feature = "clip"))]
+#[test]
+fn semantic_over_mcp_needs_the_clip_feature() {
+    let mut session = Session::new();
+    apply(
+        &mut session,
+        "voxel.fill",
+        &json!({"x0": 0, "y0": 0, "z0": 0, "x1": 3, "y1": 3, "z1": 3, "palette": 1}),
+    )
+    .unwrap();
+    let err = apply(
+        &mut session,
+        "voxel.optimize_to_views",
+        &json!({"views": [{"view": "front", "rows": ["oo", "oo"], "legend": {"o": "#d27828"}}],
+                "semantic": true}),
+    )
+    .unwrap_err();
+    assert!(err.contains("clip"), "{err}");
+}
+
+/// The real CLIP model, when `FROXEL_CLIP_MODEL` names its weights (the
+/// test passes without them).
+#[cfg(feature = "clip")]
+#[test]
+fn clip_scores_a_view_against_itself_as_alike() {
+    let Some(path) = std::env::var_os("FROXEL_CLIP_MODEL") else {
+        return;
+    };
+    let mut clip = crate::tools::clip::Clip::new(std::path::Path::new(&path)).unwrap();
+    let image = |colour: [u8; 3]| super::ViewImage {
+        width: 8,
+        height: 6,
+        pixels: (0..48)
+            .map(|p| ((p % 8) > 1 && (p % 8) < 6).then_some(colour))
+            .collect(),
+    };
+    let sims = super::PatchScorer::similarity(
+        &mut clip,
+        &[(image(ORANGE), image(ORANGE)), (image(ORANGE), image(DARK))],
+    )
+    .unwrap();
+    let mean = |v: &[f32]| v.iter().sum::<f32>() / v.len() as f32;
+    assert!(mean(&sims[0]) > 0.99);
+    assert!(mean(&sims[1]) < mean(&sims[0]));
+}

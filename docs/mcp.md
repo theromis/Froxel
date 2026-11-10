@@ -2172,6 +2172,27 @@ inside every other view, where the views disagree), `energy`, `colours`
 {"views": "<pixelate_views' views>", "band": 2, "minFeature": 2, "keep": [9]}
 ```
 
+With `semantic` (`true` or `{weight, rounds, patches, model}`) a CLIP term
+follows the colour step, so faces, eyes, and legs read as they do in the
+views where the pixel counts alone are a tie. Each view and the model's view
+(one pixel a cell, letterboxed onto 224 x 224 grey) go through the vision
+tower of OpenAI's CLIP ViT-B/32; the tokens of its second-to-last layer give
+7 x 7 patch vectors, and a patch's similarity is their cosine. Per round
+(`rounds`, default 2) the views' votes in the least similar patches weigh up
+to `1 + weight` (default 1) more for a recolouring, then in the `patches`
+(default 8) least alike each view in turn shows its own colours there; every
+change is kept only when the mean similarity rises (accents and `keep`
+slots stay). The reply adds `semantic` `{scorer, start, before, after}`
+(mean patch similarity of the starting model, after the colour step, and at
+the end), per-view values, `rounds`, `kept`, `tried`, `patches`,
+`recolored`, and `loadMs`. It needs froxel built with `--features
+clip-metal` (Apple Metal; `clip` runs it on the CPU) and the weights,
+`model.safetensors` of `openai/clip-vit-base-patch32` (MIT licence, about
+605 MB, a separate download that Froxel never bundles), at
+`models/clip-vit-base-patch32.safetensors` in Froxel's support folder, at
+`FROXEL_CLIP_MODEL`, or at `semantic.model`. The model loads once per
+process (about 0.6 s); a round of the views takes some 40 ms on Metal.
+
 `froxel optimize --args optimize.json --input blockout.vox --out fitted.vox`
 runs it from the command line. Unlike `fit_to_views`, which places
 full-resolution crops over a blockout of any size by a scale search and
@@ -2702,7 +2723,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `paint_from_views` | Paint from views section: Sheet… (empty takes the Carve from views views), Background, Blend (Nearest with Seam, Soft with Sharpness), Mirror missing side, Colours (Used, New with New slots and Keep accents, Slots), Pixel art (Downscale, colours), Inset, Reach, Only, Objects (All visible), Paint from views over the selection's box or the whole object |
 | `decal` | Decal section: Image…, Flip, Crop, Background, Point (At selection, World), Up, Size, Depth, Reach, Normal limit, Only, Colour from image or the active slot, Mirror, Lay decal |
 | `pixelate_views` | Pixelate views section: Sheet… (empty takes the Carve from views views), Background, Size, Colours, Keep (Features, Thin, Despeckle), PNG…, Pixelate (one line per view under it) |
-| `optimize_to_views` | Optimize to views section (the views of Carve from views, pixelated at the object's box): Moves (Shape, Colour, Carve), Colour from (per Carve row), Colours, Passes, Band, Min feature, Smooth, Sharpness, Accents (Guard and share), Slots, Keep, Optimize (each view's agreement before and after in the status) |
+| `optimize_to_views` | Optimize to views section (the views of Carve from views, pixelated at the object's box): Moves (Shape, Colour, Carve), Colour from (per Carve row), Colours, Passes, Band, Min feature, Smooth, Sharpness, Accents (Guard and share), Slots, Keep, Semantic (CLIP, rounds, patches; with the clip feature), Optimize (each view's agreement before and after in the status) |
 | `measure_sheet` | Measure sheet section: Sheet …, Background, Count parts, Measure (views, checks, and parts listed under it), Use crops (into the Carve from views rows) |
 | `compare_silhouette` | Compare silhouette section: Concept Image…, Crop, Background, Flip, Exclude (colours and tolerance), Flood (and its step), Mask (…, Invert), Erase (one rectangle per line), Largest only, Camera (Viewport, Game, Front, Left, Top), Align (Fit, Height, Width), Compare; the overlay shows in the viewport's bottom-right corner until Hide overlay; MCP `compare_silhouette` over the control port shows it there too |
 | `import_mesh` | File > Import Mesh… and the Import mesh section: File, Size, Voxel, or Scale, File is Z-up, Rotation, Position, Anchor, Solid, Parity, or Shell, Texture or Vertex colour, Slots, New slots, Tolerance, Mode, New object, Orient to views (with the Orient to views options), Clean, Coverage (share, Keep thin), Min feature |

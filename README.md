@@ -257,7 +257,10 @@ match the sheet's, with colours from its palette slots, and prints each
 view's IoU and colour error before and after. `froxel optimize --args
 optimize.json --input blockout.vox --out fitted.vox` iterates a small
 creature (20 to 60 cells) until its views match its pixel-art views, shape
-and colours together, and prints each view's agreement before and after.
+and colours together, and prints each view's agreement before and after;
+built with `--features clip-metal`, its `semantic` option adds a CLIP
+patch-similarity term on Apple Metal (weights downloaded separately; see
+[docs/mcp.md](docs/mcp.md#optimizing-to-pixel-art-views)).
 MCP `compare_silhouette`, `carve_from_views`, `project_paint`,
 `fit_to_views`, and `optimize_to_views` are the same; see
 [docs/mcp.md](docs/mcp.md#silhouettes).
@@ -320,6 +323,13 @@ in a menu strip at the top of the window.
 `--features oidn` links [Open Image Denoise](https://www.openimagedenoise.org) for
 `--denoise`. It needs the library on the build machine. Without it, Froxel uses
 its built-in edge-aware filter.
+
+`--features clip-metal` (or `clip` on the CPU) adds the CLIP semantic term of
+`optimize_to_views` through [candle](https://github.com/huggingface/candle). It
+reads OpenAI's CLIP ViT-B/32 weights (MIT licence, about 605 MB), which are
+not bundled: download `model.safetensors` of `openai/clip-vit-base-patch32` to
+`~/Library/Application Support/Froxel/models/clip-vit-base-patch32.safetensors`
+(or point `FROXEL_CLIP_MODEL` at it). The default build has no CLIP.
 
 The phone builds need the [Android NDK](https://developer.android.com/ndk) and
 [cargo-apk](https://github.com/parasyte/cargo-apk), or Xcode on macOS:

@@ -698,7 +698,8 @@ each faces it, smoothed by `smooth`, accents such as eyes kept), and
 `downscale`, `fit`, `mirror`, `iterations`, `shape`, `recolor`, `band`,
 `minFeature`, `connected`, `smooth`, `sharpness`, `slots`, `keep`,
 `accents`, `accentShare`, `depthWeight`, `depthTolerance`, `surfaceWeight`,
-and `colorCarve`; a view takes `color` and `weight`. New colours take free
+`colorCarve`, and `semantic` (the CLIP term, on a froxel built with the
+`clip` feature); a view takes `color` and `weight`. New colours take free
 slots of the palette as the run leaves it. It returns the MCP reply
 (`views` with `before` and `after` `agreement`, `iou`, `color`, and
 `colorError`; `agreement`, `added`, `removed`, `recolored`, `iterations`,

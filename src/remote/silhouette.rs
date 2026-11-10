@@ -2471,9 +2471,55 @@ pub(crate) fn optimize_spec(
             depth_tolerance: number("depthTolerance", defaults.depth_tolerance)?,
             surface_weight: number("surfaceWeight", defaults.surface_weight)?,
             color_carve: opt_bool(params, "colorCarve")?.unwrap_or(defaults.color_carve),
+            semantic: semantic_arg(params)?.map(|(sem, _)| sem),
         },
         downscaled,
     ))
+}
+
+/// `semantic`: `true` or `{weight (default 1), rounds (default 2), model
+/// (the weights file)}`; `false` or left out is none.
+fn semantic_arg(
+    params: &Value,
+) -> Result<Option<(crate::tools::Semantic, Option<String>)>, String> {
+    let opts = match params.get("semantic") {
+        None | Some(Value::Null) | Some(Value::Bool(false)) => return Ok(None),
+        Some(Value::Bool(true)) => json!({}),
+        Some(found @ Value::Object(_)) => found.clone(),
+        Some(_) => return Err("semantic must be true, false, or {weight, rounds, model}".into()),
+    };
+    let rounds = match opts.get("rounds") {
+        None | Some(Value::Null) => 2,
+        Some(found) => found
+            .as_u64()
+            .ok_or("semantic rounds must be a whole number")?
+            .min(u64::from(u32::MAX)) as u32,
+    };
+    Ok(Some((
+        crate::tools::Semantic {
+            weight: opt_f64(&opts, "weight")?.unwrap_or(1.0) as f32,
+            rounds,
+            patches: match opts.get("patches") {
+                None | Some(Value::Null) => 8,
+                Some(found) => found
+                    .as_u64()
+                    .ok_or("semantic patches must be a whole number")?
+                    .min(1 << 16) as usize,
+            },
+        },
+        opt_str(&opts, "model")?,
+    )))
+}
+
+/// The CLIP scorer for `semantic`, or why there is none.
+#[cfg(feature = "clip")]
+fn semantic_scorer(model: Option<String>) -> Result<crate::tools::clip::Clip, String> {
+    let path = match model {
+        Some(path) => std::path::PathBuf::from(path),
+        None => crate::tools::clip::default_model()
+            .ok_or("semantic: no default CLIP model path; pass semantic.model")?,
+    };
+    crate::tools::clip::Clip::new(&path)
 }
 
 fn agreement_reply(a: &crate::tools::Agreement) -> Value {
@@ -2515,8 +2561,50 @@ pub(crate) fn optimize_writes(
     let dims: [u32; 3] = std::array::from_fn(|a| (hi[a] - lo[a] + 1) as u32);
     let (spec, downscaled) = optimize_spec(params, files, dims, palette)?;
     let started = std::time::Instant::now();
-    let done = crate::tools::optimize_to_views(cells, &spec, shades)?;
+    #[allow(unused_mut)]
+    let mut load_ms: Option<u64> = None;
+    let done = match semantic_arg(params)? {
+        None => crate::tools::optimize_to_views(cells, &spec, shades)?,
+        #[cfg(feature = "clip")]
+        Some((_, model)) => {
+            let mut clip = semantic_scorer(model)?;
+            load_ms = Some(clip.load_ms);
+            crate::tools::optimize::optimize_with(cells, &spec, shades, Some(&mut clip))?
+        }
+        #[cfg(not(feature = "clip"))]
+        Some(_) => {
+            return Err("semantic needs a froxel built with the clip feature (cargo build --release --features clip-metal on a Mac, clip elsewhere)".into())
+        }
+    };
     let mut reply = Map::new();
+    if let Some(sem) = &done.semantic {
+        let view = |values: &[f32]| -> Value {
+            json!(done
+                .views
+                .iter()
+                .zip(values)
+                .map(|(v, s)| json!({"view": v.side.name(), "similarity": round(*s, 4)}))
+                .collect::<Vec<_>>())
+        };
+        let mean =
+            |values: &[f32]| round(values.iter().sum::<f32>() / values.len().max(1) as f32, 4);
+        reply.insert(
+            "semantic".into(),
+            json!({
+                "scorer": sem.scorer,
+                "start": mean(&sem.start),
+                "before": mean(&sem.before),
+                "after": mean(&sem.after),
+                "views": {"start": view(&sem.start), "before": view(&sem.before), "after": view(&sem.after)},
+                "rounds": sem.rounds,
+                "kept": sem.kept,
+                "tried": sem.tried,
+                "patches": sem.patches,
+                "recolored": sem.recolored,
+                "loadMs": load_ms,
+            }),
+        );
+    }
     if let Some(pixelated) = &downscaled {
         reply.insert(
             "downscale".into(),

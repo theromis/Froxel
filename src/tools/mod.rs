@@ -8,6 +8,8 @@ use crate::state::Cell;
 mod bark;
 mod brush;
 mod cavity;
+#[cfg(feature = "clip")]
+pub(crate) mod clip;
 mod collision;
 pub(crate) mod colors;
 mod components;
@@ -24,7 +26,7 @@ mod joints;
 mod loft;
 mod mask_edit;
 mod mirror;
-mod optimize;
+pub(crate) mod optimize;
 pub(crate) mod orient;
 mod paint_views;
 mod pixelate;
@@ -69,7 +71,7 @@ pub use mask_edit::{
 };
 pub use mirror::{mirrored, Mirror};
 pub use optimize::{
-    optimize_to_views, Agreement, OptimizeSpec, OptimizeView, MAX_OPTIMIZE_BAND,
+    optimize_to_views, Agreement, OptimizeSpec, OptimizeView, Semantic, MAX_OPTIMIZE_BAND,
     MAX_OPTIMIZE_ITERATIONS,
 };
 pub use orient::{

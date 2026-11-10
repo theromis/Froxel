@@ -1505,7 +1505,11 @@ arguments: {views: [{view, rows, legend} | {view, path, crop, background,
 tolerance, flip, color, depth}, ...], path, background, tolerance,
 downscale, fit, mirror, iterations, shape, recolor, band, minFeature,
 connected, smooth, sharpness, slots, keep, accents, accentShare, depthPath,
-depthWeight, depthTolerance, surfaceWeight}. Crops of a sheet are pixelated
+depthWeight, depthTolerance, surfaceWeight, colorCarve, semantic}. semantic
+(true or {weight, rounds, patches, model}) adds the CLIP patch-similarity
+term: it needs froxel built with --features clip-metal (clip on the CPU)
+and the CLIP ViT-B/32 weights at models/clip-vit-base-patch32.safetensors
+in Froxel's support folder (or FROXEL_CLIP_MODEL). Crops of a sheet are pixelated
 at the object's box first (downscale); the rows of pixelate_views are used
 as they are.
 A relative path is relative to optimize.json.";

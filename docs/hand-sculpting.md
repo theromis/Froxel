@@ -187,6 +187,9 @@ off the flat views.
    (each surface cell from a facing-weighted vote of the views that see it,
    smoothed into patches, eyes and pupils kept as accents) until every
    view agrees; the reply gives each view's `agreement` before and after.
+   `semantic: true` (a froxel built with `--features clip-metal` and the
+   CLIP weights) then lets CLIP decide, patch by patch, which view's
+   colours keep a face or an eye recognisable where two views disagree.
 
 ```
 carve_from_views     views=[{view: "front", path: "sheet.png", crop: [40, 60, 520, 300]},

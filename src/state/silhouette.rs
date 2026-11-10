@@ -432,6 +432,10 @@ pub struct OptimizePanel {
     pub paint_views: [bool; 3],
     /// The pixelation's colours (`downscale.colors`).
     pub colors: i32,
+    /// The CLIP semantic term (a build with the clip feature).
+    pub semantic: bool,
+    pub semantic_rounds: i32,
+    pub semantic_patches: i32,
 }
 
 impl Default for OptimizePanel {
@@ -452,6 +456,9 @@ impl Default for OptimizePanel {
             keep: String::new(),
             paint_views: [true; 3],
             colors: crate::tools::PixelateSpec::default().colors as i32,
+            semantic: false,
+            semantic_rounds: 2,
+            semantic_patches: 8,
         }
     }
 }
@@ -503,6 +510,12 @@ impl OptimizePanel {
         }
         if let Some(t) = carved.get("depthTolerance") {
             args["depthTolerance"] = t.clone();
+        }
+        if self.semantic {
+            args["semantic"] = json!({
+                "rounds": self.semantic_rounds.max(0),
+                "patches": self.semantic_patches.max(0)
+            });
         }
         for (key, what, text) in [
             ("slots", "Slots", &self.slots),
