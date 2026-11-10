@@ -42,6 +42,7 @@ mod stroke;
 mod surface;
 mod sweep;
 pub(crate) mod terrace;
+mod thin;
 mod trim;
 mod upright;
 mod weather;
@@ -54,7 +55,7 @@ pub use components::{components, ComponentOp, ComponentSpec, Components, LISTED_
 pub use crown::{foliage as foliage_crown, CrownShape, FoliageSpec, MAX_MASSES};
 pub use debris::{break_end, BreakSpec, Broken, Splinters};
 pub use decal::{decal, DecalSpec, Target, MAX_DECAL_DEPTH, MAX_DECAL_REACH, MAX_DECAL_SIZE};
-pub use deform::{deform, DeformOp, DeformSpec, Displace};
+pub use deform::{deform, DeformOp, DeformSpec, Displace, Magnify};
 pub use depth::{depth_from_rgba, depth_from_values, Calibrate, Calibration, Depth, Gamma};
 pub use fit::{fit_to_views, FitSpec, FitView, ViewScore, MAX_FIT_ITERATIONS};
 pub use generate::{foliage, generate, Gen, MAX_GENERATOR_CELLS};
@@ -108,6 +109,7 @@ pub use stroke::{
 pub use surface::{Exclude, Region, MAX_EXCLUDE};
 pub use sweep::{sweep, Profile, SweepPoint};
 pub use terrace::{deterrace, TerraceMode, TerraceSpec};
+pub use thin::{thin_parts, ThinReport, MAX_MIN_FEATURE};
 pub use trim::{trim_outline, TrimSkin, TrimSpec};
 pub use upright::upright;
 pub use weather::{weather, WeatherSpec};

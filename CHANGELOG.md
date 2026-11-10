@@ -15,6 +15,14 @@
 
 ### Added
 
+- Deform scale: MCP `deform` `op: "scale"` (Rhai `deform("scale", ...)`, the
+  Deform section's Scale, `froxel deform`) enlarges or shrinks a part about
+  `point` by `factor` (or per axis): the cells within `radius` as one rigid
+  piece, easing back to none over `falloff` cells, so a small creature's
+  head, eyes, or fins get the cells they need without moving the rest. A
+  falloff that would fold cells is refused. `minFeature` N on any deform
+  reports the parts of the result thinner than N cells (`thin`: cells,
+  count, and the largest parts with bounds and thickness).
 - Pixelate views: MCP `pixelate_views`, Rhai `pixelate_views(views, opts)`,
   the Pixelate views section, and `froxel pixelate` turn an orthographic
   views sheet into pixel art at the cell grid before it is carved or

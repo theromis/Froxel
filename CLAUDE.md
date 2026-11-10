@@ -13,7 +13,8 @@ parts), `pointer`,
 `MVRG` rig chunk, and the `MVAN` clip chunk). `viewport.rs` is orbit and pointer input. `panels/` is the side
 UI. `tools/` is brush shapes, generators, and the MCP sculpt shapes
 (`sculpt.rs`: `fill_tube`, `carve`, `smooth`; `loft.rs`, `deform.rs`, and
-`brush.rs`: `loft`, `deform`, and the sculpt `brush`; `collision.rs`: the box cover of MCP
+`brush.rs`: `loft`, `deform` (with `scale`, a part grown about a point), and the sculpt `brush`;
+`thin.rs`: the `minFeature` thin-part report; `collision.rs`: the box cover of MCP
 `collision_from_voxels`; `fit.rs`: MCP `fit_to_views`, the views-fitting
 search; `sheet_measure.rs`: MCP `measure_sheet`, a views sheet's crops,
 cube pitch, checks, and parts; `mask_edit.rs`: the mask edits of `compare_silhouette` and the views,

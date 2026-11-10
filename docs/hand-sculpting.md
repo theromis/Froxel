@@ -271,8 +271,13 @@ round tip tapers, sags, and lumps in one call.
 `deform` then reshapes what is there, on the whole object or a box of it:
 `bend` curls a limb toward a direction by an angle over a length, `taper`
 narrows it, `twist` turns it, and `displace` pushes the surface in and out
-with noise for burls and lumps (`bias` 1 only bulges, -1 only dents). Slots
-are kept.
+with noise for burls and lumps (`bias` 1 only bulges, -1 only dents), and
+`scale` grows a part about a point (the cells within `radius` as one piece,
+easing back to none over `falloff`). Slots are kept. A creature 20 to 60
+cells long reads only with a big head, big eyes, and fins and legs at least
+a cell or two thick: `scale` the head and eyes by 1.3 to 1.6 before
+painting, and pass `minFeature: 2` to see which parts are one cell thin
+(`thin` in the reply).
 
 `brush` refines the silhouette like Blender's clay and grab brushes: dabs
 along a path of points `inflate` a burl, `deflate` (dig) a rot pocket,

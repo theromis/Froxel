@@ -2507,6 +2507,48 @@ pub fn reduce_palette(args: &[String]) -> i32 {
     }
 }
 
+const DEFORM_HELP: &str = "\
+usage: froxel deform --args <deform.json> --input <file.vox> --out <file.vox>
+                     [--object <index|name>]
+
+MCP deform on the active object (or --object) of a .vox, saved to --out,
+with the reply printed as JSON. deform.json holds its arguments: {op: bend
+| taper | twist | displace | scale, x0..z1, axis, origin, length, center,
+angle, direction, start, end, amplitude, scale, octaves, seed, bias, point,
+factor, radius, falloff, minFeature}. op scale enlarges a part (a head, an
+eye, a fin) about point by factor, the cells within radius as one piece,
+easing back to none over falloff cells, so a small creature's features get
+the cells they need; minFeature N reports the parts thinner than N cells
+after the deform (thin in the reply).";
+
+/// `froxel deform`: MCP `deform` on a `.vox`.
+pub fn deform(args: &[String]) -> i32 {
+    let parsed = edit_args(args, DEFORM_HELP, &["--args"]).and_then(|found| {
+        let Some((input, output, object, flags)) = found else {
+            return Ok(None);
+        };
+        let file = flags["args"]
+            .as_str()
+            .map(PathBuf::from)
+            .ok_or_else(|| format!("--args is required\n\n{DEFORM_HELP}"))?;
+        let text = std::fs::read_to_string(&file)
+            .map_err(|err| format!("Could not read {}: {err}", file.display()))?;
+        let params: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|err| format!("{} is not JSON: {err}", file.display()))?;
+        Ok(Some((input, output, object, params)))
+    });
+    match parsed {
+        Ok(None) => 0,
+        Ok(Some((input, output, object, params))) => {
+            edit_vox(&input, &output, object.as_deref(), "voxel.deform", &params)
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            2
+        }
+    }
+}
+
 const SPLIT_PARTS_HELP: &str = "\
 usage: froxel split-parts --args <parts.json> --input <file.vox> --out <file.vox>
                           [--object <index|name>]

@@ -44,11 +44,24 @@ pub(crate) fn organic_writes(
     let mut reply = Map::new();
     let writes = match tool {
         Organic::Deform => {
+            let min_feature = min_feature_arg(params)?;
             let done = crate::tools::deform(cells, &deform_spec(params)?)?;
             reply.insert("cells".into(), json!(done.cells));
             reply.insert("result".into(), json!(done.result));
             reply.insert("added".into(), json!(done.added));
             reply.insert("removed".into(), json!(done.removed));
+            if let Some(n) = min_feature {
+                let mut after = cells.clone();
+                for &(x, y, z, slot) in &done.writes {
+                    if slot == 0 {
+                        after.remove(&(x, y, z));
+                    } else {
+                        after.insert((x, y, z), slot as u8);
+                    }
+                }
+                let report = crate::tools::thin_parts(&after, n)?;
+                reply.insert("thin".into(), thin_reply(&report));
+            }
             done.writes
         }
         Organic::Loft => {
@@ -91,10 +104,44 @@ fn axis_name(name: &str) -> Option<usize> {
     }
 }
 
+/// `minFeature`: report the parts thinner than this many cells, 2..16.
+pub(crate) fn min_feature_arg(params: &Value) -> Result<Option<u32>, String> {
+    match params.get("minFeature") {
+        None | Some(Value::Null) => Ok(None),
+        Some(found) => found
+            .as_u64()
+            .filter(|n| (2..=u64::from(crate::tools::MAX_MIN_FEATURE)).contains(n))
+            .map(|n| Some(n as u32))
+            .ok_or_else(|| {
+                format!(
+                    "minFeature must be 2..={} cells",
+                    crate::tools::MAX_MIN_FEATURE
+                )
+            }),
+    }
+}
+
+/// The `thin` reply of `minFeature`: `{minFeature, cells, count, parts
+/// [{cells, min, max, thickness}]}`.
+pub(crate) fn thin_reply(report: &crate::tools::ThinReport) -> Value {
+    json!({
+        "minFeature": report.min_feature,
+        "cells": report.cells,
+        "count": report.count,
+        "parts": report.parts.iter().map(|p| json!({
+            "cells": p.cells,
+            "min": [p.min.0, p.min.1, p.min.2],
+            "max": [p.max.0, p.max.1, p.max.2],
+            "thickness": p.thickness,
+        })).collect::<Vec<_>>(),
+    })
+}
+
 /// MCP `deform` arguments as a spec.
 pub(crate) fn deform_spec(params: &Value) -> Result<crate::tools::DeformSpec, String> {
     use crate::tools::{DeformOp, Displace};
-    let op = opt_str(params, "op")?.ok_or("op is required: bend, taper, twist, or displace")?;
+    let op =
+        opt_str(params, "op")?.ok_or("op is required: bend, taper, twist, displace, or scale")?;
     let axis = match opt_str(params, "axis")?.as_deref() {
         None => 2,
         Some(name) => {
@@ -191,9 +238,42 @@ pub(crate) fn deform_spec(params: &Value) -> Result<crate::tools::DeformSpec, St
                 bias: number(params, "bias", 0.0)?,
             })
         }
+        "scale" => {
+            let point = params
+                .get("point")
+                .and_then(Value::as_array)
+                .filter(|l| l.len() == 3)
+                .and_then(|l| l.iter().map(Value::as_f64).collect::<Option<Vec<_>>>())
+                .map(|l| [l[0], l[1], l[2]])
+                .ok_or("scale needs point [x, y, z]: the centre of the part to scale")?;
+            let factor = match params.get("factor") {
+                None | Some(Value::Null) => [1.5; 3],
+                Some(Value::Array(list)) if list.len() == 3 => {
+                    let l = list
+                        .iter()
+                        .map(Value::as_f64)
+                        .collect::<Option<Vec<_>>>()
+                        .ok_or("factor must be a number or [x, y, z]")?;
+                    [l[0], l[1], l[2]]
+                }
+                Some(found) => {
+                    [found
+                        .as_f64()
+                        .ok_or("factor must be a number or [x, y, z]")?; 3]
+                }
+            };
+            let radius = opt_f64(params, "radius")?
+                .ok_or("scale needs radius: the cells around point scaled as one piece")?;
+            DeformOp::Scale(crate::tools::Magnify {
+                point,
+                factor,
+                radius,
+                falloff: opt_f64(params, "falloff")?.unwrap_or(radius.max(1.0)),
+            })
+        }
         other => {
             return Err(format!(
-                "op must be bend, taper, twist, or displace, not `{other}`"
+                "op must be bend, taper, twist, displace, or scale, not `{other}`"
             ))
         }
     };

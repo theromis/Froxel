@@ -99,7 +99,7 @@ pub(crate) struct SculptStroke {
 /// The Deform panel: MCP `deform`.
 #[derive(Clone, PartialEq)]
 pub struct DeformPanel {
-    /// 0 bend, 1 taper, 2 twist, 3 displace.
+    /// 0 bend, 1 taper, 2 twist, 3 displace, 4 scale.
     pub op: usize,
     /// 0 x, 1 y, 2 z.
     pub axis: usize,
@@ -116,6 +116,14 @@ pub struct DeformPanel {
     pub octaves: i32,
     pub bias: f32,
     pub seed: i32,
+    /// Scale: the centre of the part (local cells), the factor per axis,
+    /// the rigid radius, and the falloff.
+    pub point: [f32; 3],
+    pub factor: [f32; 3],
+    pub radius: f32,
+    pub falloff: f32,
+    /// MCP `minFeature`: report parts thinner than this; 0 is off.
+    pub min_feature: i32,
 }
 
 impl Default for DeformPanel {
@@ -134,16 +142,21 @@ impl Default for DeformPanel {
             octaves: 2,
             bias: 0.0,
             seed: 0,
+            point: [0.0; 3],
+            factor: [1.5; 3],
+            radius: 4.0,
+            falloff: 4.0,
+            min_feature: 0,
         }
     }
 }
 
-pub const DEFORM_OPS: [&str; 4] = ["bend", "taper", "twist", "displace"];
+pub const DEFORM_OPS: [&str; 5] = ["bend", "taper", "twist", "displace", "scale"];
 
 impl DeformPanel {
     fn args(&self) -> Value {
         let mut args = json!({
-            "op": DEFORM_OPS[self.op.min(3)],
+            "op": DEFORM_OPS[self.op.min(4)],
             "axis": (["x", "y", "z"][self.axis.min(2)]),
         });
         if let Some(origin) = self.origin {
@@ -163,6 +176,12 @@ impl DeformPanel {
                 args["end"] = json!(self.end);
             }
             2 => args["angle"] = json!(self.angle),
+            4 => {
+                args["point"] = json!(self.point);
+                args["factor"] = json!(self.factor);
+                args["radius"] = json!(self.radius);
+                args["falloff"] = json!(self.falloff);
+            }
             _ => {
                 args["amplitude"] = json!(self.amplitude);
                 args["scale"] = json!(self.scale);
@@ -170,6 +189,9 @@ impl DeformPanel {
                 args["bias"] = json!(self.bias);
                 args["seed"] = json!(self.seed.max(0));
             }
+        }
+        if self.min_feature >= 2 {
+            args["minFeature"] = json!(self.min_feature.min(16));
         }
         args
     }
@@ -278,7 +300,17 @@ impl Session {
     /// the whole active object.
     pub fn deform_from_panel(&mut self) {
         let mut args = self.organic.deform.args();
-        if let Some((min, max)) = cell_bounds(self.picked.iter().copied()) {
+        let picked = cell_bounds(self.picked.iter().copied());
+        if let (4, Some((min, max))) = (self.organic.deform.op, picked) {
+            // Scale works about the selection's centre on the whole object.
+            let centre = [
+                (min.0 + max.0) as f32 / 2.0,
+                (min.1 + max.1) as f32 / 2.0,
+                (min.2 + max.2) as f32 / 2.0,
+            ];
+            self.organic.deform.point = centre;
+            args["point"] = json!(centre);
+        } else if let Some((min, max)) = picked {
             for (key, value) in ["x0", "y0", "z0", "x1", "y1", "z1"]
                 .into_iter()
                 .zip([min.0, min.1, min.2, max.0, max.1, max.2])
@@ -287,10 +319,28 @@ impl Session {
             }
         }
         self.status = match crate::remote::apply(self, "voxel.deform", &args) {
-            Ok(reply) => format!(
-                "Deformed {} cells into {}: {} added, {} removed.",
-                reply["cells"], reply["result"], reply["added"], reply["removed"]
-            ),
+            Ok(reply) => {
+                let mut text = format!(
+                    "Deformed {} cells into {}: {} added, {} removed.",
+                    reply["cells"], reply["result"], reply["added"], reply["removed"]
+                );
+                if let Some(thin) = reply.get("thin") {
+                    text.push_str(&format!(
+                        " {} cells in {} parts are thinner than {} cells{}.",
+                        thin["cells"],
+                        thin["count"],
+                        thin["minFeature"],
+                        match thin["parts"].get(0) {
+                            Some(p) => format!(
+                                "; the largest, {} cells, spans {} to {}",
+                                p["cells"], p["min"], p["max"]
+                            ),
+                            None => String::new(),
+                        }
+                    ));
+                }
+                text
+            }
             Err(err) => err,
         };
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);

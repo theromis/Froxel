@@ -1,6 +1,9 @@
 //! The deformers behind MCP `deform`: bend, taper, and twist move the cells
 //! of an object or a box along an axis; displace pushes their surface in and
-//! out with 3D noise. Every cell keeps its palette slot.
+//! out with 3D noise; scale enlarges (or shrinks) a part about a point with
+//! a smooth falloff, so a head, an eye, or a fin gets the cells it needs at
+//! a small size (the exaggeration step of caricature at low resolution).
+//! Every cell keeps its palette slot.
 
 use std::collections::HashMap;
 
@@ -35,6 +38,109 @@ pub enum DeformOp {
         angle: f64,
     },
     Displace(Displace),
+    Scale(Magnify),
+}
+
+/// Most a scale enlarges or shrinks along an axis.
+pub const MAX_MAGNIFY: f64 = 4.0;
+
+/// A local scale about `point`: the cells within `radius` are scaled by
+/// `factor` (per axis) as one rigid piece, and over the next `falloff`
+/// cells (before scaling) the scale eases back to none, so the rest of the
+/// object stays where it is and the part stays attached.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Magnify {
+    pub point: [f64; 3],
+    pub factor: [f64; 3],
+    pub radius: f64,
+    pub falloff: f64,
+}
+
+impl Magnify {
+    /// The outer edge in units of `radius`, past which nothing moves.
+    fn outer(&self) -> f64 {
+        1.0 + self.falloff / self.radius
+    }
+
+    /// Where the cell at `p` comes from.
+    fn inverse(&self, p: [f64; 3]) -> [f64; 3] {
+        let d = [
+            p[0] - self.point[0],
+            p[1] - self.point[1],
+            p[2] - self.point[2],
+        ];
+        let core = [
+            d[0] / self.factor[0],
+            d[1] / self.factor[1],
+            d[2] / self.factor[2],
+        ];
+        let e = (core[0] * core[0] + core[1] * core[1] + core[2] * core[2]).sqrt() / self.radius;
+        let w = if e <= 1.0 {
+            0.0
+        } else {
+            let t = ((e - 1.0) / (self.outer() - 1.0)).clamp(0.0, 1.0);
+            t * t * (3.0 - 2.0 * t)
+        };
+        std::array::from_fn(|i| self.point[i] + core[i] * (1.0 - w) + d[i] * w)
+    }
+
+    fn check(&self) -> Result<(), String> {
+        if self
+            .factor
+            .iter()
+            .any(|k| !(1.0 / MAX_MAGNIFY..=MAX_MAGNIFY).contains(k))
+        {
+            return Err(format!(
+                "factor must be 1/{MAX_MAGNIFY}..={MAX_MAGNIFY} along each axis"
+            ));
+        }
+        if !(0.5..=512.0).contains(&self.radius) {
+            return Err("radius must be 0.5..=512 cells".into());
+        }
+        if !(0.5..=512.0).contains(&self.falloff) {
+            return Err("falloff must be 0.5..=512 cells".into());
+        }
+        if self.point.iter().any(|v| !v.is_finite()) {
+            return Err("point must be three finite numbers".into());
+        }
+        // Along every ray from the point, each axis's offset of the source
+        // must grow with the target's, or the scale would fold cells over.
+        let reach = self.reach();
+        for dx in -1i32..=1 {
+            for dy in -1i32..=1 {
+                for dz in -1i32..=1 {
+                    if (dx, dy, dz) == (0, 0, 0) {
+                        continue;
+                    }
+                    let n = f64::from(dx * dx + dy * dy + dz * dz).sqrt();
+                    let u = [f64::from(dx) / n, f64::from(dy) / n, f64::from(dz) / n];
+                    let mut last = [0.0f64; 3];
+                    let steps = 400;
+                    for step in 1..=steps {
+                        let r = reach * f64::from(step) / f64::from(steps);
+                        let q = self.inverse(std::array::from_fn(|i| self.point[i] + u[i] * r));
+                        for i in 0..3 {
+                            let off = (q[i] - self.point[i]) * u[i].signum();
+                            if u[i] != 0.0 && off < last[i] - 1.0e-6 {
+                                return Err(format!(
+                                    "falloff {} is too short for factor [{}, {}, {}]: the scale would fold cells over; give a longer falloff",
+                                    self.falloff, self.factor[0], self.factor[1], self.factor[2]
+                                ));
+                            }
+                            last[i] = off;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// How far from the point a target cell can move.
+    fn reach(&self) -> f64 {
+        let kmax = self.factor.iter().cloned().fold(1.0, f64::max);
+        self.radius * self.outer() * kmax + 2.0
+    }
 }
 
 /// The noise of a displace.
@@ -97,6 +203,9 @@ pub fn deform(cells: &HashMap<Cell, u8>, spec: &DeformSpec) -> Result<Deformed, 
     }
     if let DeformOp::Displace(noise) = spec.op {
         return displace(cells, &source, spec.region, noise);
+    }
+    if let DeformOp::Scale(m) = spec.op {
+        return magnify(cells, &source, m);
     }
     let map = Mapping::new(&source, spec)?;
     // The target box: every source centre carried forward, a cell around.
@@ -243,7 +352,9 @@ impl Mapping {
                     return Err("twist angle must be within 2880 degrees".into());
                 }
             }
-            DeformOp::Displace(_) => unreachable!("displace has no mapping"),
+            DeformOp::Displace(_) | DeformOp::Scale(_) => {
+                unreachable!("displace and scale have no axis mapping")
+            }
         }
         Ok(Mapping {
             op: spec.op,
@@ -282,7 +393,7 @@ impl Mapping {
                 out[self.across[0]] = self.center[0] + a * cos - b * sin;
                 out[self.across[1]] = self.center[1] + a * sin + b * cos;
             }
-            DeformOp::Displace(_) => {}
+            DeformOp::Displace(_) | DeformOp::Scale(_) => {}
         }
         out
     }
@@ -317,7 +428,7 @@ impl Mapping {
                 q[self.across[1]] = self.center[1] + a * sin + b * cos;
                 out[0] = Some(q);
             }
-            DeformOp::Displace(_) => out[0] = Some(p),
+            DeformOp::Displace(_) | DeformOp::Scale(_) => out[0] = Some(p),
         }
         out
     }
@@ -382,6 +493,59 @@ impl Mapping {
         }
         out
     }
+}
+
+/// Scale the cells of `source` about `m.point`: every cell of the box the
+/// scale reaches takes the slot of the source cell its inverse lands on;
+/// cells outside that box stay as they are.
+fn magnify(
+    cells: &HashMap<Cell, u8>,
+    source: &HashMap<Cell, u8>,
+    m: Magnify,
+) -> Result<Deformed, String> {
+    m.check()?;
+    let reach = m.reach();
+    let lo: [i32; 3] = std::array::from_fn(|i| (m.point[i] - reach).floor() as i32);
+    let hi: [i32; 3] = std::array::from_fn(|i| (m.point[i] + reach).ceil() as i32);
+    let work = (0..3)
+        .map(|i| i64::from(hi[i] - lo[i]) + 1)
+        .product::<i64>();
+    if work > MAX_DEFORM_WORK {
+        return Err(format!(
+            "the scale reaches {work} cells, more than {MAX_DEFORM_WORK}; use a smaller radius or falloff"
+        ));
+    }
+    let inside = |c: Cell| {
+        (lo[0]..=hi[0]).contains(&c.0)
+            && (lo[1]..=hi[1]).contains(&c.1)
+            && (lo[2]..=hi[2]).contains(&c.2)
+    };
+    let mut out: HashMap<Cell, u8> = source
+        .iter()
+        .filter(|(c, _)| !inside(**c))
+        .map(|(&c, &s)| (c, s))
+        .collect();
+    for z in lo[2]..=hi[2] {
+        for y in lo[1]..=hi[1] {
+            for x in lo[0]..=hi[0] {
+                let q = m.inverse(centre((x, y, z)));
+                let from = (
+                    q[0].round() as i32,
+                    q[1].round() as i32,
+                    q[2].round() as i32,
+                );
+                if let Some(&slot) = source.get(&from) {
+                    out.insert((x, y, z), slot);
+                }
+            }
+        }
+    }
+    if out.len() as i64 > MAX_SCULPT_CELLS {
+        return Err(format!(
+            "the scale leaves more than {MAX_SCULPT_CELLS} cells; scale a smaller part"
+        ));
+    }
+    Ok(diff(cells, source, out))
 }
 
 /// Push the surface of `source` in and out with fractal noise. Only cells in

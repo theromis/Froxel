@@ -223,8 +223,9 @@ server is still running. A server started with `--watch` reloads by itself.
    (a radius per point, so it tapers; `curve: "smooth"` bends it). Build
    trunks, roots, and limbs that must not read as pipes with `loft` (an
    elliptical section per point with `roll`, `flatTop`, and a knobbly
-   `noise` outline), reshape with `deform` (`bend`, `taper`, `twist`, and
-   `displace` for burls and lumps), and refine the silhouette with `brush`
+   `noise` outline), reshape with `deform` (`bend`, `taper`, `twist`,
+   `displace` for burls and lumps, and `scale` to make a small creature's head, eyes, or fins larger
+   than life about a `point` with a smooth `falloff`; `minFeature: 2` reports parts one cell thin), and refine the silhouette with `brush`
    (`inflate`, `deflate`, `smooth`, `flatten`, `grab` along points; see
    `examples/fallen_tree.rhai`). Cut
    hollows, tunnels, and pits with `carve`, and a slanted side along a

@@ -46,7 +46,7 @@ pub(super) fn deform(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Op", "Bend curls the cells toward a direction; taper scales them across the axis; twist turns them about it; displace pushes the surface in and out with noise, for lumps and burls.");
+                label(ui, "Op", "Bend curls the cells toward a direction; taper scales them across the axis; twist turns them about it; displace pushes the surface in and out with noise, for lumps and burls; scale enlarges a part (a head, an eye, a fin) about a point with a smooth falloff, so a small creature's features get the cells they need.");
                 ui.horizontal(|ui| {
                     for (index, name) in DEFORM_OPS.into_iter().enumerate() {
                         let title = format!("{}{}", name[..1].to_uppercase(), &name[1..]);
@@ -97,6 +97,28 @@ pub(super) fn deform(ui: &mut Ui, session: &mut Session) {
                         number(ui, &mut panel.angle, -2880.0..=2880.0, 1.0);
                         ui.end_row();
                     }
+                    4 => {
+                        label(ui, "Point", "The centre of the part to scale, in local cells. With a selection, its centre is used.");
+                        ui.horizontal(|ui| {
+                            for value in &mut panel.point {
+                                ui.add(egui::DragValue::new(value).speed(0.25));
+                            }
+                        });
+                        ui.end_row();
+                        label(ui, "Factor", "How much larger along x, y, and z, 0.25..4: 1.5 1.5 1.5 grows the part by half; below 1 shrinks it.");
+                        ui.horizontal(|ui| {
+                            for value in &mut panel.factor {
+                                number(ui, value, 0.25..=4.0, 0.01);
+                            }
+                        });
+                        ui.end_row();
+                        label(ui, "Radius", "Cells around the point scaled as one rigid piece.");
+                        number(ui, &mut panel.radius, 0.5..=512.0, 0.1);
+                        ui.end_row();
+                        label(ui, "Falloff", "Cells past the radius over which the scale eases back to none, so the part stays attached and the rest stays put.");
+                        number(ui, &mut panel.falloff, 0.5..=512.0, 0.1);
+                        ui.end_row();
+                    }
                     _ => {
                         label(ui, "Amplitude", "The most the surface moves, in cells.");
                         number(ui, &mut panel.amplitude, 0.5..=32.0, 0.05);
@@ -115,6 +137,9 @@ pub(super) fn deform(ui: &mut Ui, session: &mut Session) {
                         ui.end_row();
                     }
                 }
+                label(ui, "Min feature", "MCP minFeature: after the deform, report the parts thinner than this many cells (a fin, an ear, a leg too thin for the size). 0 is off.");
+                ui.add(egui::DragValue::new(&mut panel.min_feature).range(0..=16));
+                ui.end_row();
             });
         let verb = if session.picked.is_empty() {
             "Deform object"

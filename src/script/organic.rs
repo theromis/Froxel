@@ -28,6 +28,11 @@ const DEFORM: &[&str] = &[
     "octaves",
     "seed",
     "bias",
+    "point",
+    "factor",
+    "radius",
+    "falloff",
+    "minFeature",
 ];
 
 const LOFT: &[&str] = &[

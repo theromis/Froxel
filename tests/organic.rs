@@ -395,3 +395,94 @@ fn grab_moves_the_cells_under_the_dab_along_its_vector() {
     spec.vector = [0.0; 3];
     assert!(brush(&ground, &spec).unwrap_err().contains("vector"));
 }
+
+#[test]
+fn scale_enlarges_a_head_and_leaves_the_body_alone() {
+    // A body slab and a head ball with a one-cell eye on its front.
+    let mut cells = slab((0, 10, 0), (9, 29, 5), 1);
+    cells.extend(ball((5, 5, 5), 4, 2));
+    cells.insert((5, 1, 5), 3);
+    let m = Magnify {
+        point: [5.5, 5.5, 5.5],
+        factor: [2.0; 3],
+        radius: 5.0,
+        falloff: 3.0,
+    };
+    let done = deform(&cells, &spec(DeformOp::Scale(m))).unwrap();
+    let after = apply(&cells, &done.writes);
+    let head = |c: &HashMap<Cell, u8>| c.values().filter(|s| **s == 2).count();
+    assert!(head(&after) as f64 > head(&cells) as f64 * 3.0);
+    // The eye grows from one cell to a patch, slots kept.
+    let eye = after.values().filter(|s| **s == 3).count();
+    assert!((2..=8).contains(&eye), "{eye}");
+    // The far end of the body is untouched.
+    for y in 26..=29 {
+        assert_eq!(after.get(&(0, y, 0)), Some(&1));
+    }
+    assert!(after.values().all(|s| [1, 2, 3].contains(s)));
+}
+
+#[test]
+fn scale_refuses_a_fold() {
+    let cells = ball((0, 0, 0), 5, 1);
+    let m = Magnify {
+        point: [0.0; 3],
+        factor: [0.3; 3],
+        radius: 5.0,
+        falloff: 0.5,
+    };
+    let err = deform(&cells, &spec(DeformOp::Scale(m))).unwrap_err();
+    assert!(err.contains("falloff"), "{err}");
+    let m = Magnify {
+        factor: [5.0; 3],
+        ..m
+    };
+    assert!(deform(&cells, &spec(DeformOp::Scale(m))).is_err());
+}
+
+#[test]
+fn deform_over_mcp_scales_and_reports_thin_parts() {
+    use serde_json::json;
+    let mut session = crate::state::Session::new();
+    crate::remote::apply(&mut session, "object.clear", &json!({})).unwrap();
+    crate::remote::apply(
+        &mut session,
+        "voxel.fill",
+        &json!({"x0": 0, "y0": 0, "z0": 0, "x1": 7, "y1": 7, "z1": 7, "palette": 1}),
+    )
+    .unwrap();
+    // A fin one cell thick.
+    crate::remote::apply(
+        &mut session,
+        "voxel.fill",
+        &json!({"x0": 3, "y0": 8, "z0": 2, "x1": 3, "y1": 12, "z1": 6, "palette": 2}),
+    )
+    .unwrap();
+    let reply = crate::remote::apply(
+        &mut session,
+        "voxel.deform",
+        &json!({"op": "scale", "point": [4, 4, 4], "factor": 1.25, "radius": 3, "minFeature": 2}),
+    )
+    .unwrap();
+    assert!(reply["added"].as_u64().unwrap() > 0);
+    let thin = &reply["thin"];
+    assert_eq!(thin["count"], json!(1));
+    assert_eq!(thin["parts"][0]["thickness"], json!(1));
+    assert!(thin["parts"][0]["min"][1].as_i64().unwrap() >= 8);
+}
+
+#[test]
+fn the_big_head_frog_example_grows_its_eyes() {
+    let mut session = crate::state::Session::new();
+    session.replace_empty();
+    session
+        .set_script(0, include_str!("../examples/big_head_frog.rhai"))
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    let eyes = session.objects[0]
+        .cells
+        .values()
+        .filter(|s| **s == 4)
+        .count();
+    assert!(eyes >= 4, "{eyes} eye cells");
+}

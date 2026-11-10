@@ -548,6 +548,8 @@ pub(super) fn reply(counts: serde_json::Map<String, Value>, changed: INT) -> Map
             let value = match (value.as_i64(), value.as_str()) {
                 (Some(int), _) => Dynamic::from_int(int),
                 (None, Some(text)) => Dynamic::from(text.to_string()),
+                // A map or a list (deform's `thin`) keeps its shape.
+                _ if value.is_object() || value.is_array() => super::document::dynamic(&value),
                 (None, None) => Dynamic::from_float(value.as_f64().unwrap_or(0.0)),
             };
             (key.into(), value)

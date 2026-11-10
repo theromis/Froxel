@@ -555,16 +555,23 @@ It returns `#{changed, cells, length}`.
 ```rhai
 deform("bend", #{axis: "x", angle: 35, direction: "+z", origin: 20});
 deform(x0, y0, z0, x1, y1, z1, "displace", #{amplitude: 2, scale: 6, bias: 0.5, seed: 3});
+let report = deform("scale", #{point: [8.5, 3.5, 9.5], factor: 1.5, radius: 4, falloff: 3, minFeature: 2});
 ```
 
 MCP `deform` on the object being written, or on the cells of a box when the
-six corners come first. `op` is `"bend"`, `"taper"`, `"twist"`, or
-`"displace"`. Options: `axis` (`"x"`, `"y"`, `"z"`), `origin`, `length`,
+six corners come first. `op` is `"bend"`, `"taper"`, `"twist"`,
+`"displace"`, or `"scale"` (a part enlarged about `point` by `factor`, the
+cells within `radius` as one piece, easing back to none over `falloff`
+cells: a small creature's head, eyes, or fins made larger than life). Options: `axis` (`"x"`, `"y"`, `"z"`), `origin`, `length`,
 `center` (`[a, b]`), `angle` (degrees, bend and twist), `direction` (bend,
 such as `"+z"`), `start` and `end` (taper), and for displace `amplitude`,
-`scale`, `octaves`, `seed`, `bias`. Defaults and ranges are the MCP tool's
-(`docs/mcp.md`). Slots are kept. It returns
-`#{changed, cells, result, added, removed}`.
+`scale`, `octaves`, `seed`, `bias`, for scale `point`, `factor` (a number
+or `[x, y, z]`), `radius`, `falloff`, and with any op `minFeature` (report
+the parts thinner than that many cells afterwards). Defaults and ranges are
+the MCP tool's (`docs/mcp.md`). Slots are kept. It returns
+`#{changed, cells, result, added, removed}`, and `thin` (`#{minFeature,
+cells, count, parts}`) with `minFeature`. `examples/big_head_frog.rhai`
+grows a small frog's head and eyes and checks its legs.
 
 ### Brush
 

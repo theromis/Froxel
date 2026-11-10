@@ -2400,7 +2400,10 @@ fn loft_deform_and_brush_shape_a_trunk_one_undo_step_each() {
     }
     assert_eq!(head.session.active().cells, lofted);
     let op = error_text(&head.call("deform", json!({"op": "squash"})));
-    assert!(op.contains("bend, taper, twist, or displace"), "{op}");
+    assert!(
+        op.contains("bend, taper, twist, displace, or scale"),
+        "{op}"
+    );
     let partial = error_text(&head.call("deform", json!({"op": "taper", "x0": 0})));
     assert!(partial.contains("all of x0"), "{partial}");
     let vector = error_text(&head.call(
