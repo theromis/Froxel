@@ -125,6 +125,13 @@ off the flat views.
    space under an arch, between roots), so `carve` them, grow the thin
    parts with `fill_tube`, and `smooth` it. Compare again after each step,
    with the first reply's `align` passed back so the placement holds still.
+   A creature 20 to 60 cells long loses its eyes, teeth, spots, and thin
+   legs when a 480 pixel view is averaged into it: pass `downscale` (or
+   run `pixelate_views` first and check its `png`) so each view becomes
+   pixel art at the cell grid, with a few shared colours, crisp edges, the
+   small salient features kept at least a cell, and parts thinner than a
+   cell kept inked. Give the box with one axis, such as `size: [null, 20,
+   null]`, and the rest follows the views.
 4. **Paint the patterns.** An imported mesh smeared on its hidden sides, or
    a blockout that needs the whole sheet's colours, takes them in ONE
    `paint_from_views` call: every surface cell from the views that see it,
@@ -178,6 +185,8 @@ compare_silhouette   path="front-vs.png" concept="sheet.png" crop=[40, 60, 520, 
 compare_silhouette   path="hero-vs.png" concept="hero.png" preset="game"
                      flood=true keepLargest=true erase=[[412, 96, 80, 120]]
 paint_from_views     path="sheet.png" background="#ff00ff" newSlots=10   # every side from the sheet
+pixelate_views       path="sheet.png" size=[null, 20, null] png="pixels.png" # a small creature's views as pixel art
+carve_from_views     path="sheet.png" views=[...] size=[null, 20, null] downscale=true  # the same, carved
 project_paint        view="top" path="sheet.png" crop=[40, 420, 520, 180] size=[96, 34, 56]
                      slots=[3, 4, 5] only=[3] normalLimit=60
 fit_to_views         views=[{view: "front", path: "sheet.png", crop: [40, 60, 520, 300]},

@@ -26,6 +26,7 @@ mod mask_edit;
 mod mirror;
 pub(crate) mod orient;
 mod paint_views;
+mod pixelate;
 mod planks;
 mod plates;
 mod project;
@@ -71,6 +72,10 @@ pub use orient::{
 };
 pub use paint_views::{
     paint_from_views, Blend, Fit as ViewsFit, PaintViewsSpec, Quantize, SheetImage,
+};
+pub use pixelate::{
+    pixelate, pixelated_image, view_grids, Features as PixelFeatures, PixelateSpec, Pixelated,
+    PIXEL_CHARS,
 };
 pub use planks::{planks, PlankAxis, PlankSpec};
 pub use plates::{

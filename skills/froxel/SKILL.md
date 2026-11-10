@@ -31,7 +31,7 @@ server is still running. A server started with `--watch` reloads by itself.
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `shell_plates`, `components`, `deterrace`, `reduce_palette`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` and `decal` with the image as rows and a legend, `paint_from_views` with views as rows and a legend, `fit_to_views` and `orient_to_views` with views as rows and a legend, and `marker`,
+  (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `shell_plates`, `components`, `deterrace`, `reduce_palette`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` with views as rows and a legend, `project_paint` and `decal` with the image as rows and a legend, `paint_from_views` with views as rows and a legend, `pixelate_views` (views as rows; returns pixel art rows), `fit_to_views` and `orient_to_views` with views as rows and a legend, and `marker`,
   `collision_box`, `connector`, `collision_from_voxels`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `split_object`, `split_parts`, `clear_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -166,7 +166,12 @@ server is still running. A server started with `--watch` reloads by itself.
    side, call `paint_from_views` once with the sheet `path` (it reads the
    layout as `measure_sheet` does) or the four crops, and `newSlots` (about
    8 to 12) or the object's `slots`; pass `objects` for rig parts. Check
-   `unseen` (cells no view sees keep their slot) and each view's `missed`. Eyes, a mouth, nostrils, or a badge on a round head or
+   `unseen` (cells no view sees keep their slot) and each view's `missed`. For a SMALL creature (20 to
+   60 cells long) pass `downscale: true` to `carve_from_views` and `paint_from_views` (or call
+   `pixelate_views` with `size: [null, 20, null]` and `png` first to look): each view becomes pixel art
+   at the cell grid, a few shared Oklab colours, crisp edges, eyes, pupils, teeth, nostrils, and spots
+   kept at least a cell (`features`), parts thinner than a cell kept inked (`thin`), so the eyes do not
+   average into smears and the legs do not vanish. Eyes, a mouth, nostrils, or a badge on a round head or
    body are a `decal` (picture, `point` or `ray`, `size` in cells along the
    surface, `up`, `only`, `mirror: true` for the pair of eyes), not a
    `project_paint`, which smears them on the slopes; check `missed` is 0. To finish a blockout (from `carve_from_views` or

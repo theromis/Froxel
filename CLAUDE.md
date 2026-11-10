@@ -17,7 +17,8 @@ UI. `tools/` is brush shapes, generators, and the MCP sculpt shapes
 `collision_from_voxels`; `fit.rs`: MCP `fit_to_views`, the views-fitting
 search; `sheet_measure.rs`: MCP `measure_sheet`, a views sheet's crops,
 cube pitch, checks, and parts; `mask_edit.rs`: the mask edits of `compare_silhouette` and the views,
-`excludeColors`, `flood`, `mask`, `erase`, `keepLargest`; `paint_views.rs`: MCP `paint_from_views`;
+`excludeColors`, `flood`, `mask`, `erase`, `keepLargest`; `paint_views.rs`: MCP `paint_from_views`; `pixelate.rs`: MCP `pixelate_views` and
+the `downscale` of `carve_from_views` and `paint_from_views`;
 `reduce.rs`: MCP `reduce_palette` and `import_mesh` `clean`; `colors.rs`: Oklab, median cut,
 k-means, and the accent guard they share; `rig_split.rs`: MCP `split_parts`, the geodesic
 split into rig parts; `upright.rs`: `import_mesh` `orient: "upright"`, the PCA stand-up). `mesh.rs` and `gpu.rs` draw the

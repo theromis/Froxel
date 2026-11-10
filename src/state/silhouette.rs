@@ -103,6 +103,10 @@ pub struct CarvePanel {
     /// A detail sheet laid out as the views (its crops are theirs): each
     /// region's curvature; empty is none.
     pub depth_detail: String,
+    /// MCP `downscale`: pixelate the views at the box first.
+    pub pixel_art: bool,
+    /// `downscale` `colors`.
+    pub pixel_colors: i32,
 }
 
 impl Default for CarvePanel {
@@ -134,6 +138,8 @@ impl Default for CarvePanel {
             depth_regions: false,
             depth_edge: 0.06,
             depth_detail: String::new(),
+            pixel_art: false,
+            pixel_colors: 6,
         }
     }
 }
@@ -662,6 +668,10 @@ pub struct PaintViewsPanel {
     pub reach: f32,
     /// Paint every visible object together instead of the active one.
     pub all_objects: bool,
+    /// MCP `downscale`: pixelate the views at the object's box first.
+    pub pixel_art: bool,
+    /// `downscale` `colors`.
+    pub pixel_colors: i32,
 }
 
 impl Default for PaintViewsPanel {
@@ -681,6 +691,8 @@ impl Default for PaintViewsPanel {
             inset: 2,
             reach: 3.0,
             all_objects: false,
+            pixel_art: false,
+            pixel_colors: 6,
         }
     }
 }
@@ -720,6 +732,9 @@ impl PaintViewsPanel {
             args["seam"] = json!(self.seam.clamp(0.0, 45.0));
         }
         args["mirror"] = json!(self.mirror);
+        if self.pixel_art {
+            args["downscale"] = json!({"colors": self.pixel_colors.clamp(1, 32)});
+        }
         args["inset"] = json!(self.inset.clamp(0, 16));
         args["reach"] = json!(self.reach.clamp(0.0, 64.0));
         match self.colours {
@@ -759,9 +774,85 @@ impl PaintViewsPanel {
     }
 }
 
+/// The Pixelate views panel: MCP `pixelate_views` on a sheet (or the
+/// Carve from views views), written to a PNG for checking.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PixelatePanel {
+    /// The sheet PNG; empty takes the Carve from views views.
+    pub path: String,
+    pub background: BackgroundField,
+    /// `x y z` cells; 0 follows the views' proportions.
+    pub size: String,
+    pub colors: i32,
+    pub features: bool,
+    pub thin: bool,
+    pub despeckle: i32,
+    /// Where the pixelated views are written.
+    pub png: String,
+    /// One line per view from the last run.
+    pub lines: Vec<String>,
+}
+
+impl Default for PixelatePanel {
+    fn default() -> Self {
+        Self {
+            path: String::new(),
+            background: BackgroundField::default(),
+            size: "0 20 0".into(),
+            colors: 6,
+            features: true,
+            thin: true,
+            despeckle: 1,
+            png: String::new(),
+            lines: Vec::new(),
+        }
+    }
+}
+
+impl PixelatePanel {
+    /// The MCP `pixelate_views` arguments, with the views of `carve` when
+    /// no sheet is given.
+    pub(crate) fn args(&self, carve: &CarvePanel) -> Result<Value, String> {
+        let mut args = if self.path.trim().is_empty() {
+            let carved = carve.args(1)?;
+            if carved["views"]
+                .as_array()
+                .is_none_or(|views| views.is_empty())
+            {
+                return Err(
+                    "Pixelate views: choose a sheet, or turn on views in Carve from views.".into(),
+                );
+            }
+            json!({"views": carved["views"]})
+        } else {
+            let mut args = json!({"path": self.path.trim()});
+            self.background.write(&mut args);
+            args
+        };
+        match numbers("Pixelate views size", &self.size, 3)? {
+            Some(size) if size.iter().any(|n| *n > 0) => {
+                args["size"] = json!(size
+                    .iter()
+                    .map(|n| if *n == 0 { Value::Null } else { json!(n) })
+                    .collect::<Vec<_>>());
+            }
+            _ => return Err("Pixelate views: Size needs one axis, such as 0 20 0.".into()),
+        }
+        args["colors"] = json!(self.colors.clamp(1, 32));
+        args["features"] = json!(self.features);
+        args["thin"] = if self.thin { json!(0.25) } else { json!(false) };
+        args["despeckle"] = json!(self.despeckle.clamp(0, 16));
+        if !self.png.trim().is_empty() {
+            args["png"] = json!(self.png.trim());
+        }
+        Ok(args)
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SilhouettePanels {
     pub measure: MeasurePanel,
+    pub pixelate: PixelatePanel,
     pub carve: CarvePanel,
     pub paint: PaintPanel,
     pub paint_views: PaintViewsPanel,
@@ -850,6 +941,24 @@ impl CarvePanel {
         }
         if let Some(size) = numbers("Size", &self.size, 3)? {
             args["size"] = json!(size);
+        }
+        if self.pixel_art {
+            // An axis of 0 follows the views' proportions.
+            match numbers("Size", &self.size, 3)? {
+                Some(size) if size.iter().any(|n| *n > 0) => {
+                    args["size"] = json!(size
+                        .iter()
+                        .map(|n| if *n == 0 { Value::Null } else { json!(n) })
+                        .collect::<Vec<_>>());
+                }
+                _ => {
+                    return Err(
+                        "Carve from views: Pixel art needs Size, such as 0 20 0 for 20 cells long."
+                            .into(),
+                    )
+                }
+            }
+            args["downscale"] = json!({"colors": self.pixel_colors.clamp(1, 32)});
         }
         if !self.colour_views {
             args["palette"] = json!(active.max(1));
@@ -1269,6 +1378,65 @@ impl Session {
     pub fn pick_paint_image(&mut self) {
         if let Some(path) = super::dialog::pick_open("PNG", &["png"]) {
             self.silhouette.paint.path = path.display().to_string();
+        }
+    }
+
+    /// Choose the sheet of Pixelate views.
+    pub fn pick_pixelate_sheet(&mut self) {
+        if let Some(path) = super::dialog::pick_open("PNG", &["png"]) {
+            self.silhouette.pixelate.path = path.display().to_string();
+        }
+    }
+
+    /// Choose where Pixelate views writes its PNG.
+    pub fn pick_pixelate_png(&mut self) {
+        if let Some(path) = super::dialog::pick_save(
+            Some("Pixelated views PNG"),
+            "PNG",
+            &["png"],
+            "pixelated.png",
+        ) {
+            self.silhouette.pixelate.png = path.display().to_string();
+        }
+    }
+
+    /// The Pixelate views button: MCP `pixelate_views`, its PNG written,
+    /// one line per view kept for the panel.
+    pub fn pixelate_from_panel(&mut self) {
+        let args = match self.silhouette.pixelate.args(&self.silhouette.carve) {
+            Ok(args) => args,
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
+        match crate::remote::apply(self, "image.pixelate_views", &args) {
+            Ok(reply) => {
+                let mut lines = Vec::new();
+                for view in reply["views"].as_array().into_iter().flatten() {
+                    lines.push(format!(
+                        "{}: {} x {} cells, {} inked, {} thin, {} features kept",
+                        view["view"].as_str().unwrap_or("?"),
+                        view["grid"][0],
+                        view["grid"][1],
+                        view["inked"],
+                        view["thin"],
+                        view["features"].as_array().map_or(0, Vec::len)
+                    ));
+                }
+                self.status = format!(
+                    "Pixelated {} views into {} colours, box {}{}.",
+                    lines.len(),
+                    reply["colors"],
+                    reply["size"],
+                    match reply["png"].as_str() {
+                        Some(path) => format!("; wrote {path}"),
+                        None => String::new(),
+                    }
+                );
+                self.silhouette.pixelate.lines = lines;
+            }
+            Err(err) => self.status = err,
         }
     }
 

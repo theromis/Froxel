@@ -1973,6 +1973,72 @@ several pixels takes the commonest.
  "cellsPerPixel": 0.18, "slots": [3, 4, 5], "only": [3], "normalLimit": 60}
 ```
 
+#### Pixel art for small creatures
+
+A creature 20 to 60 cells long carved or painted straight from a 480 pixel
+view loses what makes it read: every cell averages 24 x 24 pixels, so a
+pupil turns into a brown smear, teeth and nostrils vanish, spots land as
+streaks, and a leg thinner than half a cell falls under `coverage` and
+goes. `pixelate_views` turns the views into pixel art at the cell grid
+first, in the spirit of content-adaptive image downscaling (Kopf, Shamir
+and Peers, SIGGRAPH Asia 2013) and pixel-art abstraction (Gerstner et al.,
+2012). It changes no cells.
+
+- One small palette shared by every view: `colors` clusters (default 6) by
+  median cut and k-means in Oklab, with the accent guard of
+  `paint_from_views` (`accents`, `minShare`, `contrast`, `maxAccents`) so a
+  small distinct colour (an eye) keeps its own.
+- Each cell takes the colour that holds most of a centre-weighted kernel
+  over its footprint, never a mean, so edges stay crisp and no in-between
+  colour appears. Anti-aliased fringe pixels do not vote.
+- A cell is inked when `coverage` (default 0.5) of its footprint is, or,
+  with `thin` (a share, default 0.25; `false` turns it off), when it lies on
+  the midline of a part thinner than a cell: a fin, a leg, a whisker.
+- `features` (default on): every connected region of one colour from
+  `minArea` to `maxArea` cells of area (defaults 0.15 and 6) whose colour
+  lies `contrast` (Oklab, default 0.1) from the mean colour around it keeps
+  at least `minCells` cells (default 1; about its area, up to 4), smallest
+  first, so a pupil keeps its place inside the eye. Eyes, pupils, teeth,
+  nostrils, and spots survive.
+- `despeckle` passes (default 1) of a majority filter then recolour a lone
+  cell (fewer than two of its eight neighbours share its colour), leaving
+  the kept features alone.
+
+`views` are `{view, path | rows, crop, legend, flip, background, ...}` as
+`carve_from_views` takes them, or a top-level `path` alone reads the sheet's
+2 x 2 layout as `measure_sheet` does. Each view's ink bounds become its
+grid. `size` `[x, y, z]` gives the box in cells, with at least one axis; an
+axis left out or `null` follows the views' ink proportions, so
+`size: [null, 20, null]` makes a creature 20 cells long.
+
+The reply holds `size`, `colors`, `accents`, `legend` (`{char: "#rrggbb"}`),
+and `views`, each `{view, rows, legend, grid, inked, thin, source,
+features}`: `thin` counts the cells the thin rule kept, `source` is the ink
+crop in pixels, `stretch` is the grid's aspect over the ink's (far from 1,
+the views disagree: a top view turned 90 degrees, or a crop from another
+sheet), and each feature gives its `colour` character, `area` in
+cells, `cells`, `added` (cells it took from the vote), and `at` (column,
+row). Its `views` go straight into `carve_from_views` (with the same
+`size`) or `paint_from_views`. `png` writes the views side by side at
+`pngScale` pixels a cell (default 8) for checking.
+
+`carve_from_views` and `paint_from_views` take the same options as
+`downscale` (`true`, or `{colors, coverage, thin, despeckle, features,
+accents, ...}`) to do it in one call; their reply adds `downscale` with the
+box, legend, and per-view counts. A carve pixelates at its `size` (at least
+one axis; not with depth maps), a paint at the painted objects' box, and
+then reads each pixelated view whole (`fit` `crop`, `inset` 0).
+
+```json
+{"path": "views.png", "size": [null, 20, null], "colors": 6, "png": "hopper-pixels.png"}
+{"views": [{"view": "front", "path": "front.png"}, {"view": "left", "path": "left.png"},
+           {"view": "top", "path": "top.png"}],
+ "size": [null, 20, null], "downscale": {"colors": 6}}
+```
+
+`froxel pixelate --sheet views.png --size _,20,_ --png pixels.png` runs it
+from the command line.
+
 #### Painting from a whole sheet
 
 An image-to-3D shape (SF3D, TRELLIS, Hunyuan) is good from the view it was

@@ -15,6 +15,18 @@
 
 ### Added
 
+- Pixelate views: MCP `pixelate_views`, Rhai `pixelate_views(views, opts)`,
+  the Pixelate views section, and `froxel pixelate` turn an orthographic
+  views sheet into pixel art at the cell grid before it is carved or
+  painted, for creatures 20 to 60 cells long: one small palette shared by
+  every view (k-means in Oklab with the accent guard), each cell the colour
+  that holds most of a centre-weighted kernel over its footprint (never a
+  mean), small salient features (eyes, pupils, teeth, nostrils, spots) kept
+  at least `minCells` cells, cells on the midline of parts thinner than a
+  cell kept inked (`thin`), and a `despeckle` pass. The reply's views
+  (rows and legend) go straight into `carve_from_views` and
+  `paint_from_views`, which also take the options as `downscale`; `png`
+  writes the pixel art for checking.
 - Upright import: `import_mesh` `orient: "upright"` (Rhai `voxelize`, the
   Import mesh panel's Orient, `froxel import --orient upright`) stands a
   tilted image-to-3D mesh level from its shape before voxelizing it: the

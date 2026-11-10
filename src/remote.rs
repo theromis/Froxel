@@ -29,8 +29,8 @@ pub(crate) use import::{
 pub(crate) use markers::marker_kind;
 pub(crate) use organic::{organic_writes, Organic};
 pub(crate) use silhouette::{
-    decal_writes, fit_writes, hull_writes, orient_writes, paint_writes, session_palette,
-    views_paint_writes,
+    decal_writes, fit_writes, hull_writes, orient_writes, paint_writes, pixelate_writes,
+    session_palette, views_paint_writes,
 };
 pub(crate) use space::{is_world, space_prop, to_local, to_world_reply, WORLD_METHODS};
 pub(crate) use stone::{cavity_writes, stone_writes, Stone};
@@ -922,6 +922,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "voxel.orient_to_views" => silhouette::orient_to_views(session, &params),
         "render.compare_silhouette" => silhouette::compare_silhouette(session, &params),
         "image.measure_sheet" => silhouette::measure_sheet(&params),
+        "image.pixelate_views" => silhouette::pixelate_views(session, &params),
         "mesh.import" => import::apply_import(session, &params),
         "voxel.bark" => stone::apply_stone(session, &params, Stone::Bark),
         "voxel.planks" => stone::apply_stone(session, &params, Stone::Planks),
@@ -1557,12 +1558,13 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.deform", "op, x0..z1?, axis?, origin?, length?, center?, angle?, direction?, start?, end?, amplitude?, scale?, octaves?, seed?, bias?", "Bend, taper, or twist the object or a box along an axis, or displace its surface with noise; slots kept"),
     ("voxel.loft", "points, radius? | rx? + ry?, roll?, flatTop?, noise?, frequency?, curve?, caps?, palette | palettes, pattern?, period?, sectors?, seed?, mode?", "Fill a solid along a curve whose elliptical, flattened, noisy section changes per point"),
     ("voxel.brush", "op, points, radius?, strength?, falloff?, only?, palette?, vector?, spacing?", "Sculpt brush dabs along points: inflate, deflate, smooth, flatten, or grab"),
-    ("voxel.carve_from_views", "views, size?, origin?, cellsPerPixel?, palette? | slots?, coverage?, shell?, smooth?, mode?", "Fill the visual hull of 2 or 3 orthographic views (front, side, top): each a PNG path or rows, with crop, cellsPerPixel or size, and a background rule"),
-    ("voxel.paint_from_views", "views | path, objects?, blend?, seam?, sharpness?, fit?, reach?, mirror?, slots? | newSlots?, accents?, minShare?, contrast?, maxAccents?, only?, x0..z1?", "Recolour every surface cell of the active object (or objects) from a whole views sheet, each from the views that see it by the view its normal faces most, blended at seams, quantised into slots or new ones. One undo step"),
+    ("voxel.carve_from_views", "views, size?, origin?, cellsPerPixel?, palette? | slots?, coverage?, shell?, smooth?, mode?, downscale?", "Fill the visual hull of 2 or 3 orthographic views (front, side, top): each a PNG path or rows, with crop, cellsPerPixel or size, and a background rule"),
+    ("voxel.paint_from_views", "views | path, objects?, blend?, seam?, sharpness?, fit?, reach?, mirror?, slots? | newSlots?, accents?, minShare?, contrast?, maxAccents?, only?, x0..z1?, downscale?", "Recolour every surface cell of the active object (or objects) from a whole views sheet, each from the views that see it by the view its normal faces most, blended at seams, quantised into slots or new ones. One undo step"),
     ("voxel.project_paint", "view | yaw + pitch, path + crop? | rows + legend?, background?, cellsPerPixel? | imageSize?, origin?, size?, palette? | slots?, coverage?, depth?, normalLimit?, only?, mirror?", "Recolour the active object's visible surface from one image projected along a view: never adds or removes cells"),
     ("voxel.decal", "point | ray, size, path + crop? | rows + legend?, up?, background?, flip?, palette? | slots?, coverage?, depth?, reach?, normalLimit?, only?, mirror?", "Lay one picture onto the active object's curved surface around a point, keeping its size and shape: never adds or removes cells"),
     ("voxel.orient_to_views", "views, path?, background?, tolerance?, turns?, yawStep?, yawRange?, fineAxes?, resolution?, size? | height? | scale?, apply?", "Turn (and scale) the active object to the axis-aligned turn, plus fine yaw, whose silhouettes best match a views sheet; replies with the IoU per view before and after. One undo step"),
     ("voxel.fit_to_views", "views, path?, background?, tolerance?, alphaThreshold?, align?, slots?, coverage?, iterations?, seed?, margin?, maskWeight?, colorWeight?, depthWeight?, smoothWeight?, shape?, recolor?, normalLimit?, keep?, sharedScale?, roundWeight?, roundness?, roundAxes?, reference?, isolate?", "Refine the active object so its orthographic views match a views sheet: clears excess rays, fills missing ones, follows a reference's depth, and recolours the visible cells from the slots. One undo step"),
+    ("image.pixelate_views", "views | path, size, colors?, accents?, minShare?, contrast?, maxAccents?, coverage?, thin?, features?, png?, pngScale?", "Turn a views sheet into pixel art at the cell grid (a small shared Oklab palette, majority colours, small salient features and thin parts kept): rows and legend per view for carve_from_views and paint_from_views. Writes no voxels"),
     ("image.measure_sheet", "path, crop?, background?, tolerance?, alphaThreshold?, excludeColors?, flood?, erase?, keepLargest?, gap?, minShare?, layout?, pitchRange?, parts?, checkTolerance?", "Read a views sheet: its views' crops, the 2 x 2 layout, the cube pitch per view, the agreement checks, and the parts of the top view. Writes no file"),
     ("render.compare_silhouette", "path, concept, crop?, background?, tolerance?, alphaThreshold?, excludeColors?, excludeTolerance?, flood?, mask?, erase?, keepLargest?, flip?, align?, preset?, view?, yaw?, pitch?, orthographic?, fov?, margin?, object?, isolate?, width?, height?, lighting?, pose?", "Compare the model's preview silhouette with a concept mask: IoU, missing and excess shares, and an overlay PNG"),
     ("mesh.import", "path, size? | scale? | voxelSize?, upAxis?, rotation?, position?, anchor?, fill?, colors?, palette? | slots?, maxNewSlots?, tolerance?, mode?, newObject?, name?", "Voxelize a .glb, .gltf, or .obj into the active object or a new one, colours quantized into the palette. One undo step"),

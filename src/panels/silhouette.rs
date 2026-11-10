@@ -1,5 +1,5 @@
-//! Inspector sections of the silhouette tools: Carve from views (MCP
-//! `carve_from_views`), Paint from view (MCP `project_paint`), Paint from
+//! Inspector sections of the silhouette tools: Pixelate views (MCP
+//! `pixelate_views`), Carve from views (MCP `carve_from_views`), Paint from view (MCP `project_paint`), Paint from
 //! views (MCP `paint_from_views`), Decal (MCP
 //! `decal`), Fit to views
 //! (MCP `fit_to_views`), and Compare silhouette (MCP `compare_silhouette`),
@@ -91,6 +91,80 @@ pub(super) fn measure(ui: &mut Ui, session: &mut Session) {
         }
     });
     for line in &session.silhouette.measure.lines {
+        ui.label(RichText::new(line).small().color(DIM));
+    }
+}
+
+/// MCP `pixelate_views`: a views sheet as pixel art at the cell grid.
+pub(super) fn pixelate(ui: &mut Ui, session: &mut Session) {
+    section(ui, "Pixelate views");
+    let mut pick = false;
+    let mut pick_png = false;
+    let panel = &mut session.silhouette.pixelate;
+    egui::Grid::new("pixelate-panel")
+        .num_columns(2)
+        .spacing([8.0, 4.0])
+        .show(ui, |ui| {
+            label(ui, "Sheet", "A views sheet PNG (front, side, top, back in two rows and two columns), read as Measure sheet reads it. Empty takes the views of Carve from views.");
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut panel.path)
+                        .hint_text("Carve's views")
+                        .desired_width(150.0),
+                );
+                if ui.button("…").on_hover_text("Choose the sheet PNG.").clicked() {
+                    pick = true;
+                }
+            });
+            ui.end_row();
+            label(ui, "Background", "Which pixels of the sheet are background.");
+            background(ui, "pixelate-background", &mut panel.background);
+            ui.end_row();
+            label(ui, "Size", "The box x y z in cells; 0 follows the views' proportions, so 0 20 0 is a creature 20 cells long.");
+            ui.add(
+                egui::TextEdit::singleline(&mut panel.size)
+                    .hint_text("0 20 0")
+                    .desired_width(90.0),
+            );
+            ui.end_row();
+            label(ui, "Colours", "Clusters of the palette every view shares (k-means in Oklab), plus kept accents such as eyes.");
+            ui.add(egui::DragValue::new(&mut panel.colors).range(1..=32));
+            ui.end_row();
+            label(ui, "Keep", "Features: every small region that stands out from its surroundings (eyes, pupils, teeth, nostrils, spots) keeps at least a cell. Thin: a cell on the midline of a part thinner than a cell (a fin, a leg) stays inked. Despeckle: passes of a majority filter over lone cells.");
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut panel.features, "Features");
+                ui.checkbox(&mut panel.thin, "Thin");
+                ui.add(egui::DragValue::new(&mut panel.despeckle).range(0..=16))
+                    .on_hover_text("Despeckle passes.");
+            });
+            ui.end_row();
+            label(ui, "PNG", "Where the pixelated views are written, side by side, 8 pixels a cell.");
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut panel.png)
+                        .hint_text("pixelated.png")
+                        .desired_width(150.0),
+                );
+                if ui.button("…").on_hover_text("Choose where to write the PNG.").clicked() {
+                    pick_png = true;
+                }
+            });
+            ui.end_row();
+        });
+    if pick {
+        session.pick_pixelate_sheet();
+    }
+    if pick_png {
+        session.pick_pixelate_png();
+    }
+    if ui
+        .button("Pixelate")
+        .on_hover_text("MCP pixelate_views: the views as pixel art at the cell grid, for checking before Carve or Paint from views with Pixel art. Changes no cells.")
+        .clicked()
+    {
+        session.pixelate_from_panel();
+    }
+    for line in &session.silhouette.pixelate.lines {
         ui.label(RichText::new(line).small().color(DIM));
     }
 }
@@ -236,6 +310,16 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
                     if ui.button("…").on_hover_text("Choose the detail depth PNG.").clicked() {
                         pick_detail = true;
                     }
+                });
+                ui.end_row();
+                label(ui, "Pixel art", "MCP downscale: pixelate every view at the box first (Size, an axis of 0 following the views' proportions), as Pixelate views does, so a creature 20 to 60 cells long keeps its eyes, teeth, spots, and thin legs. Not with depth maps.");
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut panel.pixel_art, "Downscale");
+                    ui.add_enabled(
+                        panel.pixel_art,
+                        egui::DragValue::new(&mut panel.pixel_colors).range(1..=32),
+                    )
+                    .on_hover_text("Colours of the shared palette, plus kept accents such as eyes.");
                 });
                 ui.end_row();
                 label(ui, "Intersect", "MCP mode intersect: keep only the active object's cells inside the hull, as they are, and erase the rest, instead of filling the hull.");
@@ -831,6 +915,16 @@ pub(super) fn paint_views(ui: &mut Ui, session: &mut Session) {
                     ui.add(egui::TextEdit::singleline(&mut panel.slots).hint_text("3 4 7").desired_width(90.0));
                     ui.end_row();
                 }
+                label(ui, "Pixel art", "MCP downscale: pixelate every view at the object's box first, as Pixelate views does, so a small creature's eyes, pupils, and spots land as whole cells instead of smears. Inset and Fit do not apply then.");
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut panel.pixel_art, "Downscale");
+                    ui.add_enabled(
+                        panel.pixel_art,
+                        egui::DragValue::new(&mut panel.pixel_colors).range(1..=32),
+                    )
+                    .on_hover_text("Colours of the shared palette, plus kept accents such as eyes.");
+                });
+                ui.end_row();
                 label(ui, "Inset", "Pixels inside each silhouette's edge colours are read from, so anti-aliased background never lands on the model.");
                 ui.add(egui::DragValue::new(&mut panel.inset).range(0..=16));
                 ui.end_row();

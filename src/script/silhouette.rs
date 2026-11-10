@@ -16,7 +16,11 @@
 //! `remote::orient_writes`, turning the object being written.
 //! `paint_from_views(views)` and `paint_from_views(views, opts)` run
 //! `remote::views_paint_writes` on the object being written, its new
-//! colours (`newSlots`) in free slots as `cavity_tint` makes shades. Colours quantise to the
+//! colours (`newSlots`) in free slots as `cavity_tint` makes shades.
+//! `pixelate_views(views, opts)` runs `remote::pixelate_writes` and writes
+//! nothing: it returns the views as pixel art rows at the cell grid
+//! (`opts.size`), for `carve_from_views` and `paint_from_views`, which also
+//! take its options as `downscale`. Colours quantise to the
 //! document's palette as it was when the run started, with the run's
 //! `palette` calls on top.
 
@@ -56,6 +60,7 @@ const VIEWS_PAINT: &[&str] = &[
     "contrast",
     "maxAccents",
     "only",
+    "downscale",
     "x0",
     "y0",
     "z0",
@@ -64,7 +69,20 @@ const VIEWS_PAINT: &[&str] = &[
     "z1",
     "space",
 ];
+const PIXELATE: &[&str] = &[
+    "size",
+    "colors",
+    "accents",
+    "minShare",
+    "contrast",
+    "maxAccents",
+    "coverage",
+    "thin",
+    "despeckle",
+    "features",
+];
 const CARVE: &[&str] = &[
+    "downscale",
     "size",
     "origin",
     "cellsPerPixel",
@@ -270,6 +288,21 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
             });
         }
     }
+    let state = scratch.clone();
+    engine.register_fn(
+        "pixelate_views",
+        move |views: Array, opts: Map| -> Fallible<Map> {
+            let mut args = options(&opts, PIXELATE, "pixelate_views")?;
+            args.insert("views".into(), json(&Dynamic::from_array(views))?);
+            let palette = state.borrow().run_palette();
+            let (_, reply) =
+                remote::pixelate_writes(&Value::Object(args), false, &palette).map_err(runtime)?;
+            Ok(reply
+                .iter()
+                .map(|(key, value)| (key.as_str().into(), super::document::dynamic(value)))
+                .collect())
+        },
+    );
 }
 
 impl Scratch {

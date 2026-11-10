@@ -624,6 +624,7 @@ enough. Options:
 | `smooth` | `0` | Smooth passes over the hull, 0..64. |
 | `mode` | `"replace"` | `"empty"` adds only into empty cells; `"paint"` recolours solid ones; `"intersect"` keeps only the object's cells inside the hull and erases the rest. |
 | `depthTolerance` | `0` | Cells in front of a depth surface that still stay, 0..64. |
+| `downscale` | off | `true` or the `pixelate_views` options: pixelate every view at `size` first (see Pixelate views); not with depth maps. |
 
 ```rhai
 // A dome from a top view's depth: grey 1 at the crown, 0.25 at the rim.
@@ -635,10 +636,33 @@ A view smaller than the box is centred across and stands on the box's
 bottom. Each cell takes the colour of the view whose visible surface is
 nearest it, so the sides of a stump are bark and its top shows the rings.
 It returns `#{changed, cells, bounds: #{min, max}, size, views}`; `bounds` is `()`
-when nothing is carved, and each of `views` holds `grid`, `covered`, and
+when nothing is carved (with `downscale` it adds `downscale`), and each of `views` holds `grid`, `covered`, and
 `depth` (`calibrate`, `near`, `far`, `rim`, `carved`) for a depth view. `examples/depth_head.rhai` carves a round head from front, side,
 and top rows with a depth map each. `examples/carved_stump.rhai` carves a stump with
 roots from front, side, and top rows.
+
+### Pixelate views
+
+```rhai
+let px = pixelate_views(views, #{size: [(), 16, ()], colors: 4});
+carve_from_views(px.views, #{size: px.size, slots: [2, 3, 4, 5]});
+carve_from_views(views, #{size: [(), 16, ()], downscale: #{colors: 4}});
+paint_from_views(views, #{newSlots: 6, downscale: true});
+```
+
+MCP `pixelate_views`: the views (maps of `rows` and a `legend`; over MCP
+PNG crops of a sheet, on this same code path) as pixel art at the cell
+grid, for a creature 20 to 60 cells long whose eyes, teeth, spots, and thin
+legs a plain carve averages away. It writes no cells: it returns
+`#{size, colors, accents, legend, views}`, each view `#{view, rows, legend,
+grid, inked, thin, source, features}`, ready for `carve_from_views` and
+`paint_from_views`. Options are the MCP ones: `size` (at least one axis;
+`()` follows the views' proportions), `colors`, `accents`, `minShare`,
+`contrast`, `maxAccents`, `coverage`, `thin`, `despeckle`, and `features`.
+`carve_from_views` and `paint_from_views` take them as `downscale`.
+`png` is MCP only: scripts write no files. `examples/pixel_toad.rhai`
+carves a made-up toad 16 cells long from 56 pixel views with its pupils
+kept.
 
 ### Paint from views
 
@@ -660,7 +684,7 @@ and a `legend`, as `carve_from_views` takes them (over MCP they may be PNG
 crops of a sheet, on this same code path). Options are the MCP ones:
 `blend`, `seam`, `sharpness`, `fit`, `reach`, `inset`, `mirror`, `slots` or
 `newSlots` (with `accents`, `minShare`, `contrast`, `maxAccents`), `only`,
-`x0`..`z1`, and `space`. `objects` is MCP only: a script paints the object it
+`x0`..`z1`, `space`, and `downscale` (see Pixelate views). `objects` is MCP only: a script paints the object it
 writes. New colours take free slots of the palette as the run leaves it, as
 `cavity_tint`'s shades do. It returns `#{changed, painted, surface, unseen,
 blended, views, slots, newSlots, accents}`. `examples/painted_crate.rhai`

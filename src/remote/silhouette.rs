@@ -40,7 +40,7 @@ pub(crate) fn hull_writes(
     params: &Value,
     files: bool,
 ) -> Result<(Writes, Map<String, Value>), String> {
-    let spec = carve_spec(params, files)?;
+    let (spec, downscaled) = carve_spec(params, files, palette)?;
     let mode = fill_mode(params)?;
     let carved = crate::tools::carve_from_views(&spec, palette)?;
     let writes: Writes = if mode == FillMode::Intersect {
@@ -60,6 +60,12 @@ pub(crate) fn hull_writes(
             .collect()
     };
     let mut reply = Map::new();
+    if let Some(pixelated) = &downscaled {
+        reply.insert(
+            "downscale".into(),
+            Value::Object(pixelate_reply(pixelated, false)),
+        );
+    }
     reply.insert("cells".into(), json!(carved.cells.len()));
     reply.insert(
         "bounds".into(),
@@ -93,7 +99,13 @@ pub(crate) fn hull_writes(
     Ok((writes, reply))
 }
 
-fn carve_spec(params: &Value, files: bool) -> Result<CarveSpec, String> {
+/// With `downscale`, the views are first pixelated (`pixelate_views`) at
+/// the box `size` and each read one pixel a cell.
+fn carve_spec(
+    params: &Value,
+    files: bool,
+    palette: &[[u8; 3]; 256],
+) -> Result<(CarveSpec, Option<crate::tools::Pixelated>), String> {
     let list = params
         .get("views")
         .and_then(Value::as_array)
@@ -135,7 +147,27 @@ fn carve_spec(params: &Value, files: bool) -> Result<CarveSpec, String> {
             depth,
         });
     }
-    let size = box_size(params)?;
+    let mut size = box_size(params)?;
+    let downscaled = match downscale_arg(params)? {
+        None => None,
+        Some(opts) => {
+            if views.iter().any(|v| v.depth.is_some()) {
+                return Err("downscale does not take depth maps: carve with depth, then paint_from_views with downscale".into());
+            }
+            let masks: Vec<(Side, Mask)> = views.iter().map(|v| (v.side, v.mask.clone())).collect();
+            let (pixelated, masks) = downscale_views(&masks, size, &opts, palette)?;
+            for ((view, mask), pv) in views.iter_mut().zip(masks).zip(&pixelated.views) {
+                view.mask = mask;
+                view.scale = Scale::Size(pv.grid);
+            }
+            for axis in 0..3 {
+                if pixelated.size[axis] > 0 {
+                    size[axis] = Some(pixelated.size[axis]);
+                }
+            }
+            Some(pixelated)
+        }
+    };
     let origin = super::opt_ivec3(params, "origin")?.unwrap_or([0, 0, 0]);
     let colour = colour_arg(params)?;
     let passes = |key: &str| -> Result<Option<u32>, String> {
@@ -147,16 +179,19 @@ fn carve_spec(params: &Value, files: bool) -> Result<CarveSpec, String> {
                 .ok_or_else(|| format!("{key} must be a whole number")),
         }
     };
-    Ok(CarveSpec {
-        views,
-        origin: (origin[0], origin[1], origin[2]),
-        size,
-        colour,
-        coverage: opt_f64(params, "coverage")?.unwrap_or(0.5) as f32,
-        shell: passes("shell")?.filter(|n| *n > 0),
-        smooth: passes("smooth")?.unwrap_or(0),
-        depth_tolerance: opt_f64(params, "depthTolerance")?.unwrap_or(0.0) as f32,
-    })
+    Ok((
+        CarveSpec {
+            views,
+            origin: (origin[0], origin[1], origin[2]),
+            size,
+            colour,
+            coverage: opt_f64(params, "coverage")?.unwrap_or(0.5) as f32,
+            shell: passes("shell")?.filter(|n| *n > 0),
+            smooth: passes("smooth")?.unwrap_or(0),
+            depth_tolerance: opt_f64(params, "depthTolerance")?.unwrap_or(0.0) as f32,
+        },
+        downscaled,
+    ))
 }
 
 /// `size` [x, y, z] cells, each a whole number or null.
@@ -1741,42 +1776,39 @@ pub(super) fn orient_to_views(session: &mut Session, params: &Value) -> Result<V
 /// top level), or, over MCP with a top-level `path` and no `views`, from
 /// the layout `measure_sheet` finds in that sheet. `default_slots` are the
 /// slots colours quantise into without `slots` or `newSlots`.
+/// With `downscale`, each view is first pixelated at the painted cells'
+/// box `box_dims` (`pixelate_views`), read whole (fit crop, inset 0).
 pub(crate) fn views_paint_spec(
     params: &Value,
     files: bool,
     default_slots: Vec<u8>,
-) -> Result<crate::tools::PaintViewsSpec, String> {
+    box_dims: Option<[u32; 3]>,
+    palette: Option<&[[u8; 3]; 256]>,
+) -> Result<
+    (
+        crate::tools::PaintViewsSpec,
+        Option<crate::tools::Pixelated>,
+    ),
+    String,
+> {
     use crate::tools::{Blend, PaintViewsSpec, Quantize, SheetImage, ViewsFit};
-    let measured;
-    let list = match params.get("views") {
-        Some(Value::Array(list)) => list,
-        None | Some(Value::Null) if files && params.get("path").is_some_and(|p| p.is_string()) => {
-            measured = sheet_layout(params)?;
-            &measured
+    let (list, mut views) = sheet_views(params, files)?;
+    let downscaled = match (downscale_arg(params)?, box_dims) {
+        (Some(opts), Some(dims)) => {
+            let palette = palette.ok_or("downscale needs the palette")?;
+            let (pixelated, masks) = downscale_views(&views, dims.map(Some), &opts, palette)?;
+            for (view, mask) in views.iter_mut().zip(masks) {
+                view.1 = mask;
+            }
+            Some(pixelated)
         }
-        _ => {
-            return Err(if files {
-                "views must be a list of {view, path | rows, crop?}, or pass only path to read the sheet's layout as measure_sheet does".into()
-            } else {
-                "views must be a list of {view, rows, legend}".into()
-            })
-        }
+        (Some(_), None) => return Err("downscale needs the painted cells' box".into()),
+        (None, _) => None,
     };
-    if list.is_empty() || list.len() > 6 {
-        return Err("views must hold 1 to 6 views".into());
-    }
-    let mut images = HashMap::new();
-    let mut views = Vec::with_capacity(list.len());
-    for (i, item) in list.iter().enumerate() {
-        if !item.is_object() {
-            return Err(format!("view {i} must be an object"));
-        }
-        let item = &sheet_keys(params, item);
-        let side =
-            Side::parse(&opt_str(item, "view")?.ok_or_else(|| format!("view {i} needs view"))?)?;
-        let mask = view_mask(item, files, &mut images).map_err(|err| format!("view {i}: {err}"))?;
-        views.push(SheetImage { side, mask });
-    }
+    let views: Vec<SheetImage> = views
+        .into_iter()
+        .map(|(side, mask)| SheetImage { side, mask })
+        .collect();
     let blend = match opt_str(params, "blend")?.as_deref() {
         None | Some("nearest") => Blend::Nearest {
             seam: opt_f64(params, "seam")?.unwrap_or(12.0) as f32,
@@ -1787,6 +1819,8 @@ pub(crate) fn views_paint_spec(
         Some(other) => return Err(format!("blend must be nearest or soft, not `{other}`")),
     };
     let fit = match opt_str(params, "fit")?.as_deref() {
+        // A pixelated view is its ink's bounds already, at the box's size.
+        _ if downscaled.is_some() => ViewsFit::Crop,
         None | Some("ink") => ViewsFit::Ink,
         Some("crop") => ViewsFit::Crop,
         Some(other) => return Err(format!("fit must be ink or crop, not `{other}`")),
@@ -1821,34 +1855,284 @@ pub(crate) fn views_paint_spec(
         }
         _ => return Err("pass all of x0, y0, z0, x1, y1, z1 for a box, or none".into()),
     };
-    Ok(PaintViewsSpec {
-        views,
-        blend,
-        mirror: opt_bool(params, "mirror")?.unwrap_or(true),
-        fit,
-        reach: opt_f64(params, "reach")?.unwrap_or(3.0) as f32,
-        inset: match params.get("inset") {
-            // Rows have no anti-aliased edge to peel.
-            None | Some(Value::Null) => {
-                if list
-                    .iter()
-                    .all(|v| v.get("rows").is_some_and(|r| !r.is_null()))
-                {
-                    0
-                } else {
-                    2
+    Ok((
+        PaintViewsSpec {
+            views,
+            blend,
+            mirror: opt_bool(params, "mirror")?.unwrap_or(true),
+            fit,
+            reach: opt_f64(params, "reach")?.unwrap_or(3.0) as f32,
+            inset: match params.get("inset") {
+                // Pixel art has no anti-aliased edge to peel.
+                _ if downscaled.is_some() => 0,
+                // Rows have no anti-aliased edge to peel.
+                None | Some(Value::Null) => {
+                    if list
+                        .iter()
+                        .all(|v| v.get("rows").is_some_and(|r| !r.is_null()))
+                    {
+                        0
+                    } else {
+                        2
+                    }
                 }
-            }
-            Some(found) => found
+                Some(found) => found
+                    .as_u64()
+                    .filter(|n| *n <= 16)
+                    .ok_or("inset must be 0..16 pixels")? as u32,
+            },
+            region,
+            only: slot_list(params, "only")?,
+            quantize,
+            guard,
+        },
+        downscaled,
+    ))
+}
+
+/// The views of a sheet: `views` (each `{view, path | rows, crop, legend,
+/// flip, ...}` with the sheet-wide keys at the top level), or, over MCP
+/// with a top-level `path` and no `views`, the layout `measure_sheet`
+/// finds in that sheet. Returns the list as read and each side and mask.
+fn sheet_views(params: &Value, files: bool) -> Result<(Vec<Value>, Vec<(Side, Mask)>), String> {
+    let list: Vec<Value> = match params.get("views") {
+        Some(Value::Array(list)) => list.clone(),
+        None | Some(Value::Null) if files && params.get("path").is_some_and(|p| p.is_string()) => {
+            sheet_layout(params)?
+        }
+        _ => {
+            return Err(if files {
+                "views must be a list of {view, path | rows, crop?}, or pass only path to read the sheet's layout as measure_sheet does".into()
+            } else {
+                "views must be a list of {view, rows, legend}".into()
+            })
+        }
+    };
+    if list.is_empty() || list.len() > 6 {
+        return Err("views must hold 1 to 6 views".into());
+    }
+    let mut images = HashMap::new();
+    let mut views = Vec::with_capacity(list.len());
+    for (i, item) in list.iter().enumerate() {
+        if !item.is_object() {
+            return Err(format!("view {i} must be an object"));
+        }
+        let item = &sheet_keys(params, item);
+        let side =
+            Side::parse(&opt_str(item, "view")?.ok_or_else(|| format!("view {i} needs view"))?)?;
+        let mask = view_mask(item, files, &mut images).map_err(|err| format!("view {i}: {err}"))?;
+        views.push((side, mask));
+    }
+    Ok((list, views))
+}
+
+/// `downscale`: `true` or the `pixelate_views` options as an object;
+/// `false` or left out is none.
+fn downscale_arg(params: &Value) -> Result<Option<Value>, String> {
+    match params.get("downscale") {
+        None | Some(Value::Null) | Some(Value::Bool(false)) => Ok(None),
+        Some(Value::Bool(true)) => Ok(Some(json!({}))),
+        Some(found @ Value::Object(_)) => Ok(Some(found.clone())),
+        Some(_) => {
+            Err("downscale must be true, false, or {colors, coverage, thin, features, ...}".into())
+        }
+    }
+}
+
+/// The options of `pixelate_views` (and of `downscale`): `colors`
+/// (default 6), the accent guard (`accents`, `minShare`, `contrast`,
+/// `maxAccents`), `coverage` (0.5), `thin` (a share, default 0.25, or
+/// false), `despeckle` (passes, default 1), and `features` (true, false, or `{minArea, maxArea, contrast,
+/// minCells}`).
+pub(crate) fn pixelate_spec(opts: &Value) -> Result<crate::tools::PixelateSpec, String> {
+    use crate::tools::{PixelFeatures, PixelateSpec};
+    let mut spec = PixelateSpec::default();
+    match opts.get("colors") {
+        None | Some(Value::Null) => {}
+        Some(found) => {
+            spec.colors = found
+                .as_u64()
+                .ok_or("colors must be a whole number")?
+                .min(1 << 16) as usize;
+        }
+    }
+    spec.guard = match opts.get("accents") {
+        Some(Value::Bool(false)) => None,
+        _ => Some(accent_guard(opts)?),
+    };
+    if let Some(c) = opt_f64(opts, "coverage")? {
+        spec.coverage = c as f32;
+    }
+    spec.thin = match opts.get("thin") {
+        None | Some(Value::Null) | Some(Value::Bool(true)) => spec.thin,
+        Some(Value::Bool(false)) => None,
+        Some(found) => Some(found.as_f64().ok_or("thin must be a share 0..1 or false")? as f32),
+    };
+    match opts.get("despeckle") {
+        None | Some(Value::Null) => {}
+        Some(found) => {
+            spec.despeckle = found
                 .as_u64()
                 .filter(|n| *n <= 16)
-                .ok_or("inset must be 0..16 pixels")? as u32,
-        },
-        region,
-        only: slot_list(params, "only")?,
-        quantize,
-        guard,
-    })
+                .ok_or("despeckle must be 0..16 passes")? as u32;
+        }
+    }
+    spec.features = match opts.get("features") {
+        None | Some(Value::Null) | Some(Value::Bool(true)) => spec.features,
+        Some(Value::Bool(false)) => None,
+        Some(found @ Value::Object(_)) => {
+            let mut f = PixelFeatures::default();
+            if let Some(v) = opt_f64(found, "minArea")? {
+                f.min_area = v as f32;
+            }
+            if let Some(v) = opt_f64(found, "maxArea")? {
+                f.max_area = v as f32;
+            }
+            if let Some(v) = opt_f64(found, "contrast")? {
+                f.contrast = v as f32;
+            }
+            if let Some(v) = found.get("minCells").filter(|v| !v.is_null()) {
+                f.min_cells = v
+                    .as_u64()
+                    .ok_or("minCells must be a whole number")?
+                    .min(1 << 16) as u32;
+            }
+            Some(f)
+        }
+        Some(_) => {
+            return Err(
+                "features must be true, false, or {minArea, maxArea, contrast, minCells}".into(),
+            )
+        }
+    };
+    Ok(spec)
+}
+
+/// Pixelate `views` at the box `size` (an axis left out follows the
+/// views' proportions) with `opts`: the result and each view's mask at
+/// its grid, one pixel a cell.
+pub(crate) fn downscale_views(
+    views: &[(Side, Mask)],
+    size: [Option<u32>; 3],
+    opts: &Value,
+    palette: &[[u8; 3]; 256],
+) -> Result<(crate::tools::Pixelated, Vec<Mask>), String> {
+    let spec = pixelate_spec(opts)?;
+    let sides: Vec<Side> = views.iter().map(|(s, _)| *s).collect();
+    let mut ink = Vec::with_capacity(views.len());
+    for (side, mask) in views {
+        let [x0, y0, x1, y1] = mask
+            .bounds()
+            .ok_or_else(|| format!("view {} has no ink", side.name()))?;
+        ink.push([x1 - x0 + 1, y1 - y0 + 1]);
+    }
+    let (dims, grids) = crate::tools::view_grids(&sides, &ink, size)?;
+    let mut pixelated = crate::tools::pixelate(views, &grids, &spec, palette)?;
+    pixelated.size = dims;
+    let masks = pixelated
+        .views
+        .iter()
+        .map(|v| v.mask(&pixelated.colours))
+        .collect();
+    Ok((pixelated, masks))
+}
+
+fn hex(rgb: [u8; 3]) -> String {
+    format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2])
+}
+
+/// The reply of `pixelate_views`, and the summary `downscale` adds: the
+/// box, the legend, and per view its rows (with `rows` true), grid,
+/// inked cells, thin cells, and kept features.
+pub(crate) fn pixelate_reply(p: &crate::tools::Pixelated, rows: bool) -> Map<String, Value> {
+    let legend: Map<String, Value> = p
+        .legend()
+        .into_iter()
+        .filter_map(|(c, colour)| colour.map(|rgb| (c.to_string(), json!(hex(rgb)))))
+        .collect();
+    let chars: Vec<char> = crate::tools::PIXEL_CHARS.chars().collect();
+    let mut reply = Map::new();
+    reply.insert(
+        "size".into(),
+        json!(p.size.map(|n| if n == 0 { Value::Null } else { json!(n) })),
+    );
+    reply.insert("colors".into(), json!(p.colours.len()));
+    reply.insert("accents".into(), json!(p.accents));
+    reply.insert("legend".into(), Value::Object(legend.clone()));
+    reply.insert(
+        "views".into(),
+        json!(p
+            .views
+            .iter()
+            .map(|v| {
+                let mut out = json!({
+                    "view": v.side.name(),
+                    "grid": v.grid,
+                    "inked": v.inked,
+                    "thin": v.thin,
+                    "source": v.source,
+                    // Grid aspect over ink aspect: far from 1, the views
+                    // disagree (a view turned, or a crop from another
+                    // sheet) and this one is stretched.
+                    "stretch": round(
+                        ((f64::from(v.grid[0]) / f64::from(v.grid[1]))
+                            / (f64::from(v.source[2]) / f64::from(v.source[3]).max(1.0)))
+                            as f32,
+                        2
+                    ),
+                    "features": v.features.iter().map(|f| json!({
+                        "colour": chars[f.colour].to_string(),
+                        "area": round(f.area, 2),
+                        "cells": f.cells,
+                        "added": f.added,
+                        "at": f.at,
+                    })).collect::<Vec<_>>(),
+                });
+                if rows {
+                    out["rows"] = json!(v.rows());
+                    out["legend"] = Value::Object(legend.clone());
+                }
+                out
+            })
+            .collect::<Vec<_>>()),
+    );
+    reply
+}
+
+/// `pixelate_views` against `palette` (a rows legend's slots): the result
+/// and its reply. With `files` false (Rhai) the views must be `rows`.
+pub(crate) fn pixelate_writes(
+    params: &Value,
+    files: bool,
+    palette: &[[u8; 3]; 256],
+) -> Result<(crate::tools::Pixelated, Map<String, Value>), String> {
+    let (_, views) = sheet_views(params, files)?;
+    let size = box_size(params)?;
+    let (pixelated, _) = downscale_views(&views, size, params, palette)?;
+    let reply = pixelate_reply(&pixelated, true);
+    Ok((pixelated, reply))
+}
+
+/// MCP `pixelate_views`: the views as pixel art at the cell grid, with
+/// `png` written for checking. Changes nothing in the document.
+pub(super) fn pixelate_views(session: &Session, params: &Value) -> Result<Value, String> {
+    let palette = session_palette(session);
+    let (pixelated, mut reply) = pixelate_writes(params, true, &palette)?;
+    if let Some(path) = opt_str(params, "png")? {
+        let scale = match params.get("pngScale") {
+            None | Some(Value::Null) => 8,
+            Some(found) => found
+                .as_u64()
+                .filter(|n| (1..=64).contains(n))
+                .ok_or("pngScale must be 1..64 pixels a cell")? as u32,
+        };
+        let (w, h, rgba) = crate::tools::pixelated_image(&pixelated, scale);
+        let file = Path::new(&path);
+        crate::state::create_parent(file)?;
+        crate::trace::write_rgba_png(file, w, h, &rgba)?;
+        reply.insert("png".into(), json!(path));
+    }
+    Ok(Value::Object(reply))
 }
 
 /// The views of the sheet at `params`' `path`, as `measure_sheet` finds
@@ -1923,9 +2207,24 @@ pub(crate) fn views_paint_writes(
     let mut used: Vec<u8> = cells.values().copied().collect();
     used.sort_unstable();
     used.dedup();
-    let spec = views_paint_spec(params, files, used)?;
+    let mut lo = [i32::MAX; 3];
+    let mut hi = [i32::MIN; 3];
+    for &(x, y, z) in cells.keys() {
+        for (a, c) in [x, y, z].into_iter().enumerate() {
+            lo[a] = lo[a].min(c);
+            hi[a] = hi[a].max(c);
+        }
+    }
+    let dims = (!cells.is_empty()).then(|| std::array::from_fn(|a| (hi[a] - lo[a] + 1) as u32));
+    let (spec, downscaled) = views_paint_spec(params, files, used, dims, Some(palette))?;
     let done = crate::tools::paint_from_views(cells, &spec, palette, shades)?;
     let mut reply = Map::new();
+    if let Some(pixelated) = &downscaled {
+        reply.insert(
+            "downscale".into(),
+            Value::Object(pixelate_reply(pixelated, false)),
+        );
+    }
     reply.insert("painted".into(), json!(done.cells.len()));
     reply.insert("surface".into(), json!(done.surface));
     reply.insert("unseen".into(), json!(done.unseen));

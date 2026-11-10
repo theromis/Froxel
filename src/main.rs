@@ -247,6 +247,9 @@ fn main(
     if args.first().is_some_and(|arg| arg == "measure") {
         std::process::exit(cli::measure(&args[1..]));
     }
+    if args.first().is_some_and(|arg| arg == "pixelate") {
+        std::process::exit(cli::pixelate(&args[1..]));
+    }
     if args.first().is_some_and(|arg| arg == "compare") {
         std::process::exit(cli::compare(&args[1..]));
     }
@@ -734,6 +737,7 @@ usage: froxel [--control PORT] [--bridge PORT] [file.vox]
        froxel fit --args <fit.json> --input <base.vox> --out <file.vox> (--help for its flags)
        froxel compare --input <file.vox> --concept <concept.png> --out <overlay.png> (--help for its flags)
        froxel measure --sheet <views.png> [--parts] (--help for its flags)
+       froxel pixelate --args <views.json> --size X,Y,Z [--out views.json] [--png sheet.png] (--help for its flags)
        froxel import --mesh <file.glb|.obj> --output <file.vox> (--help for its flags)
        froxel orient --args <orient.json> --input <file.vox> --out <file.vox> (--help for its flags)
        froxel deterrace --input <file.vox> --out <file.vox> --mode blocks|stagger (--help for its flags)

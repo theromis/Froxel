@@ -1509,6 +1509,152 @@ fn views_relative(params: &mut serde_json::Value, base: &Path) {
     }
 }
 
+/// `froxel pixelate`: MCP `pixelate_views` on a views sheet.
+pub fn pixelate(args: &[String]) -> i32 {
+    match pixelate_args(args) {
+        Ok(None) => 0,
+        Ok(Some((params, out))) => {
+            let mut session = Session::new();
+            match crate::remote::apply(&mut session, "image.pixelate_views", &params) {
+                Ok(reply) => {
+                    let text = format!("{reply:#}");
+                    match out {
+                        Some(path) => {
+                            if let Err(err) = crate::state::create_parent(&path).and_then(|_| {
+                                std::fs::write(&path, &text).map_err(|err| {
+                                    format!("Could not write {}: {err}", path.display())
+                                })
+                            }) {
+                                eprintln!("{err}");
+                                return 1;
+                            }
+                            for view in reply["views"].as_array().into_iter().flatten() {
+                                println!(
+                                    "{}: {} x {} cells, {} inked, {} thin, {} features",
+                                    view["view"].as_str().unwrap_or("?"),
+                                    view["grid"][0],
+                                    view["grid"][1],
+                                    view["inked"],
+                                    view["thin"],
+                                    view["features"].as_array().map_or(0, Vec::len)
+                                );
+                            }
+                            println!("{} colours; wrote {}", reply["colors"], path.display());
+                        }
+                        None => println!("{text}"),
+                    }
+                    0
+                }
+                Err(err) => {
+                    eprintln!("{err}");
+                    1
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            2
+        }
+    }
+}
+
+const PIXELATE_HELP: &str = "\
+usage: froxel pixelate (--args <views.json> | --sheet <views.png>)
+                       --size X,Y,Z [--colors N] [--no-features] [--no-thin]
+                       [--out <views.json>] [--png <pixels.png>] [--png-scale N]
+
+Turns an orthographic views sheet into pixel art at the cell grid, as MCP
+pixelate_views does, and writes no voxels: one small palette shared by
+every view (k-means in Oklab with the accent guard), each cell the colour
+that holds most of its footprint, small salient features (eyes, pupils,
+teeth, nostrils, spots) kept at least a cell, and a cell on the midline of a
+part thinner than a cell (a fin, a leg) kept inked. --args is a JSON file of
+pixelate_views arguments ({views: [{view, path, crop}], ...}); --sheet reads
+a sheet's 2 x 2 layout as froxel measure finds it. --size gives the box in
+cells, x (width), y (length), z (height); 0 or _ follows the views'
+proportions, so --size _,20,_ makes a creature 20 cells long. --out writes
+the reply, whose views (rows and legend) go straight into carve_from_views
+and paint_from_views; without it the reply is printed. --png writes the
+pixelated views side by side at --png-scale pixels a cell (default 8).";
+
+pub(crate) fn pixelate_args(
+    args: &[String],
+) -> Result<Option<(serde_json::Value, Option<PathBuf>)>, String> {
+    use serde_json::json;
+    let mut params = json!({});
+    let mut out = None;
+    let mut index = 0;
+    while index < args.len() {
+        let flag = args[index].clone();
+        let mut value = || -> Result<String, String> {
+            index += 1;
+            args.get(index)
+                .cloned()
+                .ok_or_else(|| format!("{flag} needs a value"))
+        };
+        match flag.as_str() {
+            "-h" | "--help" => {
+                println!("{PIXELATE_HELP}");
+                return Ok(None);
+            }
+            "--args" => {
+                let file = value()?;
+                let text = std::fs::read_to_string(&file)
+                    .map_err(|err| format!("Could not read {file}: {err}"))?;
+                let found: serde_json::Value = serde_json::from_str(&text)
+                    .map_err(|err| format!("{file} is not JSON: {err}"))?;
+                let Some(map) = found.as_object() else {
+                    return Err(format!("{file} must hold a JSON object"));
+                };
+                for (key, v) in map {
+                    params[key] = v.clone();
+                }
+            }
+            "--sheet" => params["path"] = json!(value()?),
+            "--size" => {
+                let text = value()?;
+                let parts: Vec<&str> = text.split(',').map(str::trim).collect();
+                if parts.len() != 3 {
+                    return Err(format!("--size needs X,Y,Z, not `{text}`"));
+                }
+                let mut size = Vec::new();
+                for part in parts {
+                    size.push(match part {
+                        "_" | "0" | "" => serde_json::Value::Null,
+                        n => json!(n
+                            .parse::<u32>()
+                            .map_err(|_| format!("--size needs whole numbers, not `{text}`"))?),
+                    });
+                }
+                params["size"] = json!(size);
+            }
+            "--colors" => {
+                params["colors"] = json!(value()?
+                    .parse::<u32>()
+                    .map_err(|_| "--colors needs a whole number".to_string())?)
+            }
+            "--no-features" => params["features"] = json!(false),
+            "--no-thin" => params["thin"] = json!(false),
+            "--out" => out = Some(PathBuf::from(value()?)),
+            "--png" => params["png"] = json!(value()?),
+            "--png-scale" => {
+                params["pngScale"] = json!(value()?
+                    .parse::<u32>()
+                    .map_err(|_| "--png-scale needs a whole number".to_string())?)
+            }
+            other => return Err(format!("unknown flag {other}\n\n{PIXELATE_HELP}")),
+        }
+        index += 1;
+    }
+    if params.get("views").is_none() && params.get("path").is_none() {
+        return Err(format!("pass --args or --sheet\n\n{PIXELATE_HELP}"));
+    }
+    if params.get("size").is_none() {
+        return Err(format!("--size is required\n\n{PIXELATE_HELP}"));
+    }
+    Ok(Some((params, out)))
+}
+
 /// `froxel measure`: MCP `measure_sheet` on a views sheet.
 pub fn measure(args: &[String]) -> i32 {
     match measure_args(args) {
