@@ -97,7 +97,10 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
         true,
         |_| {},
         |ui| {
-            egui::ScrollArea::vertical()
+            // Both axes: a vertical-only scroll area grows to its widest row,
+            // which pushes the panel's edge under the viewport. A row too wide
+            // for the panel scrolls sideways instead.
+            egui::ScrollArea::both()
                 .id_salt("inspector")
                 .auto_shrink([false, false])
                 .show(ui, |ui| {

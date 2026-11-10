@@ -113,7 +113,8 @@ pub(super) fn export(ui: &mut Ui, session: &mut Session) {
         });
     });
     bake_light(ui, session);
-    ui.horizontal(|ui| {
+    // Wraps so the four buttons never widen the Inspector past its panel.
+    ui.horizontal_wrapped(|ui| {
         if ui.button("Export mesh…").clicked() {
             session.export_mesh_dialog();
         }
