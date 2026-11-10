@@ -2005,7 +2005,7 @@ usage: froxel import --mesh <file.glb|.gltf|.obj> --output <file.vox>
                      [--fill solid|parity|shell | --shell] [--vertex-colors] [--palette SLOT | --slots A,B,...]
                      [--max-new-slots N] [--tolerance D] [--mode replace|empty|paint]
                      [--new-object] [--name NAME] [--orient upright|<orient.json>]
-                     [--clean true|JSON]
+                     [--clean true|JSON] [--coverage SHARE [--no-keep-thin]] [--min-feature N]
 
 MCP import_mesh from the command line: voxelize the mesh into the first object
 of --input (or a new document), or a new object with --new-object, and save
@@ -2028,7 +2028,12 @@ narrowing upward, the taller end of its long axis toward -Y). --clean runs MCP r
 over the imported cells before they are written: true is
 {\"colors\": 8, \"despeckle\": 1}, or pass its options as JSON (colors |
 palette, accents, minShare, contrast, maxAccents, despeckle, minSame,
-protect). Prints the import report as JSON.";
+protect). --coverage 0.5 keeps a cell only when half of it is solid
+(measured 2 to 4 times finer) instead of every cell the surface touches, so
+a small creature's legs and fins do not merge; a part thinner than a cell
+then keeps the one cell its midline crosses unless --no-keep-thin.
+--min-feature N reports the parts thinner than N cells. Prints the import
+report as JSON.";
 
 /// `froxel import`: a mesh voxelized into a `.vox` with the `import_mesh`
 /// options.
@@ -2157,6 +2162,17 @@ fn import_args(
                 let text = value()?;
                 params["clean"] = serde_json::from_str(&text)
                     .map_err(|err| format!("--clean must be true or JSON: {err}"))?;
+            }
+            "--coverage" => {
+                params["coverage"] = json!(value()?
+                    .parse::<f64>()
+                    .map_err(|_| "--coverage needs a share such as 0.5".to_string())?)
+            }
+            "--no-keep-thin" => params["keepThin"] = json!(false),
+            "--min-feature" => {
+                params["minFeature"] = json!(value()?
+                    .parse::<u32>()
+                    .map_err(|_| "--min-feature needs a whole number".to_string())?)
             }
             "--mode" => params["mode"] = json!(value()?),
             "--name" => params["name"] = json!(value()?),

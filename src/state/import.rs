@@ -37,6 +37,14 @@ pub struct ImportPanel {
     /// Reduce and despeckle the colours with the Reduce palette section's
     /// options (MCP `clean`).
     pub clean: bool,
+    /// MCP `coverage`: keep cells by their solid share instead of every
+    /// touched cell.
+    pub coverage: bool,
+    pub coverage_share: f32,
+    /// MCP `keepThin` with coverage.
+    pub keep_thin: bool,
+    /// MCP `minFeature`; 0 is off.
+    pub min_feature: i32,
 }
 
 impl Default for ImportPanel {
@@ -61,6 +69,10 @@ impl Default for ImportPanel {
             orient: 0,
             max_tilt: 40.0,
             clean: false,
+            coverage: false,
+            coverage_share: 0.5,
+            keep_thin: true,
+            min_feature: 0,
         }
     }
 }
@@ -130,6 +142,13 @@ impl Session {
             if self.import.clean {
                 args["clean"] = self.edit.reduce.args(None)?;
             }
+            if self.import.coverage {
+                args["coverage"] = json!(self.import.coverage_share.clamp(0.0, 1.0));
+                args["keepThin"] = json!(self.import.keep_thin);
+            }
+            if self.import.min_feature >= 2 {
+                args["minFeature"] = json!(self.import.min_feature.min(16));
+            }
             Ok(args)
         });
         let args = match args {
@@ -153,6 +172,18 @@ impl Session {
                     reply["slots"].as_array().map_or(0, Vec::len),
                     reply["newSlots"].as_array().map_or(0, Vec::len),
                 );
+                if let Some(c) = reply.get("coverage") {
+                    status.push_str(&format!(
+                        " Coverage kept {} of {} touched cells, {} for thin parts.",
+                        c["kept"], c["touched"], c["thin"]
+                    ));
+                }
+                if let Some(thin) = reply.get("thin") {
+                    status.push_str(&format!(
+                        " {} cells in {} parts are thinner than {} cells.",
+                        thin["cells"], thin["count"], thin["minFeature"]
+                    ));
+                }
                 let open = reply["openEdges"].as_u64().unwrap_or(0);
                 if open > 0 {
                     status.push_str(&format!(" The mesh has {open} open edges."));

@@ -25,7 +25,8 @@ k-means, and the accent guard they share; `rig_split.rs`: MCP `split_parts`, the
 split into rig parts; `upright.rs`: `import_mesh` `orient: "upright"`, the PCA stand-up). `mesh.rs` and `gpu.rs` draw the
 edit-mode mesh. `trace/` is the CPU path tracer. `trace_gpu.rs` plus
 `trace.wgsl` and `blit.wgsl` are the wgpu tracer used by Render mode.
-`import/` reads `.glb`, `.gltf`, and `.obj` meshes and voxelizes them
+`import/` reads `.glb`, `.gltf`, and `.obj` meshes and voxelizes them (every touched
+cell, or by `coverage` on a finer pass with `keepThin`)
 (MCP `import_mesh`, `remote/import.rs`; Rhai `voxelize`, `script/import.rs`;
 fixtures and their generator in `tests/fixtures/mesh`). `preview.rs` is the fast lit CPU raster of the viewport mesh behind MCP
 `preview` and `froxel preview` (`docs/preview.md`). `export/` writes glTF. `native_menu.rs` is the macOS menu. `skills/froxel` is the agent skill for the MCP tools. `mcp.rs`,

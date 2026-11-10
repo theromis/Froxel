@@ -98,6 +98,23 @@ pub(crate) fn voxelize_options(params: &Value, up: Up) -> Result<Voxelize, Strin
     } else {
         colors
     };
+    let coverage = match opt_f64(params, "coverage")? {
+        None => {
+            if params.get("keepThin").is_some_and(|v| !v.is_null()) {
+                return Err("keepThin needs coverage".into());
+            }
+            None
+        }
+        Some(share) => {
+            if !(0.0..=1.0).contains(&share) {
+                return Err("coverage must be a share 0..1".into());
+            }
+            Some(crate::import::Coverage {
+                share,
+                keep_thin: opt_bool(params, "keepThin")?.unwrap_or(true),
+            })
+        }
+    };
     Ok(Voxelize {
         fit,
         up,
@@ -106,6 +123,7 @@ pub(crate) fn voxelize_options(params: &Value, up: Up) -> Result<Voxelize, Strin
         position: number3(params, "position")?.unwrap_or([0.0; 3]),
         fill,
         colors,
+        coverage,
     })
 }
 
@@ -198,6 +216,7 @@ pub(crate) fn import_plan(
     if !(0.0..=442.0).contains(&tolerance) {
         return Err("tolerance must be 0..=442 (sRGB distance)".into());
     }
+    let min_feature = super::organic::min_feature_arg(params)?;
     let voxels = crate::import::voxelize(mesh, &options)?;
     let (map, new_slots) = match one {
         Some(_) => (HashMap::new(), Vec::new()),
@@ -250,6 +269,24 @@ pub(crate) fn import_plan(
     reply.insert("shell".into(), json!(voxels.shell));
     reply.insert("interior".into(), json!(voxels.cells.len() - voxels.shell));
     reply.insert("openEdges".into(), json!(voxels.open_edges));
+    if let (Some(covered), Some(coverage)) = (voxels.covered, options.coverage) {
+        reply.insert(
+            "coverage".into(),
+            json!({
+                "share": coverage.share,
+                "keepThin": coverage.keep_thin,
+                "fine": covered.fine,
+                "touched": covered.touched,
+                "kept": voxels.cells.len(),
+                "thin": covered.thin,
+            }),
+        );
+    }
+    if let Some(n) = min_feature {
+        let solid: HashMap<Cell, u8> = voxels.cells.iter().map(|(c, _)| (*c, 1)).collect();
+        let report = crate::tools::thin_parts(&solid, n)?;
+        reply.insert("thin".into(), super::organic::thin_reply(&report));
+    }
     reply.insert("written".into(), json!(writes.len()));
     reply.insert("slots".into(), json!(written));
     reply.insert(

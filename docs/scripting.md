@@ -482,6 +482,9 @@ slot or a list. Options:
 | `period` | `2` | Band or ring size in cells. |
 | `seed` | `0` | Seed of the random pattern. |
 | `mode` | `"replace"` | `"empty"` adds only into empty cells; `"paint"` recolours solid ones. |
+| `coverage` | off | Keep a cell when this share of it is solid (measured 2 to 4 times finer) instead of every touched cell, so a small creature's legs and fins do not merge. |
+| `keepThin` | `true` | With `coverage`: a part thinner than a cell keeps the one cell its midline crosses. |
+| `minFeature` | off | Report the parts thinner than this many cells (`thin`). |
 | `orient` | none | `#{views, turns, yawStep, ...}`: turn the mesh to the views first, as `orient_to_views` (views as rows). |
 
 Slot `0` erases the solid cells the sweep covers, for a slanted cut along a
@@ -886,6 +889,8 @@ openEdges, written, slots, newSlots, bounds, scale, triangles, ...}`, where `bou
 is `#{min, max, size}`. A mesh is at most 4 096 positions and 4 096
 triangles (the array limit). `examples/faceted_boulder.rhai` builds a
 lumpy sphere, voxelizes it, and weathers and mosses it.
+`examples/finned_fish.rhai` voxelizes a small fish with fins a third of a
+cell thick by every touched cell, by `coverage` alone, and with `keepThin`.
 
 ### Column relief
 

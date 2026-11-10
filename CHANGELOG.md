@@ -15,6 +15,14 @@
 
 ### Added
 
+- Coverage import: `import_mesh` `coverage` (Rhai `voxelize`, the Import
+  mesh section's Coverage, `froxel import --coverage`) keeps a cell only
+  when that share of it is solid on a voxelization 2 to 4 times finer,
+  instead of every cell the surface touches, so a small creature's legs and
+  fins do not merge into lumps; `keepThin` (default true) keeps a part
+  thinner than a cell as the one cell its midline crosses, as a voxel
+  remesher keeps thin sheets. `minFeature` reports the imported parts
+  thinner than N cells.
 - Deform scale: MCP `deform` `op: "scale"` (Rhai `deform("scale", ...)`, the
   Deform section's Scale, `froxel deform`) enlarges or shrinks a part about
   `point` by `factor` (or per axis): the cells within `radius` as one rigid

@@ -128,6 +128,19 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                 label(ui, "Clean", "MCP import_mesh clean: reduce the imported colours and despeckle them with the Reduce palette section's options before they are written.");
                 ui.checkbox(&mut panel.clean, "Reduce palette");
                 ui.end_row();
+                label(ui, "Coverage", "MCP coverage: keep a cell only when this share of it is solid (measured 2 to 4 times finer) instead of every cell the surface touches, so a small creature's legs and fins do not merge into lumps. Keep thin: a part thinner than a cell (a fin, an ear, a leg) keeps the one cell its midline crosses instead of vanishing.");
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut panel.coverage, "");
+                    ui.add_enabled(
+                        panel.coverage,
+                        egui::DragValue::new(&mut panel.coverage_share).range(0.0..=1.0).speed(0.01),
+                    );
+                    ui.add_enabled(panel.coverage, egui::Checkbox::new(&mut panel.keep_thin, "Keep thin"));
+                });
+                ui.end_row();
+                label(ui, "Min feature", "MCP minFeature: report the imported parts thinner than this many cells. 0 is off.");
+                ui.add(egui::DragValue::new(&mut panel.min_feature).range(0..=16));
+                ui.end_row();
             });
         if browse {
             session.import_mesh_dialog();

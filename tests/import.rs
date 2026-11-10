@@ -21,6 +21,7 @@ fn with_fill(fit: Fit, fill: Fill) -> Voxelize {
         position: [0.0; 3],
         fill,
         colors: Colors::Auto,
+        coverage: None,
     }
 }
 
@@ -378,4 +379,144 @@ fn degenerate_pole_triangles_do_not_turn_cells_black() {
             );
         }
     }
+}
+
+/// An OBJ of axis-aligned boxes, each `[min, max]`, written to a temp file.
+fn boxes_obj(name: &str, boxes: &[([f64; 3], [f64; 3])]) -> PathBuf {
+    let mut text = String::new();
+    let mut base = 0;
+    for (lo, hi) in boxes {
+        for i in 0..8 {
+            let p = [
+                if i & 1 == 0 { lo[0] } else { hi[0] },
+                if i & 2 == 0 { lo[1] } else { hi[1] },
+                if i & 4 == 0 { lo[2] } else { hi[2] },
+            ];
+            text.push_str(&format!("v {} {} {}\n", p[0], p[1], p[2]));
+        }
+        for f in [
+            [0, 2, 3, 1],
+            [4, 5, 7, 6],
+            [0, 1, 5, 4],
+            [2, 6, 7, 3],
+            [0, 4, 6, 2],
+            [1, 3, 7, 5],
+        ] {
+            text.push_str(&format!(
+                "f {} {} {} {}\n",
+                base + f[0] + 1,
+                base + f[1] + 1,
+                base + f[2] + 1,
+                base + f[3] + 1
+            ));
+        }
+        base += 8;
+    }
+    let path = std::env::temp_dir().join(format!("froxel-{}-{name}.obj", std::process::id()));
+    std::fs::write(&path, text).unwrap();
+    path
+}
+
+#[test]
+fn coverage_keeps_a_fin_thinner_than_a_cell_one_cell_thick() {
+    // A body 10 units a side and a fin 0.3 units thick straddling a cell
+    // boundary, at 1 cell a unit (the longest axis is 16 units).
+    let path = boxes_obj(
+        "fin",
+        &[
+            ([0.0, 0.0, 0.0], [10.0, 10.0, 10.0]),
+            ([10.0, 4.85, 2.0], [16.0, 5.15, 8.0]),
+        ],
+    );
+    let mesh = load(&path).unwrap();
+    let _ = std::fs::remove_file(&path);
+    let run = |coverage: Option<Coverage>| {
+        let mut o = with_fill(Fit::Cells(16.0), Fill::Solid);
+        o.up = Up::Z;
+        o.coverage = coverage;
+        voxelize(&mesh, &o).unwrap()
+    };
+    let fin = |v: &Voxels| -> Vec<Cell> {
+        v.cells
+            .iter()
+            .map(|(c, _)| *c)
+            .filter(|c| c.0 >= 10)
+            .collect()
+    };
+    // Every touched cell: the fin is two cells thick.
+    let touched = run(None);
+    let ys: std::collections::BTreeSet<i32> = fin(&touched).iter().map(|c| c.1).collect();
+    assert_eq!(ys.into_iter().collect::<Vec<_>>(), vec![4, 5]);
+    // Coverage alone: the fin vanishes under half a cell.
+    let lost = run(Some(Coverage {
+        share: 0.5,
+        keep_thin: false,
+    }));
+    assert!(fin(&lost).is_empty());
+    assert_eq!(lost.cells.len(), 1000);
+    // Coverage with keepThin: one cell thick, all along.
+    let kept = run(Some(Coverage {
+        share: 0.5,
+        keep_thin: true,
+    }));
+    let cells = fin(&kept);
+    let ys: std::collections::BTreeSet<i32> = cells.iter().map(|c| c.1).collect();
+    assert_eq!(ys.len(), 1, "{cells:?}");
+    let xs: std::collections::BTreeSet<i32> = cells.iter().map(|c| c.0).collect();
+    assert_eq!(
+        xs.into_iter().collect::<Vec<_>>(),
+        (10..=15).collect::<Vec<_>>()
+    );
+    assert_eq!(cells.len(), 36);
+    assert_eq!(kept.covered.unwrap().thin, 36);
+}
+
+#[test]
+fn import_mesh_reports_coverage_and_thin_parts() {
+    use serde_json::json;
+    let path = boxes_obj(
+        "fin-mcp",
+        &[
+            ([0.0, 0.0, 0.0], [10.0, 10.0, 10.0]),
+            ([10.0, 4.85, 2.0], [16.0, 5.15, 8.0]),
+        ],
+    );
+    let mut session = crate::state::Session::new();
+    let reply = crate::remote::apply(
+        &mut session,
+        "mesh.import",
+        &json!({"path": path.display().to_string(), "size": 16, "upAxis": "z",
+                "coverage": 0.5, "minFeature": 2, "palette": 3, "newObject": true}),
+    );
+    let _ = std::fs::remove_file(&path);
+    let reply = reply.unwrap();
+    assert_eq!(reply["coverage"]["thin"], json!(36));
+    assert_eq!(reply["coverage"]["kept"], json!(1036));
+    assert_eq!(reply["thin"]["count"], json!(1));
+    assert_eq!(reply["thin"]["parts"][0]["thickness"], json!(1));
+}
+
+#[test]
+fn the_finned_fish_example_keeps_its_fins_one_cell_thick() {
+    let mut session = crate::state::Session::new();
+    session.replace_empty();
+    session
+        .set_script(0, include_str!("../examples/finned_fish.rhai"))
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    let cells = &session.objects[0].cells;
+    let fins: Vec<Cell> = cells
+        .iter()
+        .filter(|(_, s)| **s == 3)
+        .map(|(c, _)| *c)
+        .collect();
+    assert!(!fins.is_empty());
+    // The dorsal fin, above the body, is one cell wide in x.
+    let top = cells.keys().map(|c| c.2).max().unwrap();
+    let xs: std::collections::BTreeSet<i32> = fins
+        .iter()
+        .filter(|c| c.2 >= top - 1)
+        .map(|c| c.0)
+        .collect();
+    assert_eq!(xs.len(), 1, "{xs:?}");
 }

@@ -27,7 +27,11 @@ It is how agents should model living things through MCP.
    `blocks` (`size` 2 or 3) re-quantizes the form into chunky cubes. Its
    texture comes in as a score of noisy slots: `reduce_palette` `colors` 6
    to 8 with `despeckle` 1 or 2 (or `clean` on `import_mesh`) cuts it to a
-   few colours and keeps the eyes. Otherwise build the large
+   few colours and keeps the eyes. At 20 to 60 cells pass `coverage: 0.5`
+   to `import_mesh`: every touched cell (the default) fattens the form and
+   merges legs and fins into lumps, coverage keeps it as tight as the mesh,
+   and `keepThin` (on by default) keeps a fin, ear, or leg thinner than a
+   cell as one cell instead of losing it. Otherwise build the large
    forms with `fill_box`,
    `fill_rounded_box`, and `fill_ellipsoid`. Grow limbs, roots, branches,
    tails, and twigs with `fill_tube`. Cut hollows, tunnels, and pits with

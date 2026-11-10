@@ -11,6 +11,14 @@
 //! Y, and Z), and colours each shell cell at the nearest
 //! point of its nearest triangle; inside cells take the colour of the nearest
 //! shell cell. [`quantize`] maps those colours into the document palette.
+//!
+//! Marking every touched cell keeps every part but fattens it: at 20 to 60
+//! cells a creature's legs and fins merge into lumps. With [`Coverage`] the
+//! mesh is voxelized again at 2 to 4 times the resolution and a cell is kept
+//! when that share of it is solid, so the form is as tight as it is; a part
+//! thinner than a cell (a fin, an ear, a leg) then keeps the one cell its
+//! midline crosses instead of vanishing under half a cell's coverage, as a
+//! voxel remesher keeps thin sheets.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -303,6 +311,34 @@ pub(crate) struct Voxelize {
     pub position: [f64; 3],
     pub fill: Fill,
     pub colors: Colors,
+    /// Keep cells by their solid share instead of every touched cell.
+    pub coverage: Option<Coverage>,
+}
+
+/// How a coverage voxelization keeps cells.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Coverage {
+    /// Share of a cell (from the finer voxelization) that must be solid,
+    /// 0..1.
+    pub share: f64,
+    /// A part thinner than a cell keeps the cell its midline crosses.
+    pub keep_thin: bool,
+}
+
+/// The finest grid side a coverage voxelization uses, in fine cells.
+const FINE_SIDE: usize = 512;
+/// Most fine cells a coverage voxelization holds.
+const FINE_CELLS: usize = 24_000_000;
+
+/// What a coverage voxelization kept.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Covered {
+    /// Fine cells per cell along an axis.
+    pub fine: i32,
+    /// Cells every touched cell would have given.
+    pub touched: usize,
+    /// Cells kept only because a thin part's midline crosses them.
+    pub thin: usize,
 }
 
 /// How [`voxelize`] fills the inside of the shell.
@@ -336,6 +372,8 @@ pub(crate) struct Voxels {
     /// Edges of exactly one triangle once equal positions are welded: 0 for
     /// a watertight mesh.
     pub open_edges: usize,
+    /// With [`Voxelize::coverage`], what it kept.
+    pub covered: Option<Covered>,
 }
 
 struct Hit {
@@ -348,6 +386,218 @@ struct Hit {
 /// written when it would be more than [`MAX_SIDE`] cells on an axis or more
 /// than [`MAX_CELLS`] cells.
 pub(crate) fn voxelize(mesh: &Mesh, options: &Voxelize) -> Result<Voxels, String> {
+    let touched = voxelize_within(mesh, options, MAX_SIDE, MAX_CELLS)?;
+    match options.coverage {
+        None => Ok(touched),
+        Some(coverage) => cover(mesh, options, coverage, touched),
+    }
+}
+
+/// Floor division of a cell coordinate.
+fn floor_div(v: i32, k: i32) -> i32 {
+    v.div_euclid(k)
+}
+
+/// `touched` (every cell the surface touches, coloured) cut down to the
+/// cells `coverage` keeps, from a voxelization `fine` times finer.
+fn cover(
+    mesh: &Mesh,
+    options: &Voxelize,
+    coverage: Coverage,
+    touched: Voxels,
+) -> Result<Voxels, String> {
+    if !(0.0..=1.0).contains(&coverage.share) {
+        return Err("coverage must be 0..1".into());
+    }
+    let side = (0..3)
+        .map(|a| match a {
+            0 => touched.max.0 - touched.min.0 + 1,
+            1 => touched.max.1 - touched.min.1 + 1,
+            _ => touched.max.2 - touched.min.2 + 1,
+        })
+        .max()
+        .unwrap_or(1)
+        .max(1) as usize;
+    let k = (FINE_SIDE / side).min(4) as i32;
+    if k < 2 {
+        return Err(format!(
+            "coverage needs at most {} cells along the longest axis",
+            FINE_SIDE / 2
+        ));
+    }
+    let fine_options = Voxelize {
+        fit: Fit::Scale(touched.scale * f64::from(k)),
+        position: options.position.map(|v| v * f64::from(k)),
+        colors: Colors::None,
+        coverage: None,
+        ..options.clone()
+    };
+    let fine = voxelize_within(mesh, &fine_options, FINE_SIDE + 8, FINE_CELLS)
+        .map_err(|err| format!("coverage: {err}"))?;
+    let solid: std::collections::HashSet<Cell> = fine.cells.iter().map(|(c, _)| *c).collect();
+    let coarse = |c: Cell| (floor_div(c.0, k), floor_div(c.1, k), floor_div(c.2, k));
+    // A fine cell on the surface of the fine solid is, on average, half
+    // inside the mesh (the fine pass also keeps every touched cell).
+    let mut share: HashMap<Cell, f64> = HashMap::new();
+    for &c in &solid {
+        let surface = [
+            (1, 0, 0),
+            (-1, 0, 0),
+            (0, 1, 0),
+            (0, -1, 0),
+            (0, 0, 1),
+            (0, 0, -1),
+        ]
+        .iter()
+        .any(|(dx, dy, dz)| !solid.contains(&(c.0 + dx, c.1 + dy, c.2 + dz)));
+        *share.entry(coarse(c)).or_default() += if surface { 0.5 } else { 1.0 };
+    }
+    let need = coverage.share * f64::from(k * k * k);
+    let mut keep: std::collections::HashSet<Cell> = share
+        .iter()
+        .filter(|(_, n)| **n >= need.max(1e-9))
+        .map(|(c, _)| *c)
+        .collect();
+    let mut thin = 0;
+    if coverage.keep_thin {
+        // A fine cell in a solid run shorter than a cell along an axis, in
+        // a cell the share did not keep, is part of something thinner than
+        // a cell. Its run's middle along each such axis picks the cell.
+        let mut lost: HashMap<Cell, Cell> = HashMap::new();
+        for &c in &solid {
+            if keep.contains(&coarse(c)) {
+                continue;
+            }
+            let mut at = [c.0, c.1, c.2];
+            let mut any = false;
+            for axis in 0..3 {
+                let step = |p: [i32; 3], d: i32| {
+                    let mut q = p;
+                    q[axis] += d;
+                    q
+                };
+                let has = |p: [i32; 3]| solid.contains(&(p[0], p[1], p[2]));
+                let p = [c.0, c.1, c.2];
+                let (mut lo, mut hi) = (p, p);
+                let mut run = 1;
+                while run < k && has(step(lo, -1)) {
+                    lo = step(lo, -1);
+                    run += 1;
+                }
+                while run < k && has(step(hi, 1)) {
+                    hi = step(hi, 1);
+                    run += 1;
+                }
+                if run < k {
+                    let mid = (f64::from(lo[axis]) + f64::from(hi[axis])) / 2.0 + 0.5;
+                    at[axis] = (mid.floor() as i32).clamp(lo[axis], hi[axis]);
+                    any = true;
+                }
+            }
+            if any {
+                lost.insert(c, coarse((at[0], at[1], at[2])));
+            }
+        }
+        // Only a thin part that reaches a whole cell counts: a fin, an ear,
+        // or a leg, not a bump on the surface that pokes out of a kept cell
+        // by less than one.
+        let mut seen: std::collections::HashSet<Cell> = std::collections::HashSet::new();
+        let mut starts: Vec<Cell> = lost.keys().copied().collect();
+        starts.sort_unstable();
+        for start in starts {
+            if !seen.insert(start) {
+                continue;
+            }
+            let mut part = vec![start];
+            let mut head = 0;
+            let (mut lo, mut hi) = ([start.0, start.1, start.2], [start.0, start.1, start.2]);
+            while head < part.len() {
+                let c = part[head];
+                head += 1;
+                for (i, v) in [c.0, c.1, c.2].into_iter().enumerate() {
+                    lo[i] = lo[i].min(v);
+                    hi[i] = hi[i].max(v);
+                }
+                for dz in -1..=1 {
+                    for dy in -1..=1 {
+                        for dx in -1..=1 {
+                            let n = (c.0 + dx, c.1 + dy, c.2 + dz);
+                            if lost.contains_key(&n) && seen.insert(n) {
+                                part.push(n);
+                            }
+                        }
+                    }
+                }
+            }
+            let reach = (0..3).map(|i| hi[i] - lo[i] + 1).max().unwrap_or(1);
+            if reach < k {
+                continue;
+            }
+            for c in part {
+                if keep.insert(lost[&c]) {
+                    thin += 1;
+                }
+            }
+        }
+    }
+    let total = touched.cells.len();
+    let cells: Vec<(Cell, [u8; 3])> = touched
+        .cells
+        .into_iter()
+        .filter(|(c, _)| keep.contains(c))
+        .collect();
+    if cells.is_empty() {
+        return Err("coverage kept no cell: lower coverage or raise size".into());
+    }
+    let set: std::collections::HashSet<Cell> = cells.iter().map(|(c, _)| *c).collect();
+    let surface = cells
+        .iter()
+        .filter(|((x, y, z), _)| {
+            [
+                (1, 0, 0),
+                (-1, 0, 0),
+                (0, 1, 0),
+                (0, -1, 0),
+                (0, 0, 1),
+                (0, 0, -1),
+            ]
+            .iter()
+            .any(|(dx, dy, dz)| !set.contains(&(x + dx, y + dy, z + dz)))
+        })
+        .count();
+    let min = cells
+        .iter()
+        .fold((i32::MAX, i32::MAX, i32::MAX), |m, (c, _)| {
+            (m.0.min(c.0), m.1.min(c.1), m.2.min(c.2))
+        });
+    let max = cells
+        .iter()
+        .fold((i32::MIN, i32::MIN, i32::MIN), |m, (c, _)| {
+            (m.0.max(c.0), m.1.max(c.1), m.2.max(c.2))
+        });
+    Ok(Voxels {
+        cells,
+        shell: surface,
+        scale: touched.scale,
+        min,
+        max,
+        open_edges: touched.open_edges,
+        covered: Some(Covered {
+            fine: k,
+            touched: total,
+            thin,
+        }),
+    })
+}
+
+/// [`voxelize`] with every touched cell, refused past `max_side` cells on
+/// an axis or `max_cells` cells.
+fn voxelize_within(
+    mesh: &Mesh,
+    options: &Voxelize,
+    max_side: usize,
+    max_cells: usize,
+) -> Result<Voxels, String> {
     let [rx, ry, rz] = options.rotation.map(f64::to_radians);
     let rotate =
         DMat3::from_rotation_z(rz) * DMat3::from_rotation_y(ry) * DMat3::from_rotation_x(rx);
@@ -394,7 +644,7 @@ pub(crate) fn voxelize(mesh: &Mesh, options: &Voxelize) -> Result<Voxels, String
     }
     let nominal = match options.fit {
         Fit::Cells(cells) => {
-            if !(1.0..=MAX_SIDE as f64).contains(&cells) {
+            if !(1.0..=max_side as f64).contains(&cells) {
                 return Err(format!("size must be 1..={MAX_SIDE} cells"));
             }
             cells / longest
@@ -434,7 +684,7 @@ pub(crate) fn voxelize(mesh: &Mesh, options: &Voxelize) -> Result<Voxels, String
         (high.1 - low.1 + 1) as usize,
         (high.2 - low.2 + 1) as usize,
     ];
-    if dims.iter().any(|&d| d > MAX_SIDE) {
+    if dims.iter().any(|&d| d > max_side) {
         return Err(format!(
             "the mesh would be {}x{}x{} cells; an object is at most {MAX_SIDE} per axis, so lower size or scale",
             dims[0], dims[1], dims[2]
@@ -501,7 +751,7 @@ pub(crate) fn voxelize(mesh: &Mesh, options: &Voxelize) -> Result<Voxels, String
                 }
             }
         }
-        if shell.len() > MAX_CELLS {
+        if shell.len() > max_cells {
             return Err(format!(
                 "the mesh would fill more than {MAX_CELLS} cells; lower size or scale"
             ));
@@ -514,7 +764,7 @@ pub(crate) fn voxelize(mesh: &Mesh, options: &Voxelize) -> Result<Voxels, String
         Fill::Parity => inside_cells(mesh, &at, low, dims, &shell),
         Fill::Shell => Vec::new(),
     };
-    if shell.len() + inside.len() > MAX_CELLS {
+    if shell.len() + inside.len() > max_cells {
         return Err(format!(
             "the mesh would fill {} cells; at most {MAX_CELLS}, so lower size or scale or pass fill shell",
             shell.len() + inside.len()
@@ -580,6 +830,7 @@ pub(crate) fn voxelize(mesh: &Mesh, options: &Voxelize) -> Result<Voxels, String
         min,
         max,
         open_edges,
+        covered: None,
     })
 }
 

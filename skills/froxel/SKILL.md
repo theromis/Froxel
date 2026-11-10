@@ -171,7 +171,10 @@ server is still running. A server started with `--watch` reloads by itself.
    `pixelate_views` with `size: [null, 20, null]` and `png` first to look): each view becomes pixel art
    at the cell grid, a few shared Oklab colours, crisp edges, eyes, pupils, teeth, nostrils, and spots
    kept at least a cell (`features`), parts thinner than a cell kept inked (`thin`), so the eyes do not
-   average into smears and the legs do not vanish. Eyes, a mouth, nostrils, or a badge on a round head or
+   average into smears and the legs do not vanish. An image-to-3D mesh for a small creature goes in with
+   `import_mesh` `coverage: 0.5` (cells kept by their solid share on a finer voxelization, so legs and
+   fins do not merge into lumps; `keepThin`, on by default, keeps parts thinner than a cell one cell
+   thick) and `minFeature: 2` to list what is still one cell thin. Eyes, a mouth, nostrils, or a badge on a round head or
    body are a `decal` (picture, `point` or `ray`, `size` in cells along the
    surface, `up`, `only`, `mirror: true` for the pair of eyes), not a
    `project_paint`, which smears them on the slopes; check `missed` is 0. To finish a blockout (from `carve_from_views` or
