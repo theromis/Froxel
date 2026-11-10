@@ -36,12 +36,70 @@ pub fn strip(ui: &mut Ui, session: &mut Session) {
         });
 }
 
+/// Widths the Inspector panel can be dragged to. Every Inspector row must
+/// fit the narrowest (`tests/panels.rs`).
+pub const INSPECTOR_WIDTH: std::ops::RangeInclusive<f32> = 280.0..=400.0;
+
+/// The Inspector's side panel, as the window shows it.
+pub fn inspector_panel(style: &egui::Style) -> egui::Panel {
+    egui::Panel::right("inspector")
+        .resizable(true)
+        .default_size(300.0)
+        .size_range(INSPECTOR_WIDTH)
+        .frame(side_frame(style))
+}
+
+/// Where the docks landed in one frame, in window points. The layout test
+/// reads it; the window does not.
+#[cfg_attr(not(test), allow(dead_code))]
+pub struct Docks {
+    pub strip: egui::Rect,
+    pub inspector: egui::Rect,
+    pub tool_options: egui::Rect,
+    pub palette: egui::Rect,
+    pub viewport: egui::Rect,
+    pub inspector_fit: InspectorFit,
+}
+
+/// The tool strip, the Inspector, the tool options, the palette, and the
+/// viewport `central` draws, in the window's remaining space. The order
+/// matters: the side panels go first so the rows around the viewport span
+/// only its width.
+pub fn desktop(
+    ui: &mut Ui,
+    session: &mut Session,
+    central: impl FnOnce(&mut Ui, &mut Session),
+) -> Docks {
+    let style = ui.style().clone();
+    let strip = egui::Panel::left("tools")
+        .resizable(false)
+        .exact_size(STRIP_WIDTH)
+        .frame(side_frame(&style))
+        .show(ui, |ui| self::strip(ui, session))
+        .response
+        .rect;
+    let inspector = inspector_panel(&style).show(ui, |ui| right(ui, session));
+    let (tool_options, palette) = around_viewport(ui, session);
+    let viewport = egui::CentralPanel::default()
+        .show(ui, |ui| central(ui, session))
+        .response
+        .rect;
+    Docks {
+        strip,
+        inspector: inspector.response.rect,
+        tool_options,
+        palette,
+        viewport,
+        inspector_fit: inspector.inner,
+    }
+}
+
 /// Settings of the current tool in a row above the viewport, and the
 /// palette below it. Call after the side panels so both span only the
-/// viewport's width.
-pub fn around_viewport(ui: &mut Ui, session: &mut Session) {
+/// viewport's width. Returns the two docks' rectangles.
+pub fn around_viewport(ui: &mut Ui, session: &mut Session) -> (egui::Rect, egui::Rect) {
     let style = ui.style().clone();
-    egui::Panel::top("tool-options")
+    let tool_options = egui::Panel::top("tool-options")
         .resizable(false)
         .show_separator_line(false)
         .frame(side_frame(&style).inner_margin(egui::Margin {
@@ -60,8 +118,10 @@ pub fn around_viewport(ui: &mut Ui, session: &mut Session) {
                         tools::options(ui, session);
                     });
                 });
-        });
-    egui::Panel::bottom("palette-dock")
+        })
+        .response
+        .rect;
+    let palette = egui::Panel::bottom("palette-dock")
         .resizable(false)
         .show_separator_line(false)
         .frame(side_frame(&style).inner_margin(egui::Margin {
@@ -83,12 +143,17 @@ pub fn around_viewport(ui: &mut Ui, session: &mut Session) {
                     });
                 },
             );
-        });
+        })
+        .response
+        .rect;
+    (tool_options, palette)
 }
 
 /// Inspector dock on top, scene tree dock at the bottom, on the dark window
-/// background like Godot's docks.
-pub fn right(ui: &mut Ui, session: &mut Session) {
+/// background like Godot's docks. Returns how far the widest section
+/// reaches past the panel.
+pub fn right(ui: &mut Ui, session: &mut Session) -> InspectorFit {
+    let mut fit = InspectorFit::default();
     outliner::tree_panel(ui, session);
     dock(
         ui,
@@ -100,113 +165,110 @@ pub fn right(ui: &mut Ui, session: &mut Session) {
             // Both axes: a vertical-only scroll area grows to its widest row,
             // which pushes the panel's edge under the viewport. A row too wide
             // for the panel scrolls sideways instead.
-            egui::ScrollArea::both()
+            let scroll = egui::ScrollArea::both()
                 .id_salt("inspector")
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    outliner::object(ui, session);
-                    ui.separator();
-                    outliner::bone(ui, session);
-                    ui.separator();
-                    outliner::pose(ui, session);
-                    ui.separator();
-                    outliner::clips(ui, session);
-                    ui.separator();
-                    script::script(ui, session);
-                    ui.separator();
-                    render::document(ui, session);
-                    ui.separator();
-                    render::export(ui, session);
-                    ui.separator();
-                    render::render(ui, session);
-                    ui.separator();
-                    render::light(ui, session);
-                    ui.separator();
-                    render::selection(ui, session);
-                    ui.separator();
-                    render::smooth(ui, session);
-                    ui.separator();
-                    render::break_end(ui, session);
-                    ui.separator();
-                    stone::protect(ui, session);
-                    ui.separator();
-                    render::scatter(ui, session);
-                    ui.separator();
-                    stone::relief(ui, session);
-                    ui.separator();
-                    stone::joints(ui, session);
-                    ui.separator();
-                    stone::weather(ui, session);
-                    ui.separator();
-                    stone::bark(ui, session);
-                    ui.separator();
-                    stone::planks(ui, session);
-                    ui.separator();
-                    stone::cavity(ui, session);
-                    ui.separator();
-                    foliage::foliage(ui, session);
-                    ui.separator();
-                    stone::growth(ui, session);
-                    ui.separator();
-                    stone::sweep(ui, session);
-                    ui.separator();
-                    stone::trim(ui, session);
-                    ui.separator();
-                    organic::loft(ui, session);
-                    ui.separator();
-                    organic::deform(ui, session);
-                    ui.separator();
-                    silhouette::measure(ui, session);
-                    ui.separator();
-                    silhouette::pixelate(ui, session);
-                    ui.separator();
-                    silhouette::carve(ui, session);
-                    ui.separator();
-                    silhouette::paint(ui, session);
-                    ui.separator();
-                    silhouette::paint_views(ui, session);
-                    ui.separator();
-                    silhouette::decal(ui, session);
-                    ui.separator();
-                    silhouette::fit(ui, session);
-                    ui.separator();
-                    silhouette::optimize(ui, session);
-                    ui.separator();
-                    silhouette::orient(ui, session);
-                    ui.separator();
-                    silhouette::compare(ui, session);
-                    ui.separator();
-                    edit::split(ui, session);
-                    ui.separator();
-                    edit::recolor(ui, session);
-                    ui.separator();
-                    edit::clear(ui, session);
-                    ui.separator();
-                    edit::intersect(ui, session);
-                    ui.separator();
-                    edit::stroke(ui, session);
-                    ui.separator();
-                    edit::plates(ui, session);
-                    ui.separator();
-                    edit::components(ui, session);
-                    ui.separator();
-                    edit::deterrace(ui, session);
-                    ui.separator();
-                    edit::reduce(ui, session);
-                    ui.separator();
-                    edit::parts(ui, session);
-                    ui.separator();
-                    import::import(ui, session);
-                    ui.separator();
-                    stone::markers(ui, session);
+                    let width = ui.max_rect().width();
+                    for (index, (name, show)) in INSPECTOR_SECTIONS.iter().enumerate() {
+                        if index > 0 {
+                            ui.separator();
+                        }
+                        let used = ui
+                            .scope(|ui| {
+                                ui.set_max_width(width);
+                                show(ui, session);
+                            })
+                            .response
+                            .rect
+                            .width();
+                        if used - width > fit.overflow {
+                            fit = InspectorFit {
+                                overflow: used - width,
+                                section: name,
+                            };
+                        }
+                    }
                 });
+            fit.overflow = fit
+                .overflow
+                .max(scroll.content_size.x - scroll.inner_rect.width());
         },
     );
     // A drag on a panel field ends with the button; its edits are one undo step.
     if !ui.input(|input| input.pointer.any_down()) {
         session.end_gesture();
     }
+    fit
 }
+
+/// How far the Inspector's widest section reaches past the panel, and its
+/// name; 0 when every row fits.
+#[derive(Clone, Copy, Debug, Default)]
+#[cfg_attr(not(test), allow(dead_code))]
+pub struct InspectorFit {
+    pub overflow: f32,
+    pub section: &'static str,
+}
+
+/// The Inspector's sections, top to bottom, with separators between them.
+type Section = fn(&mut Ui, &mut Session);
+const INSPECTOR_SECTIONS: &[(&str, Section)] = &[
+    ("outliner::object", outliner::object),
+    ("outliner::bone", outliner::bone),
+    ("outliner::pose", outliner::pose),
+    ("outliner::clips", outliner::clips),
+    ("script::script", script::script),
+    ("render::document", |ui, session| {
+        render::document(ui, session)
+    }),
+    ("render::export", render::export),
+    ("render::render", render::render),
+    ("render::light", render::light),
+    ("render::selection", render::selection),
+    ("render::smooth", render::smooth),
+    ("render::break_end", render::break_end),
+    ("stone::protect", stone::protect),
+    ("render::scatter", render::scatter),
+    ("stone::relief", stone::relief),
+    ("stone::joints", stone::joints),
+    ("stone::weather", stone::weather),
+    ("stone::bark", stone::bark),
+    ("stone::planks", stone::planks),
+    ("stone::cavity", stone::cavity),
+    ("foliage::foliage", foliage::foliage),
+    ("stone::growth", stone::growth),
+    ("stone::sweep", stone::sweep),
+    ("stone::trim", stone::trim),
+    ("organic::loft", organic::loft),
+    ("organic::deform", organic::deform),
+    ("silhouette::measure", silhouette::measure),
+    ("silhouette::pixelate", silhouette::pixelate),
+    ("silhouette::carve", silhouette::carve),
+    ("silhouette::paint", silhouette::paint),
+    ("silhouette::paint_views", silhouette::paint_views),
+    ("silhouette::decal", silhouette::decal),
+    ("silhouette::fit", silhouette::fit),
+    ("silhouette::optimize", silhouette::optimize),
+    ("silhouette::orient", silhouette::orient),
+    ("silhouette::compare", silhouette::compare),
+    ("edit::split", edit::split),
+    ("edit::recolor", edit::recolor),
+    ("edit::clear", edit::clear),
+    ("edit::intersect", edit::intersect),
+    ("edit::stroke", edit::stroke),
+    ("edit::plates", edit::plates),
+    ("edit::components", edit::components),
+    ("edit::deterrace", edit::deterrace),
+    ("edit::reduce", edit::reduce),
+    ("edit::parts", edit::parts),
+    ("import::import", import::import),
+    ("stone::markers", stone::markers),
+];
+
+#[cfg(test)]
+#[path = "../../tests/panels.rs"]
+mod tests;
 
 /// Space between docks, where the window background shows through.
 const DOCK_GAP: i8 = 6;
@@ -370,14 +432,34 @@ fn run_action(
     }
 }
 
-/// Widgets side by side. In a row that wraps they join that row, so each
-/// one can wrap; a nested horizontal block cannot.
+/// Widgets side by side. In a row that wraps they move to the next line
+/// together when they do not fit ([`keep_together`]).
 pub(super) fn row<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
-    if ui.layout().is_horizontal() {
+    if ui.layout().main_wrap() {
+        let id = ui.next_auto_id();
+        keep_together(ui, id, add)
+    } else if ui.layout().is_horizontal() {
         add(ui)
     } else {
         ui.horizontal(add).inner
     }
+}
+
+/// A group of widgets that wraps as one in a wrapped row: when it does not
+/// fit after what is already on the line, it starts the next line. Its
+/// width comes from the previous frame. [`row`] uses it in a wrapped
+/// layout, so a label never stays behind its slider.
+fn keep_together<R>(ui: &mut Ui, id_salt: egui::Id, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let id = ui.scope_id().with(("keep-together", id_salt));
+    let width: f32 = ui.data(|data| data.get_temp(id)).unwrap_or(0.0);
+    let line_started = ui.cursor().left() > ui.max_rect().left() + 0.5;
+    if line_started && ui.max_rect().right() - ui.cursor().left() < width {
+        ui.end_row();
+    }
+    let inner = ui.horizontal(add);
+    let width = inner.response.rect.width();
+    ui.data_mut(|data| data.insert_temp(id, width));
+    inner.inner
 }
 
 pub(super) fn segment<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, opts: &[(&str, T)]) {
@@ -447,19 +529,12 @@ pub(super) fn slider_f32(
 }
 
 /// A slider's name: a fixed column in the Inspector, its own width in the
-/// tool options row.
+/// tool options row (where [`row`] wraps the name, track, and value as one).
 fn slider_label(ui: &mut Ui, label: &str, column: bool) {
     let text = RichText::new(label).small().color(DIM);
     if column {
         ui.add_sized([96.0, 16.0], egui::Label::new(text));
         return;
-    }
-    // Start a new line when the name, track, and value would not fit.
-    let font = egui::TextStyle::Small.resolve(ui.style());
-    let name = ui.painter().layout_no_wrap(label.to_owned(), font, DIM);
-    let need = name.size().x + ui.spacing().slider_width + 56.0;
-    if ui.max_rect().right() - ui.cursor().left() < need {
-        ui.end_row();
     }
     ui.add(egui::Label::new(text));
 }

@@ -122,6 +122,16 @@ and Shift flips.
 cargo test --offline --bin froxel -- --skip ping_round_trips
 ```
 
+`tests/panels.rs` lays the window out headless (`panels::desktop`, the
+same function the window calls) and fails when a dock moves: every
+Inspector section must fit the narrowest panel (`INSPECTOR_WIDTH`), and
+the tool options, viewport, and palette must stay between the tool strip
+and the Inspector for every tool down to a 1024x700 window. A failure
+names the section. A row of buttons or toggles in the Inspector is
+`horizontal_wrapped`, never `horizontal`; groups that must wrap as one go
+through `panels::row`. A new Inspector section goes into
+`INSPECTOR_SECTIONS`.
+
 `ping_round_trips_with_the_token` needs a socket the sandbox does not allow.
 Do not filter on the substring `ping`: `save_round_trips` matches it too.
 The package is a binary, so `--lib` does not apply.

@@ -25,7 +25,7 @@ fn scope(session: &Session, verb: &str) -> String {
 }
 
 fn range_f32(ui: &mut Ui, pair: &mut [f32; 2], range: std::ops::RangeInclusive<f32>) {
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         for value in pair.iter_mut() {
             ui.add(
                 egui::DragValue::new(value)
@@ -38,7 +38,7 @@ fn range_f32(ui: &mut Ui, pair: &mut [f32; 2], range: std::ops::RangeInclusive<f
 }
 
 fn range_i32(ui: &mut Ui, pair: &mut [i32; 2], range: std::ops::RangeInclusive<i32>) {
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         for value in pair.iter_mut() {
             ui.add(egui::DragValue::new(value).range(range.clone()));
         }
@@ -71,7 +71,7 @@ pub(super) fn protect(ui: &mut Ui, session: &mut Session) {
                 .desired_width(f32::INFINITY),
         )
         .on_hover_text("MCP exclude: inclusive boxes in local cells. No cell inside one is cut, chipped, pitted, recoloured, or grown on, and no debris lands in one.");
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui
                 .button("Add selection")
                 .on_hover_text("Add the selection's box, such as a walking surface.")
@@ -100,7 +100,7 @@ pub(super) fn joints(ui: &mut Ui, session: &mut Session) {
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
                 label(ui, "Pattern", "Columns: vertical columns of random widths with bed joints. Courses: running bond blocks. Cracks: an irregular crack network.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (pattern, name) in [
                         (JointPattern::Columns, "Columns"),
                         (JointPattern::Courses, "Courses"),
@@ -166,7 +166,7 @@ pub(super) fn relief(ui: &mut Ui, session: &mut Session) {
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
                 label(ui, "Facing", "The face's outward direction. The face is found in the cells, so a swept, curved wall works.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (index, (name, _)) in RELIEF_FACINGS.iter().enumerate() {
                         if ui.selectable_label(panel.facing == index, *name).clicked() {
                             panel.facing = index;
@@ -181,14 +181,14 @@ pub(super) fn relief(ui: &mut Ui, session: &mut Session) {
                 range_i32(ui, &mut panel.width, 1..=64);
                 ui.end_row();
                 label(ui, "Out", "How far a column stands out of the face, in cells.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for value in panel.out.iter_mut() {
                         ui.add(egui::DragValue::new(value).range(0..=16));
                     }
                 });
                 ui.end_row();
                 label(ui, "Crown", "Height the column tops scatter around. Off: the highest solid cell of the box.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.checkbox(&mut panel.crown_on, "");
                     ui.add_enabled(
                         panel.crown_on,
@@ -197,7 +197,7 @@ pub(super) fn relief(ui: &mut Ui, session: &mut Session) {
                 });
                 ui.end_row();
                 label(ui, "Top", "Column top range relative to the crown: negative ends short of it, positive rises above it.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for value in panel.top.iter_mut() {
                         ui.add(egui::DragValue::new(value).range(-256..=256));
                     }
@@ -286,7 +286,7 @@ pub(super) fn bark(ui: &mut Ui, session: &mut Session) {
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
                 label(ui, "Along", "The way the grain runs: an axis through the middle of the wood, or the points of the tube or sweep that made it, so the plates follow its bend.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (index, name) in BARK_ALONG.iter().enumerate() {
                         ui.selectable_value(&mut panel.along, index, *name);
                     }
@@ -301,7 +301,7 @@ pub(super) fn bark(ui: &mut Ui, session: &mut Session) {
                     );
                     ui.end_row();
                     label(ui, "Curve", "Smooth follows a curve through the points, as a smooth tube does.");
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.checkbox(&mut panel.smooth, "Smooth");
                         from_sweep = ui
                             .small_button("From Sweep")
@@ -359,14 +359,14 @@ pub(super) fn planks(ui: &mut Ui, session: &mut Session) {
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
                 label(ui, "Along", "The way the boards run.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (index, name) in ["X", "Y"].into_iter().enumerate() {
                         ui.selectable_value(&mut panel.axis, index, name);
                     }
                 });
                 ui.end_row();
                 label(ui, "Height", "The top layer of the boards. Off: the top of the selection's box, or of the object.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.checkbox(&mut panel.height_on, "");
                     ui.add_enabled(
                         panel.height_on,
@@ -438,7 +438,7 @@ pub(super) fn cavity(ui: &mut Ui, session: &mut Session) {
                 ui.add(egui::Slider::new(&mut panel.dark, 0.0..=1.0).max_decimals(2));
                 ui.end_row();
                 label(ui, "Lighten", "Also lighten exposed ridges and corners more convex than this: 0 a flat face, 1 a lone spike.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.checkbox(&mut panel.lighten, "");
                     ui.add_enabled(
                         panel.lighten,
@@ -450,7 +450,7 @@ pub(super) fn cavity(ui: &mut Ui, session: &mut Session) {
                 slots_field(ui, &mut panel.pairs, "make shades");
                 ui.end_row();
                 label(ui, "Shades", "Without pairs: the darker and lighter shade as factors of the slot's colour.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.add(egui::DragValue::new(&mut panel.darken).range(0.05..=0.99).speed(0.01));
                     ui.add(egui::DragValue::new(&mut panel.brighten).range(1.01..=4.0).speed(0.01));
                 });
@@ -480,7 +480,7 @@ pub(super) fn growth(ui: &mut Ui, session: &mut Session) {
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
                 label(ui, "Plant", "Moss: caps on tops and curtains down faces, or separate cushions. Algae: a waterline band, dense low and thinning up. Vines: strands hanging from top edges.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (plant, name) in [
                         (Plant::Moss, "Moss"),
                         (Plant::Algae, "Algae"),
@@ -494,7 +494,7 @@ pub(super) fn growth(ui: &mut Ui, session: &mut Session) {
                 ui.end_row();
                 if panel.plant == Plant::Moss {
                     label(ui, "Style", "Caps: caps on tops (and undersides with Bottom) and curtains down the sides. Cushions: separate cushions where the surface faces up, or Facing, never one band, with drapes over the edges.");
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         for (on, name) in [(false, "Caps"), (true, "Cushions")] {
                             if ui.selectable_label(panel.cushions == on, name).clicked() {
                                 panel.set_cushions(on);
@@ -523,14 +523,14 @@ pub(super) fn growth(ui: &mut Ui, session: &mut Session) {
                 ui.add(egui::Slider::new(&mut panel.noise, 0.0..=1.0).max_decimals(2));
                 ui.end_row();
                 label(ui, "Faces", "Which faces it grows on. Bottom takes undersides, such as the dark underside of a tree crown.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (on, name) in panel.faces.iter_mut().zip(["Top", "Side", "Bottom"]) {
                         ui.toggle_value(on, name);
                     }
                 });
                 ui.end_row();
                 label(ui, "Facing", "Only faces pointing within 60 degrees of this direction. +Z turns on Top and −Z turns on Bottom, the only faces that point that way.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (index, (name, dir)) in FACINGS.iter().enumerate() {
                         if ui.selectable_label(panel.facing == index, *name).clicked() {
                             panel.facing = index;
@@ -544,7 +544,7 @@ pub(super) fn growth(ui: &mut Ui, session: &mut Session) {
                 });
                 ui.end_row();
                 label(ui, "Band", "Only cells with z in this band, such as the waterline. Algae thins from its bottom to its top.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.checkbox(&mut panel.band_on, "");
                     ui.add_enabled_ui(panel.band_on, |ui| {
                         ui.add(egui::DragValue::new(&mut panel.band[0]).range(-1024..=1023));
@@ -644,7 +644,7 @@ pub(super) fn sweep(ui: &mut Ui, session: &mut Session) {
                 ui.checkbox(&mut panel.smooth, "Smooth");
                 ui.end_row();
                 label(ui, "Profile", "A rounded rectangle standing on the path, or a polygon of u v points (u to the left of the path, v up). A cell is in when its centre is inside the profile at the nearest point of the path.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.selectable_value(&mut panel.polygon, false, "Rectangle");
                     ui.selectable_value(&mut panel.polygon, true, "Polygon");
                 });
@@ -671,7 +671,7 @@ pub(super) fn sweep(ui: &mut Ui, session: &mut Session) {
                 slots_field(ui, &mut panel.palettes, "active slot");
                 ui.end_row();
                 label(ui, "Pattern", "Bands by height in the profile (strata), rings along the path, or random cells.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (index, name) in ["Bands", "Rings", "Random"].into_iter().enumerate() {
                         ui.selectable_value(&mut panel.pattern, index, name);
                     }
@@ -681,7 +681,7 @@ pub(super) fn sweep(ui: &mut Ui, session: &mut Session) {
                 ui.add(egui::DragValue::new(&mut panel.period).range(0.5..=512.0).speed(0.1));
                 ui.end_row();
                 label(ui, "Mode", "Replace writes every cell; Empty adds only into empty cells; Paint recolours solid cells.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (index, name) in ["Replace", "Empty", "Paint"].into_iter().enumerate() {
                         ui.selectable_value(&mut panel.mode, index, name);
                     }
@@ -691,7 +691,7 @@ pub(super) fn sweep(ui: &mut Ui, session: &mut Session) {
                 ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
                 ui.end_row();
             });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui
                 .button("Point at selection")
                 .on_hover_text("Add the selection's centre as the next point.")
@@ -754,7 +754,7 @@ pub(super) fn trim(ui: &mut Ui, session: &mut Session) {
                     ui.end_row();
                 }
             });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui
                 .button("Point at selection")
                 .on_hover_text("Add the selection's centre as the next outline point.")
@@ -832,7 +832,7 @@ pub(super) fn markers(ui: &mut Ui, session: &mut Session) {
             ui.add(egui::TextEdit::singleline(&mut panel.name).desired_width(120.0));
             ui.end_row();
             label(ui, "Kind", "Point: the top centre of the selection. Box: a collision box over the selection. Connector: a joining end at the selection's centre.");
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 for (index, name) in ["Point", "Box", "Connector"].into_iter().enumerate() {
                     ui.selectable_value(&mut panel.kind, index, name);
                 }
@@ -840,7 +840,7 @@ pub(super) fn markers(ui: &mut Ui, session: &mut Session) {
             ui.end_row();
             if panel.kind == 2 {
                 label(ui, "Facing", "The way the joining end faces.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (index, (name, _)) in DIRECTIONS.iter().enumerate() {
                         ui.selectable_value(&mut panel.direction, index, *name);
                     }

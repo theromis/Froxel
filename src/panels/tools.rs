@@ -8,24 +8,26 @@ use super::*;
 pub(super) const STRIP_ICON: f32 = 32.0;
 const STRIP_GAP: f32 = 4.0;
 
+/// The strip's tools: the tool, its name, and its key.
+pub(super) const TOOLS: [(Tool, &str, &str); 13] = [
+    (Tool::Brush, "Brush", "V"),
+    (Tool::Line, "Line", "L"),
+    (Tool::Circle, "Circle", ""),
+    (Tool::Square, "Square", ""),
+    (Tool::Box, "Box", "B"),
+    (Tool::Face, "Face", "F"),
+    (Tool::Generator, "Generator", ""),
+    (Tool::Tube, "Tube", ""),
+    (Tool::Sculpt, "Sculpt", "S"),
+    (Tool::Mutator, "Mutator", "U"),
+    (Tool::Marquee, "Marquee", "M"),
+    (Tool::BoxSelect, "Box Select", ""),
+    (Tool::FloodSelect, "Flood", ""),
+];
+
 /// The tool strip: one column of tool icons, then the Add, Remove, and
 /// Paint modes. Their settings are in [`options`].
 pub(super) fn strip(ui: &mut Ui, session: &mut Session) {
-    const TOOLS: [(Tool, &str, &str); 13] = [
-        (Tool::Brush, "Brush", "V"),
-        (Tool::Line, "Line", "L"),
-        (Tool::Circle, "Circle", ""),
-        (Tool::Square, "Square", ""),
-        (Tool::Box, "Box", "B"),
-        (Tool::Face, "Face", "F"),
-        (Tool::Generator, "Generator", ""),
-        (Tool::Tube, "Tube", ""),
-        (Tool::Sculpt, "Sculpt", "S"),
-        (Tool::Mutator, "Mutator", "U"),
-        (Tool::Marquee, "Marquee", "M"),
-        (Tool::BoxSelect, "Box Select", ""),
-        (Tool::FloodSelect, "Flood", ""),
-    ];
     let size = STRIP_ICON;
     ui.spacing_mut().item_spacing = egui::vec2(STRIP_GAP, STRIP_GAP);
     for (tool, label, key) in TOOLS {
@@ -212,13 +214,15 @@ pub(super) fn options(ui: &mut Ui, session: &mut Session) {
         Tool::Tube => tube(ui, session),
         Tool::Sculpt => sculpt(ui, session),
         Tool::Mutator => {
-            ui.add_enabled_ui(false, |ui| {
-                let mut foliage = 0;
-                egui::ComboBox::from_id_salt("mutator")
-                    .selected_text("Foliage")
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut foliage, 0, "Foliage");
-                    });
+            row(ui, |ui| {
+                ui.add_enabled_ui(false, |ui| {
+                    let mut foliage = 0;
+                    egui::ComboBox::from_id_salt("mutator")
+                        .selected_text("Foliage")
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut foliage, 0, "Foliage");
+                        });
+                });
             });
             ui.label(RichText::new("Seed color").small().color(DIM));
             slider_i32(ui, session, "Slot", SliderTarget::FoliageSeed, 1..=255);

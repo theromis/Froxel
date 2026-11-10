@@ -23,7 +23,7 @@ fn number(ui: &mut Ui, value: &mut f32, range: std::ops::RangeInclusive<f32>, sp
 
 /// A value that is the cells' own unless Set is on.
 fn optional(ui: &mut Ui, value: &mut Option<f32>, fallback: f32, tip: &str) {
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         let mut set = value.is_some();
         if ui.checkbox(&mut set, "Set").on_hover_text(tip).changed() {
             *value = set.then_some(value.unwrap_or(fallback));
@@ -47,7 +47,7 @@ pub(super) fn deform(ui: &mut Ui, session: &mut Session) {
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
                 label(ui, "Op", "Bend curls the cells toward a direction; taper scales them across the axis; twist turns them about it; displace pushes the surface in and out with noise, for lumps and burls; scale enlarges a part (a head, an eye, a fin) about a point with a smooth falloff, so a small creature's features get the cells they need.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (index, name) in DEFORM_OPS.into_iter().enumerate() {
                         let title = format!("{}{}", name[..1].to_uppercase(), &name[1..]);
                         ui.selectable_value(&mut panel.op, index, title);
@@ -56,7 +56,7 @@ pub(super) fn deform(ui: &mut Ui, session: &mut Session) {
                 ui.end_row();
                 if panel.op < 3 {
                     label(ui, "Axis", "The axis the bend, taper, or twist runs along.");
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         for (index, name) in ["X", "Y", "Z"].into_iter().enumerate() {
                             ui.selectable_value(&mut panel.axis, index, name);
                         }
@@ -99,14 +99,14 @@ pub(super) fn deform(ui: &mut Ui, session: &mut Session) {
                     }
                     4 => {
                         label(ui, "Point", "The centre of the part to scale, in local cells. With a selection, its centre is used.");
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
                             for value in &mut panel.point {
                                 ui.add(egui::DragValue::new(value).speed(0.25));
                             }
                         });
                         ui.end_row();
                         label(ui, "Factor", "How much larger along x, y, and z, 0.25..4: 1.5 1.5 1.5 grows the part by half; below 1 shrinks it.");
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
                             for value in &mut panel.factor {
                                 number(ui, value, 0.25..=4.0, 0.01);
                             }
@@ -174,13 +174,13 @@ pub(super) fn loft(ui: &mut Ui, session: &mut Session) {
                 );
                 ui.end_row();
                 label(ui, "Curve", "Smooth passes a curve through the points; off joins them straight.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.checkbox(&mut panel.smooth, "Smooth");
                     ui.checkbox(&mut panel.round_caps, "Round ends");
                 });
                 ui.end_row();
                 label(ui, "Radii", "Default half-width across the path and half-height (up for a level path).");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     number(ui, &mut panel.rx, 0.5..=128.0, 0.05);
                     number(ui, &mut panel.ry, 0.5..=128.0, 0.05);
                 });
@@ -205,7 +205,7 @@ pub(super) fn loft(ui: &mut Ui, session: &mut Session) {
                 );
                 ui.end_row();
                 label(ui, "Pattern", "Rings along the length, stripes around it, or random cells.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (index, name) in ["Rings", "Stripes", "Random"].into_iter().enumerate() {
                         ui.selectable_value(&mut panel.pattern, index, name);
                     }
@@ -215,7 +215,7 @@ pub(super) fn loft(ui: &mut Ui, session: &mut Session) {
                 number(ui, &mut panel.period, 0.5..=512.0, 0.05);
                 ui.end_row();
                 label(ui, "Mode", "Replace writes every cell; Empty adds only into empty cells; Paint recolours solid cells.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (index, name) in ["Replace", "Empty", "Paint"].into_iter().enumerate() {
                         ui.selectable_value(&mut panel.mode, index, name);
                     }
@@ -225,7 +225,7 @@ pub(super) fn loft(ui: &mut Ui, session: &mut Session) {
                 ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
                 ui.end_row();
             });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui
                 .button("Point at selection")
                 .on_hover_text("Add the selection's centre as the next point, with the default radii.")

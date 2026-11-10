@@ -518,28 +518,15 @@ impl eframe::App for Shell {
             });
         });
 
-        egui::Panel::left("tools")
-            .resizable(false)
-            .exact_size(panels::STRIP_WIDTH)
-            .frame(panels::side_frame(&ctx.global_style()))
-            .show(ui, |ui| panels::strip(ui, &mut self.session));
-
-        egui::Panel::right("inspector")
-            .resizable(true)
-            .default_size(300.0)
-            .size_range(280.0..=400.0)
-            .frame(panels::side_frame(&ctx.global_style()))
-            .show(ui, |ui| panels::right(ui, &mut self.session));
-
-        panels::around_viewport(ui, &mut self.session);
-
-        egui::CentralPanel::default().show(ui, |ui| {
-            self.viewport_rect = viewport::show(
+        let cache = &mut self.cache;
+        let viewport_rect = &mut self.viewport_rect;
+        panels::desktop(ui, &mut self.session, |ui, session| {
+            *viewport_rect = viewport::show(
                 ctx,
                 ui,
                 frame.wgpu_render_state(),
-                &mut self.session,
-                &mut self.cache,
+                session,
+                cache,
                 true,
                 &[],
             );

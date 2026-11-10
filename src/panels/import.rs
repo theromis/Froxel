@@ -22,7 +22,7 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
                 label(ui, "File", "A .glb, .gltf, or .obj (with its .mtl and textures). Every primitive of the default glTF scene is read under its node transforms.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.add(
                         egui::TextEdit::singleline(&mut panel.path)
                             .hint_text("mesh.glb")
@@ -32,7 +32,7 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                 });
                 ui.end_row();
                 label(ui, "Fit", "Size: cells along the longest axis. Voxel: metres per cell, so the mesh keeps its real size (0.08 for 0.08 m voxels). Scale: cells per file unit.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (index, name) in ["Size", "Voxel", "Scale"].into_iter().enumerate() {
                         ui.selectable_value(&mut panel.fit, index, name);
                     }
@@ -57,35 +57,35 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                 ui.checkbox(&mut panel.z_up, "File is Z-up");
                 ui.end_row();
                 label(ui, "Rotation", "Degrees about X, then Y, then Z, after the up axis.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for value in panel.rotation.iter_mut() {
                         ui.add(egui::DragValue::new(value).range(-360.0..=360.0).speed(1.0).suffix("°"));
                     }
                 });
                 ui.end_row();
                 label(ui, "Position", "Where the anchor lands, in the active object's cells; with New object, the new object's world position.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for value in panel.position.iter_mut() {
                         ui.add(egui::DragValue::new(value).range(-1024..=1023));
                     }
                 });
                 ui.end_row();
                 label(ui, "Anchor", "The point of the mesh's box placed at Position: the low corner, the centre, or the centre of the bottom.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (index, name) in ["Min", "Center", "Bottom"].into_iter().enumerate() {
                         ui.selectable_value(&mut panel.anchor, index, name);
                     }
                 });
                 ui.end_row();
                 label(ui, "Fill", "Solid fills everything a flood from the box border cannot reach, so a hollow or double-walled mesh comes out solid; an open mesh (holes, seams, an open underside) first has its openings sealed at their rims. Parity is the older vote of ray parity along X, Y, and Z. Shell writes only the cells the surface touches.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (index, name) in ["Solid", "Parity", "Shell"].into_iter().enumerate() {
                         ui.selectable_value(&mut panel.fill, index, name);
                     }
                 });
                 ui.end_row();
                 label(ui, "Colour", "Texture: the base-colour texture times its factor times vertex colours, at the nearest point of the surface. Vertex: vertex colours only.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.selectable_value(&mut panel.vertex_only, false, "Texture");
                     ui.selectable_value(&mut panel.vertex_only, true, "Vertex");
                 });
@@ -104,7 +104,7 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                 ui.add(egui::DragValue::new(&mut panel.tolerance).range(0.0..=442.0).speed(0.5));
                 ui.end_row();
                 label(ui, "Mode", "Replace writes every cell; Empty adds only into empty cells; Paint recolours solid cells, to project a texture onto a form.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (index, name) in ["Replace", "Empty", "Paint"].into_iter().enumerate() {
                         ui.selectable_value(&mut panel.mode, index, name);
                     }
@@ -114,7 +114,7 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                 ui.checkbox(&mut panel.new_object, "New object");
                 ui.end_row();
                 label(ui, "Orient", "MCP import_mesh orient, before voxelizing. Upright: stand a tilted mesh level from its shape (thinnest principal axis up, narrowing upward, the taller end of its long axis toward −Y), tilting up at most Max tilt. Views: the axis-aligned turn and fine yaw whose silhouettes best match the views of Carve from views (with the Orient to views options). Both: upright, then the views' yaw.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (index, name) in ["Off", "Upright", "Views", "Both"].into_iter().enumerate() {
                         ui.selectable_value(&mut panel.orient, index, name);
                     }
@@ -129,7 +129,7 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                 ui.checkbox(&mut panel.clean, "Reduce palette");
                 ui.end_row();
                 label(ui, "Coverage", "MCP coverage: keep a cell only when this share of it is solid (measured 2 to 4 times finer) instead of every cell the surface touches, so a small creature's legs and fins do not merge into lumps. Keep thin: a part thinner than a cell (a fin, an ear, a leg) keeps the one cell its midline crosses instead of vanishing.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.checkbox(&mut panel.coverage, "");
                     ui.add_enabled(
                         panel.coverage,

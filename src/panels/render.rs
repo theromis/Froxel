@@ -17,7 +17,7 @@ pub(super) fn document(ui: &mut Ui, session: &Session) {
 }
 
 pub(super) fn stat(ui: &mut Ui, label: &str, value: &str) {
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.add_sized(
             [56.0, 16.0],
             egui::Label::new(RichText::new(label).color(DIM)),
@@ -92,7 +92,7 @@ pub(super) fn export(ui: &mut Ui, session: &mut Session) {
             SliderTarget::ExportAoRadius,
             0..=crate::export::occlusion::MAX_RADIUS as i32,
         );
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.add_sized(
                 [64.0, 16.0],
                 egui::Label::new(RichText::new("AO target").small().color(DIM)),
@@ -204,7 +204,7 @@ fn bake_light(ui: &mut Ui, session: &mut Session) {
     );
     let sun = session.sun_dir().to_array();
     if let Some(bake) = &mut session.export.bake {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.color_edit_button_rgb(&mut bake.sun_color)
                 .on_hover_text("Sun colour");
             ui.color_edit_button_rgb(&mut bake.ambient_color)
@@ -217,7 +217,7 @@ fn bake_light(ui: &mut Ui, session: &mut Session) {
                 bake.sun_direction = sun;
             }
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.add_sized(
                 [64.0, 16.0],
                 egui::Label::new(RichText::new("Light preset").small().color(DIM)),
@@ -253,7 +253,7 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
     section(ui, "Render");
     ui.checkbox(&mut session.stochastic_gi, "Stochastic Sampling GI")
         .on_hover_text("On: bounce light and sample emissive faces. Off: sun and sky only.");
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.add_sized(
             [64.0, 16.0],
             egui::Label::new(RichText::new("Glass").small().color(DIM)),
@@ -274,7 +274,7 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
     });
     slider_i32(ui, session, "Samples", SliderTarget::MaxSamples, 16..=8192);
     section(ui, "Camera");
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut session.orthographic, "Orthographic")
             .on_hover_text("Parallel projection in the viewport, the tracer, and saved images");
         if ui
@@ -303,7 +303,7 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
             }
         }
     });
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label("Placement turn").on_hover_text("Degrees about up the asset is turned where it is placed in a level, as a Godot rotation_degrees.y. Game view, Compare's Game, and a game light's sun use it, so the asset looks as it does in the level (MCP placementYaw)");
         ui.add(
             egui::DragValue::new(&mut session.placement_yaw)
@@ -340,7 +340,7 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
     if ui.button("Save render…").clicked() {
         session.save_render();
     }
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         if ui
             .button("Save preview…")
             .on_hover_text("The fast lit raster of the viewport, from this camera angle")
@@ -358,7 +358,7 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
     });
     ui.checkbox(&mut session.preview_overlay, "Markers on preview")
         .on_hover_text("Draw collision boxes, points, and connectors with their names over Save preview and the contact sheets; what the model hides is faded and dashed (MCP preview overlay)");
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label("Preview light");
         egui::ComboBox::from_id_salt("preview_lighting")
             .selected_text(session.preview_lighting.clone())
@@ -395,7 +395,7 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
     });
     ui.checkbox(&mut session.preview_counts_label, "Counts on preview")
         .on_hover_text("Write two triangle counts in the corner of Save preview and each contact sheet tile: the unmerged mesh the preview draws, and what File > Export writes with the Export panel's options (merge, colour atlas). The status line gives both too (MCP preview countsLabel and export)");
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         if ui
             .button("Sheet of files…")
             .on_hover_text("A contact sheet of picked .vox files from this camera angle, each labelled with its name (MCP preview inputs)")
@@ -411,7 +411,7 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
             session.save_sheet(true);
         }
     });
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         let name = session
             .sheet_reference
             .as_deref()
@@ -625,7 +625,7 @@ pub(super) fn light(ui: &mut Ui, session: &mut Session) {
         0.0..=10.0,
         2,
     );
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.add_sized(
             [96.0, 16.0],
             egui::Label::new(RichText::new("Color").small().color(DIM)),
@@ -735,14 +735,14 @@ pub(super) fn break_end(ui: &mut Ui, session: &mut Session) {
                     ui.label(RichText::new(text).small().color(DIM));
                 };
                 label(ui, "Point");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for value in &mut panel.point {
                         ui.add(egui::DragValue::new(value).speed(0.25).max_decimals(1));
                     }
                 });
                 ui.end_row();
                 label(ui, "Normal");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for value in &mut panel.normal {
                         ui.add(
                             egui::DragValue::new(value)
@@ -754,7 +754,7 @@ pub(super) fn break_end(ui: &mut Ui, session: &mut Session) {
                 });
                 ui.end_row();
                 ui.label("");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (name, normal) in [
                         ("+X", [1.0, 0.0, 0.0]),
                         ("−X", [-1.0, 0.0, 0.0]),
@@ -776,7 +776,7 @@ pub(super) fn break_end(ui: &mut Ui, session: &mut Session) {
                 ui.add(egui::Slider::new(&mut panel.splinters, 0..=512));
                 ui.end_row();
                 label(ui, "Length");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.add(
                         egui::DragValue::new(&mut panel.length[0])
                             .range(1.0..=64.0)
@@ -817,7 +817,7 @@ pub(super) fn break_end(ui: &mut Ui, session: &mut Session) {
                 ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
                 ui.end_row();
             });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui.button("Point at selection").clicked() {
                 session.break_point_at_selection();
             }
@@ -845,7 +845,7 @@ pub(super) fn scatter(ui: &mut Ui, session: &mut Session) {
                 ui.add(egui::Slider::new(&mut panel.count, 0..=2000));
                 ui.end_row();
                 label(ui, "Kinds");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (on, name) in panel
                         .kinds
                         .iter_mut()
@@ -856,7 +856,7 @@ pub(super) fn scatter(ui: &mut Ui, session: &mut Session) {
                 });
                 ui.end_row();
                 label(ui, "Size");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.add(egui::DragValue::new(&mut panel.size[0]).range(1..=16));
                     ui.add(egui::DragValue::new(&mut panel.size[1]).range(1..=16));
                 });
@@ -892,7 +892,7 @@ pub(super) fn scatter(ui: &mut Ui, session: &mut Session) {
 }
 
 pub(super) fn axis_buttons(ui: &mut Ui, _which: &str, mut act: impl FnMut(Axis)) {
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         if ui.button("X").clicked() {
             act(Axis::X);
         }

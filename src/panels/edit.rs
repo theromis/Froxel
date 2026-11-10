@@ -13,7 +13,7 @@ use crate::state::{EditorMode, Session, INTERSECT_SHAPES};
 /// The Mirror row (MCP `mirror`): on, the axis, and the plane.
 pub(super) fn mirror_row(ui: &mut Ui, id: &str, field: &mut crate::state::MirrorField) {
     label(ui, "Mirror", "Paint both sides in one step: the tool runs again on the far side of a plane across the axis, on that side's own surface, with the picture mirrored. The plane is the object's centre unless At gives its coordinate in cells (a multiple of 0.5; cell c spans c..c+1, so 16 swaps cells 15 and 16).");
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut field.on, "");
         ui.add_enabled_ui(field.on, |ui| {
             egui::ComboBox::from_id_salt(id)
@@ -79,7 +79,7 @@ pub(super) fn split(ui: &mut Ui, session: &mut Session) {
                 );
                 ui.end_row();
                 label(ui, "Take", "Invert takes every cell the boxes and slots do not select. Copy leaves the cells in the active object too.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.checkbox(&mut panel.invert, "Invert");
                     ui.checkbox(&mut panel.copy, "Copy");
                 });
@@ -215,7 +215,7 @@ pub(super) fn stroke(ui: &mut Ui, session: &mut Session) {
                             .desired_rows(3)
                             .desired_width(150.0),
                     );
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         if ui.button("Point at selection").on_hover_text("Add the selection's centre as the next point.").clicked() {
                             point = true;
                         }
@@ -293,7 +293,7 @@ pub(super) fn components(ui: &mut Ui, session: &mut Session) {
                 ui.add(egui::DragValue::new(&mut panel.min_cells).range(1..=1_000_000));
                 ui.end_row();
                 label(ui, "Seed", "A cell x y z of the part Delete, Move, and Split act on, in local cells; it snaps to the nearest solid cell.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.add(egui::TextEdit::singleline(&mut panel.seed).hint_text("x y z").desired_width(90.0));
                     if ui.button("At selection").on_hover_text("The selection's centre.").clicked() {
                         pick = Some(false);
@@ -301,7 +301,7 @@ pub(super) fn components(ui: &mut Ui, session: &mut Session) {
                 });
                 ui.end_row();
                 label(ui, "Anchor", "Optional: a cell of the part that stays. The seed's part is first cut from it at the thinnest neck between them, so a rider touching a shell comes off. Empty: no cut.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.add(egui::TextEdit::singleline(&mut panel.anchor).hint_text("none").desired_width(90.0));
                     if ui.button("At selection").on_hover_text("The selection's centre.").clicked() {
                         pick = Some(true);
@@ -309,7 +309,7 @@ pub(super) fn components(ui: &mut Ui, session: &mut Session) {
                 });
                 ui.end_row();
                 label(ui, "Offset", "Move shifts the part by these whole cells.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for value in panel.offset.iter_mut() {
                         ui.add(egui::DragValue::new(value).range(-256..=256));
                     }
@@ -319,7 +319,7 @@ pub(super) fn components(ui: &mut Ui, session: &mut Session) {
                 ui.add(egui::TextEdit::singleline(&mut panel.name).desired_width(120.0));
                 ui.end_row();
             });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui.button("List").on_hover_text("MCP components op list: count the parts and their sizes, with no change.").clicked() {
                 run = Some("list");
             }
@@ -330,7 +330,7 @@ pub(super) fn components(ui: &mut Ui, session: &mut Session) {
                 run = Some("remove_small");
             }
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui.button("Delete").on_hover_text("MCP components op delete: erase the seed's part (cut at the neck from the anchor, if set). One undo step.").clicked() {
                 run = Some("delete");
             }
@@ -368,7 +368,7 @@ pub(super) fn plates(ui: &mut Ui, session: &mut Session) {
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
                 label(ui, "Layout", "Rings cuts each ring into sectors, staggered ring to ring; Voronoi gives each cell the nearest of seeds laid out in the rings, for rounder, irregular plates.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.selectable_value(&mut panel.layout, 0, "Rings");
                     ui.selectable_value(&mut panel.layout, 1, "Voronoi");
                 });
@@ -380,7 +380,7 @@ pub(super) fn plates(ui: &mut Ui, session: &mut Session) {
                 ui.add(egui::DragValue::new(&mut panel.central).range(0.0..=0.9).speed(0.005));
                 ui.end_row();
                 label(ui, "Band", "Share of the radius the outer band spans, and its plates (0 is one unbroken band).");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.add(egui::DragValue::new(&mut panel.band).range(0.0..=0.6).speed(0.005));
                     ui.add(egui::DragValue::new(&mut panel.band_count).range(0..=crate::tools::MAX_PLATES_PER_RING as i32))
                         .on_hover_text("Plates in the band.");
@@ -398,13 +398,13 @@ pub(super) fn plates(ui: &mut Ui, session: &mut Session) {
                 });
                 ui.end_row();
                 label(ui, "Seams", "The seam slot, or Groove to cut the seams Seam depth cells deep.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.add_enabled(!panel.groove, egui::DragValue::new(&mut panel.seam).range(1..=255));
                     ui.checkbox(&mut panel.groove, "Groove");
                 });
                 ui.end_row();
                 label(ui, "Seam size", "Width in cells and depth into the solid.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.add(egui::DragValue::new(&mut panel.seam_width).range(0.5..=crate::tools::MAX_SEAM_WIDTH as f32).speed(0.05));
                     ui.add(egui::DragValue::new(&mut panel.seam_depth).range(1..=crate::tools::MAX_PLATE_DEPTH as i32));
                 });
@@ -419,7 +419,7 @@ pub(super) fn plates(ui: &mut Ui, session: &mut Session) {
                 slots(ui, &mut panel.only, "all slots");
                 ui.end_row();
                 label(ui, "Variation", "Jitter moves boundaries and seeds; Symmetric mirrors them left to right; Seed changes them and the slot picks.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.add(egui::DragValue::new(&mut panel.jitter).range(0.0..=1.0).speed(0.01));
                     ui.checkbox(&mut panel.symmetric, "Symmetric");
                     ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999).prefix("seed "));
@@ -447,7 +447,7 @@ pub(super) fn deterrace(ui: &mut Ui, session: &mut Session) {
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
                 label(ui, "Mode", "Blocks re-quantizes the form into cubes of Size cells, so every step is Size tall (the chunky concept-cube look). Stagger moves the edges of one-cell steps on the top surface in teeth, so they do not run in long even contours.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.selectable_value(&mut panel.mode, 0, "Blocks");
                     ui.selectable_value(&mut panel.mode, 1, "Stagger");
                 });
@@ -496,7 +496,7 @@ pub(super) fn reduce(ui: &mut Ui, session: &mut Session) {
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
                 label(ui, "Colours", "Cluster: the object's colours become Colors clusters (k-means in Oklab), with small distinct accents such as eyes kept. Snap: every colour takes the nearest of the Palette list. Despeckle: only the majority filter.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.selectable_value(&mut panel.mode, 0, "Cluster");
                     ui.selectable_value(&mut panel.mode, 1, "Snap");
                     ui.selectable_value(&mut panel.mode, 2, "Despeckle");
@@ -504,7 +504,7 @@ pub(super) fn reduce(ui: &mut Ui, session: &mut Session) {
                 ui.end_row();
                 if panel.mode == 0 {
                     label(ui, "Colors", "How many colours the object keeps, plus accents.");
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.add(egui::DragValue::new(&mut panel.colors).range(1..=64));
                         ui.checkbox(&mut panel.accents, "Keep accents")
                             .on_hover_text("Small distinct colours (eyes, a mouth) keep a slot of their own.");
@@ -554,7 +554,7 @@ pub(super) fn parts(ui: &mut Ui, session: &mut Session) {
                             .desired_rows(4)
                             .desired_width(170.0),
                     );
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         if ui.button("Seed at selection").on_hover_text("Add the selection's centre as a new part line, named part.").clicked() {
                             seed = true;
                         }

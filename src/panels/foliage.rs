@@ -30,7 +30,7 @@ pub(super) fn foliage(ui: &mut Ui, session: &mut Session) {
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
                 label(ui, "Volume", "Ellipsoids: the crown's shape, a broad middle and a few lobes. From slots: the cells of a crown already sculpted, re-clustered; those no clump keeps are removed.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (index, name) in FOLIAGE_SOURCES.iter().enumerate() {
                         ui.selectable_value(&mut panel.source, index, *name);
                     }
@@ -61,7 +61,7 @@ pub(super) fn foliage(ui: &mut Ui, session: &mut Session) {
                 ui.add(egui::DragValue::new(&mut panel.core).range(0..=255));
                 ui.end_row();
                 label(ui, "Size", "Clump radius range in cells.");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for value in panel.size.iter_mut() {
                         ui.add(
                             egui::DragValue::new(value)
