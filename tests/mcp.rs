@@ -3168,3 +3168,26 @@ fn stdin_lines_keep_what_is_read_past_a_line() {
     assert_eq!(lines.next_line().unwrap().unwrap(), b"three");
     assert!(lines.next_line().unwrap().is_none());
 }
+
+/// The views tools hand every view the sheet-wide keys of the call
+/// (`remote::silhouette::sheet_keys`), so each must take them at the top
+/// level: a schema without one refuses the call before the handler runs.
+#[test]
+fn the_views_tools_take_the_sheet_wide_keys_at_the_top_level() {
+    let sheet = json!({
+        "path": "views.png",
+        "background": "#ff00ff",
+        "tolerance": 90,
+        "alphaThreshold": 64,
+    });
+    for name in [
+        "carve_from_views",
+        "paint_from_views",
+        "orient_to_views",
+        "fit_to_views",
+        "optimize_to_views",
+        "pixelate_views",
+    ] {
+        assert_eq!(known_arguments(name, &sheet), Ok(()), "{name}");
+    }
+}

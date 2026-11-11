@@ -1129,3 +1129,51 @@ fn rounding_removes_corners_no_view_sees_and_keeps_every_silhouette() {
     .unwrap_err();
     assert!(err.contains("roundAxes"), "{err}");
 }
+
+/// A top-level `tolerance` and `alphaThreshold` reach every view without
+/// its own, and a view's own wins.
+#[test]
+fn a_top_level_tolerance_and_alpha_threshold_apply_to_every_view() {
+    // Ink 60 away from the magenta key: background at tolerance 90, ink at
+    // the default 40.
+    let near = png(
+        "sheet-tolerance.png",
+        4,
+        4,
+        [255, 0, 255, 255],
+        [255, 60, 255, 255],
+        |x, _| x < 2,
+    );
+    let view = |side: &str| json!({"view": side, "path": near, "crop": [0, 0, 4, 4]});
+    let carve = |params: Value| {
+        crate::remote::apply(&mut empty_session(), "voxel.carve_from_views", &params)
+    };
+    let base = json!({"views": [view("front"), view("side")], "cellsPerPixel": 1,
+        "palette": 2, "background": "#ff00ff"});
+    assert_eq!(carve(base.clone()).unwrap()["cells"], 16);
+    let mut wide = base.clone();
+    wide["tolerance"] = json!(90);
+    // Every view is all background.
+    assert_eq!(carve(wide.clone()).unwrap()["cells"], 0);
+    wide["views"][0]["tolerance"] = json!(40);
+    wide["views"][1]["tolerance"] = json!(40);
+    assert_eq!(carve(wide).unwrap()["cells"], 16);
+
+    // Ink at alpha 100: background under the default threshold 128, ink
+    // under 64.
+    let faint = png(
+        "sheet-alpha.png",
+        4,
+        4,
+        [0, 0, 0, 0],
+        [20, 200, 20, 100],
+        |x, _| x < 2,
+    );
+    let view = |side: &str| json!({"view": side, "path": faint, "crop": [0, 0, 4, 4]});
+    let base = json!({"views": [view("front"), view("side")], "cellsPerPixel": 1,
+        "palette": 2, "background": "alpha"});
+    assert_eq!(carve(base.clone()).unwrap()["cells"], 0);
+    let mut low = base;
+    low["alphaThreshold"] = json!(64);
+    assert_eq!(carve(low).unwrap()["cells"], 16);
+}

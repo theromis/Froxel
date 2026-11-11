@@ -736,7 +736,8 @@ script builds. `froxel import` is the same import from the command line.
 An image-to-3D mesh arrives turned any way: lying on its side, facing +Y,
 Y-up read as Z-up. `orient_to_views` finds the turn from the views sheet
 instead of guessing it by eye. It takes the sheet's crops as `fit_to_views`
-does (a top-level `path`, `background`, and `tolerance` for all of them;
+does (a top-level `path`, `background`, `tolerance`, and `alphaThreshold`
+for all of them;
 `flip`; and a `weight` per view, default 1). Each candidate turn projects
 the object's surface cells onto each view's image axes as `model_view`
 draws them (the model facing −Y with +Z up), places the view's mask over
@@ -762,7 +763,7 @@ a margin under 0.01 means the views barely decide, and a `left` or `back`
 view (or a larger `weight` on the side view) settles it.
 
 `import_mesh` takes the same search as `orient` (`{views, path,
-background, tolerance, turns, yawStep, yawRange, fineAxes, resolution}`):
+background, tolerance, alphaThreshold, turns, yawStep, yawRange, fineAxes, resolution}`):
 a coarse shell of the mesh is scored, and the turn found is folded into
 `rotation` before the mesh is voxelized, so it is voxelized once, already
 turned, and `size` or `voxelSize` apply to the turned mesh. The reply's
@@ -1954,7 +1955,9 @@ sheet), or `rows` and a `legend` as a script passes them. Its background
 rule is `background` `auto` (the default: transparent pixels if the crop
 has any, else the commonest colour of the whole image's border within
 `tolerance`, default 40), `alpha` (alpha below `alphaThreshold`, default
-128), or a key colour `#rrggbb` within `tolerance`. A view maps to cells
+128), or a key colour `#rrggbb` within `tolerance`. A top-level `path`,
+`background`, `tolerance`, and `alphaThreshold` apply to every view without
+its own. A view maps to cells
 by its `cellsPerPixel` or `size` `[across, down]`, the top-level
 `cellsPerPixel`, or the top-level `size` `[x, y, z]`, which also sets the
 box (`null` on an axis takes the largest view along it). A view
@@ -2243,7 +2246,8 @@ added or removed.
 
 `views` is a list of `{view, path | rows, crop, legend, flip, background,
 ...}` as `carve_from_views` takes them, with the sheet-wide `path`,
-`background`, `tolerance`, and mask edits at the top level. Over MCP a
+`background`, `tolerance`, `alphaThreshold`, and mask edits at the top
+level. Over MCP a
 top-level `path` with no `views` reads the sheet's 2 x 2 layout (front,
 side, top, back) as `measure_sheet` does. Each view's ink bounds (`fit`
 `ink`, the default; `crop` takes the whole crop) are stretched over the

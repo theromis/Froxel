@@ -24,6 +24,11 @@
 
 ### Fixed
 
+- MCP `carve_from_views` takes the top-level `tolerance` and `alphaThreshold`
+  its description promises, and `orient_to_views` and `optimize_to_views`
+  the top-level `alphaThreshold`: the handlers already applied them to every
+  view without its own, but the schemas left them out, so the calls were
+  refused as unknown arguments.
 - A colour parameter reads one way everywhere (`set_params`, `export_variants`,
   `preview`, `froxel variants`, `froxel bridge`): whole numbers 0..255, or 0..1
   when every channel is at most 1 and one has a decimal point. `[1, 1, 1]` is
