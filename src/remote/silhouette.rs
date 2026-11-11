@@ -698,6 +698,18 @@ fn mask_edits(
         Some(_) => return Err("erase must be a list of [x, y, width, height] in pixels".into()),
     }
     edits.keep_largest = opt_bool(item, "keepLargest")?.unwrap_or(false);
+    edits.fill_holes = match item.get("fillHoles") {
+        None | Some(Value::Null) | Some(Value::Bool(false)) => None,
+        Some(Value::Bool(true)) => Some(0.1),
+        Some(Value::Number(n)) => match n.as_f64() {
+            Some(share) if (0.0..=1.0).contains(&share) => Some(share as f32),
+            _ => return Err("fillHoles must be true or a share 0..1 of the view's ink".into()),
+        },
+        Some(_) => return Err("fillHoles must be true or a share 0..1 of the view's ink".into()),
+    };
+    if edits.fill_holes.is_some() && source.is_none() {
+        return Err("fillHoles needs an image (path), not rows".into());
+    }
     Ok(edits)
 }
 
@@ -711,6 +723,8 @@ pub(crate) fn mask_report_json(report: &crate::tools::MaskEditReport) -> Value {
         "masked": report.masked,
         "erased": report.erased,
         "dropped": report.dropped,
+        "holes": report.holes,
+        "filled": report.filled,
         "after": report.after,
     })
 }
@@ -728,12 +742,15 @@ fn sheet_keys(params: &Value, item: &Value) -> Value {
         "excludeTolerance",
         "flood",
         "keepLargest",
+        "fillHoles",
     ] {
         let given = params.get(key).filter(|v| !v.is_null());
         if let (Some(value), Some(map)) = (given, item.as_object_mut()) {
-            // Rows have no path to inherit and no background colours to flood.
+            // Rows have no path to inherit and no background colours to
+            // flood or fill holes with.
             let rows = map.contains_key("rows");
-            if !map.contains_key(key) && !(rows && (key == "path" || key == "flood")) {
+            let image_only = key == "path" || key == "flood" || key == "fillHoles";
+            if !map.contains_key(key) && !(rows && image_only) {
                 map.insert(key.into(), value.clone());
             }
         }
@@ -1933,17 +1950,19 @@ fn downscale_arg(params: &Value) -> Result<Option<Value>, String> {
         None | Some(Value::Null) | Some(Value::Bool(false)) => Ok(None),
         Some(Value::Bool(true)) => Ok(Some(json!({}))),
         Some(found @ Value::Object(_)) => Ok(Some(found.clone())),
-        Some(_) => {
-            Err("downscale must be true, false, or {colors, coverage, thin, features, ...}".into())
-        }
+        Some(_) => Err(
+            "downscale must be true, false, or {colors, coverage, thin, features, lines, ...}"
+                .into(),
+        ),
     }
 }
 
 /// The options of `pixelate_views` (and of `downscale`): `colors`
 /// (default 6), the accent guard (`accents`, `minShare`, `contrast`,
 /// `maxAccents`), `coverage` (0.5), `thin` (a share, default 0.25, or
-/// false), `despeckle` (passes, default 1), and `features` (true, false, or `{minArea, maxArea, contrast,
-/// minCells}`).
+/// false), `despeckle` (passes, default 1), `features` (true, false, or
+/// `{minArea, maxArea, contrast, minCells}`), `lines` (true, false, or
+/// `{length, contrast}`), and `outline` (default false).
 pub(crate) fn pixelate_spec(opts: &Value) -> Result<crate::tools::PixelateSpec, String> {
     use crate::tools::{PixelFeatures, PixelateSpec};
     let mut spec = PixelateSpec::default();
@@ -1977,6 +1996,22 @@ pub(crate) fn pixelate_spec(opts: &Value) -> Result<crate::tools::PixelateSpec, 
                 .ok_or("despeckle must be 0..16 passes")? as u32;
         }
     }
+    spec.lines = match opts.get("lines") {
+        None | Some(Value::Null) | Some(Value::Bool(true)) => spec.lines,
+        Some(Value::Bool(false)) => None,
+        Some(found @ Value::Object(_)) => {
+            let mut l = crate::tools::PixelLines::default();
+            if let Some(v) = opt_f64(found, "length")? {
+                l.length = v as f32;
+            }
+            if let Some(v) = opt_f64(found, "contrast")? {
+                l.contrast = v as f32;
+            }
+            Some(l)
+        }
+        Some(_) => return Err("lines must be true, false, or {length, contrast}".into()),
+    };
+    spec.outline = opt_bool(opts, "outline")?.unwrap_or(false);
     spec.features = match opts.get("features") {
         None | Some(Value::Null) | Some(Value::Bool(true)) => spec.features,
         Some(Value::Bool(false)) => None,
@@ -2070,6 +2105,7 @@ pub(crate) fn pixelate_reply(p: &crate::tools::Pixelated, rows: bool) -> Map<Str
                     "grid": v.grid,
                     "inked": v.inked,
                     "thin": v.thin,
+                    "lines": v.lines,
                     "source": v.source,
                     // Grid aspect over ink aspect: far from 1, the views
                     // disagree (a view turned, or a crop from another

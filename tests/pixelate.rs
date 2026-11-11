@@ -321,3 +321,75 @@ fn the_pixel_toad_example_keeps_its_pupils() {
         .count();
     assert!(pupils >= 2, "{pupils} pupil cells");
 }
+
+#[test]
+fn a_drawn_line_thinner_than_a_cell_keeps_a_line_of_cells() {
+    // An orange square 80 pixels a side at 10 cells (8 pixels a cell)
+    // crossed by a dark line 2 pixels thick: a quarter of a cell, so every
+    // cell's vote goes to the orange around it.
+    let view = mask(80, 80, |x, y| {
+        Some(if (38..40).contains(&y) && (8..72).contains(&x) {
+            DARK
+        } else {
+            ORANGE
+        })
+    });
+    let views = vec![(Side::Front, view)];
+    let grids = vec![[10, 10]];
+    // Features off: the line is long enough to be no spot.
+    let lined = PixelateSpec {
+        features: None,
+        ..PixelateSpec::default()
+    };
+    let voted = PixelateSpec {
+        lines: None,
+        ..lined.clone()
+    };
+    let lost = pixelate(&views, &grids, &voted, &palette()).unwrap();
+    assert_eq!(cells_of(&lost, 0, DARK), 0, "{:?}", lost.views[0].rows());
+    let kept = pixelate(&views, &grids, &lined, &palette()).unwrap();
+    let rows = kept.views[0].rows();
+    assert!(cells_of(&kept, 0, DARK) >= 7, "{rows:?}");
+    // One row of cells, not a band.
+    let dark_rows = rows
+        .iter()
+        .filter(|row| {
+            row.chars()
+                .filter(|c| *c != rows[0].chars().next().unwrap())
+                .count()
+                >= 5
+        })
+        .count();
+    assert_eq!(dark_rows, 1, "{rows:?}");
+    assert!(kept.views[0].lines >= 7);
+}
+
+#[test]
+fn the_outline_along_the_silhouette_is_kept_only_with_outline() {
+    // An orange square 64 pixels a side on no background, ringed by a dark
+    // outline 2 pixels thick, at 8 cells.
+    let view = mask(80, 80, |x, y| {
+        let inside = (8..72).contains(&x) && (8..72).contains(&y);
+        let ring = !((10..70).contains(&x) && (10..70).contains(&y));
+        inside.then_some(if ring { DARK } else { ORANGE })
+    });
+    let views = vec![(Side::Front, view)];
+    let grids = vec![[8, 8]];
+    let plain = pixelate(&views, &grids, &PixelateSpec::default(), &palette()).unwrap();
+    assert_eq!(cells_of(&plain, 0, DARK), 0, "{:?}", plain.views[0].rows());
+    let spec = PixelateSpec {
+        outline: true,
+        ..PixelateSpec::default()
+    };
+    let ringed = pixelate(&views, &grids, &spec, &palette()).unwrap();
+    // The 28 cells of the rim.
+    assert!(
+        cells_of(&ringed, 0, DARK) >= 24,
+        "{:?}",
+        ringed.views[0].rows()
+    );
+    assert_eq!(
+        cells_of(&ringed, 0, ORANGE),
+        36 - (28 - cells_of(&ringed, 0, DARK)).min(0)
+    );
+}

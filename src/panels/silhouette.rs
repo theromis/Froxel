@@ -138,6 +138,13 @@ pub(super) fn pixelate(ui: &mut Ui, session: &mut Session) {
                     .on_hover_text("Despeckle passes.");
             });
             ui.end_row();
+            label(ui, "Lines", "Lines: a drawn line thinner than a cell (an eye's ring, a mouth) keeps a line of cells in its colour instead of losing every cell's vote to the fill (MCP lines). Outline: the outline along the silhouette is kept too, as a rim of cells (MCP outline; off, its pixels vote only where nothing else does). Fill holes: white eyes and teeth on a white sheet, keyed out as background, are inked again in their own colour (MCP fillHoles).");
+            ui.horizontal_wrapped(|ui| {
+                ui.checkbox(&mut panel.draw_lines, "Lines");
+                ui.add_enabled(panel.draw_lines, egui::Checkbox::new(&mut panel.outline, "Outline"));
+                ui.checkbox(&mut panel.fill_holes, "Fill holes");
+            });
+            ui.end_row();
             label(ui, "PNG", "Where the pixelated views are written, side by side, 8 pixels a cell.");
             ui.horizontal_wrapped(|ui| {
                 ui.add(
@@ -898,6 +905,9 @@ pub(super) fn compare(ui: &mut Ui, session: &mut Session) {
             ui.end_row();
             label(ui, "Largest only", "Keep only the largest connected region of the concept, dropping specks and a separate splash (MCP keepLargest).");
             ui.checkbox(&mut panel.keep_largest, "");
+            ui.end_row();
+            label(ui, "Fill holes", "Ink again, in the image's own colour, the background regions the concept encloses (up to a tenth of its ink): white eyes and teeth on a white sheet, which the background rule keys out (MCP fillHoles).");
+            ui.checkbox(&mut panel.fill_holes, "");
             ui.end_row();
             label(ui, "Camera", "Viewport is the window's camera now; Game is the gameplay preset, with the Camera section's Camera presets… and Placement turn; Front, Left, and Top are orthographic views like a turnaround sheet.");
             egui::ComboBox::from_id_salt("compare-camera")

@@ -311,7 +311,7 @@ tracer. A file with no scene graph still loads its first model.
 | `paint_from_views` | `views` or `path` | Recolour every surface cell of the active object (or of `objects`, painted together) from a whole orthographic views sheet in one call: each cell from the views that see it (first solid cell of its column), by the view its normal faces most. `views` as `carve_from_views` takes them, or over MCP a lone `path` read with `measure_sheet`'s layout. Optional `blend` (`nearest` with `seam` degrees, `soft` with `sharpness`), `fit` (`ink`, `crop`), `inset`, `reach`, `mirror` (a missing right view from the left, default true), `slots` or `newSlots` (with `accents`, `minShare`, `contrast`, `maxAccents`), `only`, box `x0`..`z1`, `space`, `downscale`. Never adds or removes cells. Replies with `painted`, `surface`, `unseen`, `blended`, `views`, `slots`, `newSlots`, `accents`, `changed`, `objects`, `voxels`. One undo step. See [Painting from a whole sheet](#painting-from-a-whole-sheet) |
 | `decal` | `point` or `ray`, `size`, `path` or `rows` | Lay one picture onto the active object's curved surface around a point, so it keeps its size and shape on a round head: the surface is unrolled around the point and each surface cell takes the picture's ink under it. `ray` `{origin, direction}` takes the first solid cell instead. Optional `up` (default +Z), `crop`, `background`, `tolerance`, `flip`, `legend`, `palette` or `slots`, `coverage`, `depth` (cells into the solid, default 1), `reach` (default 8), `normalLimit` (degrees from the point's normal, default 90), `only`, `mirror`. Never adds or removes cells. Replies with `cells`, `changed`, `bounds`, `centre`, `normal`, `grid`, `covered`, `missed`, `reached`. One undo step. See [Silhouettes](#silhouettes) |
 | `compare_silhouette` | `path`, `concept` | Compare the model's `preview` silhouette from a camera (`preset`, `presets`, `placementYaw`, `view`, `yaw`, `pitch`, `orthographic`, `fov`, `margin`, `object`, `isolate`, `pose`) with a mask cut from a concept PNG (`crop`, `background`, `tolerance`, `alphaThreshold`, `flip`) and cleaned by the [mask edits](#masking-a-concept) (`excludeColors`, `excludeTolerance`, `flood`, `mask`, `erase`, `keepLargest`; the reply's `maskEdits` counts them). `align` `fit` (default), `height`, `width`, or `{scale, offset}` places the concept with one uniform scale. Replies with `iou`, `missing`, `excess`, `pixels`, `align`, `conceptBounds`, `modelBounds`, and `aspect`, and writes an overlay PNG. Optional `width`, `height`, `lighting`, `antialias`. See [Silhouettes](#silhouettes) |
-| `pixelate_views` | `views` or `path`, `size` | Turn a views sheet into pixel art at the cell grid, writing no cells: one small shared Oklab palette (`colors`, accent guard), the majority colour per cell, small salient `features` kept at least a cell, `thin` parts kept inked, `despeckle`. Replies with `size`, `colors`, `legend`, and per view `rows`, `legend`, `grid`, `inked`, `thin`, `source`, `stretch`, `features`; `png` writes the pixel art. See [Pixel art for small creatures](#pixel-art-for-small-creatures) |
+| `pixelate_views` | `views` or `path`, `size` | Turn a views sheet into pixel art at the cell grid, writing no cells: one small shared Oklab palette (`colors`, accent guard), the majority colour per cell, small salient `features` kept at least a cell, `thin` parts kept inked, drawn `lines` thinner than a cell kept as a line of cells (`outline` for the silhouette's), `despeckle`; `fillHoles` brings back white eyes keyed out as background. Replies with `size`, `colors`, `legend`, and per view `rows`, `legend`, `grid`, `inked`, `thin`, `lines`, `source`, `stretch`, `features`; `png` writes the pixel art. See [Pixel art for small creatures](#pixel-art-for-small-creatures) |
 | `optimize_to_views` | `views` or `path` | Iterate a small creature (20 to 60 cells long) until its orthographic views match its pixel-art views (see Optimizing to pixel-art views): an excess ray's column goes, a missing ray gains a cell touching the body inside every other view, within `band` cells (default 3) of the starting surface, connected, never thinner than `minFeature`; then every surface cell takes the slot the views that see it agree on, weighted by how squarely each faces it, with a smoothness term (`smooth`) and the accent guard (`accents`, `accentShare`), and `colorCarve` removes an edge cell two views paint differently when both still meet the body. Views are `pixelate_views` rows, or crops pixelated at the object's box (`downscale`). Replies with each view's `agreement`, `iou`, `color`, and `colorError` before and after, `added`, `removed`, `recolored`, `iterations`, `blocked`. Deterministic, one undo step |
 | `measure_sheet` | `path` | Read a views sheet image, writing nothing: each view's tight `crop` (connected inked regions under the background rule and the mask edits, merged within `gap` pixels, regions under `minShare` of the largest in `ignored`), the 2 x 2 `layout` names (front, side, top, back), the cube pitch per view (`pitchX`, `pitchY`, `strength`, `cubes`, `square`) from the autocorrelation of the cube seams, `checks` (front height = side height, front width = top width, side length = top length, in percent of pixels and of cubes, `ok` within `checkTolerance`), `fitViews` for `carve_from_views` and `fit_to_views`, and with `parts` the top view's parts sticking out of its body. See [Measuring a sheet](#measuring-a-sheet) |
 | `reload` | — | Restart this server on the rebuilt binary in place, keeping the connection and the open document, then send `notifications/tools/list_changed`. `force` reloads an unchanged binary. See [Reloading the server](#reloading-the-server) |
@@ -2046,9 +2046,30 @@ and Peers, SIGGRAPH Asia 2013) and pixel-art abstraction (Gerstner et al.,
   at least `minCells` cells (default 1; about its area, up to 4), smallest
   first, so a pupil keeps its place inside the eye. Eyes, pupils, teeth,
   nostrils, and spots survive.
+- `lines` (default on; `false`, or `{length, contrast}`): a drawn line
+  thinner than a cell (an eye's ring, a mouth, a belly's edge) loses every
+  cell's vote to the fill on both sides. A region of one colour thinner
+  than a cell is a stroke; a cell its midline runs through for `length` of
+  a cell (default 0.6) takes the stroke's colour when that lies `contrast`
+  (Oklab, default 0.08) from the cell's vote, after the features, whose
+  cells it never takes. A patch of one colour that lines would take whole
+  (a small mouth between its strokes) stays. The anti-aliased fringe counts
+  as background here, so the in-between shades along the silhouette are no
+  strokes.
+- `outline` (default `false`): the outline along the silhouette is a line
+  too, but a dark rim painted onto a model's edge cells is seldom wanted,
+  so without `outline` its pixels vote only where nothing else does, and no
+  stray dark cell is left on the rim. With it the rim takes the outline's
+  colour, as a sprite has.
 - `despeckle` passes (default 1) of a majority filter then recolour a lone
   cell (fewer than two of its eight neighbours share its colour), leaving
-  the kept features alone.
+  the kept features and lines alone.
+
+A white eye or tooth on a white sheet is within the background tolerance,
+so the background rule keys it out and the view gets a hole where the eye
+was. The mask edit `fillHoles` (`true` is 0.1, or a share of the view's
+ink) inks every enclosed background region up to that share again in its
+own colour; pass it at the top level for every view.
 
 `views` are `{view, path | rows, crop, legend, flip, background, ...}` as
 `carve_from_views` takes them, or a top-level `path` alone reads the sheet's
@@ -2058,8 +2079,9 @@ axis left out or `null` follows the views' ink proportions, so
 `size: [null, 20, null]` makes a creature 20 cells long.
 
 The reply holds `size`, `colors`, `accents`, `legend` (`{char: "#rrggbb"}`),
-and `views`, each `{view, rows, legend, grid, inked, thin, source,
-features}`: `thin` counts the cells the thin rule kept, `source` is the ink
+and `views`, each `{view, rows, legend, grid, inked, thin, lines, source,
+features}`: `thin` counts the cells the thin rule kept, `lines` the cells a
+drawn line holds, `source` is the ink
 crop in pixels, `stretch` is the grid's aspect over the ink's (far from 1,
 the views disagree: a top view turned 90 degrees, or a crop from another
 sheet), and each feature gives its `colour` character, `area` in
@@ -2070,20 +2092,21 @@ row). Its `views` go straight into `carve_from_views` (with the same
 
 `carve_from_views` and `paint_from_views` take the same options as
 `downscale` (`true`, or `{colors, coverage, thin, despeckle, features,
-accents, ...}`) to do it in one call; their reply adds `downscale` with the
+lines, outline, accents, ...}`) to do it in one call; their reply adds `downscale` with the
 box, legend, and per-view counts. A carve pixelates at its `size` (at least
 one axis; not with depth maps), a paint at the painted objects' box, and
 then reads each pixelated view whole (`fit` `crop`, `inset` 0).
 
 ```json
 {"path": "views.png", "size": [null, 20, null], "colors": 6, "png": "hopper-pixels.png"}
+{"path": "views.png", "size": [null, 30, null], "colors": 8, "fillHoles": true, "outline": true}
 {"views": [{"view": "front", "path": "front.png"}, {"view": "left", "path": "left.png"},
            {"view": "top", "path": "top.png"}],
  "size": [null, 20, null], "downscale": {"colors": 6}}
 ```
 
 `froxel pixelate --sheet views.png --size _,20,_ --png pixels.png` runs it
-from the command line.
+from the command line (`--no-lines`, `--outline`, `--fill-holes`).
 
 #### Optimizing to pixel-art views
 
@@ -2442,14 +2465,16 @@ background rule and before `flip`, in this order:
 | `mask` | none | A mask PNG, `path` or `{path, crop, background, tolerance, alphaThreshold, invert}`: it is cut as a view is and stretched over the crop, and only the pixels under its ink stay; `invert` drops them instead. A mask as large as the image shares the view's `crop`; any other covers the crop whole. Needs a `path`. |
 | `erase` | none | Rectangles `[x, y, width, height]` in image pixels (the frame of `crop`): a rider, a label, a splash on the body. |
 | `keepLargest` | `false` | Every inked region but the largest (8-connected): specks and a splash apart from the body. |
+| `fillHoles` | off | Adds, last: every background region the ink encloses (not reaching the crop's border by 4-neighbours) that holds at most this share of the view's inked pixels is inked again in the image's colour: white eyes and teeth on a white sheet, which the background rule keys out. `true` is 0.1, or a share 0..1. Needs a `path`. |
 
-`excludeColors`, `excludeTolerance`, `flood`, and `keepLargest` at the top
-level of `carve_from_views` and `fit_to_views` apply to every view without
-its own (`flood` not to `rows` views); `mask` and `erase` are per view.
+`excludeColors`, `excludeTolerance`, `flood`, `keepLargest`, and
+`fillHoles` at the top level of `carve_from_views`, `fit_to_views`, and the
+other views tools apply to every view without its own (`flood` and
+`fillHoles` not to `rows` views); `mask` and `erase` are per view.
 Scripts pass `rows`, so they have `excludeColors`, `erase`, and
 `keepLargest`. `compare_silhouette` replies with `maskEdits`: the inked
 pixels `before`, the ones `excluded`, `flooded`, `masked`, `erased`, and
-`dropped`, and `after`. A call that leaves nothing inked is an error.
+`dropped`, the `holes` and pixels `filled` by `fillHoles`, and `after`. A call that leaves nothing inked is an error.
 
 How to make a mask:
 
@@ -2726,7 +2751,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `project_paint` | Paint from view section: View, Flip, Image…, Crop, Background, Scale (Fit box or Cells / px), Box origin and size, Depth, Normal limit, Only, Colour from image or the active slot, Mirror, Paint |
 | `paint_from_views` | Paint from views section: Sheet… (empty takes the Carve from views views), Background, Blend (Nearest with Seam, Soft with Sharpness), Mirror missing side, Colours (Used, New with New slots and Keep accents, Slots), Pixel art (Downscale, colours), Inset, Reach, Only, Objects (All visible), Paint from views over the selection's box or the whole object |
 | `decal` | Decal section: Image…, Flip, Crop, Background, Point (At selection, World), Up, Size, Depth, Reach, Normal limit, Only, Colour from image or the active slot, Mirror, Lay decal |
-| `pixelate_views` | Pixelate views section: Sheet… (empty takes the Carve from views views), Background, Size, Colours, Keep (Features, Thin, Despeckle), PNG…, Pixelate (one line per view under it) |
+| `pixelate_views` | Pixelate views section: Sheet… (empty takes the Carve from views views), Background, Size, Colours, Keep (Features, Thin, Despeckle), Lines (Lines, Outline, Fill holes), PNG…, Pixelate (one line per view under it) |
 | `optimize_to_views` | Optimize to views section (the views of Carve from views, pixelated at the object's box): Moves (Shape, Colour, Carve), Colour from (per Carve row), Colours, Passes, Band, Min feature, Smooth, Sharpness, Accents (Guard and share), Slots, Keep, Semantic (CLIP, rounds, patches; with the clip feature), Optimize (each view's agreement before and after in the status) |
 | `measure_sheet` | Measure sheet section: Sheet …, Background, Count parts, Measure (views, checks, and parts listed under it), Use crops (into the Carve from views rows) |
 | `compare_silhouette` | Compare silhouette section: Concept Image…, Crop, Background, Flip, Exclude (colours and tolerance), Flood (and its step), Mask (…, Invert), Erase (one rectangle per line), Largest only, Camera (Viewport, Game, Front, Left, Top), Align (Fit, Height, Width), Compare; the overlay shows in the viewport's bottom-right corner until Hide overlay; MCP `compare_silhouette` over the control port shows it there too |

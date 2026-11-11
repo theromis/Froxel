@@ -82,8 +82,8 @@ pub use paint_views::{
     paint_from_views, Blend, Fit as ViewsFit, PaintViewsSpec, Quantize, SheetImage,
 };
 pub use pixelate::{
-    pixelate, pixelated_image, view_grids, Features as PixelFeatures, PixelateSpec, Pixelated,
-    PIXEL_CHARS,
+    pixelate, pixelated_image, view_grids, Features as PixelFeatures, Lines as PixelLines,
+    PixelateSpec, Pixelated, PIXEL_CHARS,
 };
 pub use planks::{planks, PlankAxis, PlankSpec};
 pub use plates::{

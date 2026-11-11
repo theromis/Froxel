@@ -170,8 +170,12 @@ server is still running. A server started with `--watch` reloads by itself.
    60 cells long) pass `downscale: true` to `carve_from_views` and `paint_from_views` (or call
    `pixelate_views` with `size: [null, 20, null]` and `png` first to look): each view becomes pixel art
    at the cell grid, a few shared Oklab colours, crisp edges, eyes, pupils, teeth, nostrils, and spots
-   kept at least a cell (`features`), parts thinner than a cell kept inked (`thin`), so the eyes do not
-   average into smears and the legs do not vanish. An image-to-3D mesh for a small creature goes in with
+   kept at least a cell (`features`), parts thinner than a cell kept inked (`thin`), drawn lines thinner
+   than a cell (an eye's ring, a mouth) kept as a line of cells (`lines`, on by default; `outline: true`
+   keeps the silhouette's outline too, as a sprite has, off by default so no dark rim lands on the model),
+   so the eyes do not average into smears and the legs do not vanish. If the sheet's eyes or teeth are
+   white on a white background, the background rule keys them out as holes: pass `fillHoles: true`
+   (top level, every view) and check the `png` has the whites back. An image-to-3D mesh for a small creature goes in with
    `import_mesh` `coverage: 0.5` (cells kept by their solid share on a finer voxelization, so legs and
    fins do not merge into lumps; `keepThin`, on by default, keeps parts thinner than a cell one cell
    thick) and `minFeature: 2` to list what is still one cell thin. Eyes, a mouth, nostrils, or a badge on a round head or

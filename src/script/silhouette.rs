@@ -84,6 +84,8 @@ const PIXELATE: &[&str] = &[
     "thin",
     "despeckle",
     "features",
+    "lines",
+    "outline",
 ];
 const CARVE: &[&str] = &[
     "downscale",

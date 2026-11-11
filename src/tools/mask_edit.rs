@@ -9,7 +9,11 @@
 //! 3. `mask`: a second image cut like a view, whose inked pixels keep (or,
 //!    inverted, remove) the concept's pixels under them;
 //! 4. `erase`: rectangles of pixels go;
-//! 5. `keep_largest`: only the largest 8-connected inked region stays.
+//! 5. `keep_largest`: only the largest 8-connected inked region stays;
+//! 6. `fill_holes`: background regions the ink encloses (not reaching the
+//!    crop's border by 4-neighbours) up to a share of the ink are inked
+//!    again in their own colour: white eyes and teeth on a white sheet are
+//!    keyed as background by the background rule, so a view loses them.
 //!
 //! MCP `compare_silhouette` and the views of `carve_from_views`,
 //! `project_paint`, and `fit_to_views` take these keys.
@@ -37,6 +41,9 @@ pub struct MaskEdits {
     /// crop's, so image pixels less the crop's corner).
     pub erase: Vec<[i64; 4]>,
     pub keep_largest: bool,
+    /// Enclosed background regions up to this share of the inked pixels
+    /// are inked again with the image's colour.
+    pub fill_holes: Option<f32>,
 }
 
 impl MaskEdits {
@@ -46,6 +53,7 @@ impl MaskEdits {
             && self.mask.is_none()
             && self.erase.is_empty()
             && !self.keep_largest
+            && self.fill_holes.is_none()
     }
 }
 
@@ -58,6 +66,10 @@ pub struct MaskEditReport {
     pub masked: usize,
     pub erased: usize,
     pub dropped: usize,
+    /// Pixels `fill_holes` inked.
+    pub filled: usize,
+    /// Enclosed regions `fill_holes` inked.
+    pub holes: usize,
     pub after: usize,
 }
 
@@ -184,6 +196,12 @@ pub fn edit_mask(
     if edits.keep_largest {
         report.dropped = keep_largest(mask);
     }
+    if let Some(share) = edits.fill_holes {
+        let src = source.ok_or("fillHoles needs an image (path), not rows")?;
+        let (holes, filled) = fill_holes(mask, src, share);
+        report.holes = holes;
+        report.filled = filled;
+    }
     report.after = mask.count();
     if report.after == 0 {
         return Err(format!(
@@ -192,6 +210,60 @@ pub fn edit_mask(
         ));
     }
     Ok(report)
+}
+
+/// Ink every background region of `mask` that does not reach its border
+/// (4-neighbours) and holds at most `share` of its inked pixels, in the
+/// colour of `src`; returns the regions and the pixels inked.
+fn fill_holes(mask: &mut Mask, src: &Source, share: f32) -> (usize, usize) {
+    let (w, h) = (mask.width as usize, mask.height as usize);
+    let limit = (f64::from(share) * mask.count() as f64).floor() as usize;
+    let mut seen = vec![false; w * h];
+    let mut queue = VecDeque::new();
+    let (mut holes, mut filled) = (0, 0);
+    for start in 0..w * h {
+        if mask.pixels[start].is_some() || seen[start] {
+            continue;
+        }
+        let mut region = vec![start];
+        let mut border = false;
+        seen[start] = true;
+        queue.push_back(start);
+        while let Some(i) = queue.pop_front() {
+            let (x, y) = (i % w, i / w);
+            if x == 0 || y == 0 || x + 1 == w || y + 1 == h {
+                border = true;
+            }
+            let mut next = |j: usize| {
+                if mask.pixels[j].is_none() && !seen[j] {
+                    seen[j] = true;
+                    region.push(j);
+                    queue.push_back(j);
+                }
+            };
+            if x > 0 {
+                next(i - 1);
+            }
+            if x + 1 < w {
+                next(i + 1);
+            }
+            if y > 0 {
+                next(i - w);
+            }
+            if y + 1 < h {
+                next(i + w);
+            }
+        }
+        if border || region.len() > limit {
+            continue;
+        }
+        holes += 1;
+        filled += region.len();
+        for i in region {
+            mask.pixels[i] = Some(Ink::Rgb(src.rgb((i % w) as u32, (i / w) as u32)));
+        }
+    }
+    (holes, filled)
 }
 
 /// Keep the largest 8-connected inked region; returns the pixels removed.

@@ -133,8 +133,10 @@ off the flat views.
    legs when a 480 pixel view is averaged into it: pass `downscale` (or
    run `pixelate_views` first and check its `png`) so each view becomes
    pixel art at the cell grid, with a few shared colours, crisp edges, the
-   small salient features kept at least a cell, and parts thinner than a
-   cell kept inked. Give the box with one axis, such as `size: [null, 20,
+   small salient features kept at least a cell, parts thinner than a
+   cell kept inked, and drawn lines (an eye's ring, a mouth) kept as a line
+   of cells. White eyes on a white sheet are keyed out as background:
+   pass `fillHoles: true` to bring them back. Give the box with one axis, such as `size: [null, 20,
    null]`, and the rest follows the views.
 4. **Paint the patterns.** An imported mesh smeared on its hidden sides, or
    a blockout that needs the whole sheet's colours, takes them in ONE

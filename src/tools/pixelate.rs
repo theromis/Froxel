@@ -19,7 +19,15 @@
 //!   their surroundings: eyes, pupils, teeth, nostrils, spots) keep at
 //!   least `min_cells` cells, smallest first so a pupil keeps its place
 //!   inside the eye; and a cell on the midline of a part thinner than a
-//!   cell (a fin, a leg, a whisker) stays inked from a `thin` share of ink.
+//!   cell (a fin, a leg, a whisker) stays inked from a `thin` share of ink;
+//! - drawn lines thinner than a cell (an eye's ring, a mouth, a belly's
+//!   edge) lose every cell's vote to the fill on both sides, so a cell a
+//!   stroke's midline runs through for `length` of a cell takes the
+//!   stroke's colour (`lines`). The outline along the silhouette is a line
+//!   too, but a dark rim painted onto a model's edge cells is seldom
+//!   wanted, so it is kept only with `outline`; without it its pixels vote
+//!   only where nothing else does, so no stray dark cell is left on the
+//!   rim.
 
 use super::colors::{self, Guard, Lab};
 use super::{Ink, Mask, Side};
@@ -59,6 +67,24 @@ impl Default for Features {
     }
 }
 
+/// How drawn lines thinner than a cell are kept.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Lines {
+    /// How far a stroke's midline must run through a cell, in cells.
+    pub length: f32,
+    /// Oklab distance between the stroke's colour and the cell's vote.
+    pub contrast: f32,
+}
+
+impl Default for Lines {
+    fn default() -> Self {
+        Self {
+            length: 0.6,
+            contrast: 0.08,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct PixelateSpec {
     /// Clusters of the shared palette.
@@ -74,6 +100,11 @@ pub struct PixelateSpec {
     /// its eight inked neighbours share takes their commonest colour.
     /// Feature cells are kept.
     pub despeckle: u32,
+    /// Lines thinner than a cell keep a line of cells; `None` leaves them
+    /// to the vote.
+    pub lines: Option<Lines>,
+    /// With `lines`, the outline along the silhouette is kept too.
+    pub outline: bool,
 }
 
 impl Default for PixelateSpec {
@@ -85,6 +116,8 @@ impl Default for PixelateSpec {
             thin: Some(0.25),
             features: Some(Features::default()),
             despeckle: 1,
+            lines: Some(Lines::default()),
+            outline: false,
         }
     }
 }
@@ -118,6 +151,8 @@ pub struct PixelView {
     /// Cells inked by the thin rule under `coverage`.
     pub thin: usize,
     pub features: Vec<Feature>,
+    /// Cells a drawn line holds.
+    pub lines: usize,
 }
 
 impl PixelView {
@@ -338,6 +373,14 @@ pub fn pixelate(
             return Err("features minCells must be 1..16".into());
         }
     }
+    if let Some(l) = &spec.lines {
+        if !(0.0..=4.0).contains(&l.length) {
+            return Err("lines length must be 0..4 cells".into());
+        }
+        if !(0.0..=1.5).contains(&l.contrast) {
+            return Err("lines contrast must be 0..1.5 (an Oklab distance)".into());
+        }
+    }
     for (i, (side, mask)) in views.iter().enumerate() {
         if views[..i].iter().any(|(s, _)| s == side) {
             return Err(format!("view {} is given twice", side.name()));
@@ -477,6 +520,15 @@ fn pixelate_view(
         let (x, y) = (x as i64, y as i64);
         (d >= at(x - 1, y) && d >= at(x + 1, y)) || (d >= at(x, y - 1) && d >= at(x, y + 1))
     };
+    let strokes = spec.lines.map(|_| Strokes::new(src, cell_px));
+    // Outline pixels along the silhouette vote only where nothing else
+    // does, unless the outline is kept.
+    let muted = |i: usize| -> bool {
+        match &strokes {
+            Some(s) => !spec.outline && s.outer[i],
+            None => false,
+        }
+    };
     let mut cells: Vec<Option<usize>> = vec![None; (cols * rows) as usize];
     let mut thin_cells = 0usize;
     // Per cell, the pixels of its footprint (half-open pixel ranges).
@@ -547,7 +599,9 @@ fn pixelate_view(
                         continue;
                     };
                     let tx = 1.0 - 0.8 * ((x as f64 + 0.5 - cx).abs() / hx).min(1.0);
-                    if src.dist[y * w + x] > FRINGE {
+                    if muted(y * w + x) {
+                        fringe[l] += 0.05 * tx * ty;
+                    } else if src.dist[y * w + x] > FRINGE {
                         votes[l] += tx * ty;
                     } else {
                         fringe[l] += tx * ty;
@@ -566,8 +620,23 @@ fn pixelate_view(
     }
     let mut features = Vec::new();
     let mut locked = vec![false; cells.len()];
+    let mut line_cells = 0;
     if let Some(f) = spec.features {
         features = keep_features(src, grid, &mut cells, &mut locked, &f, centres, fx, fy);
+    }
+    if let (Some(l), Some(s)) = (spec.lines, &strokes) {
+        line_cells = keep_lines(
+            src,
+            s,
+            grid,
+            &mut cells,
+            &mut locked,
+            &l,
+            spec.outline,
+            centres,
+            fx,
+            fy,
+        );
     }
     despeckle(&mut cells, &locked, grid, spec.despeckle);
     let inked = cells.iter().filter(|c| c.is_some()).count();
@@ -579,7 +648,235 @@ fn pixelate_view(
         inked,
         thin: thin_cells,
         features,
+        lines: line_cells,
     })
+}
+
+/// The drawn strokes of a view: pixels of colour regions thinner than a
+/// cell, their midlines, and which lie along the silhouette.
+struct Strokes {
+    /// On the midline of a stroke.
+    ridge: Vec<bool>,
+    /// A stroke pixel along the silhouette (the outline).
+    outer: Vec<bool>,
+}
+
+impl Strokes {
+    fn new(src: &Source, cell_px: f32) -> Self {
+        let (w, h) = (src.w, src.h);
+        let n = w * h;
+        // The anti-aliased fringe along the silhouette counts as
+        // background: its in-between shades would otherwise form thin
+        // rings of their own between the outline and the background.
+        let lab: Vec<Option<usize>> = (0..n)
+            .map(|i| src.label[i].filter(|_| src.dist[i] > FRINGE))
+            .collect();
+        let other = |i: usize, x: i64, y: i64| -> bool {
+            x < 0
+                || y < 0
+                || x >= w as i64
+                || y >= h as i64
+                || lab[y as usize * w + x as usize] != lab[i]
+        };
+        // Distance to the nearest pixel of another colour or background.
+        let interior: Vec<bool> = (0..n)
+            .map(|i| {
+                let (x, y) = ((i % w) as i64, (i / w) as i64);
+                lab[i].is_some()
+                    && !(other(i, x - 1, y)
+                        || other(i, x + 1, y)
+                        || other(i, x, y - 1)
+                        || other(i, x, y + 1))
+            })
+            .collect();
+        let edge = background_distance(&interior, w, h);
+        // Regions of one colour (4-neighbours), their half thickness, and
+        // whether they meet the background.
+        let max_half = (0.3 * cell_px).max(1.0);
+        let mut region = vec![usize::MAX; n];
+        let mut thin = Vec::new();
+        let mut open = Vec::new();
+        let mut queue = std::collections::VecDeque::new();
+        for start in 0..n {
+            if lab[start].is_none() || region[start] != usize::MAX {
+                continue;
+            }
+            let id = thin.len();
+            let mut half = 0.0f32;
+            let mut touches = false;
+            region[start] = id;
+            queue.push_back(start);
+            while let Some(i) = queue.pop_front() {
+                half = half.max(edge[i]);
+                let (x, y) = ((i % w) as i64, (i / w) as i64);
+                for (nx, ny) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)] {
+                    let outside = nx < 0 || ny < 0 || nx >= w as i64 || ny >= h as i64;
+                    if outside || lab[ny as usize * w + nx as usize].is_none() {
+                        touches = true;
+                    } else if !other(i, nx, ny) {
+                        let j = ny as usize * w + nx as usize;
+                        if region[j] == usize::MAX {
+                            region[j] = id;
+                            queue.push_back(j);
+                        }
+                    }
+                }
+            }
+            thin.push(half <= max_half);
+            open.push(touches);
+        }
+        let mut ridge = vec![false; n];
+        let mut outer = vec![false; n];
+        for i in 0..n {
+            if lab[i].is_none() || !thin[region[i]] {
+                continue;
+            }
+            let d = edge[i];
+            let (x, y) = ((i % w) as i64, (i / w) as i64);
+            // Each neighbour across the stroke is another colour or no
+            // further from the edge, and one of them nearer.
+            let across = |(ax, ay): (i64, i64)| -> bool {
+                let side = |nx: i64, ny: i64| -> (bool, bool) {
+                    if other(i, nx, ny) {
+                        (true, true)
+                    } else {
+                        let e = edge[ny as usize * w + nx as usize];
+                        (e <= d, e < d)
+                    }
+                };
+                let (a_ok, a_less) = side(x - ax, y - ay);
+                let (b_ok, b_less) = side(x + ax, y + ay);
+                a_ok && b_ok && (a_less || b_less)
+            };
+            ridge[i] = across((1, 0)) || across((0, 1));
+            // The outline: a stroke that meets the background, and this
+            // pixel of it near the background rather than an inner ring.
+            outer[i] = open[region[i]] && src.dist[i] <= 2.0 * d + 2.0 + FRINGE;
+        }
+        Self { ridge, outer }
+    }
+}
+
+/// Give every cell a stroke's midline runs through for `l.length` of a
+/// cell the stroke's colour, when it stands `l.contrast` from the cell's
+/// vote; such cells are locked against the despeckle, and a feature's cells
+/// are not taken. Outline strokes count
+/// only with `outline`. Returns the cells a line holds.
+#[allow(clippy::too_many_arguments)]
+fn keep_lines(
+    src: &Source,
+    strokes: &Strokes,
+    grid: [u32; 2],
+    cells: &mut [Option<usize>],
+    locked: &mut [bool],
+    l: &Lines,
+    outline: bool,
+    centres: &[Lab],
+    fx: f64,
+    fy: f64,
+) -> usize {
+    let w = src.w;
+    let [cols, rows] = grid;
+    let cell_px = fx.min(fy);
+    let ncol = centres.len() + 1;
+    // Midline pixels of each colour under each cell, by pixel centre.
+    let mut counts: std::collections::HashMap<usize, Vec<u32>> = Default::default();
+    for (i, on) in strokes.ridge.iter().enumerate() {
+        if !on || (!outline && strokes.outer[i]) {
+            continue;
+        }
+        let Some(label) = src.label[i] else { continue };
+        let (x, y) = (i % w, i / w);
+        let col = ((x as f64 + 0.5) / fx).floor().min(f64::from(cols) - 1.0) as u32;
+        let row = ((y as f64 + 0.5) / fy).floor().min(f64::from(rows) - 1.0) as u32;
+        let tally = counts
+            .entry((row * cols + col) as usize)
+            .or_insert_with(|| vec![0; ncol.max(label + 1)]);
+        if tally.len() <= label {
+            tally.resize(label + 1, 0);
+        }
+        tally[label] += 1;
+    }
+    let need = (f64::from(l.length) * cell_px).max(1.0);
+    let before = cells.to_vec();
+    let mut changed = vec![false; cells.len()];
+    let mut held = 0;
+    let mut keys: Vec<usize> = counts.keys().copied().collect();
+    keys.sort_unstable();
+    for c in keys {
+        let Some(own) = cells[c] else { continue };
+        if locked[c] {
+            continue;
+        }
+        let tally = &counts[&c];
+        let Some((label, n)) = tally
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.cmp(b.1).then(b.0.cmp(&a.0)))
+        else {
+            continue;
+        };
+        if f64::from(*n) < need {
+            continue;
+        }
+        if label != own {
+            let distinct = match (centres.get(label), centres.get(own)) {
+                (Some(a), Some(b)) => colors::distance(*a, *b) >= l.contrast,
+                _ => true,
+            };
+            if !distinct {
+                continue;
+            }
+            cells[c] = Some(label);
+            changed[c] = true;
+        }
+        locked[c] = true;
+        held += 1;
+    }
+    // A patch of one colour (a small mouth between its outline strokes)
+    // that lines took whole comes back.
+    let (cols, rows) = (cols as usize, rows as usize);
+    let mut seen = vec![false; cells.len()];
+    for start in 0..cells.len() {
+        let Some(label) = before[start] else { continue };
+        if seen[start] {
+            continue;
+        }
+        let mut patch = vec![start];
+        seen[start] = true;
+        let mut head = 0;
+        while head < patch.len() {
+            let i = patch[head];
+            head += 1;
+            let (x, y) = (i % cols, i / cols);
+            let mut near = |j: usize| {
+                if !seen[j] && before[j] == Some(label) {
+                    seen[j] = true;
+                    patch.push(j);
+                }
+            };
+            if x > 0 {
+                near(i - 1);
+            }
+            if x + 1 < cols {
+                near(i + 1);
+            }
+            if y > 0 {
+                near(i - cols);
+            }
+            if y + 1 < rows {
+                near(i + cols);
+            }
+        }
+        if patch.iter().all(|&i| changed[i]) {
+            for i in patch {
+                cells[i] = before[i];
+                locked[i] = false;
+                held -= 1;
+            }
+        }
+    }
+    held
 }
 
 /// Give each small salient region of `src` at least `f.min_cells` cells of

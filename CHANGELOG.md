@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Added
+
+- Pixel-art lines: `pixelate_views` (and `downscale` on `carve_from_views`,
+  `paint_from_views`, and `optimize_to_views`; Rhai `pixelate_views`, the
+  Pixelate views section's Lines, `froxel pixelate`) keeps a drawn line
+  thinner than a cell (an eye's ring, a mouth, a belly's edge) as a line of
+  cells in its colour (`lines`, on by default), where the vote used to give
+  every cell to the fill around it. `outline` keeps the silhouette's outline
+  too; without it the outline's pixels vote only where nothing else does,
+  so no stray dark cell is left on the rim.
+- Fill holes: the mask edit `fillHoles` (every views tool and
+  `compare_silhouette`, the Compare section's and Pixelate views' Fill
+  holes, `froxel pixelate --fill-holes`) inks again, in the image's colour,
+  the background regions a view encloses, so white eyes and teeth on a
+  white sheet are no longer keyed out as background.
+
 ## 0.3.2 – 2026-11-10
 
 ### Fixed

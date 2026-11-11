@@ -566,6 +566,8 @@ pub struct ComparePanel {
     /// Rectangles to erase, `x y w h` per line, in image pixels.
     pub erase: String,
     pub keep_largest: bool,
+    /// Ink again the background regions the concept encloses.
+    pub fill_holes: bool,
 }
 
 impl Default for ComparePanel {
@@ -585,6 +587,7 @@ impl Default for ComparePanel {
             invert_mask: false,
             erase: String::new(),
             keep_largest: false,
+            fill_holes: false,
         }
     }
 }
@@ -921,6 +924,12 @@ pub struct PixelatePanel {
     pub features: bool,
     pub thin: bool,
     pub despeckle: i32,
+    /// Drawn lines thinner than a cell keep a line of cells.
+    pub draw_lines: bool,
+    /// With lines, the outline along the silhouette too.
+    pub outline: bool,
+    /// Ink again the background regions a view encloses (white eyes).
+    pub fill_holes: bool,
     /// Where the pixelated views are written.
     pub png: String,
     /// One line per view from the last run.
@@ -937,6 +946,9 @@ impl Default for PixelatePanel {
             features: true,
             thin: true,
             despeckle: 1,
+            draw_lines: true,
+            outline: false,
+            fill_holes: false,
             png: String::new(),
             lines: Vec::new(),
         }
@@ -976,6 +988,11 @@ impl PixelatePanel {
         args["features"] = json!(self.features);
         args["thin"] = if self.thin { json!(0.25) } else { json!(false) };
         args["despeckle"] = json!(self.despeckle.clamp(0, 16));
+        args["lines"] = json!(self.draw_lines);
+        args["outline"] = json!(self.draw_lines && self.outline);
+        if self.fill_holes {
+            args["fillHoles"] = json!(true);
+        }
         if !self.png.trim().is_empty() {
             args["png"] = json!(self.png.trim());
         }
@@ -1142,6 +1159,9 @@ impl ComparePanel {
         }
         if self.keep_largest {
             args["keepLargest"] = json!(true);
+        }
+        if self.fill_holes {
+            args["fillHoles"] = json!(true);
         }
         Ok(())
     }
@@ -1588,13 +1608,14 @@ impl Session {
                 let mut lines = Vec::new();
                 for view in reply["views"].as_array().into_iter().flatten() {
                     lines.push(format!(
-                        "{}: {} x {} cells, {} inked, {} thin, {} features kept",
+                        "{}: {} x {} cells, {} inked, {} thin, {} features kept, {} line cells",
                         view["view"].as_str().unwrap_or("?"),
                         view["grid"][0],
                         view["grid"][1],
                         view["inked"],
                         view["thin"],
-                        view["features"].as_array().map_or(0, Vec::len)
+                        view["features"].as_array().map_or(0, Vec::len),
+                        view["lines"]
                     ));
                 }
                 self.status = format!(

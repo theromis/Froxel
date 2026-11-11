@@ -1620,13 +1620,14 @@ pub fn pixelate(args: &[String]) -> i32 {
                             }
                             for view in reply["views"].as_array().into_iter().flatten() {
                                 println!(
-                                    "{}: {} x {} cells, {} inked, {} thin, {} features",
+                                    "{}: {} x {} cells, {} inked, {} thin, {} features, {} line cells",
                                     view["view"].as_str().unwrap_or("?"),
                                     view["grid"][0],
                                     view["grid"][1],
                                     view["inked"],
                                     view["thin"],
-                                    view["features"].as_array().map_or(0, Vec::len)
+                                    view["features"].as_array().map_or(0, Vec::len),
+                                    view["lines"]
                                 );
                             }
                             println!("{} colours; wrote {}", reply["colors"], path.display());
@@ -1651,6 +1652,7 @@ pub fn pixelate(args: &[String]) -> i32 {
 const PIXELATE_HELP: &str = "\
 usage: froxel pixelate (--args <views.json> | --sheet <views.png>)
                        --size X,Y,Z [--colors N] [--no-features] [--no-thin]
+                       [--no-lines] [--outline] [--fill-holes]
                        [--out <views.json>] [--png <pixels.png>] [--png-scale N]
 
 Turns an orthographic views sheet into pixel art at the cell grid, as MCP
@@ -1658,7 +1660,13 @@ pixelate_views does, and writes no voxels: one small palette shared by
 every view (k-means in Oklab with the accent guard), each cell the colour
 that holds most of its footprint, small salient features (eyes, pupils,
 teeth, nostrils, spots) kept at least a cell, and a cell on the midline of a
-part thinner than a cell (a fin, a leg) kept inked. --args is a JSON file of
+part thinner than a cell (a fin, a leg) kept inked. A drawn line thinner
+than a cell (an eye's ring, a mouth) keeps a line of cells in its colour;
+--no-lines leaves lines to the vote, and --outline keeps the outline along
+the silhouette too (off by default: a dark rim on a model's edge cells is
+seldom wanted). --fill-holes inks again the background regions a view
+encloses (up to a tenth of its ink) in their own colour, so white eyes and
+teeth on a white sheet are not keyed out as background. --args is a JSON file of
 pixelate_views arguments ({views: [{view, path, crop}], ...}); --sheet reads
 a sheet's 2 x 2 layout as froxel measure finds it. --size gives the box in
 cells, x (width), y (length), z (height); 0 or _ follows the views'
@@ -1725,6 +1733,9 @@ pub(crate) fn pixelate_args(
             }
             "--no-features" => params["features"] = json!(false),
             "--no-thin" => params["thin"] = json!(false),
+            "--no-lines" => params["lines"] = json!(false),
+            "--outline" => params["outline"] = json!(true),
+            "--fill-holes" => params["fillHoles"] = json!(true),
             "--out" => out = Some(PathBuf::from(value()?)),
             "--png" => params["png"] = json!(value()?),
             "--png-scale" => {

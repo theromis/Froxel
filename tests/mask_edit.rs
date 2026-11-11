@@ -301,3 +301,64 @@ fn a_script_view_drops_a_speck_and_an_erased_corner() {
         .unwrap_err();
     assert!(err.contains("flood"), "{err}");
 }
+
+#[test]
+fn fill_holes_brings_back_a_white_eye_the_background_rule_keyed_out() {
+    // A brown disc on white with a near-white eye ringed in dark: the eye
+    // is within the background tolerance, so it reads as a hole.
+    let path = write("eye.png", 80, 80, |x, y| {
+        let (dx, dy) = (x as i32 - 40, y as i32 - 40);
+        let (ex, ey) = (x as i32 - 40, y as i32 - 30);
+        let r = dx * dx + dy * dy;
+        let e = ex * ex + ey * ey;
+        if r > 36 * 36 {
+            [255, 255, 255, 255]
+        } else if e <= 8 * 8 {
+            [248, 248, 246, 255]
+        } else if e <= 11 * 11 {
+            [20, 20, 20, 255]
+        } else {
+            BODY
+        }
+    });
+    let mut session = Session::new();
+    let args = |fill: Value| {
+        json!({
+            "views": [{"view": "front", "path": path}],
+            "size": [16, null, null],
+            "colors": 4,
+            "fillHoles": fill
+        })
+    };
+    let near_white = |reply: &Value| {
+        reply["legend"]
+            .as_object()
+            .unwrap()
+            .values()
+            .any(|hex| hex.as_str().unwrap() > "#e0e0e0")
+    };
+    let holed =
+        crate::remote::apply(&mut session, "image.pixelate_views", &args(json!(false))).unwrap();
+    assert!(!near_white(&holed), "{holed}");
+    let filled =
+        crate::remote::apply(&mut session, "image.pixelate_views", &args(json!(true))).unwrap();
+    assert!(near_white(&filled), "{filled}");
+    // A share too small for the eye leaves it a hole.
+    let small =
+        crate::remote::apply(&mut session, "image.pixelate_views", &args(json!(0.01))).unwrap();
+    assert!(!near_white(&small), "{small}");
+    // Rows have no colours to fill a hole with: a sheet-wide fillHoles
+    // passes them by, as flood does, and their own is refused.
+    let rows = |fill: Value, own: Value| {
+        crate::remote::apply(
+            &mut Session::new(),
+            "image.pixelate_views",
+            &json!({"views": [{"view": "front", "rows": ["aa", "aa"],
+                               "legend": {"a": "#808080"}, "fillHoles": own}],
+                    "size": [2, null, null], "fillHoles": fill}),
+        )
+    };
+    assert!(rows(json!(true), Value::Null).is_ok());
+    let rows = rows(Value::Null, json!(true));
+    assert!(rows.unwrap_err().contains("fillHoles"));
+}
