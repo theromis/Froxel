@@ -86,6 +86,7 @@ const PIXELATE: &[&str] = &[
     "features",
     "lines",
     "outline",
+    "mergeLines",
 ];
 const CARVE: &[&str] = &[
     "downscale",

@@ -11,7 +11,9 @@
   cells in its colour (`lines`, on by default), where the vote used to give
   every cell to the fill around it. `outline` keeps the silhouette's outline
   too; without it the outline's pixels vote only where nothing else does,
-  so no stray dark cell is left on the rim.
+  so no stray dark cell is left on the rim. `mergeLines` (default 0.2)
+  merges the stroke colours near the commonest one, such as an outline
+  blended into a shadow, so a view has one outline colour.
 - Fill holes: the mask edit `fillHoles` (every views tool and
   `compare_silhouette`, the Compare section's and Pixelate views' Fill
   holes, `froxel pixelate --fill-holes`) inks again, in the image's colour,

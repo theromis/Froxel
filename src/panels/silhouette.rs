@@ -138,10 +138,11 @@ pub(super) fn pixelate(ui: &mut Ui, session: &mut Session) {
                     .on_hover_text("Despeckle passes.");
             });
             ui.end_row();
-            label(ui, "Lines", "Lines: a drawn line thinner than a cell (an eye's ring, a mouth) keeps a line of cells in its colour instead of losing every cell's vote to the fill (MCP lines). Outline: the outline along the silhouette is kept too, as a rim of cells (MCP outline; off, its pixels vote only where nothing else does). Fill holes: white eyes and teeth on a white sheet, keyed out as background, are inked again in their own colour (MCP fillHoles).");
+            label(ui, "Lines", "Lines: a drawn line thinner than a cell (an eye's ring, a mouth) keeps a line of cells in its colour instead of losing every cell's vote to the fill (MCP lines). Outline: the outline along the silhouette is kept too, as a rim of cells (MCP outline; off, its pixels vote only where nothing else does). Merge: stroke colours near the commonest one, such as an outline blended into a shadow, become one outline colour (MCP mergeLines). Fill holes: white eyes and teeth on a white sheet, keyed out as background, are inked again in their own colour (MCP fillHoles).");
             ui.horizontal_wrapped(|ui| {
                 ui.checkbox(&mut panel.draw_lines, "Lines");
                 ui.add_enabled(panel.draw_lines, egui::Checkbox::new(&mut panel.outline, "Outline"));
+                ui.add_enabled(panel.draw_lines, egui::Checkbox::new(&mut panel.merge_lines, "Merge"));
                 ui.checkbox(&mut panel.fill_holes, "Fill holes");
             });
             ui.end_row();

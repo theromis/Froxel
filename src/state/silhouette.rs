@@ -928,6 +928,8 @@ pub struct PixelatePanel {
     pub draw_lines: bool,
     /// With lines, the outline along the silhouette too.
     pub outline: bool,
+    /// With lines, merge stroke colours near the commonest one.
+    pub merge_lines: bool,
     /// Ink again the background regions a view encloses (white eyes).
     pub fill_holes: bool,
     /// Where the pixelated views are written.
@@ -948,6 +950,7 @@ impl Default for PixelatePanel {
             despeckle: 1,
             draw_lines: true,
             outline: false,
+            merge_lines: true,
             fill_holes: false,
             png: String::new(),
             lines: Vec::new(),
@@ -990,6 +993,9 @@ impl PixelatePanel {
         args["despeckle"] = json!(self.despeckle.clamp(0, 16));
         args["lines"] = json!(self.draw_lines);
         args["outline"] = json!(self.draw_lines && self.outline);
+        if !self.merge_lines {
+            args["mergeLines"] = json!(false);
+        }
         if self.fill_holes {
             args["fillHoles"] = json!(true);
         }

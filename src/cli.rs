@@ -1630,7 +1630,12 @@ pub fn pixelate(args: &[String]) -> i32 {
                                     view["lines"]
                                 );
                             }
-                            println!("{} colours; wrote {}", reply["colors"], path.display());
+                            println!(
+                                "{} colours ({} stroke colours merged); wrote {}",
+                                reply["colors"],
+                                reply["mergedLines"],
+                                path.display()
+                            );
                         }
                         None => println!("{text}"),
                     }
@@ -1652,7 +1657,7 @@ pub fn pixelate(args: &[String]) -> i32 {
 const PIXELATE_HELP: &str = "\
 usage: froxel pixelate (--args <views.json> | --sheet <views.png>)
                        --size X,Y,Z [--colors N] [--no-features] [--no-thin]
-                       [--no-lines] [--outline] [--fill-holes]
+                       [--no-lines] [--outline] [--no-merge-lines] [--fill-holes]
                        [--out <views.json>] [--png <pixels.png>] [--png-scale N]
 
 Turns an orthographic views sheet into pixel art at the cell grid, as MCP
@@ -1664,7 +1669,9 @@ part thinner than a cell (a fin, a leg) kept inked. A drawn line thinner
 than a cell (an eye's ring, a mouth) keeps a line of cells in its colour;
 --no-lines leaves lines to the vote, and --outline keeps the outline along
 the silhouette too (off by default: a dark rim on a model's edge cells is
-seldom wanted). --fill-holes inks again the background regions a view
+seldom wanted). Stroke colours near the commonest one (an outline blended
+into a shadow) merge into it, so a view has one outline colour;
+--no-merge-lines keeps them apart. --fill-holes inks again the background regions a view
 encloses (up to a tenth of its ink) in their own colour, so white eyes and
 teeth on a white sheet are not keyed out as background. --args is a JSON file of
 pixelate_views arguments ({views: [{view, path, crop}], ...}); --sheet reads
@@ -1735,6 +1742,7 @@ pub(crate) fn pixelate_args(
             "--no-thin" => params["thin"] = json!(false),
             "--no-lines" => params["lines"] = json!(false),
             "--outline" => params["outline"] = json!(true),
+            "--no-merge-lines" => params["mergeLines"] = json!(false),
             "--fill-holes" => params["fillHoles"] = json!(true),
             "--out" => out = Some(PathBuf::from(value()?)),
             "--png" => params["png"] = json!(value()?),

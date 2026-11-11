@@ -1962,7 +1962,8 @@ fn downscale_arg(params: &Value) -> Result<Option<Value>, String> {
 /// `maxAccents`), `coverage` (0.5), `thin` (a share, default 0.25, or
 /// false), `despeckle` (passes, default 1), `features` (true, false, or
 /// `{minArea, maxArea, contrast, minCells}`), `lines` (true, false, or
-/// `{length, contrast}`), and `outline` (default false).
+/// `{length, contrast}`), `outline` (default false), and `mergeLines` (an
+/// Oklab distance, default 0.2, or false).
 pub(crate) fn pixelate_spec(opts: &Value) -> Result<crate::tools::PixelateSpec, String> {
     use crate::tools::{PixelFeatures, PixelateSpec};
     let mut spec = PixelateSpec::default();
@@ -2012,6 +2013,15 @@ pub(crate) fn pixelate_spec(opts: &Value) -> Result<crate::tools::PixelateSpec, 
         Some(_) => return Err("lines must be true, false, or {length, contrast}".into()),
     };
     spec.outline = opt_bool(opts, "outline")?.unwrap_or(false);
+    spec.merge_lines = match opts.get("mergeLines") {
+        None | Some(Value::Null) | Some(Value::Bool(true)) => spec.merge_lines,
+        Some(Value::Bool(false)) => None,
+        Some(found) => Some(
+            found
+                .as_f64()
+                .ok_or("mergeLines must be an Oklab distance 0..1.5, or false")? as f32,
+        ),
+    };
     spec.features = match opts.get("features") {
         None | Some(Value::Null) | Some(Value::Bool(true)) => spec.features,
         Some(Value::Bool(false)) => None,
@@ -2093,6 +2103,7 @@ pub(crate) fn pixelate_reply(p: &crate::tools::Pixelated, rows: bool) -> Map<Str
     );
     reply.insert("colors".into(), json!(p.colours.len()));
     reply.insert("accents".into(), json!(p.accents));
+    reply.insert("mergedLines".into(), json!(p.merged));
     reply.insert("legend".into(), Value::Object(legend.clone()));
     reply.insert(
         "views".into(),

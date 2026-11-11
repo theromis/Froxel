@@ -172,7 +172,8 @@ server is still running. A server started with `--watch` reloads by itself.
    at the cell grid, a few shared Oklab colours, crisp edges, eyes, pupils, teeth, nostrils, and spots
    kept at least a cell (`features`), parts thinner than a cell kept inked (`thin`), drawn lines thinner
    than a cell (an eye's ring, a mouth) kept as a line of cells (`lines`, on by default; `outline: true`
-   keeps the silhouette's outline too, as a sprite has, off by default so no dark rim lands on the model),
+   keeps the silhouette's outline too, as a sprite has, off by default so no dark rim lands on the model; `mergeLines`, on by default, folds an outline's
+   anti-aliased shades into one outline colour),
    so the eyes do not average into smears and the legs do not vanish. If the sheet's eyes or teeth are
    white on a white background, the background rule keys them out as holes: pass `fillHoles: true`
    (top level, every view) and check the `png` has the whites back. An image-to-3D mesh for a small creature goes in with

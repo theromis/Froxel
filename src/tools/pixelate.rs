@@ -27,7 +27,11 @@
 //!   too, but a dark rim painted onto a model's edge cells is seldom
 //!   wanted, so it is kept only with `outline`; without it its pixels vote
 //!   only where nothing else does, so no stray dark cell is left on the
-//!   rim.
+//!   rim. The shades an anti-aliased stroke leaves (an outline blended
+//!   into a shadow) cluster apart from the stroke, so colours that live
+//!   mostly in strokes and lie within `merge_lines` of the commonest
+//!   stroke colour are merged into it: one outline colour, as an artist
+//!   draws it.
 
 use super::colors::{self, Guard, Lab};
 use super::{Ink, Mask, Side};
@@ -105,6 +109,10 @@ pub struct PixelateSpec {
     pub lines: Option<Lines>,
     /// With `lines`, the outline along the silhouette is kept too.
     pub outline: bool,
+    /// With `lines`, colours that live mostly in strokes and lie within
+    /// this Oklab distance of the commonest stroke colour are merged into
+    /// it; `None` keeps them apart.
+    pub merge_lines: Option<f32>,
 }
 
 impl Default for PixelateSpec {
@@ -118,6 +126,7 @@ impl Default for PixelateSpec {
             despeckle: 1,
             lines: Some(Lines::default()),
             outline: false,
+            merge_lines: Some(0.2),
         }
     }
 }
@@ -194,6 +203,8 @@ pub struct Pixelated {
     pub colours: Vec<Option<[u8; 3]>>,
     /// How many of the colours the accent guard kept.
     pub accents: usize,
+    /// Stroke colours merged into the commonest stroke colour.
+    pub merged: usize,
     /// The box in cells; 0 on an axis no view spans.
     pub size: [u32; 3],
     pub views: Vec<PixelView>,
@@ -373,6 +384,11 @@ pub fn pixelate(
             return Err("features minCells must be 1..16".into());
         }
     }
+    if let Some(m) = spec.merge_lines {
+        if !(0.0..=1.5).contains(&m) {
+            return Err("mergeLines must be 0..1.5 (an Oklab distance)".into());
+        }
+    }
     if let Some(l) = &spec.lines {
         if !(0.0..=4.0).contains(&l.length) {
             return Err("lines length must be 0..4 cells".into());
@@ -437,12 +453,71 @@ pub fn pixelate(
     if samples.is_empty() {
         samples = fallback;
     }
-    let (centres, accents) = if samples.is_empty() {
+    let (mut centres, mut accents) = if samples.is_empty() {
         (Vec::new(), 0)
     } else {
         let clusters = colors::cluster(&samples, spec.colors, spec.guard);
         (clusters.centres, clusters.accents)
     };
+    // Each clustered colour's index in the final palette.
+    let clustered = centres.clone();
+    let mut remap: Vec<usize> = (0..centres.len()).collect();
+    let nearest_label = |ink: Ink, remap: &[usize]| -> Option<usize> {
+        ink_rgb(ink, palette).map(|rgb| remap[colors::nearest(colors::oklab(rgb), &clustered)])
+    };
+    // One outline colour: stroke colours near the commonest one merge.
+    let mut merged = 0;
+    if let (Some(within), Some(_)) = (spec.merge_lines, spec.lines) {
+        let k = centres.len();
+        let mut thin = vec![0usize; k];
+        let mut all = vec![0usize; k];
+        for (((mask, rect, dist), grid), _) in crops.iter().zip(grids).zip(views) {
+            let label: Vec<Option<usize>> = mask
+                .pixels
+                .iter()
+                .map(|p| p.and_then(|ink| nearest_label(ink, &remap)))
+                .collect();
+            let src = Source {
+                w: mask.width as usize,
+                h: mask.height as usize,
+                label,
+                dist: dist.clone(),
+                rect: *rect,
+            };
+            let cell_px = (src.w as f64 / f64::from(grid[0].max(1)))
+                .min(src.h as f64 / f64::from(grid[1].max(1))) as f32;
+            let strokes = Strokes::new(&src, cell_px);
+            for (i, l) in src.label.iter().enumerate() {
+                if let Some(l) = l {
+                    if src.dist[i] > FRINGE {
+                        all[*l] += 1;
+                        thin[*l] += usize::from(strokes.thin[i]);
+                    }
+                }
+            }
+        }
+        let stroke = |l: usize| all[l] > 0 && thin[l] * 2 >= all[l];
+        if let Some(main) = (0..k).filter(|l| stroke(*l)).max_by_key(|l| (thin[*l], *l)) {
+            let gone: Vec<usize> = (0..k)
+                .filter(|l| {
+                    *l != main
+                        && stroke(*l)
+                        && colors::distance(centres[*l], centres[main]) <= within
+                })
+                .collect();
+            if !gone.is_empty() {
+                let first_accent = k - accents;
+                accents -= gone.iter().filter(|l| **l >= first_accent).count();
+                merged = gone.len();
+                let kept: Vec<usize> = (0..k).filter(|l| !gone.contains(l)).collect();
+                let new_main = kept.iter().position(|l| *l == main).expect("main kept");
+                for (l, to) in remap.iter_mut().enumerate() {
+                    *to = kept.iter().position(|x| *x == l).unwrap_or(new_main);
+                }
+                centres = kept.iter().map(|l| centres[*l]).collect();
+            }
+        }
+    }
     let mut colours: Vec<Option<[u8; 3]>> =
         centres.iter().map(|c| Some(colors::srgb(*c))).collect();
     let plain_label = plain.then(|| {
@@ -458,9 +533,9 @@ pub fn pixelate(
             .pixels
             .iter()
             .map(|pixel| {
-                pixel.map(|ink| match ink_rgb(ink, palette) {
-                    Some(rgb) => colors::nearest(colors::oklab(rgb), &centres),
-                    None => plain_label.expect("plain ink seen"),
+                pixel.map(|ink| {
+                    nearest_label(ink, &remap)
+                        .unwrap_or_else(|| plain_label.expect("plain ink seen"))
                 })
             })
             .collect();
@@ -478,6 +553,7 @@ pub fn pixelate(
     Ok(Pixelated {
         colours,
         accents,
+        merged,
         size: [0; 3],
         views: out,
     })
@@ -659,6 +735,8 @@ struct Strokes {
     ridge: Vec<bool>,
     /// A stroke pixel along the silhouette (the outline).
     outer: Vec<bool>,
+    /// In a region of one colour thinner than a cell.
+    thin: Vec<bool>,
 }
 
 impl Strokes {
@@ -727,10 +805,12 @@ impl Strokes {
         }
         let mut ridge = vec![false; n];
         let mut outer = vec![false; n];
+        let mut in_thin = vec![false; n];
         for i in 0..n {
             if lab[i].is_none() || !thin[region[i]] {
                 continue;
             }
+            in_thin[i] = true;
             let d = edge[i];
             let (x, y) = ((i % w) as i64, (i / w) as i64);
             // Each neighbour across the stroke is another colour or no
@@ -753,7 +833,11 @@ impl Strokes {
             // pixel of it near the background rather than an inner ring.
             outer[i] = open[region[i]] && src.dist[i] <= 2.0 * d + 2.0 + FRINGE;
         }
-        Self { ridge, outer }
+        Self {
+            ridge,
+            outer,
+            thin: in_thin,
+        }
     }
 }
 

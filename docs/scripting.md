@@ -664,13 +664,15 @@ MCP `pixelate_views`: the views (maps of `rows` and a `legend`; over MCP
 PNG crops of a sheet, on this same code path) as pixel art at the cell
 grid, for a creature 20 to 60 cells long whose eyes, teeth, spots, and thin
 legs a plain carve averages away. It writes no cells: it returns
-`#{size, colors, accents, legend, views}`, each view `#{view, rows, legend,
+`#{size, colors, accents, mergedLines, legend, views}`, each view `#{view, rows, legend,
 grid, inked, thin, lines, source, features}`, ready for `carve_from_views` and
 `paint_from_views`. Options are the MCP ones: `size` (at least one axis;
 `()` follows the views' proportions), `colors`, `accents`, `minShare`,
 `contrast`, `maxAccents`, `coverage`, `thin`, `despeckle`, `features`,
 `lines` (drawn lines thinner than a cell keep a line of cells; default on),
-and `outline` (the silhouette's outline too; default off). `fillHoles` is
+`outline` (the silhouette's outline too; default off), and `mergeLines`
+(stroke colours within this Oklab distance of the commonest one merge into
+it; default 0.2, `false` keeps them apart). `fillHoles` is
 MCP only: it needs a PNG's colours, and rows have none.
 `carve_from_views` and `paint_from_views` take them as `downscale`.
 `png` is MCP only: scripts write no files. `tests/fixtures/examples/pixel_toad.rhai`

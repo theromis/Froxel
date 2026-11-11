@@ -393,3 +393,50 @@ fn the_outline_along_the_silhouette_is_kept_only_with_outline() {
         36 - (28 - cells_of(&ringed, 0, DARK)).min(0)
     );
 }
+
+#[test]
+fn stroke_shades_near_the_outline_merge_into_one_outline_colour() {
+    // An orange square ringed by a dark outline whose inner pixel is a
+    // lighter dark (an outline blended into a shadow), and crossed by a
+    // cream line: the two darks are one stroke colour, the cream is not.
+    const DARK2: [u8; 3] = [78, 70, 38];
+    let view = mask(96, 96, |x, y| {
+        let inside = (8..88).contains(&x) && (8..88).contains(&y);
+        let outer = !((10..86).contains(&x) && (10..86).contains(&y));
+        let inner = !((12..84).contains(&x) && (12..84).contains(&y));
+        inside.then_some(if outer {
+            DARK
+        } else if inner {
+            DARK2
+        } else if (46..48).contains(&y) && (20..76).contains(&x) {
+            CREAM
+        } else {
+            ORANGE
+        })
+    });
+    let views = vec![(Side::Front, view)];
+    let grids = vec![[10, 10]];
+    let spec = PixelateSpec {
+        colors: 3,
+        outline: true,
+        features: None,
+        ..PixelateSpec::default()
+    };
+    let apart = PixelateSpec {
+        merge_lines: None,
+        ..spec.clone()
+    };
+    let two = pixelate(&views, &grids, &apart, &palette()).unwrap();
+    assert_eq!(two.merged, 0);
+    let one = pixelate(&views, &grids, &spec, &palette()).unwrap();
+    assert_eq!(one.merged, 1, "{:?}", one.colours);
+    assert_eq!(one.colours.len(), two.colours.len() - 1);
+    // The rim is one colour, and the cream line is kept.
+    let rows = one.views[0].rows();
+    let rim = rows[0].chars().nth(4).unwrap();
+    assert!(
+        rows.iter().all(|r| r.starts_with(rim) && r.ends_with(rim)),
+        "{rows:?}"
+    );
+    assert!(cells_of(&one, 0, CREAM) >= 5, "{rows:?}");
+}
