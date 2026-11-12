@@ -30,8 +30,11 @@ import urllib.request
 API = "https://api.appstoreconnect.apple.com"
 BUNDLE = "com.lonje.froxel"
 # Versions in these states take a new build and a new submission.
+# READY_FOR_REVIEW is a version added to a review submission that is not sent yet, or one
+# whose submission came back with unresolved issues (App Review asked for information).
 EDITABLE = {
     "PREPARE_FOR_SUBMISSION",
+    "READY_FOR_REVIEW",
     "DEVELOPER_REJECTED",
     "REJECTED",
     "METADATA_REJECTED",
@@ -170,9 +173,12 @@ def main():
             )
         print(f"version {version}: reusing the editable version")
     else:
-        busy = [v["attributes"]["versionString"] for v in versions if v["attributes"]["appStoreState"] != "READY_FOR_SALE"]
+        busy = [v["attributes"] for v in versions if v["attributes"]["appStoreState"] != "READY_FOR_SALE"]
         if busy:
-            sys.exit(f"asc_release: version {busy[0]} is still in review or pending release; finish it first")
+            sys.exit(
+                f"asc_release: version {busy[0]['versionString']} is {busy[0]['appStoreState']} "
+                "(in review or pending release); finish it first"
+            )
         target = client.call(
             "POST",
             "/v1/appStoreVersions",

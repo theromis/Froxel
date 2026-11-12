@@ -136,7 +136,11 @@ The `android` job then releases the bundle on the internal and production
 tracks as complete, which sends production for review. The `ios` job runs
 `tools/asc_release.py`: it waits until App Store Connect has processed the
 build, reuses the editable iOS version or creates one, sets its version and
-What's New, attaches the build, and submits it. The version's release type
+What's New, attaches the build, and submits it. A version left in an open
+review submission, including one App Review answered with unresolved issues,
+counts as editable: the new build replaces the old one in that submission,
+which is sent again. A reply App Review asked for still goes in App Store
+Connect by hand. The version's release type
 (manual or after approval) is kept. Both stores take their release notes from
 the version's `CHANGELOG.md` section through `tools/release_notes.py`; without
 one, Play gets none and the App Store gets "Bug fixes and improvements." A
