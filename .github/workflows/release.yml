@@ -4,7 +4,8 @@
 # and dmg are signed with Developer ID and notarized; without them they get an ad-hoc
 # signature. The other platforms are unsigned. With upload-stores on, the iOS build goes to
 # TestFlight and the Android bundle to a Google Play track; submit-review also sends both
-# for store review (docs/releasing.md).
+# for store review (docs/releasing.md). The store steps are jobs of their own (Google Play,
+# App Store), so a store failure does not stop the draft release.
 name: Release
 # run-name sees only the inputs, so an empty version names the branch instead.
 run-name: Release ${{ inputs.version || format('(Cargo.toml, {0})', github.ref_name) }}
@@ -412,8 +413,6 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
       ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-      PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-      SUBMIT_REVIEW: ${{ inputs.submit-review }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
@@ -484,7 +483,6 @@ jobs:
           aab=$(KEYSTORE="$CARGO_APK_RELEASE_KEYSTORE" packaging/android/bundle.sh)
           cp "$aab" "dist/store/froxel-$VERSION-android.aab"
           echo "Android: App Bundle versionCode $(packaging/build_number.sh "$VERSION")" >>"$GITHUB_STEP_SUMMARY"
-      # Upload the artifacts before the store steps, so a store failure keeps them.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: froxel-${{ env.VERSION }}-android-arm64
@@ -496,24 +494,6 @@ jobs:
           name: store-${{ env.VERSION }}-android
           path: dist/store/*
           if-no-files-found: error
-      - name: Upload to Google Play
-        if: inputs.upload-stores
-        run: |
-          set -euo pipefail
-          if [ -z "$ANDROID_KEYSTORE" ] || [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
-            echo "::error::upload-stores needs ANDROID_KEYSTORE and PLAY_SERVICE_ACCOUNT_JSON"
-            exit 1
-          fi
-          # Internal testers get the build either way. With submit-review the
-          # production release is committed complete, which sends it for review.
-          tracks=(--track internal --status draft)
-          if [ "$SUBMIT_REVIEW" = true ]; then
-            tracks=(--track internal --track production --status completed)
-          fi
-          python3 -u tools/release_notes.py "$VERSION" >"$RUNNER_TEMP/notes.txt"
-          python3 -u tools/play_upload.py "dist/store/froxel-$VERSION-android.aab" \
-            --version "$VERSION" "${tracks[@]}" --notes-file "$RUNNER_TEMP/notes.txt" \
-            | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Remove the keystore
         if: always()
         run: rm -f "$RUNNER_TEMP/release.keystore"
@@ -523,17 +503,13 @@ jobs:
     needs: version
     # App Store Connect takes builds made with Xcode 26 and the iOS 26 SDK or later.
     runs-on: macos-26
-    # submit-review waits for App Store Connect to process the build.
-    timeout-minutes: 150
+    timeout-minutes: 90
     env:
       VERSION: ${{ needs.version.outputs.version }}
       IPHONEOS_DEPLOYMENT_TARGET: "16.0"
       IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
       IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
       IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
-      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-      APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
@@ -631,7 +607,6 @@ jobs:
           if [ "${IOS_APP_STORE:-false}" = true ]; then out=store; fi
           (cd dist/stage && zip -qr -X "../$out/$ipa" Payload)
           unzip -l "dist/$out/$ipa" | tail -n 1
-      # Upload the artifacts before the store steps, so a store failure keeps them.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: froxel-${{ env.VERSION }}-ios
@@ -642,12 +617,75 @@ jobs:
           name: store-${{ env.VERSION }}-ios
           path: dist/store/*
           if-no-files-found: ignore
-      # altool reads the key from ~/.appstoreconnect/private_keys/AuthKey_<id>.p8.
-      - name: Upload to TestFlight
-        if: inputs.upload-stores
+      - name: Remove the signing keychain
+        if: always() && env.IOS_SIGN_KEYCHAIN != ''
+        run: |
+          security delete-keychain "$IOS_SIGN_KEYCHAIN" || true
+          rm -f "$IOS_PROFILE" "$RUNNER_TEMP/profile.plist" "$RUNNER_TEMP/entitlements.plist"
+
+  # The store uploads are jobs of their own: a store failure shows here and does not stop
+  # the draft GitHub Release, which needs only the builds.
+  play:
+    name: Google Play
+    needs: [version, android]
+    if: inputs.upload-stores
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+      PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+      SUBMIT_REVIEW: ${{ inputs.submit-review }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: store-${{ env.VERSION }}-android
+          path: dist/store
+      - name: Upload to Google Play
         run: |
           set -euo pipefail
-          if [ "${IOS_APP_STORE:-false}" != true ]; then
+          if [ -z "$ANDROID_KEYSTORE" ] || [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::error::upload-stores needs ANDROID_KEYSTORE (the bundle's upload key) and PLAY_SERVICE_ACCOUNT_JSON"
+            exit 1
+          fi
+          # Internal testers get the build either way. With submit-review the
+          # production release is committed complete, which sends it for review.
+          tracks=(--track internal --status draft)
+          if [ "$SUBMIT_REVIEW" = true ]; then
+            tracks=(--track internal --track production --status completed)
+          fi
+          python3 -u tools/release_notes.py "$VERSION" >"$RUNNER_TEMP/notes.txt"
+          python3 -u tools/play_upload.py "dist/store/froxel-$VERSION-android.aab" \
+            --version "$VERSION" "${tracks[@]}" --notes-file "$RUNNER_TEMP/notes.txt" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+  app-store:
+    name: App Store
+    needs: [version, ios]
+    if: inputs.upload-stores
+    # altool from Xcode 26: App Store Connect takes builds made with the iOS 26 SDK or later.
+    runs-on: macos-26
+    # submit-review waits for App Store Connect to process the build.
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: store-${{ env.VERSION }}-ios
+          path: dist/store
+        # Without an App Store profile there is no store ipa; the next step says so.
+        continue-on-error: true
+      # altool reads the key from ~/.appstoreconnect/private_keys/AuthKey_<id>.p8.
+      - name: Upload to TestFlight
+        run: |
+          set -euo pipefail
+          if [ ! -f "dist/store/froxel-$VERSION-ios.ipa" ]; then
             echo "::error::upload-stores needs an Apple Distribution certificate and an App Store profile"
             exit 1
           fi
@@ -680,12 +718,9 @@ jobs:
           python3 -u tools/release_notes.py "$VERSION" >"$RUNNER_TEMP/notes.txt"
           python3 -u tools/asc_release.py --version "$VERSION" --build "$BUILD" \
             --notes-file "$RUNNER_TEMP/notes.txt" | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Remove the signing keychain
-        if: always() && env.IOS_SIGN_KEYCHAIN != ''
-        run: |
-          security delete-keychain "$IOS_SIGN_KEYCHAIN" || true
-          rm -f "$IOS_PROFILE" "$RUNNER_TEMP/profile.plist" "$RUNNER_TEMP/entitlements.plist"
-          rm -rf "$HOME/.appstoreconnect"
+      - name: Remove the API key
+        if: always()
+        run: rm -rf "$HOME/.appstoreconnect"
 
   addons:
     name: Godot and Blender add-ons

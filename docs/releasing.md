@@ -98,7 +98,7 @@ number prereleases across their kinds (`alpha.1`, `beta.2`, `rc.3`), keep
 minor and patch below 100, and end each prerelease in a number. The `Version`
 job fails early on a version without a build number.
 
-iOS: the `ios` job runs on `macos-26`, since App Store Connect takes only
+iOS: the `ios` and `App Store` jobs run on `macos-26`, since App Store Connect takes only
 builds made with Xcode 26 and the iOS 26 SDK or later. The app carries
 `packaging/ios/PrivacyInfo.xcprivacy`: no tracking, no collected data, and
 the required-reason APIs the binary links (file timestamps, `C617.1`; system
@@ -116,11 +116,14 @@ requires `targetSdkVersion` 36 and 16 KB-aligned native libraries; check the
 second with `llvm-readelf -lW target/release/apk/lib/arm64-v8a/libfroxel.so`
 (alignment `0x4000`).
 
-With `upload-stores`, the `ios` job validates the ipa and uploads it to
-App Store Connect with `xcrun altool` and the `APPLE_API_KEY` secrets; it
-needs an Apple Distribution certificate and an App Store profile. The
-`android` job sends the bundle to the internal track as a draft with
-`tools/play_upload.py` and `PLAY_SERVICE_ACCOUNT_JSON`. Play's API updates
+With `upload-stores`, two more jobs take the builds' `store-<version>-*`
+artifacts. `App Store` validates the ipa and uploads it to App Store Connect
+with `xcrun altool` and the `APPLE_API_KEY` secrets; the ipa needs an Apple
+Distribution certificate and an App Store profile. `Google Play` sends the
+bundle to the internal track as a draft with `tools/play_upload.py` and
+`PLAY_SERVICE_ACCOUNT_JSON`. They are separate from the builds, so a store
+failure fails only its own job: the artifacts and the draft GitHub Release
+are made anyway. Play's API updates
 only an app that exists, so the first bundle is uploaded by hand in Play
 Console, and it accepts only drafts until the app has passed its first
 review.
@@ -129,11 +132,11 @@ review.
 build for review in both stores:
 
 ```sh
-gh workflow run release.yml -f version=0.3.2 -f upload-stores=true -f submit-review=true
+gh workflow run release.yml -f upload-stores=true -f submit-review=true
 ```
 
-The `android` job then releases the bundle on the internal and production
-tracks as complete, which sends production for review. The `ios` job runs
+`Google Play` then releases the bundle on the internal and production
+tracks as complete, which sends production for review. `App Store` runs
 `tools/asc_release.py`: it waits until App Store Connect has processed the
 build, reuses the editable iOS version or creates one, sets its version and
 What's New, attaches the build, and submits it. A version left in an open
