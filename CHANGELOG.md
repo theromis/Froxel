@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.3 – 2026-11-12
+
 ### Fixed
 
 - iOS: the app launches on iOS 27. It now adopts the UIScene lifecycle
