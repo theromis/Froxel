@@ -484,6 +484,18 @@ jobs:
           aab=$(KEYSTORE="$CARGO_APK_RELEASE_KEYSTORE" packaging/android/bundle.sh)
           cp "$aab" "dist/store/froxel-$VERSION-android.aab"
           echo "Android: App Bundle versionCode $(packaging/build_number.sh "$VERSION")" >>"$GITHUB_STEP_SUMMARY"
+      # Upload the artifacts before the store steps, so a store failure keeps them.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: froxel-${{ env.VERSION }}-android-arm64
+          path: dist/release/*
+          if-no-files-found: error
+      # Not part of the GitHub Release: the stores take these, people install the APK.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: store-${{ env.VERSION }}-android
+          path: dist/store/*
+          if-no-files-found: error
       - name: Upload to Google Play
         if: inputs.upload-stores
         run: |
@@ -498,24 +510,13 @@ jobs:
           if [ "$SUBMIT_REVIEW" = true ]; then
             tracks=(--track internal --track production --status completed)
           fi
-          python3 tools/release_notes.py "$VERSION" >"$RUNNER_TEMP/notes.txt"
-          python3 tools/play_upload.py "dist/store/froxel-$VERSION-android.aab" \
+          python3 -u tools/release_notes.py "$VERSION" >"$RUNNER_TEMP/notes.txt"
+          python3 -u tools/play_upload.py "dist/store/froxel-$VERSION-android.aab" \
             --version "$VERSION" "${tracks[@]}" --notes-file "$RUNNER_TEMP/notes.txt" \
             | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Remove the keystore
         if: always()
         run: rm -f "$RUNNER_TEMP/release.keystore"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: froxel-${{ env.VERSION }}-android-arm64
-          path: dist/release/*
-          if-no-files-found: error
-      # Not part of the GitHub Release: the stores take these, people install the APK.
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: store-${{ env.VERSION }}-android
-          path: dist/store/*
-          if-no-files-found: error
 
   ios:
     name: iOS
@@ -630,6 +631,17 @@ jobs:
           if [ "${IOS_APP_STORE:-false}" = true ]; then out=store; fi
           (cd dist/stage && zip -qr -X "../$out/$ipa" Payload)
           unzip -l "dist/$out/$ipa" | tail -n 1
+      # Upload the artifacts before the store steps, so a store failure keeps them.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: froxel-${{ env.VERSION }}-ios
+          path: dist/release/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: store-${{ env.VERSION }}-ios
+          path: dist/store/*
+          if-no-files-found: ignore
       # altool reads the key from ~/.appstoreconnect/private_keys/AuthKey_<id>.p8.
       - name: Upload to TestFlight
         if: inputs.upload-stores
@@ -665,8 +677,8 @@ jobs:
             echo "::error::submit-review needs ASC_RELEASE_KEY and ASC_RELEASE_KEY_ID"
             exit 1
           fi
-          python3 tools/release_notes.py "$VERSION" >"$RUNNER_TEMP/notes.txt"
-          python3 tools/asc_release.py --version "$VERSION" --build "$BUILD" \
+          python3 -u tools/release_notes.py "$VERSION" >"$RUNNER_TEMP/notes.txt"
+          python3 -u tools/asc_release.py --version "$VERSION" --build "$BUILD" \
             --notes-file "$RUNNER_TEMP/notes.txt" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Remove the signing keychain
         if: always() && env.IOS_SIGN_KEYCHAIN != ''
@@ -674,16 +686,6 @@ jobs:
           security delete-keychain "$IOS_SIGN_KEYCHAIN" || true
           rm -f "$IOS_PROFILE" "$RUNNER_TEMP/profile.plist" "$RUNNER_TEMP/entitlements.plist"
           rm -rf "$HOME/.appstoreconnect"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: froxel-${{ env.VERSION }}-ios
-          path: dist/release/*
-          if-no-files-found: error
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: store-${{ env.VERSION }}-ios
-          path: dist/store/*
-          if-no-files-found: ignore
 
   addons:
     name: Godot and Blender add-ons
