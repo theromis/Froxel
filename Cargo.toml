@@ -92,7 +92,8 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"
 
-# iOS surface size fix; see vendor/README.md.
+# iOS surface size fix and UIScene lifecycle; see vendor/README.md.
 [patch.crates-io]
 eframe = { path = "vendor/eframe" }
 egui-wgpu = { path = "vendor/egui-wgpu" }
+winit = { path = "vendor/winit" }

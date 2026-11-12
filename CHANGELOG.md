@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- iOS: the app launches on iOS 27. It now adopts the UIScene lifecycle
+  (a scene delegate in a patched winit and a scene manifest in `Info.plist`);
+  built with the iOS 26 SDK, it used to stop at launch.
+
 ### Added
 
 - Pixel-art lines: `pixelate_views` (and `downscale` on `carve_from_views`,
