@@ -1506,9 +1506,10 @@ fn tools() -> Vec<Value> {
             "name": str_prop("Unique bone name"),
             "parent": {"type": ["string", "null"], "description": "Parent bone name. Omit or null for a root."},
             "pivot": vec3_prop("World pivot [x, y, z]. Fractional values sit between cells."),
-            "rotation": vec4_prop("Quaternion [x, y, z, w] in voxel space. Defaults to identity.")
+            "rotation": vec4_prop("Quaternion [x, y, z, w] in voxel space. Defaults to identity."),
+            "rest": vec4_prop("Rest turn [x, y, z, w], local, on top of rotation: the angle the bone's parts are drawn, edited, saved, and exported at, while their cells stay flat on their own grid. Defaults to identity.")
         }), &["name", "pivot"]),
-        tool("set_bone", "Change a bone's parent, pivot, rotation, or name. One undo step. Omit a field to leave it. parent null makes a root. joint true puts the pivot where the bone's part meets its parent's part instead of a given pivot, as place_joints does for one bone (with the new parent when parent is given too); the reply then has the joint's method, samples, gap, and previous pivot.", json!({
+        tool("set_bone", "Change a bone's parent, pivot, rotation, rest turn, or name. rest (or restFromPose, from the preview pose) is the saved angle the bone's parts are drawn, edited, and exported at: model a fin or a seat flat as its own object, bind it to a bone pivoted where it meets the body, and turn it there; the cells stay on the part's own grid and the glTF joint node rests at that turn. One undo step. Omit a field to leave it. parent null makes a root. joint true puts the pivot where the bone's part meets its parent's part instead of a given pivot, as place_joints does for one bone (with the new parent when parent is given too); the reply then has the joint's method, samples, gap, and previous pivot.", json!({
             "name": str_prop("Bone to edit"),
             "parent": {"type": ["string", "null"], "description": "Parent bone. null makes a root. Omit to leave the parent."},
             "pivot": vec3_prop("World pivot [x, y, z]"),
@@ -1516,6 +1517,8 @@ fn tools() -> Vec<Value> {
             "snap": {"type": "string", "enum": ["none", "corner", "center", "half"], "description": "With joint: round the pivot to cell corners, cell centres, or half cells. Default none."},
             "band": num_prop("With joint, parts apart: cells past the closest gap that still count. Default 0.5."),
             "rotation": vec4_prop("Quaternion [x, y, z, w]"),
+            "rest": vec4_prop("Rest turn [x, y, z, w], local, on top of rotation: the saved angle the bone's parts sit at (a fin sculpted flat, turned onto the body). Identity clears it."),
+            "restFromPose": {"type": "boolean", "description": "Keep the bone's preview turn (set_pose) as its rest turn and drop the turn from the pose, so the part stays where it is drawn. Not with rest."},
             "rename": str_prop("New unique name")
         }), &["name"]),
         tool("place_joints", "Put bone pivots at the joints between rig parts, after split_object and bind_object, instead of placing them by eye. A bone's part is the cells of the objects bound to it; its parent part is the cells bound to the nearest ancestor bone that has any. The pivot is the centroid of the cells both parts hold (method overlap), else of the faces where the parts touch (contact), else of the midpoints between the child's surface cells and the parent's nearest surface cells within band cells of the closest gap (nearest; gap is the empty cells between them). snap rounds it to cell corners, cell centres, or half cells. Every bone by default: roots and bones with no part are skipped with the reason; a named bone that cannot be placed is an error. One undo step. Replies with placed [{name, parent, pivot, previous, method, samples, gap}] and skipped [{name, reason}].", json!({
@@ -1530,8 +1533,8 @@ fn tools() -> Vec<Value> {
             "index": int_prop("Object index from inspect_document"),
             "bone": {"type": ["string", "null"], "description": "Bone name. null unbinds."}
         }), &["index", "bone"]),
-        tool("list_bones", "Bones with parent, pivot, rotation, and the object indices bound to each. Pivots are fractional world coordinates.", json!({}), &[]),
-        tool("set_pose", "Preview a pose in the window. Each quaternion is local and multiplied on the right of the bind rotation, so a parent orbits its children. Omitted bones stay at the bind pose. Identity is a no-op. Does not change the bind pose. The window draws a posed part turned and its tools edit it where it is drawn, on its own grid; local cell coordinates in the tools do not change. One undo step.", json!({
+        tool("list_bones", "Bones with parent, pivot, rotation, rest (the saved turn their parts sit at), and the object indices bound to each. Pivots are fractional world coordinates.", json!({}), &[]),
+        tool("set_pose", "Preview a pose in the window. Each quaternion is local and multiplied on the right of the bind rotation and the bone's rest turn, so a parent orbits its children. Omitted bones stay at rest. Identity is a no-op. Does not change the bind pose. The window draws a posed part turned and its tools edit it where it is drawn, on its own grid; local cell coordinates in the tools do not change. One undo step.", json!({
             "pose": {"type": "object", "description": "Map of bone name to a quaternion [x, y, z, w] or {rotation, scale}; scale is local per axis, 0 to 16, and children inherit it. Replaces the preview.", "additionalProperties": {"anyOf": [{"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}, {"type": "object", "properties": {"rotation": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}, "scale": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3}}, "additionalProperties": false}]}}
         }), &["pose"]),
         tool("clear_pose", "Remove the preview pose. The bind pose stays. One undo step.", json!({}), &[]),

@@ -1335,6 +1335,8 @@ let bones = list_bones();                    // [#{name, parent, pivot, rotation
 set_pose(#{arm: [0.0, 0.0, 0.3826834, 0.9238795]});   // or #{arm: #{rotation, scale}}
 // A posed part stays on its own grid: cell coordinates in scripts are its
 // local cells; the window draws it turned and its tools edit it there.
+set_bone("fin", #{rest: [0.0, 0.0, 0.3826834, 0.9238795]});  // saved angle, exported
+set_bone("fin", #{restFromPose: true});      // keep the preview turn as the rest
 clear_pose();
 
 add_clip(name);

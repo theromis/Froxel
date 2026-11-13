@@ -612,6 +612,7 @@ impl Session {
             pivot[axis] = -pivot[axis];
             let rotation = crate::rig::mirror_rotation(bone.rotation, axis);
             next.add(&new_name, parent.as_deref(), pivot, Some(rotation))?;
+            next.set_rest(&new_name, crate::rig::mirror_rotation(bone.rest, axis))?;
             renamed.insert(bone.name.clone(), new_name.clone());
             added.push(new_name);
         }
@@ -619,10 +620,11 @@ impl Session {
         Ok((next, bone, added))
     }
 
-    /// World rigid map for one object. `None` when the preview pose is empty,
-    /// so the mesh hash and the tracer stay on the bind pose.
+    /// World rigid map for one object: its bone's rest turn, then the preview
+    /// pose. `None` when the pose is empty and no bone has a rest turn, so the
+    /// mesh hash and the tracer stay on the bind pose.
     pub fn skin_delta(&self, index: usize) -> Option<glam::Mat4> {
-        if self.pose.is_empty() {
+        if self.pose.is_empty() && !self.skeleton.has_rest() {
             return None;
         }
         let object = self.objects.get(index)?;
@@ -806,6 +808,59 @@ impl Session {
     }
 
     /// Replace one bone's preview transform. Identity drops it from the pose.
+    /// Set a bone's rest turn: the angle its parts are drawn, edited, saved,
+    /// and exported at, on top of the bind rotation. One undo step.
+    pub fn set_bone_rest(&mut self, name: &str, rest: [f32; 4]) -> Result<(), String> {
+        let mut next = self.skeleton.clone();
+        next.set_rest(name, rest)?;
+        if next == self.skeleton {
+            return Ok(());
+        }
+        self.checkpoint();
+        self.skeleton = next;
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+        self.commit();
+        Ok(())
+    }
+
+    /// Keep a bone's preview turn as its rest turn: the rest becomes the rest
+    /// times the turn and the turn leaves the pose (a pose scale stays), so
+    /// the part stays where it is drawn and the angle is saved. One undo
+    /// step. Returns the new rest.
+    pub fn pose_to_rest(&mut self, name: &str) -> Result<[f32; 4], String> {
+        let index = self
+            .skeleton
+            .index_of(name)
+            .ok_or_else(|| format!("unknown bone `{name}`"))?;
+        let extra = self
+            .pose
+            .get(name)
+            .copied()
+            .ok_or_else(|| format!("bone `{name}` has no preview turn"))?;
+        let rest = glam::Quat::from_array(self.skeleton.bones[index].rest)
+            * glam::Quat::from_array(extra.rotation).normalize();
+        let mut next = self.skeleton.clone();
+        next.set_rest(name, rest.normalize().to_array())?;
+        let mut pose = self.pose.clone();
+        if extra.scale == [1.0, 1.0, 1.0] {
+            pose.remove(name);
+        } else {
+            pose.insert(
+                name.to_string(),
+                crate::rig::BonePose {
+                    rotation: crate::rig::IDENTITY_ROTATION,
+                    scale: extra.scale,
+                },
+            );
+        }
+        self.checkpoint();
+        self.skeleton = next;
+        self.pose = pose;
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+        self.commit();
+        Ok(self.skeleton.bones[index].rest)
+    }
+
     pub fn set_bone_pose(
         &mut self,
         index: usize,
@@ -854,8 +909,8 @@ impl Session {
 
     /// Key the selected bone and every posed bone at `clip_time` in the
     /// selected clip, as one undo step. A key at the same time is replaced.
-    /// The rotation is the bind rotation times the pose; an unposed bone
-    /// keeps its bind rotation. Returns how many bones were keyed.
+    /// The rotation is the bind rotation times the rest turn times the pose;
+    /// an unposed bone keeps its rest. Returns how many bones were keyed.
     pub fn key_pose(&mut self) -> Result<usize, String> {
         let clip = self
             .selected_clip
@@ -878,8 +933,9 @@ impl Session {
             let extra = self.pose.get(&bone.name).copied();
             let rotation = extra.map(|extra| {
                 let bind = glam::Quat::from_array(bone.rotation);
+                let rest = glam::Quat::from_array(bone.rest);
                 let turn = glam::Quat::from_array(extra.rotation);
-                (bind * turn).normalize().to_array()
+                (bind * rest * turn).normalize().to_array()
             });
             let key = crate::rig::ClipKey {
                 time,

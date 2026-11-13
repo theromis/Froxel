@@ -419,6 +419,7 @@ fn bone_fields(ui: &mut Ui, session: &mut Session, index: usize) {
     let parent = session.skeleton.bones[index].parent.clone();
     let pivot = session.skeleton.bones[index].pivot;
     let rotation = session.skeleton.bones[index].rotation;
+    let rest = session.skeleton.bones[index].rest;
     let names: Vec<String> = session
         .skeleton
         .bones
@@ -429,6 +430,7 @@ fn bone_fields(ui: &mut Ui, session: &mut Session, index: usize) {
     let mut next_parent = parent.clone();
     let mut parent_changed = false;
     let mut turned = None;
+    let mut rested = None;
     let mut at_joint = false;
     inspector(ui, "bone-inspector", |ui| {
         prop_label(ui, "Name");
@@ -501,6 +503,14 @@ fn bone_fields(ui: &mut Ui, session: &mut Session, index: usize) {
         }
         turned = next;
         ui.end_row();
+
+        prop_label(ui, "Rest");
+        let (next, started) = angle_fields(ui, rest);
+        if started {
+            session.begin_gesture();
+        }
+        rested = next;
+        ui.end_row();
     });
     if at_joint {
         session.joint_pivot_from_panel(&bone_name);
@@ -519,6 +529,19 @@ fn bone_fields(ui: &mut Ui, session: &mut Session, index: usize) {
     }
     if let Some(rotation) = turned {
         if let Err(err) = session.set_bone(&bone_name, None, None, Some(rotation), None) {
+            session.status = err;
+        }
+    }
+    ui.label(
+        RichText::new(
+            "Rest is the saved angle the parts sit at: drawn, edited, and exported \
+             turned, cells flat on their own grid.",
+        )
+        .small()
+        .color(DIM),
+    );
+    if let Some(rest) = rested {
+        if let Err(err) = session.set_bone_rest(&bone_name, rest) {
             session.status = err;
         }
     }
@@ -649,6 +672,19 @@ pub(super) fn pose(ui: &mut Ui, session: &mut Session) {
             .small()
             .color(DIM),
         );
+        let turned_now = extra.rotation != crate::rig::IDENTITY_ROTATION;
+        let keep = ui
+            .add_enabled(turned_now, egui::Button::new("Keep as rest"))
+            .on_hover_text(
+                "Save this turn as the bone's Rest, so the part keeps the angle in the \
+                 file and the glTF export (MCP set_bone restFromPose)",
+            );
+        if keep.clicked() {
+            if let Err(err) = session.pose_to_rest(&name) {
+                session.status = err;
+            }
+            return;
+        }
         if started {
             session.begin_gesture();
         }

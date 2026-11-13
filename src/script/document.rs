@@ -397,7 +397,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
         let state = scratch.clone();
         let run =
             move |ctx: &NativeCallContext, name: &str, pivot: Array, opts: &Map| -> Fallible<()> {
-                let mut args = options(opts, &["parent", "rotation"], "add_bone")?;
+                let mut args = options(opts, &["parent", "rotation", "rest"], "add_bone")?;
                 args.insert("name".into(), name.into());
                 args.insert("pivot".into(), json(&Dynamic::from_array(pivot))?);
                 record(&state, ctx, "add_bone", "rig.add", Value::Object(args))
@@ -425,7 +425,15 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
             let mut args = options(
                 &opts,
                 &[
-                    "parent", "pivot", "joint", "snap", "band", "rotation", "rename",
+                    "parent",
+                    "pivot",
+                    "joint",
+                    "snap",
+                    "band",
+                    "rotation",
+                    "rest",
+                    "restFromPose",
+                    "rename",
                 ],
                 "set_bone",
             )?;

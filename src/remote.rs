@@ -1018,7 +1018,14 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
             let parent = opt_str(&params, "parent")?;
             let pivot = req_vec3(&params, "pivot")?;
             let rotation = opt_vec4(&params, "rotation")?;
-            session.add_bone(&name, parent.as_deref(), pivot, rotation)?;
+            let rest = opt_vec4(&params, "rest")?;
+            session.transaction(|session| {
+                session.add_bone(&name, parent.as_deref(), pivot, rotation)?;
+                if let Some(rest) = rest {
+                    session.set_bone_rest(&name, rest)?;
+                }
+                Ok(())
+            })?;
             Ok(json!({"name": name, "count": session.skeleton.bones.len()}))
         }
         "rig.set" => {
@@ -1027,6 +1034,11 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
             let mut pivot = opt_vec3(&params, "pivot")?;
             let rotation = opt_vec4(&params, "rotation")?;
             let rename = opt_str(&params, "rename")?;
+            let rest = opt_vec4(&params, "rest")?;
+            let rest_from_pose = opt_bool(&params, "restFromPose")?.unwrap_or(false);
+            if rest.is_some() && rest_from_pose {
+                return Err("give rest or restFromPose, not both".into());
+            }
             let joint = opt_bool(&params, "joint")?.unwrap_or(false);
             if !joint && (params.get("snap").is_some() || params.get("band").is_some()) {
                 return Err("snap and band need joint: true".into());
@@ -1041,9 +1053,26 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
             } else {
                 None
             };
-            session.set_bone(&name, parent, pivot, rotation, rename.as_deref())?;
-            let current = rename.unwrap_or(name);
+            let current = rename.clone().unwrap_or_else(|| name.clone());
+            let touches_bone = parent.is_some() || pivot.is_some() || rotation.is_some() || rename.is_some();
+            session.transaction(|session| {
+                if touches_bone || (rest.is_none() && !rest_from_pose) {
+                    session.set_bone(&name, parent, pivot, rotation, rename.as_deref())?;
+                }
+                if let Some(rest) = rest {
+                    session.set_bone_rest(&current, rest)?;
+                }
+                if rest_from_pose {
+                    session.pose_to_rest(&current)?;
+                }
+                Ok(())
+            })?;
             let mut reply = json!({"name": current});
+            if rest.is_some() || rest_from_pose {
+                if let Some(index) = session.skeleton.index_of(&current) {
+                    reply["rest"] = json!(session.skeleton.bones[index].rest);
+                }
+            }
             if let Some(report) = report {
                 let mut joint = report.to_json();
                 joint["name"] = json!(current);
@@ -1653,12 +1682,12 @@ const METHODS: &[(&str, &str, &str)] = &[
         "object?",
         "Run the script and replace the objects it writes. One undo step. A limit or runtime error leaves the document as it was and includes the script line.",
     ),
-    ("rig.add", "name, pivot, parent?, rotation?", "Add a bone. rotation is [x, y, z, w]"),
-    ("rig.set", "name, parent?, pivot?, joint?, snap?, band?, rotation?, rename?", "Change a bone. parent null makes a root"),
+    ("rig.add", "name, pivot, parent?, rotation?, rest?", "Add a bone. rotation and rest are [x, y, z, w]"),
+    ("rig.set", "name, parent?, pivot?, joint?, snap?, band?, rotation?, rest?, restFromPose?, rename?", "Change a bone. parent null makes a root. rest is the saved turn its parts sit at; restFromPose keeps the preview turn as the rest"),
     ("rig.joints", "bones?, snap?, band?", "Put bone pivots at the joints between their parts and their parents' parts"),
     ("rig.remove", "name", "Delete a bone. Objects bound to it become unbound"),
     ("rig.bind", "index, bone", "Bind an object. bone null unbinds"),
-    ("rig.list", "", "Bones with parent, pivot, rotation, and bound objects"),
+    ("rig.list", "", "Bones with parent, pivot, rotation, rest, and bound objects"),
     ("pose.set", "pose", "Preview pose. Map of bone name to quaternion [x, y, z, w] or {rotation, scale}, on top of the bind pose. One undo step"),
     ("pose.clear", "", "Clear the preview pose. One undo step"),
     ("clip.add", "name", "Add an empty animation clip. One undo step"),
@@ -2958,6 +2987,7 @@ fn bone_rows(session: &Session) -> Vec<Value> {
                 "parent": bone.parent,
                 "pivot": bone.pivot,
                 "rotation": bone.rotation,
+                "rest": bone.rest,
                 "objects": objects,
             })
         })

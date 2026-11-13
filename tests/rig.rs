@@ -210,3 +210,80 @@ fn a_scaled_parent_carries_its_child_and_scales_the_skin() {
             < 1e-6
     );
 }
+
+fn quarter_about_z() -> [f32; 4] {
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    [0.0, 0.0, half, half]
+}
+
+#[test]
+fn a_rest_turn_round_trips_and_only_then_writes_version_2() {
+    let mut skeleton = Skeleton::default();
+    skeleton.add("body", None, [0.0, 0.0, 0.0], None).unwrap();
+    skeleton
+        .add("fin", Some("body"), [2.5, 0.5, 0.5], None)
+        .unwrap();
+    let objects = [ObjectRef {
+        trn: -1,
+        name: "Fin",
+        bone: Some("fin"),
+    }];
+    let plain = encode_chunk(&objects, &skeleton).unwrap().unwrap();
+    assert_eq!(&plain[0..4], &1u32.to_le_bytes());
+    skeleton.set_rest("fin", quarter_about_z()).unwrap();
+    assert!(skeleton.has_rest());
+    let body = encode_chunk(&objects, &skeleton).unwrap().unwrap();
+    assert_eq!(&body[0..4], &2u32.to_le_bytes());
+    let (loaded, _) = decode_chunk(&body).unwrap();
+    assert_eq!(loaded, skeleton);
+    skeleton.set_rest("fin", IDENTITY_ROTATION).unwrap();
+    assert!(!skeleton.has_rest());
+}
+
+#[test]
+fn a_rest_turn_moves_the_part_and_the_gltf_node_rests_there() {
+    let mut skeleton = Skeleton::default();
+    skeleton.add("body", None, [0.0, 0.0, 0.0], None).unwrap();
+    skeleton
+        .add("fin", Some("body"), [2.5, 0.5, 0.5], None)
+        .unwrap();
+    skeleton.set_rest("fin", quarter_about_z()).unwrap();
+    let deltas = skin_deltas(&skeleton, &Pose::new()).unwrap();
+    // A cell centre one step along +x from the pivot turns to +y.
+    let point = Vec3::new(3.5, 0.5, 0.5);
+    let moved = deltas[1].transform_point3(point);
+    assert!(
+        (moved - Vec3::new(2.5, 1.5, 0.5)).length() < 1e-4,
+        "{moved}"
+    );
+    assert!((deltas[0].transform_point3(point) - point).length() < 1e-4);
+
+    // glTF: joint node world at rest times the inverse bind is the same map.
+    let poses = bind_pose(&skeleton).unwrap();
+    let node = |index: usize| {
+        Mat4::from_rotation_translation(
+            Quat::from_array(poses[index].rotation),
+            Vec3::from_array(poses[index].translation),
+        )
+    };
+    let world = node(0) * node(1);
+    let inverse = Mat4::from_cols_array(&poses[1].inverse_bind);
+    let gltf = |p: Vec3| Vec3::new(p.x, p.z, -p.y);
+    let skinned = world.transform_point3(inverse.transform_point3(gltf(point)));
+    assert!((skinned - gltf(moved)).length() < 1e-4, "{skinned}");
+}
+
+#[test]
+fn a_pose_turns_on_top_of_the_rest() {
+    let mut skeleton = Skeleton::default();
+    skeleton.add("fin", None, [0.5, 0.5, 0.5], None).unwrap();
+    skeleton.set_rest("fin", quarter_about_z()).unwrap();
+    let mut pose = Pose::new();
+    pose.insert("fin".into(), BonePose::rotation(quarter_about_z()));
+    let deltas = skin_deltas(&skeleton, &pose).unwrap();
+    let moved = deltas[0].transform_point3(Vec3::new(1.5, 0.5, 0.5));
+    assert!(
+        (moved - Vec3::new(-0.5, 0.5, 0.5)).length() < 1e-4,
+        "{moved}"
+    );
+}

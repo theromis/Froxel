@@ -5,7 +5,13 @@
 //! to the parent, `(x, y, z, w)`. glTF is Y-up `(x, z, -y)`; joint matrices
 //! conjugate by that basis.
 //!
-//! The `.vox` chunk is `MVRG`, version 1. Named clips live in `MVAN`.
+//! A bone's `rest` is a turn on top of its bind rotation that its parts are
+//! drawn, edited, and exported at: a fin sculpted flat on its own grid sits
+//! at its angle on the body. The cells stay in the bind frame. glTF writes
+//! it into the joint node's rotation, so the rest pose is not the bind pose.
+//!
+//! The `.vox` chunk is `MVRG`, version 1, or 2 when a bone has a rest turn.
+//! Named clips live in `MVAN`.
 //! MagicaVoxel skips unknown chunks. An unknown version is an error.
 
 use std::collections::HashMap;
@@ -20,6 +26,9 @@ pub struct Bone {
     pub parent: Option<String>,
     pub pivot: [f32; 3],
     pub rotation: [f32; 4],
+    /// Local turn on top of `rotation` that the bone's parts sit at, saved
+    /// and exported. Identity leaves them at the bind pose.
+    pub rest: [f32; 4],
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -130,7 +139,29 @@ impl Skeleton {
             parent: parent.map(str::to_string),
             pivot: check_pivot(pivot)?,
             rotation: check_rotation(rotation.unwrap_or(IDENTITY_ROTATION))?,
+            rest: IDENTITY_ROTATION,
         });
+        Ok(())
+    }
+
+    /// Whether any bone's parts sit away from the bind pose at rest.
+    pub fn has_rest(&self) -> bool {
+        self.bones.iter().any(|bone| !is_identity(bone.rest))
+    }
+
+    /// Set a bone's rest turn. A near-identity turn is stored as identity.
+    pub fn set_rest(&mut self, name: &str, rest: [f32; 4]) -> Result<(), String> {
+        let index = self
+            .index_of(name)
+            .ok_or_else(|| format!("unknown bone `{name}`"))?;
+        let rest = check_rotation(rest)?;
+        let rest = Quat::from_array(rest).normalize();
+        let rest = if rest.w < 0.0 { -rest } else { rest };
+        self.bones[index].rest = if is_identity(rest.to_array()) {
+            IDENTITY_ROTATION
+        } else {
+            rest.to_array()
+        };
         Ok(())
     }
 
@@ -347,7 +378,9 @@ pub fn encode_chunk(
     }
     skeleton.validate()?;
     let mut body = Vec::new();
-    push_u32(&mut body, 1);
+    // Version 1 until a bone has a rest turn, so older files stay byte for byte.
+    let with_rest = skeleton.has_rest();
+    push_u32(&mut body, if with_rest { 2 } else { 1 });
     push_u32(&mut body, skeleton.bones.len() as u32);
     for bone in &skeleton.bones {
         push_str(&mut body, &bone.name);
@@ -357,6 +390,11 @@ pub fn encode_chunk(
         }
         for axis in bone.rotation {
             body.extend_from_slice(&axis.to_le_bytes());
+        }
+        if with_rest {
+            for axis in bone.rest {
+                body.extend_from_slice(&axis.to_le_bytes());
+            }
         }
     }
     push_u32(&mut body, binds.len() as u32);
@@ -372,7 +410,7 @@ pub fn encode_chunk(
 pub fn decode_chunk(body: &[u8]) -> Result<(Skeleton, Vec<StoredBind>), String> {
     let mut cursor = 0;
     let version = read_u32(body, &mut cursor)?;
-    if version != 1 {
+    if version != 1 && version != 2 {
         return Err(format!("MVRG version {version} is not supported"));
     }
     let bone_count = read_u32(body, &mut cursor)? as usize;
@@ -388,6 +426,12 @@ pub fn decode_chunk(body: &[u8]) -> Result<(Skeleton, Vec<StoredBind>), String> 
         for axis in &mut rotation {
             *axis = read_f32(body, &mut cursor)?;
         }
+        let mut rest = IDENTITY_ROTATION;
+        if version >= 2 {
+            for axis in &mut rest {
+                *axis = read_f32(body, &mut cursor)?;
+            }
+        }
         skeleton.bones.push(Bone {
             name,
             parent: if parent.is_empty() {
@@ -397,6 +441,7 @@ pub fn decode_chunk(body: &[u8]) -> Result<(Skeleton, Vec<StoredBind>), String> 
             },
             pivot,
             rotation,
+            rest,
         });
     }
     skeleton.validate()?;
@@ -483,6 +528,7 @@ impl Skeleton {
             check_name(&bone.name)?;
             check_pivot(bone.pivot)?;
             check_rotation(bone.rotation)?;
+            check_rotation(bone.rest)?;
             if self
                 .bones
                 .iter()
@@ -520,6 +566,10 @@ pub fn bind_pose(skeleton: &Skeleton) -> Result<Vec<BindPose>, String> {
             None => *world,
         };
         let (_scale, rotation, translation) = local.to_scale_rotation_translation();
+        // The node rests at the rest turn; the inverse bind stays the bind
+        // frame the cells are in, so the parts are drawn turned at rest.
+        let rest = voxel_to_gltf_quat(quat(skeleton.bones[index].rest)?);
+        let rotation = (rotation * rest).normalize();
         let inverse = world.inverse();
         poses.push(BindPose {
             translation: [translation.x, translation.y, translation.z],
@@ -580,6 +630,11 @@ fn world_at(
     Ok(world)
 }
 
+fn is_identity(rotation: [f32; 4]) -> bool {
+    let length = rotation.iter().map(|axis| axis * axis).sum::<f32>().sqrt();
+    length > 0.0 && (rotation[3] / length).abs() > 1.0 - 1.0e-6
+}
+
 /// Voxel `(x, y, z)` to glTF `(x, z, -y)`.
 fn voxel_to_gltf_point(point: Vec3) -> Vec3 {
     Vec3::new(point.x, point.z, -point.y)
@@ -634,7 +689,7 @@ fn read_n<'a>(body: &'a [u8], cursor: &mut usize, len: usize) -> Result<&'a [u8]
 /// Joint positions and rotations in voxel space under `pose`. Identity leaves
 /// the bind pose; child pivots orbit with the parent and follow its scale.
 pub fn posed_joints(skeleton: &Skeleton, pose: &Pose) -> Result<Vec<(Vec3, Quat)>, String> {
-    let (worlds, rotations) = posed_worlds(skeleton, pose)?;
+    let (worlds, rotations) = posed_worlds(skeleton, pose, true)?;
     Ok(worlds
         .iter()
         .zip(rotations)
@@ -643,8 +698,14 @@ pub fn posed_joints(skeleton: &Skeleton, pose: &Pose) -> Result<Vec<(Vec3, Quat)
 }
 
 /// Joint world matrices (translation, rotation, scale) and the rotations alone,
-/// which stay defined when a scale is zero.
-fn posed_worlds(skeleton: &Skeleton, pose: &Pose) -> Result<(Vec<Mat4>, Vec<Quat>), String> {
+/// which stay defined when a scale is zero. `rest` puts each bone's rest turn
+/// between its bind rotation and the pose; without it, an empty pose is the
+/// bind pose.
+fn posed_worlds(
+    skeleton: &Skeleton,
+    pose: &Pose,
+    rest: bool,
+) -> Result<(Vec<Mat4>, Vec<Quat>), String> {
     let order = parent_first(skeleton)?;
     let mut bind_rot = vec![Quat::IDENTITY; skeleton.bones.len()];
     let mut bind_pos = vec![Vec3::ZERO; skeleton.bones.len()];
@@ -665,7 +726,12 @@ fn posed_worlds(skeleton: &Skeleton, pose: &Pose) -> Result<(Vec<Mat4>, Vec<Quat
         let index = *index;
         let bone = &skeleton.bones[index];
         let extra = pose.get(&bone.name).copied().unwrap_or(BonePose::IDENTITY);
-        let local = (quat(bone.rotation)? * quat(extra.rotation)?).normalize();
+        let turn = if rest {
+            quat(bone.rest)?
+        } else {
+            Quat::IDENTITY
+        };
+        let local = (quat(bone.rotation)? * turn * quat(extra.rotation)?).normalize();
         let scale = Vec3::from_array(extra.scale);
         if let Some(parent) = skeleton.parent_index(index) {
             let local_t = bind_rot[parent].inverse() * (bind_pos[index] - bind_pos[parent]);
@@ -680,12 +746,13 @@ fn posed_worlds(skeleton: &Skeleton, pose: &Pose) -> Result<(Vec<Mat4>, Vec<Quat
     Ok((worlds, rotations))
 }
 
-/// Map from a bind-pose point to the posed point, one matrix per bone. It is
-/// rigid unless the pose scales a bone or one of its parents. Empty `pose` is
-/// the identity on every bone.
+/// Map from a bind-pose point to the posed point, one matrix per bone: the
+/// rest turns, then `pose`. It is rigid unless the pose scales a bone or one
+/// of its parents. Empty `pose` with no rest turn is the identity on every
+/// bone.
 pub fn skin_deltas(skeleton: &Skeleton, pose: &Pose) -> Result<Vec<Mat4>, String> {
-    let (bind, _) = posed_worlds(skeleton, &Pose::new())?;
-    let (posed, _) = posed_worlds(skeleton, pose)?;
+    let (bind, _) = posed_worlds(skeleton, &Pose::new(), false)?;
+    let (posed, _) = posed_worlds(skeleton, pose, true)?;
     Ok(bind
         .into_iter()
         .zip(posed)

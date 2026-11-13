@@ -193,3 +193,51 @@ fn place_joints_runs_from_a_script_and_the_panel() {
         [10.0, -1.0, pivot(&session, "head")[2]]
     ));
 }
+
+#[test]
+fn set_bone_rest_and_rest_from_pose_are_one_undo_step_each() {
+    let mut session = creature();
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    let reply = apply(
+        &mut session,
+        "rig.set",
+        &json!({"name": "tail", "rest": [0.0, 0.0, half, half], "rename": "fin"}),
+    )
+    .unwrap();
+    assert_eq!(reply["name"], "fin");
+    assert!((reply["rest"][2].as_f64().unwrap() - half as f64).abs() < 1e-5);
+    let listed = apply(&mut session, "rig.list", &json!({})).unwrap();
+    let fin = listed["bones"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|bone| bone["name"] == "fin")
+        .unwrap()
+        .clone();
+    assert!((fin["rest"][3].as_f64().unwrap() - half as f64).abs() < 1e-5);
+    session.undo();
+    assert!(session.skeleton.index_of("tail").is_some());
+    assert!(!session.skeleton.has_rest());
+
+    apply(
+        &mut session,
+        "pose.set",
+        &json!({"pose": {"tail": [0.0, 0.0, half, half]}}),
+    )
+    .unwrap();
+    apply(
+        &mut session,
+        "rig.set",
+        &json!({"name": "tail", "restFromPose": true}),
+    )
+    .unwrap();
+    assert!(session.pose.is_empty());
+    assert!(session.skeleton.has_rest());
+    let err = apply(
+        &mut session,
+        "rig.set",
+        &json!({"name": "tail", "rest": [0.0, 0.0, 0.0, 1.0], "restFromPose": true}),
+    )
+    .unwrap_err();
+    assert!(err.contains("not both"), "{err}");
+}

@@ -2534,3 +2534,50 @@ fn a_posed_part_is_not_hit_at_its_bind_place() {
         .expect("hit");
     assert_eq!((index, hit.cell), (0, (5, 0, 0)));
 }
+
+#[test]
+fn a_rest_turn_is_edited_where_it_is_drawn_and_survives_a_save() {
+    let mut session = posed_strip();
+    session.pose_to_rest("fin").expect("keep");
+    assert!(session.pose.is_empty());
+    assert!(session.skeleton.has_rest());
+    // The strip still lies along +y with no pose.
+    session.click_viewport((Vec3::new(-5.0, 5.5, 0.5), Vec3::new(1.0, 0.0, 0.0)));
+    assert_eq!(session.active().cells.get(&(5, 0, 0)), Some(&9));
+
+    let bytes = session.export_bytes().expect("save");
+    let mut loaded = Session::new();
+    loaded.import_bytes(&bytes).expect("load");
+    let rest = loaded.skeleton.bones[0].rest;
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    for (got, want) in rest.iter().zip([0.0, 0.0, half, half]) {
+        assert!((got - want).abs() < 1e-5, "{rest:?}");
+    }
+    let object = &loaded.objects[0];
+    let (cell, _) = object
+        .cells
+        .iter()
+        .find(|(_, slot)| **slot == 9)
+        .expect("painted cell");
+    let centre = loaded.object_to_world(0).transform_point3(Vec3::new(
+        cell.0 as f32 + 0.5,
+        cell.1 as f32 + 0.5,
+        cell.2 as f32 + 0.5,
+    ));
+    let before = session
+        .object_to_world(0)
+        .transform_point3(Vec3::new(5.5, 0.5, 0.5));
+    assert!((centre - before).length() < 1e-4, "{centre} vs {before}");
+}
+
+#[test]
+fn keep_as_rest_is_one_undo_step() {
+    let mut session = posed_strip();
+    let before = session.object_to_world(0);
+    session.pose_to_rest("fin").expect("keep");
+    assert!(session.object_to_world(0).abs_diff_eq(before, 1e-5));
+    session.undo();
+    assert!(!session.skeleton.has_rest());
+    assert!(session.pose.contains_key("fin"));
+    assert!(session.object_to_world(0).abs_diff_eq(before, 1e-5));
+}

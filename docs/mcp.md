@@ -290,13 +290,13 @@ tracer. A file with no scene graph still loads its first model.
 | `clear_object` | — | Empty an object (`index`, an index or a name; default the active one) of every cell, with no box limit. Its name, position, bone, script, and markers stay. Replies with `index`, `name`, `removed`, `voxels`. One undo step; an empty object adds none |
 | `split_object` | `boxes` or `slots` | Move (or `copy`) the cells of an object (`index`, an index or a name; default the active one) inside one or more inclusive local boxes, or of some `slots`, or both, into a new object (`name`) or an existing one (`into`), each cell keeping its world position. `invert` takes the rest. `makeActive` selects the target. Replies with `target`, `name`, `created`, `cells`, `replaced`, `position`, `sourceVoxels`, `targetVoxels`, `bounds`. One undo step |
 | `split_parts` | `parts` | Cut an object (`object`, default the active one) into its rig parts in one call: `parts` `[{name, point \| points \| bone \| marker, planes?}]`; every cell goes to the part whose seed is nearest through the solid (`metric` `geodesic`, `connectivity` 26 or 6; `euclidean` is the other metric and the fallback for unreached cells), on the kept side of its `planes` `[{normal, at}]`. Each part becomes its own object at world `[0, 0, 0]` with world cells; the source is removed unless a part has its name or `removeSource` is false; `bind` (default true) binds a part to the bone of its name. Optional `reach` (default 8), `space`. Replies with `parts` (`name`, `index`, `cells`, `seeds`, `bone`, `bounds`), `unreached`, `metric`, `sourceRemoved`, `objects`. One undo step. See [Splitting into rig parts](#splitting-into-rig-parts) |
-| `add_bone` | `name`, `pivot` | Add a bone. `pivot` is a fractional world coordinate `[x, y, z]`. Optional `parent` (omit or null for a root) and `rotation` quaternion `[x, y, z, w]` (default identity `[0, 0, 0, 1]`). One undo step |
-| `set_bone` | `name` | Optional `parent` (null makes a root; omit leaves it), world `pivot`, `rotation` `[x, y, z, w]`, `rename`. `joint: true` measures the pivot at the joint with the parent's part instead, as `place_joints` does (with `snap` and `band`). One undo step |
+| `add_bone` | `name`, `pivot` | Add a bone. `pivot` is a fractional world coordinate `[x, y, z]`. Optional `parent` (omit or null for a root) and `rotation` quaternion `[x, y, z, w]` (default identity `[0, 0, 0, 1]`), and `rest`, the saved turn its parts sit at (see [Rest turn](#rest-turn)). One undo step |
+| `set_bone` | `name` | Optional `parent` (null makes a root; omit leaves it), world `pivot`, `rotation` `[x, y, z, w]`, `rest` `[x, y, z, w]` (identity clears it) or `restFromPose: true` (keep the preview turn as the rest), `rename`. `joint: true` measures the pivot at the joint with the parent's part instead, as `place_joints` does (with `snap` and `band`). One undo step |
 | `place_joints` | — | Put bone pivots (`bones`, default every bone) at the joints between their bound parts and their parents' parts: the overlap, the contact faces, or the nearest band (`band`, default 0.5 cells past the closest gap). `snap` `none`, `corner`, `center`, or `half`. Replies with `placed` [{`name`, `parent`, `pivot`, `previous`, `method`, `samples`, `gap`}] and `skipped` [{`name`, `reason`}]. One undo step |
 | `remove_bone` | `name` | Delete a bone. Objects bound to it become unbound. Children keep its parent. One undo step |
 | `bind_object` | `index`, `bone` | Bind an object to one bone, or `bone: null` to unbind. Rigid: one bone, weight 1. One undo step |
-| `list_bones` | — | Each bone's parent, world pivot, quaternion, and the object indices bound to it |
-| `set_pose` | `pose` | Preview pose. Map of bone name to a local quaternion `[x, y, z, w]`, or `{rotation, scale}`, on top of the bind pose. One undo step. Does not write the bind rotation. The window draws a posed part turned and its tools edit it there, on its own grid; local cell coordinates do not change |
+| `list_bones` | — | Each bone's parent, world pivot, quaternion, `rest` turn, and the object indices bound to it |
+| `set_pose` | `pose` | Preview pose. Map of bone name to a local quaternion `[x, y, z, w]`, or `{rotation, scale}`, on top of the bind pose and the rest turn. One undo step. Does not write the bind rotation. The window draws a posed part turned and its tools edit it there, on its own grid; local cell coordinates do not change |
 | `clear_pose` | — | Remove the preview pose. One undo step |
 | `add_clip` | `name` | Empty named clip. One undo step. Saved in the `.vox` `MVAN` chunk |
 | `set_clip_keys` | `name`, `bone`, `keys` | Replace one bone's keys. Each key is `time`, optional `rotation`, `translation`, `scale`. One undo step |
@@ -1631,7 +1631,7 @@ When the document has a skeleton, clips are written as a glTF `animations` array
 whose name is the clip name. Channels target the joint nodes
 (scale, linear, plus rotation and translation when any key of that bone sets
 them). A bone whose keys never set `rotation` or `translation` has no such
-channel, so it stays at its bind rotation or offset. Godot 4 imports that array as
+channel, so it stays at its rest rotation or bind offset. Godot 4 imports that array as
 an AnimationLibrary on the AnimationPlayer. A document with no clips omits
 `animations`, so the bytes match a rig-only export.
 
@@ -1696,24 +1696,44 @@ anything changes. The new object is not active unless `makeActive` is true.
 `set_pose` replaces the window preview. `pose` maps a bone name to a
 quaternion `[x, y, z, w]` in voxel space, or to an object with optional
 `rotation` (that quaternion) and `scale` `[x, y, z]` (each 0 to 16, default
-1). The rotation is multiplied on the right of that bone's bind rotation,
-then the parent chain is applied, so a posed parent orbits its children.
+1). The rotation is multiplied on the right of that bone's bind rotation
+and rest turn, then the parent chain is applied, so a posed parent orbits its children.
 The scale is local, about the joint, and the bone's children inherit it,
 as in glTF. A scaled part is resampled into the voxel grid, so a grown part
 has no holes; a zero axis flattens it, and the tracer leaves it out, the way
 a game hides a part with a zero bone scale. A bone omitted from the map
-stays at its bind pose. An entry with identity rotation and scale 1 is
+stays at its rest. An entry with identity rotation and scale 1 is
 dropped. The bind pose in the skeleton is not
 written. `clear_pose` removes the preview. Both are undo steps, separate
 from `set_bone`. The window draws joint points and parent links whenever
 the skeleton is not empty. That overlay is not a tool default.
 
+### Rest turn
+
+A bone's `rest` (`add_bone`, `set_bone`, the Bone section's Rest, or Keep
+as rest in the Pose section) is a local turn on top of its bind rotation
+that its parts sit at. Model a thin fin, an ear, or a swing's seat flat, as
+its own object, bind it to a bone pivoted where it meets the body, and give
+the bone a rest: the window, `render`, `preview`, and `model_view` draw the
+part turned, the window's tools edit it where it is drawn, and its cells
+stay flat on its own grid, so a one-cell sheet stays one cell thick. Cell
+coordinates in tools and scripts stay the part's local cells. The `.vox`
+keeps it (`MVRG` version 2, written only when a bone has a rest, so other
+files stay version 1). The glTF joint node's rotation is the bind rotation
+times the rest while the inverse bind matrix stays the bind frame, so a game
+shows the part at its angle with no clip. Baked occlusion (`aoStrength`,
+`bake`) and `bake_scene` shade the cells at the bind pose. `set_pose` and
+clips turn on top of the rest. `set_bone` `restFromPose: true` folds the
+preview turn into the rest and drops it from the pose, so the part stays
+where it is drawn.
+
 `add_clip` creates an empty clip. `set_clip_keys` replaces the keys of one
 bone in that clip. A key's `time` is seconds, finite and ≥ 0, and times
-must increase. `rotation` is the bone's local quaternion. Omit it to keep the bind
-rotation, the same way as `translation` below: no rotation channel when no
-key of that bone sets one, and the bind rotation on a key that leaves it out
-in a track that has some.
+must increase. `rotation` is the bone's full local quaternion (the bind rotation times
+the rest turn times any turn of the key; Key pose writes it so). Omit it to
+keep the rest rotation, the same way as `translation` below: no rotation
+channel when no key of that bone sets one, and the rest rotation on a key
+that leaves it out in a track that has some.
 `translation` is the full local offset from the parent in voxel units, not
 a delta from the bind pose. Omit it to keep the bind offset: a track with no
 translation writes no glTF translation channel, and a key without one in a

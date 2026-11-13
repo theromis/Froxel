@@ -10,6 +10,14 @@
   each object's bone, so a fin or a seat sculpted flat on its own grid can
   be shaped at its angle on the body without baking it. Object mode drags a
   posed part with the pointer.
+- A bone's rest turn: the saved angle its parts sit at, on top of its bind
+  rotation (`set_bone` and `add_bone` `rest`, `set_bone` `restFromPose`,
+  Rhai the same, the Bone section's Rest, and Keep as rest in the Pose
+  section). The window, render, preview, and model view draw the part
+  turned and its tools edit it there while its cells stay flat on their own
+  grid. The `.vox` keeps it (`MVRG` version 2, only when a bone has one),
+  `list_bones` reports it, and the glTF joint node rests at it, so a fin
+  sculpted flat sits at its angle in a game with no clip.
 
 ### Fixed
 

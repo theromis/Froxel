@@ -86,7 +86,10 @@ merged mesh and atlas; rays enter a placement through its inverse transform, ove
 one grid per source and a BVH. Clips are glTF
 animations on the joint nodes. The preview pose is not the bind pose:
 it is a local quaternion per bone, and an empty pose leaves the mesh and
-the tracer unchanged.
+the tracer unchanged. A bone's `rest` is a saved local turn between the
+bind rotation and the pose: parts are drawn, edited, and exported at it
+(the glTF node rotation is bind times rest, the inverse bind stays the
+bind frame), and `MVRG` is version 2 only when a bone has one.
 
 ## Render
 

@@ -367,7 +367,9 @@ straight and symmetrical; show poses with bones instead of sculpting them.
    `set_pose` previews in the window and is an edit; `clear_pose` removes it.
    The window's tools edit a posed part where it is drawn (a fin sculpted
    flat on its own grid and turned by its bone), while every MCP cell
-   coordinate stays the part's local cells.
+   coordinate stays the part's local cells. To keep a part's angle in the
+   file and the glTF, give its bone a `rest` turn (`set_bone` `rest`, or
+   `restFromPose: true` after `set_pose`); poses and clips turn on top of it.
 4. `add_clip`, then `set_clip_keys` per bone. Keys are local TRS in voxel
    space; `translation` is the full offset from the parent, not a delta.
    Times are increasing and start at 0 or later.
