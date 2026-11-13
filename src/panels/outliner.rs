@@ -642,6 +642,13 @@ pub(super) fn pose(ui: &mut Ui, session: &mut Session) {
             });
             ui.end_row();
         });
+        ui.label(
+            RichText::new(
+                "Tools edit a posed part where it is drawn; its cells stay on its own grid.",
+            )
+            .small()
+            .color(DIM),
+        );
         if started {
             session.begin_gesture();
         }

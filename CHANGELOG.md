@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Added
+
+- Edit a posed part where it is drawn. With a preview pose (the Pose section
+  or `set_pose`), the brush, line, box, face, sculpt, and selection tools,
+  the hover cursor, the selection shell, and the object outlines follow
+  each object's bone, so a fin or a seat sculpted flat on its own grid can
+  be shaped at its angle on the body without baking it. Object mode drags a
+  posed part with the pointer.
+
+### Fixed
+
+- The marquee and the Project line hit a moved object's cells where they
+  are drawn, not as if the object sat at the origin.
+
 ## 0.3.3 – 2026-11-12
 
 ### Fixed

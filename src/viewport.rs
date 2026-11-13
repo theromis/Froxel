@@ -9,7 +9,6 @@ use glam::{Mat4, Vec3, Vec4};
 use crate::gpu::{self, SceneGpu, SharedGpu};
 use crate::state::{
     Cell, EditorMode, Grab, LineMode, ObjectBand, RenderMode, Session, Tool, ToolDrag, UiAction,
-    Volume,
 };
 
 pub struct ViewCache {
@@ -645,8 +644,8 @@ fn objects_in_rect(
         };
     }
     let mut hits = Vec::new();
-    for (index, volume) in session.objects.iter().enumerate() {
-        let Some((sx0, sy0, sx1, sy1)) = screen_box(session, rect, volume) else {
+    for index in 0..session.objects.len() {
+        let Some((sx0, sy0, sx1, sy1)) = screen_box(session, rect, index) else {
             continue;
         };
         if sx0 <= max_x && sx1 >= min_x && sy0 <= max_y && sy1 >= min_y {
@@ -656,34 +655,31 @@ fn objects_in_rect(
     ObjectBand { click: false, hits }
 }
 
-fn screen_box(
-    session: &Session,
-    rect: egui::Rect,
-    volume: &Volume,
-) -> Option<(f32, f32, f32, f32)> {
+/// The eight corners of an object's box in the world, as drawn: through its
+/// translation and the preview pose of its bone.
+fn box_corners(session: &Session, index: usize) -> Option<[Vec3; 8]> {
+    let volume = session.objects.get(index)?;
     let (min, dims) = crate::state::resolved_box(volume)?;
-    let shift = volume.translation;
-    let lo = Vec3::new(
-        (min.0 + shift.0) as f32,
-        (min.1 + shift.1) as f32,
-        (min.2 + shift.2) as f32,
-    );
-    let hi = Vec3::new(
-        (min.0 + shift.0 + dims[0]) as f32,
-        (min.1 + shift.1 + dims[1]) as f32,
-        (min.2 + shift.2 + dims[2]) as f32,
-    );
+    let map = session.object_to_world(index);
+    let lo = Vec3::new(min.0 as f32, min.1 as f32, min.2 as f32);
+    let hi = lo + Vec3::new(dims[0] as f32, dims[1] as f32, dims[2] as f32);
+    Some(std::array::from_fn(|corner| {
+        map.transform_point3(Vec3::new(
+            if corner & 1 == 0 { lo.x } else { hi.x },
+            if corner & 2 == 0 { lo.y } else { hi.y },
+            if corner & 4 == 0 { lo.z } else { hi.z },
+        ))
+    }))
+}
+
+fn screen_box(session: &Session, rect: egui::Rect, index: usize) -> Option<(f32, f32, f32, f32)> {
+    let corners = box_corners(session, index)?;
     let mut sx0 = f32::MAX;
     let mut sy0 = f32::MAX;
     let mut sx1 = f32::MIN;
     let mut sy1 = f32::MIN;
     let mut any = false;
-    for corner in 0..8 {
-        let point = Vec3::new(
-            if corner & 1 == 0 { lo.x } else { hi.x },
-            if corner & 2 == 0 { lo.y } else { hi.y },
-            if corner & 4 == 0 { lo.z } else { hi.z },
-        );
+    for point in corners {
         let Some(screen) = project_point(session, rect, point) else {
             continue;
         };
@@ -698,9 +694,6 @@ fn screen_box(
 
 fn paint_object_outlines(painter: egui::Painter, session: &Session, rect: egui::Rect) {
     for index in &session.object_selection {
-        let Some(volume) = session.objects.get(*index) else {
-            continue;
-        };
         let primary = *index == session.selected;
         let color = if primary {
             egui::Color32::from_rgb(255, 214, 90)
@@ -712,7 +705,7 @@ fn paint_object_outlines(painter: egui::Painter, session: &Session, rect: egui::
             &painter,
             session,
             rect,
-            volume,
+            *index,
             egui::Stroke::new(width, color),
         );
     }
@@ -722,34 +715,13 @@ fn paint_box(
     painter: &egui::Painter,
     session: &Session,
     rect: egui::Rect,
-    volume: &Volume,
+    index: usize,
     stroke: egui::Stroke,
 ) {
-    let Some((min, dims)) = crate::state::resolved_box(volume) else {
+    let Some(corners) = box_corners(session, index) else {
         return;
     };
-    let shift = volume.translation;
-    let lo = [
-        (min.0 + shift.0) as f32,
-        (min.1 + shift.1) as f32,
-        (min.2 + shift.2) as f32,
-    ];
-    let hi = [
-        (min.0 + shift.0 + dims[0]) as f32,
-        (min.1 + shift.1 + dims[1]) as f32,
-        (min.2 + shift.2 + dims[2]) as f32,
-    ];
-    let corner = |mask: u8| {
-        project_point(
-            session,
-            rect,
-            Vec3::new(
-                if mask & 1 == 0 { lo[0] } else { hi[0] },
-                if mask & 2 == 0 { lo[1] } else { hi[1] },
-                if mask & 4 == 0 { lo[2] } else { hi[2] },
-            ),
-        )
-    };
+    let corner = |mask: u8| project_point(session, rect, corners[mask as usize]);
     for axis in 0..3u8 {
         let bit = 1u8 << axis;
         for mask in 0..8u8 {
@@ -776,13 +748,14 @@ fn marquee_cells(session: &Session, rect: egui::Rect, a: egui::Pos2, b: egui::Po
     }
     let aspect = rect.width() / rect.height().max(1.0);
     let vp = projection(session, aspect) * view_matrix(session);
+    let map = session.object_to_world(session.selected);
     let mut picked = Vec::new();
     for cell in session.active().cells.keys().copied() {
-        let center = Vec3::new(
+        let center = map.transform_point3(Vec3::new(
             cell.0 as f32 + 0.5,
             cell.1 as f32 + 0.5,
             cell.2 as f32 + 0.5,
-        );
+        ));
         let Some(ndc) = to_ndc(vp, center) else {
             continue;
         };
@@ -832,10 +805,12 @@ fn face_drag_steps(
         1 => Vec3::new(0.0, sign as f32, 0.0),
         _ => Vec3::new(0.0, 0.0, sign as f32),
     };
-    let Some(a) = to_ndc(vp, center) else {
+    // The face is on the active object's grid, which a pose may turn.
+    let map = session.object_to_world(session.selected);
+    let Some(a) = to_ndc(vp, map.transform_point3(center)) else {
         return 1;
     };
-    let Some(b) = to_ndc(vp, center + normal) else {
+    let Some(b) = to_ndc(vp, map.transform_point3(center + normal)) else {
         return 1;
     };
     let dir = b - a;
@@ -896,12 +871,15 @@ fn gizmo_under(session: &Session, rect: egui::Rect, pos: egui::Pos2) -> Option<i
 
 fn object_center(session: &Session) -> Option<Vec3> {
     let (min, max) = session.bounds()?;
-    let translation = session.active().translation;
-    Some(Vec3::new(
-        (min.0 + max.0) as f32 * 0.5 + 0.5 + translation.0 as f32,
-        (min.1 + max.1) as f32 * 0.5 + 0.5 + translation.1 as f32,
-        (min.2 + max.2) as f32 * 0.5 + 0.5 + translation.2 as f32,
-    ))
+    Some(
+        session
+            .object_to_world(session.selected)
+            .transform_point3(Vec3::new(
+                (min.0 + max.0) as f32 * 0.5 + 0.5,
+                (min.1 + max.1) as f32 * 0.5 + 0.5,
+                (min.2 + max.2) as f32 * 0.5 + 0.5,
+            )),
+    )
 }
 
 fn paint_bones(painter: egui::Painter, session: &Session, rect: egui::Rect) {

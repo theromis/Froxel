@@ -365,6 +365,9 @@ straight and symmetrical; show poses with bones instead of sculpting them.
 3. Check the rig with `render` or `model_view` using `pose` and
    `showBones: true`. That poses one image without changing the document.
    `set_pose` previews in the window and is an edit; `clear_pose` removes it.
+   The window's tools edit a posed part where it is drawn (a fin sculpted
+   flat on its own grid and turned by its bone), while every MCP cell
+   coordinate stays the part's local cells.
 4. `add_clip`, then `set_clip_keys` per bone. Keys are local TRS in voxel
    space; `translation` is the full offset from the parent, not a delta.
    Times are increasing and start at 0 or later.

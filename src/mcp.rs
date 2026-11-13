@@ -1531,7 +1531,7 @@ fn tools() -> Vec<Value> {
             "bone": {"type": ["string", "null"], "description": "Bone name. null unbinds."}
         }), &["index", "bone"]),
         tool("list_bones", "Bones with parent, pivot, rotation, and the object indices bound to each. Pivots are fractional world coordinates.", json!({}), &[]),
-        tool("set_pose", "Preview a pose in the window. Each quaternion is local and multiplied on the right of the bind rotation, so a parent orbits its children. Omitted bones stay at the bind pose. Identity is a no-op. Does not change the bind pose. One undo step.", json!({
+        tool("set_pose", "Preview a pose in the window. Each quaternion is local and multiplied on the right of the bind rotation, so a parent orbits its children. Omitted bones stay at the bind pose. Identity is a no-op. Does not change the bind pose. The window draws a posed part turned and its tools edit it where it is drawn, on its own grid; local cell coordinates in the tools do not change. One undo step.", json!({
             "pose": {"type": "object", "description": "Map of bone name to a quaternion [x, y, z, w] or {rotation, scale}; scale is local per axis, 0 to 16, and children inherit it. Replaces the preview.", "additionalProperties": {"anyOf": [{"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}, {"type": "object", "properties": {"rotation": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}, "scale": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3}}, "additionalProperties": false}]}}
         }), &["pose"]),
         tool("clear_pose", "Remove the preview pose. The bind pose stays. One undo step.", json!({}), &[]),

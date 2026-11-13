@@ -49,6 +49,25 @@ pub fn translate_mesh(mesh: &mut Mesh, delta: Cell) {
     }
 }
 
+/// Carry a mesh through a world map, such as [`crate::state::Session::object_to_world`]:
+/// positions as points, normals as directions.
+pub fn transform_mesh(mesh: &mut Mesh, map: glam::Mat4) {
+    for vert in &mut mesh.verts {
+        vert.pos = map
+            .transform_point3(glam::Vec3::from_array(vert.pos))
+            .to_array();
+        vert.normal = map
+            .transform_vector3(glam::Vec3::from_array(vert.normal))
+            .normalize_or_zero()
+            .to_array();
+    }
+}
+
+/// Bits of a map, for a cache key.
+pub fn map_key(map: glam::Mat4) -> [u32; 16] {
+    map.to_cols_array().map(f32::to_bits)
+}
+
 pub fn chunk_key(cell: Cell) -> (i32, i32, i32) {
     (
         cell.0.div_euclid(CHUNK),

@@ -582,7 +582,9 @@ impl Session {
         let mut seen = HashSet::new();
         let mut out = Vec::new();
         for (origin, dir) in rays {
-            let Some(hit) = raycast(base, *origin, *dir) else {
+            // The drag's rays are world rays; the base is local cells.
+            let (origin, dir) = self.ray_to_local(self.selected, *origin, *dir);
+            let Some(hit) = raycast(base, origin, dir) else {
                 continue;
             };
             let cell = self.place(hit);

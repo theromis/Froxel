@@ -48,9 +48,9 @@ pub struct SceneGpu {
     grid: Option<GpuMesh>,
     grid_key: Option<(i32, i32, i32, i32, i32, i32)>,
     hover: Option<GpuMesh>,
-    hover_key: Option<(crate::state::Cell, crate::state::Cell, crate::state::Cell)>,
+    hover_key: Option<(crate::state::Cell, crate::state::Cell, [u32; 16])>,
     selection: Option<GpuMesh>,
-    selection_key: Option<(u64, u64, crate::state::Cell)>,
+    selection_key: Option<(u64, u64, [u32; 16])>,
     bones: Option<GpuMesh>,
     bones_key: u64,
     epoch: u64,
@@ -276,16 +276,16 @@ impl SceneGpu {
     }
 
     fn sync_hover(&mut self, device: &wgpu::Device, session: &Session) {
-        let shift = session.active().translation;
+        let map = session.object_to_world(session.selected);
         let key = session
             .hover
             .as_ref()
-            .map(|hit| (hit.cell, hit.normal, shift));
+            .map(|hit| (hit.cell, hit.normal, mesh::map_key(map)));
         if key == self.hover_key {
             return;
         }
         self.hover_key = key;
-        let Some((cell, normal, shift)) = key else {
+        let Some((cell, normal, _)) = key else {
             self.hover = None;
             return;
         };
@@ -293,19 +293,23 @@ impl SceneGpu {
             self.hover = None;
             return;
         };
-        mesh::translate_mesh(&mut built, shift);
+        mesh::transform_mesh(&mut built, map);
         self.hover = upload(device, &built, 0);
     }
 
     fn sync_selection(&mut self, device: &wgpu::Device, session: &Session) {
-        let shift = session.active().translation;
-        let key = (session.selection_epoch, session.mesh_epoch, shift);
+        let map = session.object_to_world(session.selected);
+        let key = (
+            session.selection_epoch,
+            session.mesh_epoch,
+            mesh::map_key(map),
+        );
         if self.selection_key == Some(key) {
             return;
         }
         self.selection_key = Some(key);
         let mut built = mesh::selection_shell(&session.active().cells, &session.picked);
-        mesh::translate_mesh(&mut built, shift);
+        mesh::transform_mesh(&mut built, map);
         self.selection = upload(device, &built, 0);
     }
 

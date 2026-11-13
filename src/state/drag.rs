@@ -142,6 +142,7 @@ impl Session {
         let anchor = if locked.is_some() {
             self.object_center().unwrap_or(Vec3::ZERO)
         } else {
+            let (origin, dir) = self.ray_to_unposed(index, origin, dir);
             let Some(point) = intersect_axis_plane(origin, dir, plane_axis, plane) else {
                 return ObjectPress::Idle;
             };
@@ -203,6 +204,7 @@ impl Session {
                 _ => (drag.base.0, drag.base.1, drag.base.2 + steps),
             }
         } else {
+            let (origin, dir) = self.ray_to_unposed(drag.index, origin, dir);
             let Some(hit) = intersect_axis_plane(origin, dir, drag.plane_axis, drag.plane) else {
                 return;
             };

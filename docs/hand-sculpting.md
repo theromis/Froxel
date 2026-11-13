@@ -571,6 +571,17 @@ bones: `render`'s `pose` poses one still without changing the document, and
 `set_pose` previews in the window. A curved model is hard to rig and to
 mirror.
 
+**Model a part at its angle with a pose.** A thin fin, an ear, or a swing's
+seat is easiest to sculpt flat, as its own object on its own grid. Bind it
+to a bone whose pivot is where it meets the body, and turn the bone in the
+Pose section (or `set_pose`): the window draws the part at that angle, and
+the brush, line, box, face, sculpt, and selection tools edit it where it is
+drawn, on its own grid, so a one-cell sheet stays one cell thick with no
+stairs or holes. Object mode drags a posed part so it follows the pointer.
+Cell coordinates in tools and scripts stay the part's own local cells. The
+preview pose is not saved; key it in a clip to keep the angle in the file
+and in the glTF export.
+
 **Frame the part you are working on.** `render` and `model_view` fit every
 visible cell in the picture; hidden objects are left out. To look at one
 part, pass `target` (an object index, `active`, or a `{min, max}` box of

@@ -1333,6 +1333,8 @@ bind_object(object, "arm");                  // () unbinds
 let bones = list_bones();                    // [#{name, parent, pivot, rotation, objects}, …]
 
 set_pose(#{arm: [0.0, 0.0, 0.3826834, 0.9238795]});   // or #{arm: #{rotation, scale}}
+// A posed part stays on its own grid: cell coordinates in scripts are its
+// local cells; the window draws it turned and its tools edit it there.
 clear_pose();
 
 add_clip(name);

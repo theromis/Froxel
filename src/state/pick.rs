@@ -192,11 +192,7 @@ impl Session {
 
     pub(super) fn local_ray(&self, ray: Option<(Vec3, Vec3)>) -> Option<(Vec3, Vec3)> {
         let (origin, dir) = ray?;
-        let shift = self.active().translation;
-        Some((
-            origin - Vec3::new(shift.0 as f32, shift.1 as f32, shift.2 as f32),
-            dir,
-        ))
+        Some(self.ray_to_local(self.selected, origin, dir))
     }
 
     pub(super) fn pick_object(&self, origin: Vec3, dir: Vec3) -> Option<(usize, Hit)> {
@@ -205,20 +201,15 @@ impl Session {
             if object.hidden {
                 continue;
             }
-            let local = origin
-                - Vec3::new(
-                    object.translation.0 as f32,
-                    object.translation.1 as f32,
-                    object.translation.2 as f32,
-                );
-            let Some(hit) = raycast(&object.cells, local, dir) else {
+            let (local, local_dir) = self.ray_to_local(index, origin, dir);
+            let Some(hit) = raycast(&object.cells, local, local_dir) else {
                 continue;
             };
-            let center = Vec3::new(
-                hit.cell.0 as f32 + object.translation.0 as f32 + 0.5,
-                hit.cell.1 as f32 + object.translation.1 as f32 + 0.5,
-                hit.cell.2 as f32 + object.translation.2 as f32 + 0.5,
-            );
+            let center = self.object_to_world(index).transform_point3(Vec3::new(
+                hit.cell.0 as f32 + 0.5,
+                hit.cell.1 as f32 + 0.5,
+                hit.cell.2 as f32 + 0.5,
+            ));
             let distance = (center - origin).length_squared();
             if best.is_none_or(|(so_far, _, _)| distance < so_far) {
                 best = Some((distance, index, hit));

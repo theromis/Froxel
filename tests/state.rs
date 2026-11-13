@@ -2475,3 +2475,62 @@ fn the_trim_panel_cuts_and_skins_inside_the_selection() {
     session.trim_point_at_selection();
     assert_eq!(session.stone.trim.outline, "4 6");
 }
+
+/// A one-cell-thick strip along +x, bound to a bone at its first cell and
+/// posed a quarter turn about z, so it is drawn along +y.
+fn posed_strip() -> Session {
+    let mut session = Session::new();
+    session.active_mut().cells.clear();
+    for x in 0..8 {
+        session.active_mut().cells.insert((x, 0, 0), 1);
+    }
+    session
+        .add_bone("fin", None, [0.5, 0.5, 0.5], None)
+        .expect("bone");
+    session.bind_object(0, Some("fin")).expect("bind");
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    let mut pose = crate::rig::Pose::new();
+    pose.insert(
+        "fin".into(),
+        crate::rig::BonePose {
+            rotation: [0.0, 0.0, half, half],
+            scale: [1.0, 1.0, 1.0],
+        },
+    );
+    session.set_pose(pose).expect("pose");
+    session.tool = Tool::Brush;
+    session.tool_mode = ToolMode::Paint;
+    session.brush_size = 1;
+    session.brush_3d = false;
+    session.active_slot = 9;
+    session.editor_mode = EditorMode::Model;
+    session.render_mode = RenderMode::Edit;
+    session
+}
+
+#[test]
+fn a_posed_part_is_painted_where_it_is_drawn() {
+    let mut session = posed_strip();
+    // Cell (5, 0, 0) is drawn at (0.5, 5.5, 0.5).
+    session.click_viewport((Vec3::new(-5.0, 5.5, 0.5), Vec3::new(1.0, 0.0, 0.0)));
+    assert_eq!(session.active().cells.get(&(5, 0, 0)), Some(&9));
+    let painted = session
+        .active()
+        .cells
+        .values()
+        .filter(|slot| **slot == 9)
+        .count();
+    assert_eq!(painted, 1);
+}
+
+#[test]
+fn a_posed_part_is_not_hit_at_its_bind_place() {
+    let mut session = posed_strip();
+    // Before the pose, cell (5, 0, 0) sat at (5.5, 0.5, 0.5).
+    session.click_viewport((Vec3::new(5.5, -5.0, 0.5), Vec3::new(0.0, 1.0, 0.0)));
+    assert!(session.active().cells.values().all(|slot| *slot == 1));
+    let (index, hit) = session
+        .pick_object(Vec3::new(-5.0, 5.5, 0.5), Vec3::new(1.0, 0.0, 0.0))
+        .expect("hit");
+    assert_eq!((index, hit.cell), (0, (5, 0, 0)));
+}

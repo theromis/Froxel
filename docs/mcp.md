@@ -296,7 +296,7 @@ tracer. A file with no scene graph still loads its first model.
 | `remove_bone` | `name` | Delete a bone. Objects bound to it become unbound. Children keep its parent. One undo step |
 | `bind_object` | `index`, `bone` | Bind an object to one bone, or `bone: null` to unbind. Rigid: one bone, weight 1. One undo step |
 | `list_bones` | — | Each bone's parent, world pivot, quaternion, and the object indices bound to it |
-| `set_pose` | `pose` | Preview pose. Map of bone name to a local quaternion `[x, y, z, w]`, or `{rotation, scale}`, on top of the bind pose. One undo step. Does not write the bind rotation |
+| `set_pose` | `pose` | Preview pose. Map of bone name to a local quaternion `[x, y, z, w]`, or `{rotation, scale}`, on top of the bind pose. One undo step. Does not write the bind rotation. The window draws a posed part turned and its tools edit it there, on its own grid; local cell coordinates do not change |
 | `clear_pose` | — | Remove the preview pose. One undo step |
 | `add_clip` | `name` | Empty named clip. One undo step. Saved in the `.vox` `MVAN` chunk |
 | `set_clip_keys` | `name`, `bone`, `keys` | Replace one bone's keys. Each key is `time`, optional `rotation`, `translation`, `scale`. One undo step |

@@ -631,6 +631,62 @@ impl Session {
         deltas.get(joint).copied()
     }
 
+    /// Map from an object's local cells to the world as the viewport draws
+    /// them: its translation, then the preview pose of its bone. Picking,
+    /// the hover cursor, and the selection shell go through it, so a posed
+    /// part is edited where it is drawn and its cells stay on its own grid.
+    pub fn object_to_world(&self, index: usize) -> glam::Mat4 {
+        let Some(object) = self.objects.get(index) else {
+            return glam::Mat4::IDENTITY;
+        };
+        let shift = glam::Vec3::new(
+            object.translation.0 as f32,
+            object.translation.1 as f32,
+            object.translation.2 as f32,
+        );
+        let placed = glam::Mat4::from_translation(shift);
+        match self.skin_delta(index) {
+            Some(delta) => delta * placed,
+            None => placed,
+        }
+    }
+
+    /// A world ray in an object's local cells, the inverse of
+    /// [`Session::object_to_world`].
+    pub fn ray_to_local(
+        &self,
+        index: usize,
+        origin: glam::Vec3,
+        dir: glam::Vec3,
+    ) -> (glam::Vec3, glam::Vec3) {
+        let inverse = self.object_to_world(index).inverse();
+        (
+            inverse.transform_point3(origin),
+            inverse.transform_vector3(dir),
+        )
+    }
+
+    /// A world ray in the frame an object's translation moves in: the world
+    /// before the preview pose of its bone. Object mode drags a posed part
+    /// there, so it follows the pointer.
+    pub fn ray_to_unposed(
+        &self,
+        index: usize,
+        origin: glam::Vec3,
+        dir: glam::Vec3,
+    ) -> (glam::Vec3, glam::Vec3) {
+        match self.skin_delta(index) {
+            Some(delta) => {
+                let inverse = delta.inverse();
+                (
+                    inverse.transform_point3(origin),
+                    inverse.transform_vector3(dir),
+                )
+            }
+            None => (origin, dir),
+        }
+    }
+
     pub fn bind_object(&mut self, index: usize, bone: Option<&str>) -> Result<(), String> {
         if index >= self.objects.len() {
             return Err(format!(
