@@ -31,7 +31,7 @@ server is still running. A server started with `--watch` reloads by itself.
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `shell_plates`, `components`, `deterrace`, `reduce_palette`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` and `optimize_to_views` with views as rows and a legend, `project_paint` and `decal` with the image as rows and a legend, `paint_from_views` with views as rows and a legend, `pixelate_views` (views as rows; returns pixel art rows), `fit_to_views` and `orient_to_views` with views as rows and a legend, and `marker`,
+  (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `shell_plates`, `components`, `deterrace`, `reduce_palette`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `radial_relief`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` and `optimize_to_views` with views as rows and a legend, `project_paint` and `decal` with the image as rows and a legend, `paint_from_views` with views as rows and a legend, `pixelate_views` (views as rows; returns pixel art rows), `fit_to_views` and `orient_to_views` with views as rows and a legend, and `marker`,
   `collision_box`, `connector`, `collision_from_voxels`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `split_object`, `split_parts`, `clear_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -278,7 +278,16 @@ server is still running. A server started with `--watch` reloads by itself.
    at least 2 cells thick (plates and fissures with dirt at the
    bottom; read `warning` in the reply), then `cavity_tint` to darken fissures, crevices, and root
    crooks (it makes the shades itself) before moss. `cavity_tint` gives
-   rock depth the same way. Lay a deck, floor, or dock with `planks`, never
+   rock depth the same way. Never leave a dome perfect or a column, urn,
+   vase, or barrel plain: `radial_relief` cuts regular shallow recesses
+   evenly round an axis in one call, `kind: "flutes"` along a shaft's side
+   (spaced along its ring of surface cells; a square shaft of side `s`
+   alternates flute and ridge with `2 (s - 1)` flutes; `ends` cupped over
+   `fade` cells) or `kind: "gores"` dished between a dome's proud ribs
+   (`ribs`, `ribHeight`, `from` at the foot), with `profile` `u`, `v`, or
+   `flat` and `depth` 0.5 to 4; `shade` (default on) and `light` tone the
+   floors and slopes so the slope reads where cells step
+   (`tests/fixtures/examples/fluted_column.rhai`, `gored_dome.rhai`). Lay a deck, floor, or dock with `planks`, never
    dozens of `fill_box` and `carve` calls or painted stripes: one call lays
    separate boards with real gaps down to a `dirt` slot, staggered end
    joints, a tone per board (`palettes`, at least two), and optional

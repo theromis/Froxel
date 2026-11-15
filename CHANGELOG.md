@@ -4,6 +4,15 @@
 
 ### Added
 
+- Radial relief: regular, shallow, sloped recesses repeated evenly round an
+  axis (MCP `radial_relief`, Rhai the same, `froxel relief`, and the
+  Radial relief section). Flutes groove a column, vase, urn, or barrel
+  side, spaced along each slice's ring of surface cells and following the
+  outer surface, round or square, with cupped or tapered ends; gores dish
+  a dome's segments between proud, optionally raised ribs, fading at the
+  crown and the foot. A `u`, `v`, or `flat` section 0.5 to 4 cells deep,
+  with the slope carried by shade and light tones made from each cell's
+  own slot. Examples: `fluted_column.rhai` and `gored_dome.rhai`.
 - Edit a posed part where it is drawn. With a preview pose (the Pose section
   or `set_pose`), the brush, line, box, face, sculpt, and selection tools,
   the hover cursor, the selection shell, and the object outlines follow

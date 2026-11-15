@@ -2674,6 +2674,53 @@ pub fn deform(args: &[String]) -> i32 {
     }
 }
 
+const RELIEF_HELP: &str = "\
+usage: froxel relief --args <relief.json> --input <file.vox> --out <file.vox>
+                     [--object <index|name>]
+
+MCP radial_relief on the active object (or --object) of a .vox, saved to
+--out, with the reply printed as JSON: regular shallow recesses repeated
+evenly round an axis. relief.json holds its arguments: {kind: flutes |
+gores, count, axis, center, phase, width, from, to, x0..z1, ends (round |
+taper | square), fade, profile (u | v | flat), depth, shade, light, darken,
+brighten, ribs, ribWidth, ribHeight, only, exclude, jitter, seed, space}.
+flutes are grooves along a column, vase, or barrel side, spaced along each
+slice's outline; gores dish a dome's segments between proud meridian ribs.
+shade and light (a slot, or true for a shade of each cell's own slot) tone
+the floors and the slopes so the recess reads sloped where cells step.";
+
+/// `froxel relief`: MCP `radial_relief` on a `.vox`.
+pub fn relief(args: &[String]) -> i32 {
+    let parsed = edit_args(args, RELIEF_HELP, &["--args"]).and_then(|found| {
+        let Some((input, output, object, flags)) = found else {
+            return Ok(None);
+        };
+        let file = flags["args"]
+            .as_str()
+            .map(PathBuf::from)
+            .ok_or_else(|| format!("--args is required\n\n{RELIEF_HELP}"))?;
+        let text = std::fs::read_to_string(&file)
+            .map_err(|err| format!("Could not read {}: {err}", file.display()))?;
+        let params: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|err| format!("{} is not JSON: {err}", file.display()))?;
+        Ok(Some((input, output, object, params)))
+    });
+    match parsed {
+        Ok(None) => 0,
+        Ok(Some((input, output, object, params))) => edit_vox(
+            &input,
+            &output,
+            object.as_deref(),
+            "voxel.radial_relief",
+            &params,
+        ),
+        Err(err) => {
+            eprintln!("{err}");
+            2
+        }
+    }
+}
+
 const SPLIT_PARTS_HELP: &str = "\
 usage: froxel split-parts --args <parts.json> --input <file.vox> --out <file.vox>
                           [--object <index|name>]

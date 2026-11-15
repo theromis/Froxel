@@ -184,9 +184,10 @@ lands on the same place whichever part it is sent to, and stays right after
 a save and reopen has moved the objects. `get_voxel`, `set_voxel`,
 `set_voxels`, `get_voxels`, `fill_box`, `fill_ellipsoid`,
 `fill_rounded_box`, `fill_tube`, `carve`, `smooth`, `loft`, `brush`,
-`carve_from_views`, `project_paint`, `paint_from_views`, `decal`, and `split_object` take it;
+`carve_from_views`, `project_paint`, `paint_from_views`, `decal`, `radial_relief`, and `split_object` take it;
 it moves corners `x0`..`z1`, cells `x`, `y`, `z`, `points`, `cells`,
-`origin`, `boxes`, `exclude`, a decal's `point` and `ray` origin, and a
+`origin`, `boxes`, `exclude`, a decal's `point` and `ray` origin,
+`radial_relief`'s `center` (across its axis) and `from` and `to` (along it), and a
 `mirror`'s `at`. `space: "local"` is the default. Other tools refuse
 `world`. In a `batch` each item takes its own `space`.
 
@@ -275,6 +276,7 @@ tracer. A file with no scene graph still loads its first model.
 | `bark` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `axis` or `points`, `palettes` | Bark on wood along the grain: long plates of varied width, offset like real bark, split by fissures cut 1 to 2 cells deep with `dirt` at their bottom, and now and then a crack across a plate; a flat plate gets them across its surface. Optional `curve`, `dirt`, `width`, `length`, `depth`, `cracks`, `only`, `exclude`, `seed`. Replies with `plates`, `removed`, `dirtied`, `painted`, `cracks`, and `warning` when a shape could not be cut. One undo step |
 | `planks` | `x0`, `y0`, `x1`, `y1`, `z`, `axis`, `palettes` | A deck of separate boards over a rectangle at a height: rows of varied width, end joints staggered between neighbouring rows, gaps open down to a `dirt` cell, a tone per board, never one uniform stripe. Optional `dirt`, `dark`, `width`, `length`, `gap`, `thickness`, `ragged`, `nails`, `knots`, `only`, `exclude`, `seed`. Replies with `rows`, `boards`, `joints`, `added`, `painted`, `removed`, `dirtied`, `nails`, `knots`, `changed`, `voxels`. One undo step |
 | `cavity_tint` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Darken exposed cells in concave spots and crevices, and with `lighten` lighten ridges, by neighbour occupancy, to the slots in `pairs` or to shades it makes in free slots. Optional `radius`, `dark`, `lighten`, `light`, `pairs`, `darken`, `brighten`, `only`, `exclude`. Replies with `darkened`, `lightened`, `shades`. One undo step with the palette |
+| `radial_relief` | `kind`, `count` | Regular shallow recesses repeated evenly round an axis: `kind` `flutes` (grooves along a column, vase, urn, or barrel side, spaced along each slice's ring of surface cells and following the outer surface, round or square) or `gores` (a dome's segments dished toward their middle between proud meridian ribs, fading at the crown and over `fade` cells at the foot). Optional `axis` (`z`), `center` `[a, b]` across it, `phase` degrees, `width` (flutes; 0.6 of the pitch), `from` and `to` along the axis, box `x0`..`z1` (each corner optional), `ends` (`round`, `taper`, `square`), `fade`, `profile` (`u`, `v`, `flat`), `depth` (0.5..=4, default 1), `shade` and `light` (a slot, or `true` for a shade of each cell's own slot; `shade` defaults to `true`), `darken`, `brighten`, `ribs` (slot), `ribWidth` (gores, default 2), `ribHeight` (0..=4), `only`, `exclude`, `jitter` (default 0), `seed`, `space`. Replies with `cells`, `recesses`, `removed`, `painted`, `added`, `shades`, and a `warning` when nothing matched. One undo step with the palette. See [Radial relief](#radial-relief) |
 | `foliage` | `palettes`, and `ellipsoids`, `boxes`, or `from` | A clustered broadleaf crown: separate leaf clumps packed over the volume's surface, each a flattened ragged ellipsoid shaded as one piece (sunlit top, dark underside, a darker seam where two meet), with a dark `core` inside that shows in the gaps; the wood is left alone. Optional box `x0`..`z1`, `core`, `size`, `gap`, `flatten`, `ragged`, `light`, `dark`, `sun`, `masses`, `groove`, `protect`, `exclude`, `seed`. Replies with `clumps`, `masses`, `added`, `recoloured`, `removed`, `core`. One undo step |
 | `moss` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Moss caps on tops and curtains with a ragged end down the side faces below them, or with `style` `cushions` separate cushions on exposed cells with drapes from overhangs. Optional `style`, `amount`, `noise`, `faces`, `facing`, `band`, `only`, `exclude`, `layer`, `curtains`, `length`, `thickness`, `size`, `gap`, `exposure`, `drapes`, `seed`. `faces` defaults to top and side, or every face when `facing` is set; caps take undersides with `bottom`, and a `facing` that no face in `faces` points along is an error. Replies with `added`, `painted`, and `curtains`, or `cushions` and `drapes`, plus `warning` (why) when nothing grew. One undo step |
 | `algae` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | An algae band, dense at the bottom of `band` and thinning upward in clumps. Optional `band`, `amount`, `noise`, `faces`, `facing`, `only`, `exclude`, `layer`, `seed`. Replies with `added`, `painted`. One undo step |
@@ -509,7 +511,7 @@ cell at the top of the box, or would come to rest with a cell in an
 cells are written, at most 200000; the same `seed` gives the same pile.
 
 `exclude` on `scatter`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`,
-`foliage`, `moss`, `algae`, and `vines` keeps walking surfaces whole: one inclusive box `[x0, y0, z0, x1, y1, z1]`
+`radial_relief`, `foliage`, `moss`, `algae`, and `vines` keeps walking surfaces whole: one inclusive box `[x0, y0, z0, x1, y1, z1]`
 or a list of up to 64, in the object's cells, of any size. No cell inside a
 box is removed, recoloured, or written, no plant grows from a cell inside
 one, and no debris comes to rest in one. Cover a ledge top, a cave floor,
@@ -1070,6 +1072,66 @@ in a slot that already holds exactly that shade or the highest free slot
 (one no cell of any object uses); the reply's `shades` lists the slots it
 made, and the palette changes are part of the same undo step. Run it after
 `bark`, `joints`, or `weather`, and before `moss`.
+
+### Radial relief
+
+`radial_relief` cuts regular, shallow, sloped recesses repeated `count`
+times evenly round an axis, for architecture and turned or coopered
+pieces, where `surface_stroke` would cut one flat groove at a time.
+`axis` (`x`, `y`, or `z`, default `z`) runs through `center`, `[a, b]` as
+the two other coordinates in x, y, z order (cell centres are whole
+numbers); without it, through the middle of the solid's extent in the box
+and range. The range along the axis is `from` to `to`, by default the
+solid's extent; box corners `x0`..`z1` are each optional, so `z0` and `z1`
+alone bound a column's height, and writes stay inside them.
+
+- `kind` `flutes`: grooves along the side of a column, pilaster, vase, urn,
+  or barrel. Each slice's outline is traced through its outermost cells
+  and the flutes are spaced evenly along it, so a square shaft gets as
+  many per face and a round one evenly by angle, and every cell is placed
+  by the nearest point on the outline, so flutes keep their place on a
+  face instead of drifting toward the corners. A square shaft of side `s`
+  has `4 (s - 1)` surface cells round, so `2 (s - 1)` flutes (14 on an 8
+  by 8 pillar) alternate flute and ridge all the way round; other counts
+  give an uneven rhythm, with a flute too narrow to cut a cell carried by
+  its shade alone. Each flute is `width` cells across (default 0.6 of the
+  pitch, the outline's length over `count`), and over `fade` cells
+  (default the width, at least 2) from each end it narrows and shallows:
+  `ends` `round` (a cupped end, the default), `taper`, or `square`.
+- `kind` `gores`: the segments of a dome between two meridian lines dish
+  toward their middle while the ribs between them, `ribWidth` cells wide
+  (default 2, which keeps a rib whole down a steep side), stay proud. The
+  gores fade out toward the crown, where the segments narrow to nothing,
+  and over `fade` cells (default 6) from the foot, `from`. The dome's
+  centre is the centre of a sphere through its foot circle and its top.
+
+`phase` turns the pattern in degrees (for flutes a share of the outline's
+length, 360 a whole turn; half a pitch is `180 / count`); at 0 a ridge or
+rib lies at angle 0 (+x for axis `z`). `profile` `u` (round-bottomed, the
+default), `v`, or `flat` (a flat floor over the middle half, sloped sides)
+is the section; `depth` (0.5..=4 cells, default 1) is its deepest point,
+measured in from the outer surface along the outward direction (straight
+out from the axis for flutes, out from the dome's centre for gores). A cell
+is cut when the recess floor lies a quarter cell below its centre.
+
+Because cells can only step, the slope is carried by colour too. `shade`
+(default `true`) tones the floor cells left open in the middle of each
+recess and `light` (default `false`) the slope cells by the ridges: a slot,
+`true` for a shade of each cell's own slot (`darken`, default 0.72, and
+`brighten`, default 1.18, times its colour, with its material, in free
+slots from 255 down as `cavity_tint` makes them, reused on later calls), or
+`false`. `ribs` paints the lines between recesses (a dome's ribs, a
+column's fillets) with a slot, and `ribHeight` (0..=4) raises them by that
+many cells, straight out. `only`, `exclude`, and the box keep other cells
+whole. `jitter` (default 0, since architecture is regular) varies each
+recess's depth and place by that share, from `seed`.
+
+The reply holds `cells` (surface cells the recesses and ribs cover),
+`recesses` (those that cut or toned a cell), `removed`, `painted`, `added`
+(raised rib cells), `shades`, and a `warning` when nothing matched. One
+undo step with the palette. `froxel relief --args relief.json --input
+in.vox --out out.vox` runs it on a file. `tests/fixtures/examples/fluted_column.rhai`
+and `tests/fixtures/examples/gored_dome.rhai` use it.
 
 `planks` lays a deck, floor, or dock of separate boards, instead of dozens of
 `fill_box` and `carve` calls or painted stripes. The boards cover the inclusive
@@ -1883,7 +1945,7 @@ no undo step is added.
 It runs `set_voxel`, `set_voxels`, `set_palette`, `fill_box`, `fill_ellipsoid`,
 `fill_rounded_box`, `fill_tube`, `sweep`, `loft`, `carve`, `shell_plates`, `trim_outline`, `smooth`, `deform`,
 `brush`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`,
-`planks`, `cavity_tint`, `foliage`, `moss`, `algae`, and `vines`, all on the active
+`planks`, `cavity_tint`, `radial_relief`, `foliage`, `moss`, `algae`, and `vines`, all on the active
 object. Tools that write files (`save_file`, `render`, `preview`, `model_view`,
 `export_mesh`, and the like) are refused, and so are the readers, `undo`,
 `batch` itself, and the tools that change the active object or the document:
@@ -2800,7 +2862,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `deform` | Deform section: Bend, Taper, Twist, Displace, or Scale; Axis, Origin, Length; Angle and Toward, Start and End, Amplitude, Scale, Octaves, Bias, Seed, or Point (the selection's centre), Factor, Radius, Falloff; Min feature; over the selection's box or the whole object (Scale: about the selection's centre) |
 | `brush` | Sculpt tool (**S**): Inflate, Deflate, Smooth, Flatten, or Grab; Radius, Strength, Falloff, Only. A drag lays dabs on the surface; Grab pulls the pressed point along the drag in the view plane. One undo step per drag |
 | `break_end` | Break section: Point (or Point at selection), Normal with ±X/Y/Z, Depth, Splinters, Length, Thickness, Taper, Rim bias, Bark, Sapwood, and Tip slots, Seed |
-| `exclude` (on the stone tools) | Protect section: one box per line, Add selection, Clear; Scatter, Joints, Weather, Bark, Planks, Cavity, Foliage, and Growth use it |
+| `exclude` (on the stone tools) | Protect section: one box per line, Add selection, Clear; Scatter, Joints, Weather, Bark, Planks, Cavity, Radial relief, Foliage, and Growth use it |
 | `scatter` | Scatter section: Pieces, Kinds, Size, Palettes, Clump, Seed, over the selection's box or above the whole object |
 | `column_relief` | Relief section: Facing ±X/±Y, Palette, Width, Out, Crown, Top, Lower, Depth, Seed, Raise columns on the selection's box or the whole object |
 | `joints` | Joints section: Columns, Courses, or Cracks, Spacing, Course (or Density), Width, Depth, Dirt, Only, Seed, over the selection's box or the whole object |
@@ -2808,6 +2870,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `bark` | Bark section: Along X, Y, Z, or Points (Smooth, From Sweep), Palettes, Dirt, Width, Length, Depth, Cracks, Only, Seed, over the selection's box or the whole object; the status line carries `warning` |
 | `planks` | Planks section: Along X or Y, Height, Palettes, Dirt, Width, Length, Gap, Thickness, Ragged, Dark, Nails, Knots, Only, Seed, over the selection's rectangle or the whole object's, keeping the Protect boxes |
 | `cavity_tint` | Cavity section: Radius, Dark, Lighten, Pairs, Shades, Only, over the selection's box or the whole object |
+| `radial_relief` | Radial relief section: Kind (flutes or gores), Count, Axis, Center, Phase, Width, Range, Ends, Fade, Profile, Depth, Shade, Light, Ribs (slot, width, height), Only, Jitter and Seed; Cut recesses on the selection's box or the whole object, keeping the Protect boxes |
 | `foliage` | Foliage section: Volume (Ellipsoids, with Ellipsoid at selection, or From slots), Palettes, Core, Size, Gap, Flatten, Ragged, Light, Dark, Masses, Groove, Keep, Seed; Grow crown within the selection's box, or the whole crown with nothing selected |
 | `moss`, `algae`, `vines` | Growth section: Moss (Caps or Cushions), Algae, or Vines, Palettes, Amount, Noise, Faces, Facing, Band, Only, Paint, Curtains, Thickness, Size, Gap, Exposure, Drapes, Length, Blooms, Bloom chance, Seed, over the selection's box or the whole object |
 | `smooth` | Smooth section: Passes, Fill at, Remove at, over the selection or the whole object |

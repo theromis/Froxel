@@ -33,7 +33,7 @@ pub(crate) use silhouette::{
     pixelate_writes, session_palette, views_paint_writes,
 };
 pub(crate) use space::{is_world, space_prop, to_local, to_world_reply, WORLD_METHODS};
-pub(crate) use stone::{cavity_writes, stone_writes, Stone};
+pub(crate) use stone::{cavity_writes, radial_writes, stone_writes, ShadedWrites, Stone};
 
 use crate::state::{Cell, GlassMode, Session};
 
@@ -928,6 +928,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "voxel.bark" => stone::apply_stone(session, &params, Stone::Bark),
         "voxel.planks" => stone::apply_stone(session, &params, Stone::Planks),
         "voxel.cavity_tint" => stone::apply_cavity(session, &params),
+        "voxel.radial_relief" => stone::apply_radial(session, &params),
         "voxel.foliage" => stone::apply_stone(session, &params, Stone::Foliage),
         "marker.set" => markers::set_marker(session, &params),
         "marker.remove" => markers::remove_marker(session, &params),
@@ -1582,6 +1583,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.bark", "x0, y0, z0, x1, y1, z1, axis | points, curve?, palettes, dirt?, width?, length?, depth?, cracks?, only?, exclude?, seed?", "Bark plates along an axis or a tube's curve, on round wood or across a flat plate, split by fissures cut 1 to 2 cells deep with dirt at the bottom"),
     ("voxel.planks", "x0, y0, x1, y1, z, axis, palettes, dirt?, dark?, width?, length?, gap?, thickness?, ragged?, nails?, knots?, only?, exclude?, seed?", "Separate boards over a rectangle at a height: rows of varied width, end joints staggered between neighbouring rows, gaps open down to a dirt cell, a tone per board, optional ragged ends, nails, and knots"),
     ("voxel.cavity_tint", "x0, y0, z0, x1, y1, z1, radius?, dark?, lighten?, light?, pairs?, darken?, brighten?, only?, exclude?", "Darken crevices and concave cells (and lighten ridges) by neighbour occupancy, to given or created shades"),
+    ("voxel.radial_relief", "kind, count, axis?, center?, phase?, width?, from?, to?, x0..z1?, ends?, fade?, profile?, depth?, shade?, light?, darken?, brighten?, ribs?, ribWidth?, ribHeight?, only?, exclude?, jitter?, seed?", "Regular shallow recesses repeated evenly round an axis: flutes along a column, vase, or barrel side, or gores dished between the ribs of a dome, with the slope carried by shade and light tones"),
     ("voxel.foliage", "palettes, ellipsoids? | boxes? | from?, x0..z1?, core?, size?, gap?, flatten?, ragged?, light?, dark?, sun?, masses?, groove?, protect?, exclude?, seed?", "A clustered tree crown: separate leaf clumps over a volume, lit tops, dark undersides, and a dark core in the gaps"),
     ("voxel.sweep", "points, profile | width + height + radius?, curve?, palette | palettes, pattern?, period?, seed?, mode?", "Fill a 2D profile along a polyline or smooth curve, with twist and scale per point; palette 0 erases it"),
     ("voxel.trim_outline", "outline, inset?, curve?, x0..z1?, only?, skin?, thickness?", "Remove every solid cell outside a closed plan outline moved inward by an inset per height, optionally with a new skin along the cut"),

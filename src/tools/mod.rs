@@ -33,6 +33,7 @@ mod pixelate;
 mod planks;
 mod plates;
 mod project;
+mod radial;
 mod reduce;
 mod relief;
 mod rig_split;
@@ -91,6 +92,10 @@ pub use plates::{
     MAX_SEAM_WIDTH,
 };
 pub use project::{project_paint, PaintSpec, Toward, MAX_PAINT_DEPTH};
+pub use radial::{
+    radial_relief, RadialKind, RadialSpec, RecessEnds, RecessProfile, Tone, MAX_RECESSES,
+    MAX_RIB_HEIGHT,
+};
 pub use reduce::{reduce_palette, Reduce, ReduceSpec, SnapTo};
 pub use relief::{column_relief, relief_facing, ReliefSpec};
 pub use rig_split::{split_parts, Metric, PartSeed, Plane, RigSplitSpec};

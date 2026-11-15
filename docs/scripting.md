@@ -1112,6 +1112,54 @@ the next run. Options:
 It returns `#{changed, darkened, lightened, shades}`, where `shades` lists
 `#{slot, from, rgba}` for the shades it made.
 
+### Radial relief
+
+```rhai
+radial_relief("flutes", 14, #{from: 6, to: 67, only: [2]});
+radial_relief("gores", 12, #{from: 6, center: [0, 0], depth: 2, ribs: 3, ribHeight: 1, light: true});
+radial_relief(x0, y0, z0, x1, y1, z1, "flutes", 8, #{profile: "flat", depth: 1.5});
+```
+
+MCP `radial_relief` on the object being written: regular shallow recesses
+repeated `count` times evenly round an axis. `"flutes"` are grooves along a
+column, vase, urn, or barrel side, spaced along each slice's ring of
+surface cells (a square shaft of side `s` has `4 (s - 1)` of them, so
+`2 (s - 1)` flutes alternate flute and ridge); `"gores"` dish a dome's
+segments between proud meridian ribs, fading at the crown and over `fade`
+cells at the foot (`from`). The box corners are optional, in the options
+map too, so `#{z0: 31, z1: 97}` bounds a column's height. The floors take a
+darker shade made from each cell's own slot in free palette slots, as
+`cavity_tint`'s shades do, unless `shade` names a slot or is `false`.
+Options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `axis` | `"z"` | `"x"`, `"y"`, or `"z"`: the axis the recesses repeat round. |
+| `center` | the solid's middle | `[a, b]` across the axis, the two other coordinates in x, y, z order. |
+| `phase` | `0` | Degrees: for flutes a share of the outline's length, for gores an angle. 0 puts a ridge or rib at 0. |
+| `width` | 0.6 of the pitch | Flutes: cells across each flute. |
+| `from`, `to` | the solid's extent | Range along the axis: the flutes' ends, the dome's foot and top. |
+| `x0` .. `z1` | open | Box corners, each optional; writes stay inside. |
+| `ends` | `"round"` | `"round"` (cupped), `"taper"`, or `"square"`. |
+| `fade` | width (at least 2), or 6 | Cells over which a recess fades in from its ends (flutes) or the foot (gores). |
+| `profile` | `"u"` | `"u"`, `"v"`, or `"flat"`: the section across a recess. |
+| `depth` | `1` | Deepest point, 0.5..=4 cells in from the outer surface. |
+| `shade` | `true` | Tone of the floor cells: a slot, `true` for a darker shade of each cell's slot, or `false`. |
+| `light` | `false` | Tone of the slope cells by the ridges: a slot, `true` for a lighter shade, or `false`. |
+| `darken`, `brighten` | `0.72`, `1.18` | The made shades as factors of the colour. |
+| `ribs` | none | Slot of the lines between recesses (ribs, fillets) and of raised rib cells. |
+| `ribWidth` | `2` | Gores: rib width in cells. |
+| `ribHeight` | `0` | Cells to raise the ribs by, 0..=4. |
+| `only` | every slot | Act only on these slots. |
+| `exclude` | none | Boxes left alone. |
+| `jitter`, `seed` | `0`, `0` | Random change in each recess's depth and place. |
+| `space` | `"local"` | `"world"` takes world cells for the box, `center`, `from`, and `to`. |
+
+It returns `#{changed, cells, recesses, removed, painted, added, shades}`,
+with `warning` when nothing matched.
+`tests/fixtures/examples/fluted_column.rhai` and
+`tests/fixtures/examples/gored_dome.rhai` use it.
+
 ### Foliage
 
 ```rhai
@@ -1202,7 +1250,7 @@ weather(x0, y0, z0, x1, y1, z1, #{chip: 0.16, pits: 0.02, broken: 2, exclude: to
 moss(x0, y0, z0, x1, y1, z1, [10, 11, 12], #{exclude: tops});
 ```
 
-`exclude` on `scatter`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, `moss`,
+`exclude` on `scatter`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `radial_relief`, `foliage`, `moss`,
 `algae`, and `vines` is one inclusive box `[x0, y0, z0, x1, y1, z1]` or a list of up to 64, of
 any size. No cell inside a box is removed, recoloured, or written, no plant
 grows from a cell inside one, and no piece rests in one. Give a walking

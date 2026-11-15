@@ -1,5 +1,5 @@
 //! The stone panels: the fields of MCP `joints`, `column_relief`, `weather`,
-//! `bark`, `planks`, `cavity_tint`, `moss`, `algae`, `vines`, `sweep`, and `trim_outline`. Each panel's button builds
+//! `bark`, `planks`, `cavity_tint`, `radial_relief`, `moss`, `algae`, `vines`, `sweep`, and `trim_outline`. Each panel's button builds
 //! the tool's MCP arguments over the selection's box (or the active object's
 //! box) and runs the MCP handler, so the editor and MCP share one path.
 
@@ -381,6 +381,128 @@ impl CavityPanel {
                 .iter()
                 .map(|row| row.iter().map(|v| v.round() as i64).collect::<Vec<_>>())
                 .collect::<Vec<_>>());
+        }
+        Ok(args)
+    }
+}
+
+/// The Radial relief panel: MCP `radial_relief`.
+#[derive(Clone, PartialEq)]
+pub struct RadialPanel {
+    /// 0 flutes, 1 gores.
+    pub kind: usize,
+    pub count: i32,
+    /// 0 x, 1 y, 2 z.
+    pub axis: usize,
+    /// Off: the middle of the solid.
+    pub center_on: bool,
+    pub center: [f32; 2],
+    pub phase: f32,
+    /// Off: 0.6 of the pitch.
+    pub width_on: bool,
+    pub width: f32,
+    /// Off: the solid's extent along the axis.
+    pub range_on: bool,
+    pub range: [i32; 2],
+    /// Index into [`RADIAL_ENDS`].
+    pub ends: usize,
+    /// Off: the width for flutes, 6 for gores.
+    pub fade_on: bool,
+    pub fade: f32,
+    /// Index into [`RADIAL_PROFILES`].
+    pub profile: usize,
+    pub depth: f32,
+    pub shade_on: bool,
+    /// 0 makes a darker shade of each cell's slot.
+    pub shade: i32,
+    pub light_on: bool,
+    /// 0 makes a lighter shade of each cell's slot.
+    pub light: i32,
+    /// 0 leaves the ribs alone.
+    pub ribs: i32,
+    pub rib_width: f32,
+    pub rib_height: i32,
+    pub only: String,
+    pub jitter: f32,
+    pub seed: i32,
+}
+
+/// The Radial relief panel's kinds, profiles, ends, and axes.
+pub const RADIAL_KINDS: [&str; 2] = ["flutes", "gores"];
+pub const RADIAL_PROFILES: [&str; 3] = ["u", "v", "flat"];
+pub const RADIAL_ENDS: [&str; 3] = ["round", "taper", "square"];
+pub const RADIAL_AXES: [&str; 3] = ["x", "y", "z"];
+
+impl Default for RadialPanel {
+    fn default() -> Self {
+        Self {
+            kind: 0,
+            count: 12,
+            axis: 2,
+            center_on: false,
+            center: [0.0, 0.0],
+            phase: 0.0,
+            width_on: false,
+            width: 2.0,
+            range_on: false,
+            range: [0, 32],
+            ends: 0,
+            fade_on: false,
+            fade: 4.0,
+            profile: 0,
+            depth: 1.0,
+            shade_on: true,
+            shade: 0,
+            light_on: false,
+            light: 0,
+            ribs: 0,
+            rib_width: 2.0,
+            rib_height: 0,
+            only: String::new(),
+            jitter: 0.0,
+            seed: 0,
+        }
+    }
+}
+
+impl RadialPanel {
+    fn args(&self) -> Result<Value, String> {
+        let tone = |on: bool, slot: i32| match (on, slot) {
+            (false, _) => json!(false),
+            (true, 0) => json!(true),
+            (true, slot) => json!(slot),
+        };
+        let mut args = json!({
+            "kind": RADIAL_KINDS[self.kind.min(1)],
+            "count": self.count,
+            "axis": RADIAL_AXES[self.axis.min(2)],
+            "phase": self.phase,
+            "ends": RADIAL_ENDS[self.ends.min(2)],
+            "profile": RADIAL_PROFILES[self.profile.min(2)],
+            "depth": self.depth,
+            "shade": tone(self.shade_on, self.shade),
+            "light": tone(self.light_on, self.light),
+            "ribWidth": self.rib_width,
+            "ribHeight": self.rib_height,
+            "only": slots("Only", &self.only)?,
+            "jitter": self.jitter,
+            "seed": self.seed,
+        });
+        if self.center_on {
+            args["center"] = json!(self.center);
+        }
+        if self.width_on {
+            args["width"] = json!(self.width);
+        }
+        if self.range_on {
+            args["from"] = json!(self.range[0]);
+            args["to"] = json!(self.range[1]);
+        }
+        if self.fade_on {
+            args["fade"] = json!(self.fade);
+        }
+        if self.ribs > 0 {
+            args["ribs"] = json!(self.ribs);
         }
         Ok(args)
     }
@@ -814,7 +936,7 @@ pub const DIRECTIONS: [(&str, [i32; 3]); 6] = [
 #[derive(Clone, Default, PartialEq)]
 pub struct StonePanels {
     /// The Protect section: MCP `exclude` boxes for Scatter, Relief,
-    /// Joints, Weather, Bark, Planks, Cavity, Foliage, and Growth, `x0 y0 z0 x1 y1 z1`
+    /// Joints, Weather, Bark, Planks, Cavity, Radial relief, Foliage, and Growth, `x0 y0 z0 x1 y1 z1`
     /// separated by semicolons or new lines.
     pub exclude: String,
     pub joints: JointsPanel,
@@ -823,6 +945,7 @@ pub struct StonePanels {
     pub bark: BarkPanel,
     pub planks: PlanksPanel,
     pub cavity: CavityPanel,
+    pub radial: RadialPanel,
     pub foliage: super::FoliagePanel,
     pub growth: GrowthPanel,
     pub sweep: SweepPanel,
@@ -966,6 +1089,23 @@ impl Session {
                 "Darkened {} cells, lightened {}; {made} new shades.",
                 reply["darkened"], reply["lightened"]
             )
+        });
+    }
+
+    /// The Radial relief panel's button.
+    pub fn radial_from_panel(&mut self) {
+        let pad = self.stone.radial.rib_height + 1;
+        let args = self.stone.radial.args();
+        self.stone_from_panel_padded("voxel.radial_relief", args, pad, |reply| {
+            let made = reply["shades"].as_array().map_or(0, Vec::len);
+            let text = format!(
+                "{} recesses: {} cells cut, {} toned, {} rib cells added; {made} new shades",
+                reply["recesses"], reply["removed"], reply["painted"], reply["added"]
+            );
+            match reply.get("warning").and_then(Value::as_str) {
+                Some(warning) => format!("{text}. {warning}."),
+                None => text + ".",
+            }
         });
     }
 

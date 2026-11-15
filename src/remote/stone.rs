@@ -1,6 +1,6 @@
 //! The stone and surface tools: MCP `joints`, `column_relief`, `weather`,
 //! `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `bark`, `planks`, `foliage`, and
-//! `cavity_tint`, their
+//! `cavity_tint`, and `radial_relief`, their
 //! arguments, and their replies.
 //!
 //! Each tool turns its MCP arguments into writes against a cell map and a
@@ -533,8 +533,31 @@ pub(crate) fn cavity_writes(
 /// MCP handler of `cavity_tint`: the writes and any new shades on the
 /// active object and the palette, one undo step.
 pub(super) fn apply_cavity(session: &mut Session, params: &Value) -> Result<Value, String> {
+    apply_shaded(session, params, cavity_writes)
+}
+
+/// The writes of a tool that may make shades, and the counts of its reply.
+pub(crate) type ShadedWrites = fn(
+    &HashMap<Cell, u8>,
+    &Value,
+    &mut crate::tools::Shades,
+) -> Result<(Writes, Map<String, Value>), String>;
+
+/// MCP handler of `radial_relief`: the writes and any new shades on the
+/// active object and the palette, one undo step.
+pub(super) fn apply_radial(session: &mut Session, params: &Value) -> Result<Value, String> {
+    apply_shaded(session, params, radial_writes)
+}
+
+/// A tool's writes and the shades it made, on the active object and the
+/// palette, one undo step.
+fn apply_shaded(
+    session: &mut Session,
+    params: &Value,
+    tool: ShadedWrites,
+) -> Result<Value, String> {
     let mut shades = session.shades();
-    let (writes, mut reply) = cavity_writes(&session.active().cells, params, &mut shades)?;
+    let (writes, mut reply) = tool(&session.active().cells, params, &mut shades)?;
     let changed = session.transaction(|session| {
         session.begin_edit();
         for shade in &shades.created {
@@ -549,6 +572,211 @@ pub(super) fn apply_cavity(session: &mut Session, params: &Value) -> Result<Valu
     reply.insert("changed".into(), json!(changed));
     reply.insert("voxels".into(), json!(session.voxel_count()));
     Ok(Value::Object(reply))
+}
+
+/// A box corner of MCP `radial_relief`, which bounds only the sides given.
+fn opt_corner(params: &Value, key: &str) -> Result<Option<i32>, String> {
+    match params.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(found) => super::as_i32(found)
+            .map(Some)
+            .ok_or_else(|| format!("{key} must be a whole number")),
+    }
+}
+
+/// `shade` or `light` of MCP `radial_relief`: a slot, true for a shade
+/// made from each cell's own slot, or false for none.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum ToneSlot {
+    None,
+    Auto,
+    Slot(u8),
+}
+
+fn tone_slot(params: &Value, key: &str, default: ToneSlot) -> Result<ToneSlot, String> {
+    match params.get(key) {
+        None | Some(Value::Null) => Ok(default),
+        Some(Value::Bool(true)) => Ok(ToneSlot::Auto),
+        Some(Value::Bool(false)) => Ok(ToneSlot::None),
+        Some(found) => found
+            .as_i64()
+            .filter(|v| (0..=255).contains(v))
+            .map(|v| match v {
+                0 => ToneSlot::None,
+                v => ToneSlot::Slot(v as u8),
+            })
+            .ok_or_else(|| {
+                format!("{key} must be a palette index 1..=255, true (make a shade), or false")
+            }),
+    }
+}
+
+/// MCP `radial_relief` arguments as a spec.
+pub(crate) fn radial_spec(params: &Value) -> Result<crate::tools::RadialSpec, String> {
+    use crate::tools::{RadialKind, RecessEnds, RecessProfile};
+    let kind = opt_str(params, "kind")?
+        .ok_or_else(|| format!("kind is required: {}", RadialKind::NAMES))?;
+    let kind = RadialKind::parse(&kind)
+        .ok_or_else(|| format!("kind must be {}, not `{kind}`", RadialKind::NAMES))?;
+    let count = params
+        .get("count")
+        .ok_or("count is required: how many recesses round the axis")?;
+    let count = count
+        .as_u64()
+        .filter(|v| (1..=u64::from(crate::tools::MAX_RECESSES)).contains(v))
+        .ok_or_else(|| {
+            format!(
+                "count must be a whole number 1..={}",
+                crate::tools::MAX_RECESSES
+            )
+        })? as u32;
+    let axis = match opt_str(params, "axis")?.as_deref() {
+        None | Some("z") => 2,
+        Some("x") => 0,
+        Some("y") => 1,
+        Some(other) => return Err(format!("axis must be x, y, or z, not `{other}`")),
+    };
+    let center = match params.get("center") {
+        None | Some(Value::Null) => None,
+        Some(Value::Array(list)) if list.len() == 2 => {
+            let a = list[0].as_f64();
+            let b = list[1].as_f64();
+            match (a, b) {
+                (Some(a), Some(b)) => Some([a, b]),
+                _ => return Err("center must be [a, b], two numbers".into()),
+            }
+        }
+        Some(_) => {
+            return Err(
+                "center must be [a, b]: the axis in the plane across it, in x, y, z order".into(),
+            )
+        }
+    };
+    let pick = |key: &str, names: &str| -> Result<Option<String>, String> {
+        opt_str(params, key).map_err(|_| format!("{key} must be {names}"))
+    };
+    let profile = match pick("profile", RecessProfile::NAMES)? {
+        None => RecessProfile::U,
+        Some(name) => RecessProfile::parse(&name)
+            .ok_or_else(|| format!("profile must be {}, not `{name}`", RecessProfile::NAMES))?,
+    };
+    let ends = match pick("ends", RecessEnds::NAMES)? {
+        None => RecessEnds::Round,
+        Some(name) => RecessEnds::parse(&name)
+            .ok_or_else(|| format!("ends must be {}, not `{name}`", RecessEnds::NAMES))?,
+    };
+    let mut bounds = [None; 6];
+    for (index, key) in ["x0", "y0", "z0", "x1", "y1", "z1"].into_iter().enumerate() {
+        bounds[index] = opt_corner(params, key)?;
+    }
+    for a in 0..3 {
+        if let (Some(lo), Some(hi)) = (bounds[a], bounds[a + 3]) {
+            bounds[a] = Some(lo.min(hi));
+            bounds[a + 3] = Some(lo.max(hi));
+        }
+    }
+    Ok(crate::tools::RadialSpec {
+        kind,
+        axis,
+        center,
+        count,
+        phase: opt_f64(params, "phase")?.unwrap_or(0.0),
+        width: opt_f64(params, "width")?,
+        from: opt_corner(params, "from")?,
+        to: opt_corner(params, "to")?,
+        bounds,
+        ends,
+        fade: opt_f64(params, "fade")?,
+        profile,
+        depth: opt_f64(params, "depth")?.unwrap_or(1.0),
+        rib_width: opt_f64(params, "ribWidth")?.unwrap_or(2.0),
+        rib_height: whole(
+            params,
+            "ribHeight",
+            0,
+            0,
+            i64::from(crate::tools::MAX_RIB_HEIGHT),
+        )? as i32,
+        rib_slot: one_slot(params, "ribs")?,
+        only: slot_list(params, "only")?,
+        exclude: exclude_boxes(params)?,
+        jitter: opt_f64(params, "jitter")?.unwrap_or(0.0),
+        seed: seed(params)?,
+    })
+}
+
+/// MCP `radial_relief`: the writes against `cells` and the counts of its
+/// reply. Shades it makes go into `shades.created`; the caller writes them
+/// to the palette in the same undo step.
+pub(crate) fn radial_writes(
+    cells: &HashMap<Cell, u8>,
+    params: &Value,
+    shades: &mut crate::tools::Shades,
+) -> Result<(Writes, Map<String, Value>), String> {
+    use crate::tools::Tone;
+    let spec = radial_spec(params)?;
+    let shade = tone_slot(params, "shade", ToneSlot::Auto)?;
+    let light = tone_slot(params, "light", ToneSlot::None)?;
+    let darken = opt_f64(params, "darken")?.unwrap_or(0.72);
+    let brighten = opt_f64(params, "brighten")?.unwrap_or(1.18);
+    if !(0.05..1.0).contains(&darken) {
+        return Err("darken must be 0.05..1, the factor of the shade tone".into());
+    }
+    if !(1.0..=4.0).contains(&brighten) || brighten == 1.0 {
+        return Err("brighten must be above 1 and at most 4, the factor of the light tone".into());
+    }
+    let done = crate::tools::radial_relief(cells, &spec)?;
+    let mut writes: Writes = done.removed.iter().map(|&(x, y, z)| (x, y, z, 0)).collect();
+    for &((x, y, z), slot) in &done.added {
+        writes.push((x, y, z, i32::from(slot)));
+    }
+    let mut made: HashMap<(u8, bool), u8> = HashMap::new();
+    let mut painted = 0;
+    for &(cell, slot, tone) in &done.tones {
+        let (rule, factor, dark) = match tone {
+            Tone::Deep => (shade, darken, true),
+            Tone::Slope => (light, brighten, false),
+            Tone::Rib => match spec.rib_slot {
+                Some(rib) => (ToneSlot::Slot(rib), 1.0, false),
+                None => (ToneSlot::None, 1.0, false),
+            },
+        };
+        let target = match rule {
+            ToneSlot::None => continue,
+            ToneSlot::Slot(target) => target,
+            ToneSlot::Auto => match made.get(&(slot, dark)) {
+                Some(found) => *found,
+                None => {
+                    let found = shades.shade(slot, factor)?;
+                    made.insert((slot, dark), found);
+                    found
+                }
+            },
+        };
+        if target != slot {
+            let (x, y, z) = cell;
+            writes.push((x, y, z, i32::from(target)));
+            painted += 1;
+        }
+    }
+    let mut reply = Map::new();
+    reply.insert("cells".into(), json!(done.cells));
+    reply.insert("recesses".into(), json!(done.recesses));
+    reply.insert("removed".into(), json!(done.removed.len()));
+    reply.insert("painted".into(), json!(painted));
+    reply.insert("added".into(), json!(done.added.len()));
+    reply.insert(
+        "shades".into(),
+        json!(shades
+            .created
+            .iter()
+            .map(|s| json!({"slot": s.slot, "from": s.from, "rgba": s.rgba}))
+            .collect::<Vec<_>>()),
+    );
+    if let Some(warning) = done.warning {
+        reply.insert("warning".into(), json!(warning));
+    }
+    Ok((writes, reply))
 }
 
 /// MCP `moss`, `algae`, or `vines` arguments as a spec.

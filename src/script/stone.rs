@@ -1,6 +1,6 @@
 //! The MCP stone and surface tools in Rhai: `joints`, `column_relief`,
 //! `weather`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `bark`, `planks`,
-//! `cavity_tint`, and `foliage`.
+//! `cavity_tint`, `radial_relief`, and `foliage`.
 //!
 //! Each call turns its arguments into the MCP tool's arguments and runs
 //! `remote::stone_writes` on the object being written, as the MCP handler
@@ -119,6 +119,37 @@ const FOLIAGE: &[&str] = &[
 
 const CAVITY: &[&str] = &[
     "radius", "dark", "lighten", "light", "pairs", "darken", "brighten", "only", "exclude",
+];
+
+const RADIAL: &[&str] = &[
+    "x0",
+    "y0",
+    "z0",
+    "x1",
+    "y1",
+    "z1",
+    "axis",
+    "center",
+    "phase",
+    "width",
+    "from",
+    "to",
+    "ends",
+    "fade",
+    "profile",
+    "depth",
+    "shade",
+    "light",
+    "darken",
+    "brighten",
+    "ribs",
+    "ribWidth",
+    "ribHeight",
+    "only",
+    "exclude",
+    "jitter",
+    "seed",
+    "space",
 ];
 
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
@@ -419,6 +450,36 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
             );
         }
     }
+    let state = scratch.clone();
+    let radial =
+        move |corners: Option<[INT; 6]>, kind: &str, count: INT, opts: &Map| -> Fallible<Map> {
+            let mut args = options(opts, RADIAL, "radial_relief")?;
+            if let Some(corners) = corners {
+                args.extend(box_args(corners)?);
+            }
+            args.insert("kind".into(), kind.into());
+            args.insert("count".into(), count.into());
+            state.borrow_mut().radial(args).map_err(runtime)
+        };
+    let (bare, with_opts, boxed) = (radial.clone(), radial.clone(), radial);
+    engine.register_fn("radial_relief", move |kind: &str, count: INT| {
+        bare(None, kind, count, &Map::new())
+    });
+    engine.register_fn("radial_relief", move |kind: &str, count: INT, opts: Map| {
+        with_opts(None, kind, count, &opts)
+    });
+    engine.register_fn(
+        "radial_relief",
+        move |x0: INT,
+              y0: INT,
+              z0: INT,
+              x1: INT,
+              y1: INT,
+              z1: INT,
+              kind: &str,
+              count: INT,
+              opts: Map| { boxed(Some([x0, y0, z0, x1, y1, z1]), kind, count, &opts) },
+    );
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |corners: [INT; 6], opts: &Map| -> Fallible<Map> {
@@ -485,9 +546,22 @@ impl Scratch {
     /// of the document or of this run uses, nor one `set_palette` named.
     fn cavity(&mut self, args: Args) -> Result<Map, String> {
         self.keep_going()?;
+        self.shaded(Value::Object(args), remote::cavity_writes)
+    }
+
+    /// MCP `radial_relief` on the object being written, in local cells or
+    /// (`space: "world"`) world cells. Shades it makes go into free slots
+    /// as `cavity_tint`'s do.
+    fn radial(&mut self, args: Args) -> Result<Map, String> {
+        self.keep_going()?;
+        let (args, _) = self.localize("voxel.radial_relief", args)?;
+        self.shaded(args, remote::radial_writes)
+    }
+
+    /// A tool that may make shades, on the object being written.
+    fn shaded(&mut self, args: Value, tool: remote::ShadedWrites) -> Result<Map, String> {
         let mut shades = self.run_shades();
-        let (writes, counts) =
-            remote::cavity_writes(self.cells(), &Value::Object(args), &mut shades)?;
+        let (writes, counts) = tool(self.cells(), &args, &mut shades)?;
         self.shades.extend(shades.created.iter().copied());
         let changed = self.apply(&writes)?;
         let mut reply: Map = counts

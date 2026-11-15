@@ -236,6 +236,7 @@ const INSPECTOR_SECTIONS: &[(&str, Section)] = &[
     ("stone::bark", stone::bark),
     ("stone::planks", stone::planks),
     ("stone::cavity", stone::cavity),
+    ("stone::radial", stone::radial),
     ("foliage::foliage", foliage::foliage),
     ("stone::growth", stone::growth),
     ("stone::sweep", stone::sweep),

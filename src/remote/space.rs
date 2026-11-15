@@ -33,6 +33,7 @@ pub(crate) const WORLD_METHODS: &[&str] = &[
     "voxel.project_paint",
     "voxel.paint_from_views",
     "voxel.decal",
+    "voxel.radial_relief",
     "object.split",
 ];
 
@@ -55,7 +56,8 @@ pub(crate) fn is_world(params: &Value) -> Result<bool, String> {
 /// object at `offset`, and `space` removed. Corners `x0..z1`, cells `x`,
 /// `y`, `z`, `points` and `cells` (lists or maps; a list's first three
 /// numbers), `origin`, `boxes`, `exclude`, a decal's `point` and `ray`
-/// origin, `shell_plates`' `center` and `zRange`, and a `mirror`'s `at`
+/// origin, `shell_plates`' `center` and `zRange`, `radial_relief`'s
+/// `center` across its axis and `from` and `to` along it, and a `mirror`'s `at`
 /// move;
 /// everything else stays.
 pub(crate) fn to_local(method: &str, params: &Value, offset: Cell) -> Result<Value, String> {
@@ -85,8 +87,26 @@ pub(crate) fn to_local(method: &str, params: &Value, offset: Cell) -> Result<Val
     if let Some(origin @ Value::Array(_)) = map.get_mut("origin") {
         shift_point(origin, by, -1, "origin")?;
     }
-    // A plate pattern's plan centre and height range.
-    if let Some(center @ Value::Array(_)) = map.get_mut("center") {
+    if method == "voxel.radial_relief" {
+        // The axis's centre across it and the range along it.
+        let axis = match map.get("axis").and_then(Value::as_str) {
+            Some("x") => 0,
+            Some("y") => 1,
+            _ => 2,
+        };
+        let (a, b) = crate::tools::plane_axes(axis as i32);
+        if let Some(Value::Array(center)) = map.get_mut("center") {
+            for (value, across) in center.iter_mut().zip([a, b]) {
+                shift_number(value, -by[across], "center")?;
+            }
+        }
+        for key in ["from", "to"] {
+            if let Some(value) = map.get_mut(key) {
+                shift_number(value, -by[axis], key)?;
+            }
+        }
+    } else if let Some(center @ Value::Array(_)) = map.get_mut("center") {
+        // A plate pattern's plan centre.
         shift_point(center, by, -1, "center")?;
     }
     if let Some(Value::Array(range)) = map.get_mut("zRange") {

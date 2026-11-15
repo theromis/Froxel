@@ -393,6 +393,35 @@ pipe with a stripe. Build the trunk, branch, or root with one slot, then:
 
 `tests/fixtures/examples/barked_trunk.rhai` puts them together on a fallen trunk.
 
+Architecture and turned pieces (columns, pilasters, urns, vases, barrels,
+domes) should not look ruler-made: a perfect dome and plain shafts read as
+primitives. `radial_relief` cuts regular, shallow, sloped recesses repeated
+evenly round an axis in one call, instead of one `surface_stroke` groove
+at a time:
+
+- `kind: "flutes"` grooves a shaft's side, spaced along each slice's ring
+  of surface cells and following the outer surface, round or square. A
+  square shaft of side `s` has `4 (s - 1)` surface cells round, so
+  `2 (s - 1)` flutes alternate flute and ridge. Their `ends` cup round (or
+  taper) over `fade` cells instead of stopping square.
+- `kind: "gores"` dishes a dome's segments toward their middle between
+  proud meridian ribs (`ribs` slot, `ribWidth`, raised by `ribHeight`),
+  fading at the crown and over `fade` cells from the foot `from`.
+
+`profile` (`u`, `v`, `flat`) and `depth` (0.5 to 4 cells) set the section.
+Cells only step, so the slope is carried by colour too: `shade` darkens
+the floors (by default a shade made from the cell's own slot) and `light`
+lightens the slopes by the ridges.
+
+```
+radial_relief        kind="flutes" count=14 from=6 to=67 only=[2]   # an 8 x 8 pillar: flute, ridge all round
+radial_relief        kind="gores" count=12 from=6 center=[0, 0] depth=2 ribs=3 ribHeight=1 light=true only=[2]   # dished gores, proud ribs
+preview              path="dome.png"
+```
+
+`tests/fixtures/examples/fluted_column.rhai` and
+`tests/fixtures/examples/gored_dome.rhai` are a fluted pillar and a gored dome.
+
 A deck, floor, or dock is not 50 `fill_box` and `carve` calls, and not painted
 stripes. `planks` lays separate boards over a rectangle at a height: real gaps
 down to a `dirt` slot, end joints staggered between neighbouring rows, a tone per
@@ -423,7 +452,7 @@ the same sway. `tests/fixtures/examples/clustered_tree.rhai` is a whole tree.
 foliage              palettes=[3, 4, 5, 6, 7] core=3 ellipsoids=[[1, 0, 30, 15, 13.5, 9], [-7, 4, 34, 9, 9, 7], [7, -4, 34, 9, 8, 7]] size=[3, 5] masses=4 seed=3   # clumps, not a blob
 ```
 
-Pass `exclude` boxes to `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `foliage`, the
+Pass `exclude` boxes to `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `radial_relief`, `foliage`, the
 plants, and `scatter` to
 keep walking surfaces whole: a ledge top, a cave floor, or a river bed (its
 top layer and the air above it) stays flat while the stone around it is

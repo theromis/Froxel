@@ -1,4 +1,5 @@
 //! Inspector sections of the stone tools: Joints, Weather, Bark, Planks, Cavity,
+//! Radial relief,
 //! Growth, Sweep, Trim, and Markers. Each button runs the MCP
 //! tool over the selection's box, or the whole active object.
 
@@ -6,7 +7,8 @@ use egui::{RichText, Ui};
 
 use super::{section, DIM};
 use crate::state::{
-    EditorMode, MarkerKind, Plant, Session, BARK_ALONG, DIRECTIONS, FACINGS, RELIEF_FACINGS,
+    EditorMode, MarkerKind, Plant, Session, BARK_ALONG, DIRECTIONS, FACINGS, RADIAL_AXES,
+    RADIAL_ENDS, RADIAL_KINDS, RADIAL_PROFILES, RELIEF_FACINGS,
 };
 use crate::tools::JointPattern;
 
@@ -54,13 +56,13 @@ fn slots_field(ui: &mut Ui, text: &mut String, hint: &str) {
 }
 
 /// MCP `exclude`: boxes Scatter, Relief, Joints, Weather, Bark, Planks, Cavity,
-/// Foliage, and Growth leave alone.
+/// Radial relief, Foliage, and Growth leave alone.
 pub(super) fn protect(ui: &mut Ui, session: &mut Session) {
     let enabled = session.editor_mode == EditorMode::Model;
     ui.add_enabled_ui(enabled, |ui| {
         section(ui, "Protect");
         ui.label(
-            RichText::new("Boxes Scatter, Relief, Joints, Weather, Bark, Planks, Cavity, Foliage, and Growth leave alone: ledge tops, cave floors, river beds.")
+            RichText::new("Boxes Scatter, Relief, Joints, Weather, Bark, Planks, Cavity, Radial relief, Foliage, and Growth leave alone: ledge tops, cave floors, river beds.")
                 .small()
                 .color(DIM),
         );
@@ -417,6 +419,127 @@ pub(super) fn planks(ui: &mut Ui, session: &mut Session) {
             .clicked()
         {
             session.planks_from_panel();
+        }
+    });
+}
+
+/// Selectable labels for one choice of a few names.
+fn choice(ui: &mut Ui, index: &mut usize, names: &[&str]) {
+    ui.horizontal_wrapped(|ui| {
+        for (i, name) in names.iter().enumerate() {
+            if ui.selectable_label(*index == i, *name).clicked() {
+                *index = i;
+            }
+        }
+    });
+}
+
+/// MCP `radial_relief`: flutes round a shaft or gores over a dome.
+pub(super) fn radial(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.voxel_count() > 0 && session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Radial relief");
+        let panel = &mut session.stone.radial;
+        egui::Grid::new("radial-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Kind", "flutes: grooves along a column, vase, or barrel side, spaced along its outline. gores: a dome's segments dished between proud meridian ribs.");
+                choice(ui, &mut panel.kind, &RADIAL_KINDS);
+                ui.end_row();
+                label(ui, "Count", "Recesses evenly round the axis. A square shaft of side s has 4 (s - 1) surface cells round, so 2 (s - 1) flutes alternate flute and ridge.");
+                ui.add(egui::DragValue::new(&mut panel.count).range(1..=256));
+                ui.end_row();
+                label(ui, "Axis", "The axis the recesses repeat round.");
+                choice(ui, &mut panel.axis, &RADIAL_AXES);
+                ui.end_row();
+                label(ui, "Center", "The axis across it, the two other coordinates in x, y, z order. Off: the middle of the solid.");
+                ui.horizontal_wrapped(|ui| {
+                    ui.checkbox(&mut panel.center_on, "");
+                    for value in panel.center.iter_mut() {
+                        ui.add_enabled(
+                            panel.center_on,
+                            egui::DragValue::new(value).speed(0.5).max_decimals(1),
+                        );
+                    }
+                });
+                ui.end_row();
+                label(ui, "Phase", "Turns the pattern, in degrees: for flutes a share of the outline's length, for gores an angle. 0 puts a ridge or rib at 0.");
+                ui.add(egui::DragValue::new(&mut panel.phase).range(-360.0..=360.0).speed(0.5));
+                ui.end_row();
+                label(ui, "Width", "Flutes: cells across each flute. Off: 0.6 of the pitch.");
+                ui.horizontal_wrapped(|ui| {
+                    ui.checkbox(&mut panel.width_on, "");
+                    ui.add_enabled(
+                        panel.width_on,
+                        egui::DragValue::new(&mut panel.width).range(0.5..=64.0).speed(0.1),
+                    );
+                });
+                ui.end_row();
+                label(ui, "Range", "First and last cell along the axis: the flutes' ends, or the dome's foot and top. Off: the solid's extent.");
+                ui.horizontal_wrapped(|ui| {
+                    ui.checkbox(&mut panel.range_on, "");
+                    for value in panel.range.iter_mut() {
+                        ui.add_enabled(
+                            panel.range_on,
+                            egui::DragValue::new(value).range(-1024..=1023),
+                        );
+                    }
+                });
+                ui.end_row();
+                label(ui, "Ends", "How a recess fades out over Fade cells: round (a cupped end), taper, or square.");
+                choice(ui, &mut panel.ends, &RADIAL_ENDS);
+                ui.end_row();
+                label(ui, "Fade", "Cells over which a recess fades in from its ends (flutes) or the foot (gores, which also fade toward the crown). Off: the width (at least 2) for flutes, 6 for gores.");
+                ui.horizontal_wrapped(|ui| {
+                    ui.checkbox(&mut panel.fade_on, "");
+                    ui.add_enabled(
+                        panel.fade_on,
+                        egui::DragValue::new(&mut panel.fade).range(0.0..=128.0).speed(0.2),
+                    );
+                });
+                ui.end_row();
+                label(ui, "Profile", "Section across a recess: u round-bottomed, v straight sides, flat a flat floor with sloped sides.");
+                choice(ui, &mut panel.profile, &RADIAL_PROFILES);
+                ui.end_row();
+                label(ui, "Depth", "Deepest point of a recess, in cells in from the outer surface.");
+                ui.add(egui::Slider::new(&mut panel.depth, 0.5..=4.0).max_decimals(1));
+                ui.end_row();
+                label(ui, "Shade", "Tone the floor cells in the middle of each recess. Slot 0 makes a darker shade of each cell's own slot.");
+                ui.horizontal_wrapped(|ui| {
+                    ui.checkbox(&mut panel.shade_on, "");
+                    ui.add_enabled(panel.shade_on, egui::DragValue::new(&mut panel.shade).range(0..=255));
+                });
+                ui.end_row();
+                label(ui, "Light", "Tone the slope cells by the ridges. Slot 0 makes a lighter shade of each cell's own slot.");
+                ui.horizontal_wrapped(|ui| {
+                    ui.checkbox(&mut panel.light_on, "");
+                    ui.add_enabled(panel.light_on, egui::DragValue::new(&mut panel.light).range(0..=255));
+                });
+                ui.end_row();
+                label(ui, "Ribs", "Slot of the lines between recesses (a dome's ribs, a column's fillets), their width for gores, and cells to raise them by. Slot 0 leaves them alone.");
+                ui.horizontal_wrapped(|ui| {
+                    ui.add(egui::DragValue::new(&mut panel.ribs).range(0..=255));
+                    ui.add(egui::DragValue::new(&mut panel.rib_width).range(0.0..=16.0).speed(0.1));
+                    ui.add(egui::DragValue::new(&mut panel.rib_height).range(0..=4));
+                });
+                ui.end_row();
+                label(ui, "Only", "Act only on these palette slots; empty acts on every slot.");
+                slots_field(ui, &mut panel.only, "every slot");
+                ui.end_row();
+                label(ui, "Jitter", "Random change in each recess's depth and place, from Seed. 0 keeps it regular.");
+                ui.horizontal_wrapped(|ui| {
+                    ui.add(egui::DragValue::new(&mut panel.jitter).range(0.0..=1.0).speed(0.01));
+                    ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
+                });
+                ui.end_row();
+            });
+        if ui
+            .button(scope(session, "Cut recesses on"))
+            .on_hover_text("MCP radial_relief over the selection's box, or the whole object, keeping the Protect boxes. New shades and the cells are one undo step.")
+            .clicked()
+        {
+            session.radial_from_panel();
         }
     });
 }
