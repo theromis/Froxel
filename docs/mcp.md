@@ -183,16 +183,17 @@ back in world cells, with `space` and `position` stated. So the same box
 lands on the same place whichever part it is sent to, and stays right after
 a save and reopen has moved the objects. `get_voxel`, `set_voxel`,
 `set_voxels`, `get_voxels`, `fill_box`, `fill_ellipsoid`,
-`fill_rounded_box`, `fill_tube`, `carve`, `smooth`, `loft`, `brush`,
+`fill_rounded_box`, `fill_tube`, `carve`, `smooth`, `loft`, `blend_shapes`, `brush`,
 `carve_from_views`, `project_paint`, `paint_from_views`, `decal`, `radial_relief`, and `split_object` take it;
 it moves corners `x0`..`z1`, cells `x`, `y`, `z`, `points`, `cells`,
 `origin`, `boxes`, `exclude`, a decal's `point` and `ray` origin,
-`radial_relief`'s `center` (across its axis) and `from` and `to` (along it), and a
+`radial_relief`'s `center` (across its axis) and `from` and `to` (along it),
+`blend_shapes`' shapes' `center`, `from`, `to`, and `points`, and a
 `mirror`'s `at`. `space: "local"` is the default. Other tools refuse
 `world`. In a `batch` each item takes its own `space`.
 
 `mirror` paints or edits both sides of a plane in one call. `set_voxels`,
-`fill_box`, `fill_ellipsoid`, `fill_rounded_box`, `fill_tube` (any `mode`
+`fill_box`, `fill_ellipsoid`, `fill_rounded_box`, `fill_tube`, `blend_shapes` (any `mode`
 but `intersect`), `recolor`, `surface_stroke`, `project_paint`, and `decal`
 take it:
 `true` (across x), an axis `"x"`, `"y"`, or `"z"`, or `{"axis": "x", "at":
@@ -255,6 +256,7 @@ tracer. A file with no scene graph still loads its first model.
 | `fill_tube` | `points`, `palette` or `palettes` | Fill a tube through 2..=1024 **local** points, each with its own radius. Optional `radius`, `curve` (`polyline`, `smooth`), `aspect`, `roll`, `profile` (`round`, `blade`), `pattern` (`rings`, `stripes`, `random`), `period`, `sectors`, `seed`, `mode`. At most 2000000 cells, one undo step |
 | `sweep` | `points`, `profile` or `width` and `height`, `palette` or `palettes` | Fill a 2D cross-section along 2..=1024 **local** points, kept perpendicular to the path, for curved walls, banks, and ledges. Each point may carry `twist` and `scale`. Optional `radius`, `curve` (`polyline`, `smooth`), `pattern` (`bands`, `rings`, `random`), `period`, `seed`, `mode`. `palette` `0` erases the solid cells it covers instead, for a slanted cut along a closed or curved outline (`mode` `empty` is refused with it). Replies with `cells` and `length`, and `removed` when erasing. At most 2000000 cells, one undo step |
 | `trim_outline` | `outline` | Remove every solid cell outside a surface: a closed plan outline of `[x, y]` points moved inward by `inset`, one number or `[z, inset]` pairs per height. Optional `curve` (`polyline`, `smooth`), a box `x0`..`z1`, `only`, `skin` (a slot), `thickness`. Replies with `removed`, `painted`, `added`, and a `warning` when nothing was outside. One undo step |
+| `blend_shapes` | `shapes` | Fill simple shapes blended as signed distance fields with a smooth minimum, so they flow into each other like clay: statues, creatures, topiary, roots. Each shape is `{shape: sphere | ellipsoid | box | capsule | torus, ...}` with `op` (`union`, `subtract`, `intersect`), `k`, `palette`, and `rotate`. Optional `k` (fillet in cells, default 3), `palette`, `grow`, `colors` (`nearest`, `last`), `seam`, `seed`, box `x0`..`z1`, `mode` (`replace`, `empty`, `paint`, `intersect`), `mirror`, `space`. Replies with `cells`, `changed`, `shapes`, `evaluated`, `bounds`. One undo step. See [Blended shapes](#blended-shapes) |
 | `loft` | `points`, `palette` or `palettes` | Fill a solid along 2..=1024 **local** points whose cross-section changes per point: an ellipse (`rx`, `ry`) turned by `roll`, cut flat by `flatTop`, with outline `noise` and `frequency`. Optional `radius` and the section fields as defaults, `curve` (`polyline`, `smooth`), `caps` (`flat`, `round`), `pattern` (`rings`, `stripes`, `random`), `period`, `sectors`, `seed`, `mode`. `palette` `0` erases the solid cells it covers instead, for a slanted cut along a closed or curved outline (`mode` `empty` is refused with it). Replies with `cells` and `length`, and `removed` when erasing. At most 2000000 cells, one undo step |
 | `deform` | `op` | `bend`, `taper`, or `twist` the active object (or the cells of a box `x0`..`z1`) along `axis`, `displace` its surface with 3D noise, or `scale` a part about a `point` with a smooth falloff. Optional `axis`, `origin`, `length`, `center`, `angle`, `direction`, `start`, `end`, `amplitude`, `scale`, `octaves`, `seed`, `bias`, `point`, `factor`, `radius`, `falloff`, `minFeature`. Slots are kept. Replies with `cells`, `result`, `added`, `removed`, and `thin` with `minFeature`. One undo step |
 | `brush` | `op`, `points` | Sculpt brush dabs along **local** points: `inflate`, `deflate` (`dig`), `smooth`, `flatten`, or `grab` (`drag`). Optional `radius`, `strength`, `falloff` (`smooth`, `linear`, `constant`), `only`, `palette`, `vector` (grab), `spacing`. Replies with `dabs`, `added`, `removed`. One undo step |
@@ -1072,6 +1074,69 @@ in a slot that already holds exactly that shade or the highest free slot
 (one no cell of any object uses); the reply's `shades` lists the slots it
 made, and the palette changes are part of the same undo step. Run it after
 `bark`, `joints`, or `weather`, and before `moss`.
+
+### Blended shapes
+
+`blend_shapes` builds an organic form from simple shapes that melt into
+each other like clay, where `fill_ellipsoid` and `fill_rounded_box` calls
+stick together as separate balls and bricks and smoothing afterwards only
+blurs them. Every shape is a signed distance field (negative inside, in
+cells), and the list is combined in order: a `union` takes the smooth
+minimum of the result so far and the shape, a `subtract` carves the shape
+softly out of it, an `intersect` keeps only what is inside the shape. `k`
+is the width of the fillet in cells, per shape or for the call (default 3):
+0 is the hard union, 2 to 6 melts a head into a body, a leg into a haunch.
+A cell is filled when the blended distance at its centre is at most `grow`
+(default 0; above 0 thickens the whole form). A whole-number point is the
+centre of that cell, as for `fill_tube`.
+
+| Shape | Keys |
+|---|---|
+| `sphere` | `center`, `radius` |
+| `ellipsoid` | `center`, `radii` `[rx, ry, rz]` (or `radius`), `rotate` |
+| `box` | `center`, `size` `[sx, sy, sz]` (full extent in cells), `round` (edge radius), `rotate` |
+| `capsule` | `from`, `to`, and `radius`, or `radii` `[r0, r1]` for a taper; or `points` `[[x, y, z, r], ...]` (1..=64) for a bent, tapering limb |
+| `torus` | `center`, `radius` (to the middle of the ring), `thickness` (the ring's own radius), `rotate`; the ring lies across z |
+
+`rotate` is `[x, y, z]` degrees about the shape's centre, x first, then y,
+then z (a number turns about all three). Every shape takes `op`, `k`, and
+`palette`; the first must be a `union`, and a union needs a `palette` (or
+the call's). Lengths and radii are above 0 and at most 4096 cells; at most
+256 shapes.
+
+Colour: `colors` `nearest` (the default) gives a filled cell the slot of the
+union shape it is deepest inside, so seams fall halfway through the fillets;
+`last` the last listed union shape whose own body holds it (else the
+nearest), so eyes, buttons, and spots listed after the body keep their
+colour where they sink into it. `seam` (0..=32, with `nearest`) dithers the
+boundary between two slots over that many cells, by `seed`. A `subtract` or
+`intersect` shape with a `palette` paints the cells along its cut (within
+0.6 + k / 8 cells of its surface): a dark mouth line in a softly carved
+groove.
+
+Only the shapes' box grown by `k` is evaluated (at most 16000000 cells;
+pass all of `x0`..`z1` to clip it), and at most 2000000 cells are filled.
+`mode` `replace` (the default), `empty`, `paint`, or `intersect` (erase the
+solid cells outside the blend), as the fills. `mirror` blends the whole list
+again across the plane, so one arm or one eye is drawn once (not with
+`intersect`).
+
+```json
+{"name": "blend_shapes", "arguments": {"k": 4, "colors": "last",
+  "mirror": {"axis": "x", "at": 0.5},
+  "shapes": [
+    {"shape": "ellipsoid", "center": [0, 1, 9], "radii": [10, 12, 8], "rotate": [-15, 0, 0], "palette": 1},
+    {"shape": "ellipsoid", "center": [0, -7, 17], "radii": [9, 7, 5.5], "palette": 1},
+    {"shape": "sphere", "center": [4.5, -8, 21.5], "radius": 3, "palette": 2, "k": 1.5},
+    {"shape": "capsule", "points": [[6, -6, 10, 3], [8, -11, 4, 2.2], [8, -13, 1, 2]], "palette": 1},
+    {"shape": "box", "center": [0, 0, 30], "size": [80, 80, 61], "op": "intersect", "k": 0},
+    {"shape": "capsule", "from": [-7, -12, 15.5], "to": [7, -12, 15.5], "radius": 0.8, "op": "subtract", "k": 1.5, "palette": 3}
+  ]}}
+```
+
+`froxel blend --args blend.json --out out.vox [--input in.vox]` runs it from
+the command line (a new document without `--input`).
+`tests/fixtures/examples/blob_snowman.rhai` builds a snowman from it.
 
 ### Radial relief
 
@@ -1943,7 +2008,7 @@ the error says which (`batch item 2 (carve) failed, so nothing was changed:
 no undo step is added.
 
 It runs `set_voxel`, `set_voxels`, `set_palette`, `fill_box`, `fill_ellipsoid`,
-`fill_rounded_box`, `fill_tube`, `sweep`, `loft`, `carve`, `shell_plates`, `trim_outline`, `smooth`, `deform`,
+`fill_rounded_box`, `fill_tube`, `sweep`, `loft`, `blend_shapes`, `carve`, `shell_plates`, `trim_outline`, `smooth`, `deform`,
 `brush`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`,
 `planks`, `cavity_tint`, `radial_relief`, `foliage`, `moss`, `algae`, and `vines`, all on the active
 object. Tools that write files (`save_file`, `render`, `preview`, `model_view`,
@@ -2858,6 +2923,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `shell_plates` | Shell plates section: Layout (Rings, Voronoi), Rings, Central, Band and its plates, Rim, Plate slots (ring, central, band, rim), Seams (slot or Groove), Seam size, Depth, Facing, Only, Variation (Jitter, Symmetric, Seed), Paint plates over the selection's box or the whole object |
 | `recolor` | Recolor section: Slots (pairs `from>to`), Mirror, Recolor over the selection's box or the whole object |
 | `mirror` | Mirror row (on, X/Y/Z, At; empty At is the object's centre) in Paint from view, Surface stroke, and Recolor, and Mirror under the tool options for the viewport's brush and shape tools (`set_voxels` and the fills) |
+| `blend_shapes` | Blend shapes section: Shapes (one per line: sphere x y z r, ellipsoid x y z rx ry rz, box x y z sx sy sz [round], capsule x0 y0 z0 x1 y1 z1 r0 [r1], torus x y z radius thickness, then sub or int, k=, slot=, rot=x,y,z; Shape at selection adds an ellipsoid over the selection's box), Smooth k, Grow, Nearest or Last, Seam, Mode, Mirror x |
 | `loft` | Loft section: Points (one per line, x y z then optional rx ry roll flatTop noise frequency; Point at selection adds the selection's centre), Smooth, Round ends, Radii, Roll, Flat top, Noise, Lumps, Palettes, Rings, Stripes, or Random, Period, Mode, Seed |
 | `deform` | Deform section: Bend, Taper, Twist, Displace, or Scale; Axis, Origin, Length; Angle and Toward, Start and End, Amplitude, Scale, Octaves, Bias, Seed, or Point (the selection's centre), Factor, Radius, Falloff; Min feature; over the selection's box or the whole object (Scale: about the selection's centre) |
 | `brush` | Sculpt tool (**S**): Inflate, Deflate, Smooth, Flatten, or Grab; Radius, Strength, Falloff, Only. A drag lays dabs on the surface; Grab pulls the pressed point along the drag in the view plane. One undo step per drag |

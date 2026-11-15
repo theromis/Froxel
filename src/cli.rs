@@ -2313,8 +2313,14 @@ fn edit_vox(
     params: &serde_json::Value,
 ) -> i32 {
     let mut session = Session::new();
-    let done = session
-        .open_vox(input)
+    // An empty input path is a new document (`froxel blend` without --input).
+    let opened = if input.as_os_str().is_empty() {
+        session.replace_empty();
+        Ok(())
+    } else {
+        session.open_vox(input)
+    };
+    let done = opened
         .and_then(|()| {
             if let Some(object) = object {
                 session.selected = crate::preview::find_object(&session, object)?;
@@ -2712,6 +2718,57 @@ pub fn relief(args: &[String]) -> i32 {
             &output,
             object.as_deref(),
             "voxel.radial_relief",
+            &params,
+        ),
+        Err(err) => {
+            eprintln!("{err}");
+            2
+        }
+    }
+}
+
+const BLEND_HELP: &str = "\
+usage: froxel blend --args <blend.json> --out <file.vox> [--input <file.vox>]
+                    [--object <index|name>]
+
+MCP blend_shapes on the active object (or --object) of --input, or of a new
+document without it, saved to --out, with the reply printed as JSON:
+spheres, ellipsoids, boxes, capsules, and tori blended as signed distance
+fields with a smooth minimum, so they flow into each other like clay.
+blend.json holds its arguments: {shapes: [{shape: sphere | ellipsoid | box |
+capsule | torus, center, radius, radii, size, round, from, to, points,
+thickness, rotate, op: union | subtract | intersect, k, palette}], k (the
+fillet in cells, default 3, 0 hard), palette, grow, colors (nearest | last),
+seam, seed, x0..z1, mode (replace | empty | paint | intersect), mirror,
+space}.";
+
+/// `froxel blend`: MCP `blend_shapes` on a `.vox`, or on a new document.
+pub fn blend(args: &[String]) -> i32 {
+    let mut args = args.to_vec();
+    if !args.iter().any(|arg| arg == "--input") {
+        args.extend(["--input".to_string(), String::new()]);
+    }
+    let parsed = edit_args(&args, BLEND_HELP, &["--args"]).and_then(|found| {
+        let Some((input, output, object, flags)) = found else {
+            return Ok(None);
+        };
+        let file = flags["args"]
+            .as_str()
+            .map(PathBuf::from)
+            .ok_or_else(|| format!("--args is required\n\n{BLEND_HELP}"))?;
+        let text = std::fs::read_to_string(&file)
+            .map_err(|err| format!("Could not read {}: {err}", file.display()))?;
+        let params: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|err| format!("{} is not JSON: {err}", file.display()))?;
+        Ok(Some((input, output, object, params)))
+    });
+    match parsed {
+        Ok(None) => 0,
+        Ok(Some((input, output, object, params))) => edit_vox(
+            &input,
+            &output,
+            object.as_deref(),
+            "voxel.blend_shapes",
             &params,
         ),
         Err(err) => {

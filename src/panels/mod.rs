@@ -242,6 +242,7 @@ const INSPECTOR_SECTIONS: &[(&str, Section)] = &[
     ("stone::sweep", stone::sweep),
     ("stone::trim", stone::trim),
     ("organic::loft", organic::loft),
+    ("organic::blend", organic::blend),
     ("organic::deform", organic::deform),
     ("silhouette::measure", silhouette::measure),
     ("silhouette::pixelate", silhouette::pixelate),

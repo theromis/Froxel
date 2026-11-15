@@ -6,6 +6,7 @@
 use crate::state::Cell;
 
 mod bark;
+mod blend;
 mod brush;
 mod cavity;
 #[cfg(feature = "clip")]
@@ -52,6 +53,10 @@ mod upright;
 mod weather;
 
 pub use bark::{bark, BarkDirection, BarkSpec};
+pub use blend::{
+    blend_shapes, blend_writes, BlendColors, BlendOp, BlendShape, BlendSpec, Form, MAX_BLEND_K,
+    MAX_BLEND_SHAPES,
+};
 pub use brush::{brush, BrushOp, BrushSpec, Dab, Falloff};
 pub use cavity::{cavities, CavitySpec, Shade, Shades, Tint, MAX_CAVITY_RADIUS};
 pub use collision::{collision_cover, CollisionCover, CollisionSpec};

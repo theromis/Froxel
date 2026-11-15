@@ -458,6 +458,7 @@ pub(crate) const MIRROR_METHODS: &[&str] = &[
     "voxel.ellipsoid",
     "voxel.rounded",
     "voxel.tube",
+    "voxel.blend_shapes",
     "voxel.recolor",
     "voxel.surface_stroke",
     "voxel.project_paint",

@@ -1,4 +1,5 @@
-//! The MCP organic shaping tools in Rhai: `deform`, `loft`, and `brush`.
+//! The MCP organic shaping tools in Rhai: `deform`, `loft`, `brush`, and
+//! `blend_shapes`.
 //!
 //! Each call turns its arguments into the MCP tool's arguments and runs
 //! `remote::organic_writes` on the object being written, as the MCP handler
@@ -51,6 +52,11 @@ const LOFT: &[&str] = &[
     "seed",
     "mode",
     "space",
+];
+
+const BLEND: &[&str] = &[
+    "k", "palette", "grow", "colors", "seam", "seed", "x0", "y0", "z0", "x1", "y1", "z1", "mode",
+    "mirror", "space",
 ];
 
 const BRUSH: &[&str] = &[
@@ -121,6 +127,23 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     }
     for with_opts in [false, true] {
         let state = scratch.clone();
+        let run = move |shapes: Array, opts: &Map| -> Fallible<Map> {
+            let mut args = options(opts, BLEND, "blend_shapes")?;
+            args.insert("shapes".into(), json(&Dynamic::from_array(shapes))?);
+            state.borrow_mut().blend(args).map_err(runtime)
+        };
+        if with_opts {
+            engine.register_fn("blend_shapes", move |shapes: Array, opts: Map| {
+                run(shapes, &opts)
+            });
+        } else {
+            engine.register_fn("blend_shapes", move |shapes: Array| {
+                run(shapes, &Map::new())
+            });
+        }
+    }
+    for with_opts in [false, true] {
+        let state = scratch.clone();
         let run = move |op: &str, points: Array, opts: &Map| -> Fallible<Map> {
             let mut args = options(opts, BRUSH, "brush")?;
             args.insert("op".into(), op.into());
@@ -143,6 +166,15 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
 }
 
 impl Scratch {
+    /// Run MCP `blend_shapes` on the object being written.
+    fn blend(&mut self, args: Args) -> Result<Map, String> {
+        self.keep_going()?;
+        let (args, _) = self.localize("voxel.blend_shapes", args)?;
+        let (writes, counts) = remote::blend_shape_writes(self.cells(), &args)?;
+        let changed = self.apply(&writes)?;
+        Ok(reply(counts, changed))
+    }
+
     /// Run an organic tool on the object being written. The reply holds
     /// `changed` and the tool's own counts.
     fn organic(&mut self, args: Args, tool: Organic) -> Result<Map, String> {

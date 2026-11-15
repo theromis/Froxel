@@ -1,7 +1,7 @@
 //! The organic shaping tools in the editor: the Sculpt tool, which runs MCP
-//! `brush` along a drag, and the Deform and Loft panels, which build MCP
-//! `deform` and `loft` arguments and run the MCP handler, so the editor and
-//! MCP share one path.
+//! `brush` along a drag, and the Deform, Loft, and Blend shapes panels, which
+//! build MCP `deform`, `loft`, and `blend_shapes` arguments and run the MCP
+//! handler, so the editor and MCP share one path.
 
 use std::collections::HashMap;
 
@@ -289,10 +289,165 @@ impl LoftPanel {
     }
 }
 
+/// The Blend shapes panel: MCP `blend_shapes`.
+#[derive(Clone, PartialEq)]
+pub struct BlendPanel {
+    /// One shape per line: `sphere x y z r`, `ellipsoid x y z rx ry rz`,
+    /// `box x y z sx sy sz [round]`, `capsule x0 y0 z0 x1 y1 z1 r0 [r1]`, or
+    /// `torus x y z radius thickness`, then optional words `sub` or `int`,
+    /// `k=N`, `slot=N`, and `rot=x,y,z`.
+    pub shapes: String,
+    pub k: f32,
+    pub grow: f32,
+    /// 0 nearest, 1 last.
+    pub colors: usize,
+    pub seam: f32,
+    /// 0 replace, 1 empty, 2 paint, 3 intersect.
+    pub mode: usize,
+    /// Mirror across x about the object's centre.
+    pub mirror: bool,
+}
+
+impl Default for BlendPanel {
+    fn default() -> Self {
+        Self {
+            shapes: "ellipsoid 0 0 8 8 7 7\nellipsoid 0 -5 16 6 5 4\nsphere 3 -8 19 1.5 k=1\nsphere -3 -8 19 1.5 k=1".into(),
+            k: 3.0,
+            grow: 0.0,
+            colors: 0,
+            seam: 0.0,
+            mode: 0,
+            mirror: false,
+        }
+    }
+}
+
+/// The shape names of the Blend shapes panel and how many numbers each takes.
+pub const BLEND_SHAPES: [(&str, usize, usize); 5] = [
+    ("sphere", 4, 4),
+    ("ellipsoid", 4, 6),
+    ("box", 6, 7),
+    ("capsule", 7, 8),
+    ("torus", 5, 5),
+];
+
+impl BlendPanel {
+    fn args(&self, active: u8) -> Result<Value, String> {
+        let mut shapes = Vec::new();
+        for line in self.shapes.split(['\n', ';']).map(str::trim) {
+            if line.is_empty() {
+                continue;
+            }
+            shapes.push(blend_line(line, active)?);
+        }
+        let mut args = json!({
+            "shapes": shapes,
+            "k": self.k,
+            "grow": self.grow,
+            "colors": (["nearest", "last"][self.colors.min(1)]),
+            "seam": self.seam,
+            "mode": (["replace", "empty", "paint", "intersect"][self.mode.min(3)]),
+        });
+        if self.mirror {
+            args["mirror"] = json!(true);
+        }
+        Ok(args)
+    }
+}
+
+/// One line of the Blend shapes panel as an MCP shape.
+fn blend_line(line: &str, active: u8) -> Result<Value, String> {
+    let mut words = line.split_whitespace();
+    let name = words.next().unwrap_or_default().to_lowercase();
+    let Some(&(_, least, most)) = BLEND_SHAPES.iter().find(|s| s.0 == name) else {
+        return Err(format!(
+            "Shapes: `{line}` must start with sphere, ellipsoid, box, capsule, or torus"
+        ));
+    };
+    let mut numbers = Vec::new();
+    let mut shape = json!({"shape": name, "palette": active.max(1)});
+    for word in words {
+        if let Ok(n) = word.parse::<f64>() {
+            numbers.push(n);
+            continue;
+        }
+        let bad = || {
+            format!("Shapes: `{word}` in `{line}` is not a number, sub, int, k=, slot=, or rot=")
+        };
+        match word.split_once('=') {
+            None if word == "sub" => shape["op"] = json!("subtract"),
+            None if word == "int" => shape["op"] = json!("intersect"),
+            None if word == "add" => shape["op"] = json!("union"),
+            Some(("k", v)) => shape["k"] = json!(v.parse::<f64>().map_err(|_| bad())?),
+            Some(("slot", v)) => shape["palette"] = json!(v.parse::<u8>().map_err(|_| bad())?),
+            Some(("rot", v)) => {
+                let turn = v
+                    .split(',')
+                    .map(|p| p.parse::<f64>())
+                    .collect::<Result<Vec<_>, _>>()
+                    .ok()
+                    .filter(|t| t.len() == 3)
+                    .ok_or_else(bad)?;
+                shape["rotate"] = json!(turn);
+            }
+            _ => return Err(bad()),
+        }
+    }
+    if !(least..=most).contains(&numbers.len()) {
+        return Err(format!(
+            "Shapes: {name} takes {least} to {most} numbers, not {} in `{line}`",
+            numbers.len()
+        ));
+    }
+    // A cut takes the line's slot only when it names one.
+    if shape.get("op").is_some_and(|op| op != "union") && !line.contains("slot=") {
+        shape.as_object_mut().map(|m| m.remove("palette"));
+    }
+    let n = &numbers;
+    let at = json!([n[0], n[1], n[2]]);
+    match name.as_str() {
+        "sphere" => {
+            shape["center"] = at;
+            shape["radius"] = json!(n[3]);
+        }
+        "ellipsoid" => {
+            shape["center"] = at;
+            shape["radii"] = if n.len() == 6 {
+                json!([n[3], n[4], n[5]])
+            } else if n.len() == 4 {
+                json!(n[3])
+            } else {
+                return Err(format!(
+                    "Shapes: ellipsoid takes x y z r or x y z rx ry rz in `{line}`"
+                ));
+            };
+        }
+        "box" => {
+            shape["center"] = at;
+            shape["size"] = json!([n[3], n[4], n[5]]);
+            if let Some(round) = n.get(6) {
+                shape["round"] = json!(round);
+            }
+        }
+        "capsule" => {
+            shape["from"] = at;
+            shape["to"] = json!([n[3], n[4], n[5]]);
+            shape["radii"] = json!([n[6], *n.get(7).unwrap_or(&n[6])]);
+        }
+        _ => {
+            shape["center"] = at;
+            shape["radius"] = json!(n[3]);
+            shape["thickness"] = json!(n[4]);
+        }
+    }
+    Ok(shape)
+}
+
 #[derive(Clone, Default, PartialEq)]
 pub struct OrganicPanels {
     pub deform: DeformPanel,
     pub loft: LoftPanel,
+    pub blend: BlendPanel,
 }
 
 impl Session {
@@ -363,6 +518,51 @@ impl Session {
             Err(err) => err,
         };
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// The Blend shapes panel's button: MCP `blend_shapes` of its shapes.
+    pub fn blend_from_panel(&mut self) {
+        let args = match self.organic.blend.args(self.active_slot) {
+            Ok(args) => args,
+            Err(err) => {
+                self.status = err;
+                return;
+            }
+        };
+        self.status = match crate::remote::apply(self, "voxel.blend_shapes", &args) {
+            Ok(reply) => format!(
+                "Blended {} shapes into {} cells ({} changed).",
+                reply["shapes"], reply["cells"], reply["changed"]
+            ),
+            Err(err) => err,
+        };
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
+    /// Add an ellipsoid filling the selection's box as the next Blend shape,
+    /// in the active slot.
+    pub fn blend_shape_at_selection(&mut self) {
+        let Some((min, max)) = cell_bounds(self.picked.iter().copied()) else {
+            self.status = "Select cells to add an ellipsoid over their box.".into();
+            return;
+        };
+        let mid = |a: i32, b: i32| f64::from(a + b) / 2.0;
+        let half = |a: i32, b: i32| f64::from(b - a + 1) / 2.0;
+        let line = format!(
+            "ellipsoid {} {} {} {} {} {} slot={}",
+            mid(min.0, max.0),
+            mid(min.1, max.1),
+            mid(min.2, max.2),
+            half(min.0, max.0),
+            half(min.1, max.1),
+            half(min.2, max.2),
+            self.active_slot.max(1)
+        );
+        let panel = &mut self.organic.blend;
+        if !panel.shapes.is_empty() && !panel.shapes.ends_with('\n') {
+            panel.shapes.push('\n');
+        }
+        panel.shapes.push_str(&line);
     }
 
     /// Add the selection's centre as the next Loft point, with the panel's

@@ -1,5 +1,5 @@
-//! Inspector sections of the organic shaping tools: Deform and Loft. Each
-//! button runs the MCP tool, Deform over the selection's box or the whole
+//! Inspector sections of the organic shaping tools: Deform, Loft, and Blend
+//! shapes. Each button runs the MCP tool, Deform over the selection's box or the whole
 //! active object. The Sculpt tool (MCP `brush`) is in the tool strip.
 
 use egui::{RichText, Ui};
@@ -239,6 +239,72 @@ pub(super) fn loft(ui: &mut Ui, session: &mut Session) {
                 .clicked()
             {
                 session.loft_from_panel();
+            }
+        });
+    });
+}
+
+/// MCP `blend_shapes`: simple shapes melted together as distance fields.
+pub(super) fn blend(ui: &mut Ui, session: &mut Session) {
+    let enabled = session.editor_mode == EditorMode::Model;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Blend shapes");
+        let panel = &mut session.organic.blend;
+        egui::Grid::new("blend-panel")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                label(ui, "Shapes", "One per line, in order: sphere x y z r, ellipsoid x y z rx ry rz, box x y z sx sy sz [round], capsule x0 y0 z0 x1 y1 z1 r0 [r1], torus x y z radius thickness. Then optional words: sub (carve it softly) or int (keep only inside it), k=N (this shape's smoothing), slot=N (its colour; the active slot by default), rot=x,y,z (degrees). A whole number is a cell centre.");
+                ui.add(
+                    egui::TextEdit::multiline(&mut panel.shapes)
+                        .desired_rows(4)
+                        .desired_width(150.0),
+                );
+                ui.end_row();
+                label(ui, "Smooth k", "Fillet width in cells where shapes meet: 0 is a hard union, 2 to 6 melts them together like clay.");
+                number(ui, &mut panel.k, 0.0..=64.0, 0.05);
+                ui.end_row();
+                label(ui, "Grow", "Thicken (above 0) or thin (below 0) the whole blended form, in cells.");
+                number(ui, &mut panel.grow, -16.0..=16.0, 0.05);
+                ui.end_row();
+                label(ui, "Colours", "Nearest: each cell takes the slot of the shape it is deepest inside. Last: the last listed shape that holds it, so eyes and spots after the body keep their colour.");
+                ui.horizontal_wrapped(|ui| {
+                    for (index, name) in ["Nearest", "Last"].into_iter().enumerate() {
+                        ui.selectable_value(&mut panel.colors, index, name);
+                    }
+                });
+                ui.end_row();
+                label(ui, "Seam", "With Nearest: dither the boundary between two slots over this many cells; 0 keeps it sharp.");
+                number(ui, &mut panel.seam, 0.0..=32.0, 0.05);
+                ui.end_row();
+                label(ui, "Mode", "Replace writes every cell; Empty adds only into empty cells; Paint recolours solid cells; Intersect erases the solid cells outside the blend.");
+                ui.horizontal_wrapped(|ui| {
+                    for (index, name) in ["Replace", "Empty", "Paint", "Intersect"]
+                        .into_iter()
+                        .enumerate()
+                    {
+                        ui.selectable_value(&mut panel.mode, index, name);
+                    }
+                });
+                ui.end_row();
+                label(ui, "Mirror", "Blend the shapes again mirrored across x about the object's centre.");
+                ui.checkbox(&mut panel.mirror, "Mirror x");
+                ui.end_row();
+            });
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .button("Shape at selection")
+                .on_hover_text("Add an ellipsoid over the selection's box, in the active slot.")
+                .clicked()
+            {
+                session.blend_shape_at_selection();
+            }
+            if ui
+                .button("Blend")
+                .on_hover_text("MCP blend_shapes of the shapes. One undo step.")
+                .clicked()
+            {
+                session.blend_from_panel();
             }
         });
     });

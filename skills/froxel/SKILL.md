@@ -31,7 +31,7 @@ server is still running. A server started with `--watch` reloads by itself.
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `shell_plates`, `components`, `deterrace`, `reduce_palette`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `radial_relief`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `deform`, `brush`, `carve_from_views` and `optimize_to_views` with views as rows and a legend, `project_paint` and `decal` with the image as rows and a legend, `paint_from_views` with views as rows and a legend, `pixelate_views` (views as rows; returns pixel art rows), `fit_to_views` and `orient_to_views` with views as rows and a legend, and `marker`,
+  (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `shell_plates`, `components`, `deterrace`, `reduce_palette`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `radial_relief`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `blend_shapes`, `deform`, `brush`, `carve_from_views` and `optimize_to_views` with views as rows and a legend, `project_paint` and `decal` with the image as rows and a legend, `paint_from_views` with views as rows and a legend, `pixelate_views` (views as rows; returns pixel art rows), `fit_to_views` and `orient_to_views` with views as rows and a legend, and `marker`,
   `collision_box`, `connector`, `collision_from_voxels`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `split_object`, `split_parts`, `clear_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -75,7 +75,7 @@ server is still running. A server started with `--watch` reloads by itself.
 - Voxel tools write the **active object**, in its **local** cells. World cell
   = local cell + the object's `position`. Switch with `set_active_object`.
   Pass `space: "world"` (fills, `carve`, `set_voxels`, `get_voxels`,
-  `smooth`, `loft`, `brush`, `carve_from_views`, `project_paint`,
+  `smooth`, `loft`, `blend_shapes`, `brush`, `carve_from_views`, `project_paint`,
   `paint_from_views`, `decal`, `split_object`) to give world cells instead; parts that moved after a
   save and reopen, or a `mirror_object` copy, need no subtraction then.
 - Palette `0` erases. Slots `1..255` are colours; set them with `set_palette`
@@ -244,7 +244,14 @@ server is still running. A server started with `--watch` reloads by itself.
    `import_mesh`;
    tubes and boxes alone make such an asset read as pipes. Otherwise block
    out the large forms with `fill_rounded_box` and
-   `fill_ellipsoid`. Grow limbs, roots, branches, and twigs with `fill_tube`
+   `fill_ellipsoid`. For a statue, a creature, topiary, or any form built
+   from a body, a head, eyes, and limbs, use `blend_shapes` instead: one
+   call joins spheres, ellipsoids, rounded boxes, tapered or bent capsules,
+   and tori as signed distance fields with a smooth minimum (`k` 2 to 6
+   cells of fillet), so they flow together like clay instead of reading as
+   separate balls and bricks; `op: "subtract"` with a `palette` carves and
+   lines a soft groove, `colors: "last"` keeps eyes listed after the body,
+   and `mirror` draws one side (`tests/fixtures/examples/blob_snowman.rhai`). Grow limbs, roots, branches, and twigs with `fill_tube`
    (a radius per point, so it tapers; `curve: "smooth"` bends it). Build
    trunks, roots, and limbs that must not read as pipes with `loft` (an
    elliptical section per point with `roll`, `flatTop`, and a knobbly

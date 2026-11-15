@@ -28,6 +28,7 @@ pub(crate) const WORLD_METHODS: &[&str] = &[
     "voxel.surface_stroke",
     "voxel.shell_plates",
     "voxel.loft",
+    "voxel.blend_shapes",
     "voxel.brush",
     "voxel.carve_from_views",
     "voxel.project_paint",
@@ -57,7 +58,8 @@ pub(crate) fn is_world(params: &Value) -> Result<bool, String> {
 /// `y`, `z`, `points` and `cells` (lists or maps; a list's first three
 /// numbers), `origin`, `boxes`, `exclude`, a decal's `point` and `ray`
 /// origin, `shell_plates`' `center` and `zRange`, `radial_relief`'s
-/// `center` across its axis and `from` and `to` along it, and a `mirror`'s `at`
+/// `center` across its axis and `from` and `to` along it, `blend_shapes`'
+/// shapes' `center`, `from`, `to`, and `points`, and a `mirror`'s `at`
 /// move;
 /// everything else stays.
 pub(crate) fn to_local(method: &str, params: &Value, offset: Cell) -> Result<Value, String> {
@@ -86,6 +88,10 @@ pub(crate) fn to_local(method: &str, params: &Value, offset: Cell) -> Result<Val
     }
     if let Some(origin @ Value::Array(_)) = map.get_mut("origin") {
         shift_point(origin, by, -1, "origin")?;
+    }
+    if method == "voxel.blend_shapes" {
+        // Each shape's centre, ends, and points.
+        super::blend::shift_shapes(map, [-by[0], -by[1], -by[2]])?;
     }
     if method == "voxel.radial_relief" {
         // The axis's centre across it and the range along it.

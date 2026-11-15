@@ -142,7 +142,7 @@ y, then z; each is four numbers, so the array limit allows about 1 000.
 
 ### World cells
 
-`get_voxels`, `set_voxels`, the fills, the carves, `smooth`, `loft`, `brush`,
+`get_voxels`, `set_voxels`, the fills, the carves, `smooth`, `loft`, `blend_shapes`, `brush`,
 `carve_from_views`, `project_paint`, `paint_from_views`, `decal`, and `split_object` take `space:
 "world"` in their options map, as over MCP: the coordinates are world cells,
 and the position the object had when the run started is subtracted first.
@@ -521,6 +521,47 @@ is removed or written. Options:
 
 It returns `#{changed, removed, painted, added}`, with `warning` when nothing
 was outside.
+
+### Blend shapes
+
+```rhai
+let report = blend_shapes(shapes);
+let report = blend_shapes([
+    #{shape: "ellipsoid", center: [0, 1, 9], radii: [10, 12, 8], rotate: [-15, 0, 0], palette: 1},
+    #{shape: "ellipsoid", center: [0, -7, 17], radii: [9, 7, 5.5], palette: 1},
+    #{shape: "sphere", center: [4.5, -8, 21.5], radius: 3, palette: 2, k: 1.5},
+    #{shape: "capsule", points: [[6, -6, 10, 3.0], [8, -11, 4, 2.2]], palette: 1},
+    #{shape: "capsule", from: [-7, -12, 15.5], to: [7, -12, 15.5], radius: 0.8,
+      op: "subtract", k: 1.5, palette: 3},
+], #{k: 4, colors: "last", mirror: #{axis: "x", at: 0.5}});
+```
+
+MCP `blend_shapes`: spheres, ellipsoids, boxes, capsules, and tori as
+signed distance fields joined in order by a smooth minimum, so they flow
+into each other like clay instead of sticking together as separate balls
+and bricks. Each shape is a map: `shape` (`"sphere"`: `center`, `radius`;
+`"ellipsoid"`: `center`, `radii` or `radius`; `"box"`: `center`, `size`,
+`round`; `"capsule"`: `from`, `to`, `radius` or `radii` `[r0, r1]`, or
+`points` `[[x, y, z, r], ...]`; `"torus"`: `center`, `radius`,
+`thickness`), and any of `rotate` (`[x, y, z]` degrees, not a capsule),
+`op` (`"union"`, `"subtract"`, `"intersect"`), `k`, and `palette`. The
+first shape is a union. Options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `k` | `3` | Fillet width in cells for shapes that leave `k` out, 0..=64; 0 is a hard union. |
+| `palette` | — | Slot of union shapes that leave `palette` out. |
+| `grow` | `0` | Fill where the blended distance is at most this, -16..=16. |
+| `colors` | `"nearest"` | `"last"`: the last listed union shape that holds a cell colours it. |
+| `seam`, `seed` | `0`, `0` | Dither the boundary between two slots over `seam` cells. |
+| `x0`..`z1` | — | Clip the evaluation to this box (all six or none). |
+| `mode` | `"replace"` | `"empty"`, `"paint"`, or `"intersect"`. |
+| `mirror` | — | Blend the list again across a plane, as the fills. |
+| `space` | `"local"` | `"world"` moves each shape's `center`, `from`, `to`, and `points`. |
+
+A subtract or intersect shape with a `palette` paints the cells along its
+cut. It returns `#{changed, cells, shapes, evaluated, bounds}`.
+`tests/fixtures/examples/blob_snowman.rhai` is a snowman built from it.
 
 ### Loft
 

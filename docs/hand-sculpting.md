@@ -280,6 +280,23 @@ that tapers from radius 1.5 to 0.5 with `aspect` 0.4 and `profile` `blade`
 is a flat splinter, and a short wide one is a broken plank end or a shard.
 `roll` turns the flat side about the axis.
 
+Separate `fill_ellipsoid` and `fill_rounded_box` calls stick together as
+balls and bricks, and `smooth` afterwards only blurs their seams. For a
+statue, a creature, topiary, or anything sculpted from a body, a head,
+eyes, and limbs, `blend_shapes` takes the whole list of shapes in one
+call (spheres, ellipsoids, rounded boxes, capsules that taper or bend
+through points, and tori, each turned by `rotate`) and joins them as
+signed distance fields with a smooth minimum: `k` cells of fillet (3 by
+default, 2 to 6 for a head melting into a body) let them flow into each
+other like clay. A shape with `op` `subtract` carves softly (a mouth
+groove, eye sockets) and with a `palette` lines its cut; `intersect` keeps
+only what is inside it (a big box cuts a seated statue flat at the
+ground). Each cell takes the slot of the shape it is deepest inside, or
+with `colors` `last` of the last listed shape that holds it, so eyes and
+buttons listed after the body keep their colour; `mirror` blends the list
+again across a plane, so one leg or one eye is drawn once
+(`tests/fixtures/examples/blob_snowman.rhai`).
+
 A round tube reads as a pipe. For a trunk, a root, or a limb, `loft`
 gives each point its own section: an ellipse with two radii (`rx` across,
 `ry` up), a `roll`, a flat side (`flatTop`; negative flattens the bottom

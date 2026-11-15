@@ -268,6 +268,9 @@ fn main(
     if args.first().is_some_and(|arg| arg == "deform") {
         std::process::exit(cli::deform(&args[1..]));
     }
+    if args.first().is_some_and(|arg| arg == "blend") {
+        std::process::exit(cli::blend(&args[1..]));
+    }
     if args.first().is_some_and(|arg| arg == "relief") {
         std::process::exit(cli::relief(&args[1..]));
     }
@@ -739,6 +742,7 @@ usage: froxel [--control PORT] [--bridge PORT] [file.vox]
        froxel orient --args <orient.json> --input <file.vox> --out <file.vox> (--help for its flags)
        froxel deterrace --input <file.vox> --out <file.vox> --mode blocks|stagger (--help for its flags)
        froxel deform --args <deform.json> --input <file.vox> --out <file.vox> (--help for its flags)
+       froxel blend --args <blend.json> --out <file.vox> [--input <file.vox>] (--help for its flags)
        froxel relief --args <relief.json> --input <file.vox> --out <file.vox> (--help for its flags)
        froxel split-parts --args <parts.json> --input <file.vox> --out <file.vox> (--help for its flags)
        froxel reduce-palette --input <file.vox> --out <file.vox> --colors N --despeckle N (--help for its flags)

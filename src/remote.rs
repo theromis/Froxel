@@ -8,6 +8,7 @@ use std::path::{Component, Path, PathBuf};
 use serde_json::{json, Map, Value};
 
 mod batch;
+mod blend;
 mod collision;
 mod edit;
 mod foliage;
@@ -18,6 +19,7 @@ mod silhouette;
 mod space;
 mod stone;
 pub(crate) use batch::{batch_items, batch_tool_names, MAX_BATCH_ITEMS};
+pub(crate) use blend::blend_writes as blend_shape_writes;
 pub(crate) use collision::{collision_build, finish_reply as collision_reply};
 pub(crate) use edit::{
     components_run, components_spec, mirror_prop, plates_writes, recolor_writes, reduce_writes,
@@ -913,6 +915,7 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
         "voxel.trim_outline" => stone::apply_stone(session, &params, Stone::Trim),
         "voxel.deform" => organic::apply_organic(session, &params, Organic::Deform),
         "voxel.loft" => organic::apply_organic(session, &params, Organic::Loft),
+        "voxel.blend_shapes" => blend::apply_blend(session, &params),
         "voxel.brush" => organic::apply_organic(session, &params, Organic::Brush),
         "voxel.carve_from_views" => silhouette::carve_from_views(session, &params),
         "voxel.project_paint" => silhouette::project_paint(session, &params),
@@ -1588,6 +1591,7 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("voxel.sweep", "points, profile | width + height + radius?, curve?, palette | palettes, pattern?, period?, seed?, mode?", "Fill a 2D profile along a polyline or smooth curve, with twist and scale per point; palette 0 erases it"),
     ("voxel.trim_outline", "outline, inset?, curve?, x0..z1?, only?, skin?, thickness?", "Remove every solid cell outside a closed plan outline moved inward by an inset per height, optionally with a new skin along the cut"),
     ("voxel.deform", "op, x0..z1?, axis?, origin?, length?, center?, angle?, direction?, start?, end?, amplitude?, scale?, octaves?, seed?, bias?, point?, factor?, radius?, falloff?, minFeature?", "Bend, taper, or twist the object or a box along an axis, displace its surface with noise, or scale a part about a point with a smooth falloff; slots kept; minFeature reports parts thinner than N cells"),
+    ("voxel.blend_shapes", "shapes, k?, palette?, grow?, colors?, seam?, seed?, x0..z1?, mode?, mirror?", "Blend spheres, ellipsoids, boxes, capsules, and tori as signed distance fields with a smooth minimum (union, subtract, intersect, k cells of fillet), so they flow into each other like clay; each union shape colours the cells nearest it"),
     ("voxel.loft", "points, radius? | rx? + ry?, roll?, flatTop?, noise?, frequency?, curve?, caps?, palette | palettes, pattern?, period?, sectors?, seed?, mode?", "Fill a solid along a curve whose elliptical, flattened, noisy section changes per point"),
     ("voxel.brush", "op, points, radius?, strength?, falloff?, only?, palette?, vector?, spacing?", "Sculpt brush dabs along points: inflate, deflate, smooth, flatten, or grab"),
     ("voxel.carve_from_views", "views, path?, background?, tolerance?, alphaThreshold?, size?, origin?, cellsPerPixel?, palette? | slots?, coverage?, shell?, smooth?, mode?, downscale?", "Fill the visual hull of 2 or 3 orthographic views (front, side, top): each a PNG path or rows, with crop, cellsPerPixel or size, and a background rule"),

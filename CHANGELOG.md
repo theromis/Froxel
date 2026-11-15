@@ -4,6 +4,15 @@
 
 ### Added
 
+- Blended shapes: spheres, ellipsoids, rounded boxes, capsules (tapered, or
+  bent through points), and tori as signed distance fields joined by a
+  smooth minimum, so they flow into each other like clay (MCP
+  `blend_shapes`, Rhai the same, `froxel blend`, and the Blend shapes
+  section). Each shape is a union, a soft subtract (a groove its palette
+  lines), or an intersect, with its own fillet `k`, slot, and turn; cells
+  take the slot of the shape they are deepest inside, or of the last listed
+  shape that holds them, with an optional dithered seam. It takes `grow`, a
+  box, `mode`, `mirror`, and `space` world. Example: `blob_snowman.rhai`.
 - Radial relief: regular, shallow, sloped recesses repeated evenly round an
   axis (MCP `radial_relief`, Rhai the same, `froxel relief`, and the
   Radial relief section). Flutes groove a column, vase, urn, or barrel

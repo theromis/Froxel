@@ -26,6 +26,7 @@ pub(crate) const BATCH_TOOLS: &[(&str, &str)] = &[
     ("fill_tube", "voxel.tube"),
     ("sweep", "voxel.sweep"),
     ("loft", "voxel.loft"),
+    ("blend_shapes", "voxel.blend_shapes"),
     ("carve", "voxel.carve"),
     ("recolor", "voxel.recolor"),
     ("surface_stroke", "voxel.surface_stroke"),
