@@ -791,6 +791,7 @@ fn export_models_checks_structure_and_leaves_the_open_document() {
         ]}),
     );
     assert_eq!(report["ok"], true, "{report}");
+    assert_eq!(report["models"][0]["markers"], json!({}), "{report}");
     assert_eq!(
         report["models"][0]["structure"]["nodes"][0]["name"],
         "voxels"
@@ -1757,7 +1758,21 @@ fn markers_save_export_and_follow_their_object() {
     // Exported as nodes with extras, and listed in the reply.
     let glb = std::env::temp_dir().join("froxel-mcp-markers.glb");
     let reply = head.ok("export_mesh", json!({"path": glb.to_string_lossy()}));
-    assert_eq!(reply["markers"].as_array().unwrap().len(), 3);
+    let counted: u64 = reply["markers"]
+        .as_object()
+        .unwrap()
+        .values()
+        .map(|n| n.as_u64().unwrap())
+        .sum();
+    assert_eq!(counted, 3, "{}", reply["markers"]);
+    let full = head.ok(
+        "export_mesh",
+        json!({"path": glb.to_string_lossy(), "reply": "full"}),
+    );
+    assert_eq!(
+        full["markers"],
+        head.ok("list_markers", json!({}))["markers"]
+    );
     let bytes = std::fs::read(&glb).unwrap();
     let len = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
     let root: Value = serde_json::from_slice(&bytes[20..20 + len]).unwrap();
@@ -1813,15 +1828,43 @@ fn export_variants_writes_each_set_and_leaves_the_document() {
         json!({"dir": dir.to_string_lossy(), "merge": true, "colorAtlas": true, "aoStrength": 0.5,
             "variants": [{"name": "low", "params": {"height": 3}}, {"name": "tall", "params": {"height": 12}}]}),
     );
+    // The reply is a summary: files, bounds, counts, and markers by kind.
     let variants = reply["variants"].as_array().unwrap();
     assert_eq!(variants.len(), 2);
-    assert_eq!(variants[0]["params"]["Object/height"], 3);
+    assert_eq!(reply["reply"], "compact");
+    assert!(variants[0].get("params").is_none(), "{reply}");
+    assert!(variants[0].get("requested").is_none(), "{reply}");
     assert_eq!(variants[1]["bounds"]["voxel"]["max"], json!([6, 4, 12]));
+    assert_eq!(variants[1]["markers"], json!({"box": 1, "point": 1}));
+    assert_eq!(variants[1]["voxels"], 6 * 4 * 12);
+    assert!(variants[1]["quads"].as_u64().unwrap() > 0);
+    assert!(variants[1]["glb"].as_str().unwrap().ends_with("tall.glb"));
+    assert!(variants[1]["vox"].as_str().unwrap().ends_with("tall.vox"));
+    assert_eq!(reply["options"]["colorAtlas"], true);
+    // The manifest file has the detail; reply full returns it as written.
+    let text = std::fs::read_to_string(dir.join("variants.json")).unwrap();
+    let on_disk: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(on_disk["variants"][0]["params"]["Object/height"], 3);
     assert_eq!(
-        variants[1]["markers"][0]["world"]["point"],
+        on_disk["variants"][1]["markers"][0]["world"]["point"],
         json!([3.0, 2.0, 12.0])
     );
-    assert_eq!(reply["options"]["colorAtlas"], true);
+    let full = head.ok(
+        "export_variants",
+        json!({"dir": dir.to_string_lossy(), "merge": true, "colorAtlas": true, "aoStrength": 0.5,
+            "reply": "full",
+            "variants": [{"name": "low", "params": {"height": 3}}, {"name": "tall", "params": {"height": 12}}]}),
+    );
+    let again: Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("variants.json")).unwrap()).unwrap();
+    assert_eq!(again, on_disk, "the manifest depends on the reply");
+    assert_eq!(full["variants"], on_disk["variants"]);
+    assert_eq!(full["replaced"], json!(["low", "tall"]));
+    let bad = error_text(&head.call(
+        "export_variants",
+        json!({"dir": dir.to_string_lossy(), "reply": "short", "variants": [{"name": "low"}]}),
+    ));
+    assert!(bad.contains("compact"), "{bad}");
     for name in [
         "low.vox",
         "low.glb",
@@ -1870,7 +1913,7 @@ fn a_manifests_params_pass_back_unchanged() {
     let _ = std::fs::remove_dir_all(&dir);
     let first = head.ok(
         "export_variants",
-        json!({"dir": dir.to_string_lossy(), "variants": [
+        json!({"dir": dir.to_string_lossy(), "reply": "full", "variants": [
             {"name": "bytes", "params": {"1/tint": [219, 168, 117], "2/tint": [1, 1, 1]}},
             {"name": "unit", "params": {"1/tint": [0.86, 0.66, 0.46], "2/tint": [1.0, 1.0, 1.0]}},
         ]}),
@@ -1893,7 +1936,7 @@ fn a_manifests_params_pass_back_unchanged() {
         .collect();
     let again = head.ok(
         "export_variants",
-        json!({"dir": dir.to_string_lossy(), "variants": sets}),
+        json!({"dir": dir.to_string_lossy(), "reply": "full", "variants": sets}),
     );
     for index in 0..2 {
         assert_eq!(
@@ -1969,7 +2012,7 @@ fn export_variants_merges_into_the_manifest_by_name() {
     // Other options: recorded per entry, and the top level drops them.
     let third = head.ok(
         "export_variants",
-        json!({"dir": dir_text, "vox": false, "merge": true, "variants": [{"name": "c"}]}),
+        json!({"dir": dir_text, "vox": false, "merge": true, "reply": "full", "variants": [{"name": "c"}]}),
     );
     assert!(third.get("options").is_none(), "{third}");
     assert_eq!(third["variants"][2]["options"]["merge"], true);
@@ -1980,6 +2023,7 @@ fn export_variants_merges_into_the_manifest_by_name() {
         json!({"dir": dir_text, "vox": false, "replace": true, "variants": [{"name": "e"}]}),
     );
     assert_eq!(names(&fresh), ["e"]);
+    assert_eq!(fresh["reply"], "compact");
     assert_eq!(fresh["added"], json!(["e"]));
     assert_eq!(fresh["options"]["merge"], false);
     // A file that is not a manifest is not overwritten without replace.
@@ -2851,7 +2895,7 @@ fn glb_position_bounds(path: &std::path::Path) -> Value {
 fn exported_frame(head: &mut Headless, path: &std::path::Path) -> (Value, Value) {
     let reply = head.ok(
         "export_mesh",
-        json!({"path": path.to_string_lossy(), "merge": true}),
+        json!({"path": path.to_string_lossy(), "merge": true, "reply": "full"}),
     );
     (glb_position_bounds(path), reply["markers"].clone())
 }
@@ -2907,7 +2951,7 @@ fn an_exported_variant_reopens_in_the_frame_of_its_glb_and_manifest() {
     let mut head = off_centre_scripted_document();
     let reply = head.ok(
         "export_variants",
-        json!({"dir": dir.to_string_lossy(), "merge": true,
+        json!({"dir": dir.to_string_lossy(), "merge": true, "reply": "full",
             "variants": [{"name": "tall", "params": {"height": 30}}]}),
     );
     let entry = &reply["variants"][0];
@@ -2951,7 +2995,7 @@ fn a_froxel_file_older_than_the_origin_chunk_keeps_its_frame() {
     // Variants of it are in the same frame, and so is their .vox.
     let reply = head.ok(
         "export_variants",
-        json!({"dir": dir.join("out").to_string_lossy(), "merge": true,
+        json!({"dir": dir.join("out").to_string_lossy(), "merge": true, "reply": "full",
             "variants": [{"name": "same", "params": {}}]}),
     );
     assert_eq!(reply["variants"][0]["markers"], first.1);

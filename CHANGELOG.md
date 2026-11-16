@@ -41,6 +41,13 @@
 
 - `bake_scene` and `froxel bake-scene` take up to 32768 instances, not 4096,
   so a zone of many small path stones bakes as one file.
+- MCP `export_variants` replies with a summary instead of the whole manifest:
+  per set exported now its files, bounds, voxels, quads, and markers counted
+  by kind, plus the manifest path and the names added, replaced, and kept.
+  Six curve walls with collision boxes went from about 115,000 characters
+  to 5,500. `reply: "full"` returns the manifest as before; the manifest
+  file is unchanged. `export_mesh` and `export_models` count the markers by
+  kind the same way, with `reply: "full"` for every marker.
 
 ### Fixed
 

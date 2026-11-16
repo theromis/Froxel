@@ -66,7 +66,11 @@ server is still running. A server started with `--watch` reloads by itself.
   0..255, or 0..1 only with a decimal point (`[1, 1, 1]` is near black).
   A later call into the same manifest merges by name: re-export only the
   variant to redo and the others stay listed (`replace: true` starts the
-  manifest fresh). `froxel variants` is the command-line form. `tests/fixtures/examples/gorge_wall.rhai`
+  manifest fresh). The reply is short: per set exported now its files,
+  bounds, voxels, quads, and markers counted by kind; read parameters and
+  marker places from the manifest file (or pass `reply: "full"`).
+  `export_mesh` and `export_models` count markers the same way; their
+  places come from `list_markers` or `reply: "full"`. `froxel variants` is the command-line form. `tests/fixtures/examples/gorge_wall.rhai`
   shows the stone tools and markers together.
 
 ## Coordinates and rules

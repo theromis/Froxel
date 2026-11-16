@@ -329,9 +329,9 @@ tracer. A file with no scene graph still loads its first model.
 | `remove_marker` | `name` or `all` | Remove one marker, or every marker. One undo step |
 | `list_markers` | — | Markers with `local`, `world`, and `gltf` coordinates |
 | `collision_from_voxels` | — | Collision box markers from an object's solid cells, keeping hollows open: `prefix` (default `<object>_collider`), `holeSize` (default 3), `layer` or `zBands`, `minFeature`, `only`, `exclude` (slots), `maxBoxes`, `object`. A rerun replaces that prefix's boxes on the object. One undo step. Replies with `boxes`, `coveredPercent`, `emptyFilledCells`, `emptyFilledPercent`, `dropped`, and the cell counts |
-| `export_mesh` | `path` | Write a glTF 2.0 `.glb` of every object. `merge` defaults to false. `vertexColors` defaults to false. `exportHidden` and `splitObjects` default to false. A slot with motion adds `TEXCOORD_1`. Clips become glTF animations. Markers become nodes. The reply includes `quads`, `triangles` (every triangle in the glb), `structure`, and `markers`. `bake` (with `colorAtlas`) paints ray-traced occlusion and a sun with shadows into the atlas, to draw unshaded |
-| `export_variants` | `variants`, `dir` | Bake the scripted document once per parameter set `{name?, params}` and write `<name>.vox` and `<name>.glb` into `dir` with the `export_mesh` options, then merge them by name into a manifest (default `dir/variants.json`) of each set's parameters, markers, and bounds; the reply names the entries `added`, `replaced`, and `kept`. Optional `manifest`, `replace` (a fresh manifest), `vox`, `timeoutSeconds`. The document and its undo history stay as they were |
-| `export_models` | `models` | Write 1 to 16 `.glb` files. Each item is `{path, source?, merge?, vertexColors?, exportHidden?, splitObjects?, colorAtlas?, aoStrength?, aoRadius?, aoTarget?, bake?}`. `source` is a `.vox` opened in its own session, so the open document stays. Each file's reply has `quads`, `triangles`, and `structure`: nodes, meshes, skins, animations, and warnings |
+| `export_mesh` | `path` | Write a glTF 2.0 `.glb` of every object. `merge` defaults to false. `vertexColors` defaults to false. `exportHidden` and `splitObjects` default to false. A slot with motion adds `TEXCOORD_1`. Clips become glTF animations. Markers become nodes. The reply includes `quads`, `triangles` (every triangle in the glb), `structure`, and `markers` counted by kind (`{"box": 22, "connector": 2}`); `reply: "full"` lists each marker as `list_markers` does. `bake` (with `colorAtlas`) paints ray-traced occlusion and a sun with shadows into the atlas, to draw unshaded |
+| `export_variants` | `variants`, `dir` | Bake the scripted document once per parameter set `{name?, params}` and write `<name>.vox` and `<name>.glb` into `dir` with the `export_mesh` options, then merge them by name into a manifest (default `dir/variants.json`) of each set's parameters, markers, and bounds; the reply names the entries `added`, `replaced`, and `kept` and sums up each set exported now (files, `bounds`, `voxels`, `quads`, markers counted by kind); `reply: "full"` returns the whole manifest. Optional `manifest`, `replace` (a fresh manifest), `vox`, `reply`, `timeoutSeconds`. The document and its undo history stay as they were |
+| `export_models` | `models` | Write 1 to 16 `.glb` files. Each item is `{path, source?, merge?, vertexColors?, exportHidden?, splitObjects?, colorAtlas?, aoStrength?, aoRadius?, aoTarget?, bake?}`. `source` is a `.vox` opened in its own session, so the open document stays. Each file's reply has `quads`, `triangles`, `structure` (nodes, meshes, skins, animations, and warnings), and `markers` counted by kind; `reply: "full"` lists each marker |
 | `bake_scene` | `scene`, `path` | Bake a placement of many `.vox` files together into one `.glb` with one colour atlas, each shaded by its neighbours and by ground, to draw unshaded. Optional `bake`. Replies with `triangles`, `vertices`, `atlas`, `texels`, `bytes`, `memory`, `bake`, and `structure` |
 | `set_script` | `source`, optional `object` | Store a Rhai script and read its parameters. One undo step. Does not rebuild voxels |
 | `get_script` | optional `object` | Source, auto flag, and parameters |
@@ -2806,8 +2806,10 @@ place in glTF axes (Y up, `(x, z, -y)`), with `extras.froxel`: `kind`,
 `object`, `size`, `min`, and `max` for a box, and `direction` for a
 connector, whose node `rotation` turns -Z toward the direction (Godot's
 forward). The scene's `extras.froxelMarkers` lists them again with their
-node index. The export replies and `list_markers` give each marker in
-`local`, `world`, and `gltf` coordinates. A script's `marker`,
+node index. `list_markers` gives each marker in `local`, `world`, and
+`gltf` coordinates; the export replies count them by kind, so a model with
+hundreds of collision boxes does not fill an agent's context, and
+`reply: "full"` gives them as `list_markers` does. A script's `marker`,
 `collision_box`, and `connector` make the same markers on the objects it
 builds; a rerun replaces them and leaves markers placed by hand.
 
@@ -2876,8 +2878,13 @@ manifest as it was.
 An existing manifest is updated, not overwritten: an entry whose name
 (ignoring case) is exported again is replaced in place, every other entry
 is kept in its order, and new names are appended, so one piece of a family
-can be redone without dropping the rest. The reply is the whole manifest
-plus `added`, `replaced`, and `kept`, the names in each group. The
+can be redone without dropping the rest. The reply gives `manifest` (its
+path), `added`, `replaced`, and `kept` (the names in each group), the
+shared `options`, and under `variants` one line per set exported now:
+`name`, `glb`, `vox`, `bounds`, `voxels`, `quads`, `sceneShift`, and
+`markers` counted by kind (`{"box": 22, "connector": 2}`). Parameters and
+marker places are read from the manifest file, which is complete either
+way; `reply: "full"` returns the whole manifest instead, as written. The
 top-level `options` is present while every entry was written with the same
 options and omitted once they differ; each entry's own `options` is the
 record (an entry kept from an older manifest without one takes that

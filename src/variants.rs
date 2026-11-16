@@ -19,8 +19,10 @@ pub const MAX_VARIANTS: usize = 64;
 pub const MANIFEST: &str = "variants.json";
 
 /// Export every variant in `params` and merge them into the manifest by
-/// name, or write a fresh one with `replace`. The reply is the manifest with
-/// its path and the names it `added`, `replaced`, and `kept`.
+/// name, or write a fresh one with `replace`. The reply names the manifest
+/// and the names it `added`, `replaced`, and `kept`, and sums up each set
+/// exported now ([`compact_reply`]); `reply: "full"` returns the whole
+/// manifest instead.
 pub fn export_variants(session: &mut Session, params: &Value) -> Result<Value, String> {
     let dir = PathBuf::from(
         params
@@ -77,6 +79,7 @@ pub fn export_variants(session: &mut Session, params: &Value) -> Result<Value, S
         Some(path) => PathBuf::from(path),
         None => dir.join(MANIFEST),
     };
+    let full = crate::remote::full_reply(params)?;
     let replace = match params.get("replace") {
         None | Some(Value::Null) => false,
         Some(value) => value.as_bool().ok_or("replace must be a boolean")?,
@@ -102,16 +105,65 @@ pub fn export_variants(session: &mut Session, params: &Value) -> Result<Value, S
         variants.push(entry.map_err(|err| format!("variant `{name}`: {err}"))?);
     }
     let options = crate::remote::mesh_params(&options);
-    let (mut manifest, changes) = merge_manifest(previous, variants, &options);
+    let (manifest, changes) = merge_manifest(previous, variants, &options);
     let text = serde_json::to_string_pretty(&manifest).map_err(|err| err.to_string())?;
     crate::state::create_parent(&manifest_path)?;
     std::fs::write(&manifest_path, text + "\n")
         .map_err(|err| format!("Could not write {}: {err}", manifest_path.display()))?;
-    manifest["manifest"] = json!(manifest_path.display().to_string());
-    manifest["added"] = json!(changes.added);
-    manifest["replaced"] = json!(changes.replaced);
-    manifest["kept"] = json!(changes.kept);
-    Ok(manifest)
+    let mut reply = if full {
+        manifest
+    } else {
+        compact_reply(&manifest, &changes)
+    };
+    reply["manifest"] = json!(manifest_path.display().to_string());
+    reply["added"] = json!(changes.added);
+    reply["replaced"] = json!(changes.replaced);
+    reply["kept"] = json!(changes.kept);
+    Ok(reply)
+}
+
+/// The default reply: per set exported now its name, files, bounds, voxels,
+/// quads, scene shift, and markers counted by kind. Parameters and marker
+/// detail stay in the manifest file; kept entries are named only.
+pub fn compact_reply(manifest: &Value, changes: &ManifestChanges) -> Value {
+    let exported: HashSet<String> = changes
+        .added
+        .iter()
+        .chain(&changes.replaced)
+        .map(|name| name.to_lowercase())
+        .collect();
+    let variants: Vec<Value> = manifest["variants"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|entry| exported.contains(&entry["name"].as_str().unwrap_or("").to_lowercase()))
+        .map(|entry| {
+            let mut out = Map::new();
+            for key in [
+                "name",
+                "glb",
+                "vox",
+                "bounds",
+                "voxels",
+                "quads",
+                "sceneShift",
+            ] {
+                if let Some(value) = entry.get(key) {
+                    out.insert(key.into(), value.clone());
+                }
+            }
+            out.insert(
+                "markers".into(),
+                crate::remote::marker_counts(&entry["markers"]),
+            );
+            Value::Object(out)
+        })
+        .collect();
+    let mut reply = json!({"reply": "compact", "variants": variants});
+    if let Some(options) = manifest.get("options") {
+        reply["options"] = options.clone();
+    }
+    reply
 }
 
 /// The variant names an export added, replaced, and kept in its manifest.

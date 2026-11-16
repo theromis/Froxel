@@ -499,7 +499,9 @@ Read `coveredPercent`, `emptyFilledPercent`, and `dropped` in the reply. With
 When a scripted piece needs several sizes, `export_variants` writes a
 `.vox` and `.glb` per parameter set with a manifest of the parameters,
 markers, and bounds. Exporting again into the same folder updates that
-manifest by name, so redoing one variant keeps the others.
+manifest by name, so redoing one variant keeps the others. The reply is a
+summary (files, bounds, voxels, quads, and markers counted by kind); the
+manifest file holds the rest, and `reply: "full"` returns it whole.
 
 `smooth` softens a blocky region. It fills an empty cell that most of its
 26 neighbours surround and removes a solid cell that few of them touch, and

@@ -1294,8 +1294,41 @@ fn apply_world(session: &mut Session, method: &str, params: &Value) -> Result<Va
     Ok(reply)
 }
 
+/// The `reply` option of the export tools: `compact` (the default) counts
+/// the markers by kind, `full` lists each one.
+pub(crate) fn full_reply(params: &Value) -> Result<bool, String> {
+    match params.get("reply") {
+        None | Some(Value::Null) => Ok(false),
+        Some(Value::String(mode)) if mode == "compact" => Ok(false),
+        Some(Value::String(mode)) if mode == "full" => Ok(true),
+        Some(_) => Err("reply must be \"compact\" or \"full\"".into()),
+    }
+}
+
+/// Markers as `{kind: count}`, from a `markers_json` list.
+pub(crate) fn marker_counts(markers: &Value) -> Value {
+    let mut kinds = Map::new();
+    for marker in markers.as_array().into_iter().flatten() {
+        let kind = marker["kind"].as_str().unwrap_or("other").to_string();
+        let count = kinds.get(&kind).and_then(Value::as_u64).unwrap_or(0);
+        kinds.insert(kind, json!(count + 1));
+    }
+    Value::Object(kinds)
+}
+
+/// An export reply's markers: every one with `full`, else counted by kind.
+fn reply_markers(session: &Session, full: bool) -> Value {
+    let markers = session.markers_json();
+    if full {
+        markers
+    } else {
+        marker_counts(&markers)
+    }
+}
+
 fn export_mesh(session: &Session, params: &Value) -> Result<Value, String> {
     let path = req_str(params, "path")?;
+    let full = full_reply(params)?;
     let options = mesh_options(params)?;
     let written = write_mesh(session, &path, &options)?;
     Ok(json!({
@@ -1309,7 +1342,7 @@ fn export_mesh(session: &Session, params: &Value) -> Result<Value, String> {
         "aoRadius": options.ao_radius,
         "aoTarget": options.ao_target.name(),
         "structure": written["structure"],
-        "markers": session.markers_json(),
+        "markers": reply_markers(session, full),
     }))
     .map(|mut reply: Value| {
         if let Some(bake) = &options.bake {
@@ -1380,10 +1413,11 @@ fn export_batch(session: &Session, params: &Value) -> Result<Value, String> {
             }
         }
     }
+    let full = full_reply(params)?;
     let mut written = Vec::with_capacity(models.len());
     let mut failed = 0;
     for (index, model) in models.iter().enumerate() {
-        match export_model(session, model) {
+        match export_model(session, model, full) {
             Ok(value) => written.push(value),
             Err(error) => {
                 failed += 1;
@@ -1433,7 +1467,7 @@ fn export_destination_key(path: &Path) -> Result<String, String> {
         .to_lowercase())
 }
 
-fn export_model(session: &Session, model: &Value) -> Result<Value, String> {
+fn export_model(session: &Session, model: &Value, full: bool) -> Result<Value, String> {
     if !model.is_object() {
         return Err("each model must be an object".into());
     }
@@ -1452,10 +1486,10 @@ fn export_model(session: &Session, model: &Value) -> Result<Value, String> {
         None => {
             // The open document. Cloning the session would copy the undo stacks,
             // so the export reads it in place. open_vox above uses its own session.
-            return finish_export(session, &path, &options, None);
+            return finish_export(session, &path, &options, None, full);
         }
     };
-    finish_export(&document, &path, &options, source)
+    finish_export(&document, &path, &options, source, full)
 }
 
 fn finish_export(
@@ -1463,6 +1497,7 @@ fn finish_export(
     path: &str,
     options: &crate::export::MeshExport,
     source: Option<String>,
+    full: bool,
 ) -> Result<Value, String> {
     if !path.ends_with(".glb") {
         return Err(format!("path must end in .glb ({path})"));
@@ -1475,7 +1510,7 @@ fn finish_export(
         "triangles": written["triangles"],
         "bytes": written["bytes"],
         "structure": written["structure"],
-        "markers": session.markers_json(),
+        "markers": reply_markers(session, full),
     });
     if let Some(source) = source {
         body["source"] = json!(source);
@@ -1650,13 +1685,13 @@ const METHODS: &[(&str, &str, &str)] = &[
     ),
     (
         "mesh.export",
-        "path, merge?, vertexColors?, colorAtlas?, aoStrength?, aoRadius?, aoTarget?, bake?",
-        "Write a glTF 2.0 .glb of every object. merge defaults to false. vertexColors defaults to false (palette texture). exportHidden and splitObjects default to false. aoStrength (0..1, default 0) bakes ambient occlusion into COLOR_0; aoRadius (0..8 cells, default 3) is its hemisphere reach; aoTarget is vertex, texture (colour atlas texels, needs colorAtlas) or both. bake (with colorAtlas) paints ray-traced occlusion and a sun with shadows into the atlas, to draw unshaded. A skeleton writes a rigid skin. Clips become glTF animations.",
+        "path, merge?, vertexColors?, colorAtlas?, aoStrength?, aoRadius?, aoTarget?, bake?, reply?",
+        "Write a glTF 2.0 .glb of every object. merge defaults to false. vertexColors defaults to false (palette texture). exportHidden and splitObjects default to false. aoStrength (0..1, default 0) bakes ambient occlusion into COLOR_0; aoRadius (0..8 cells, default 3) is its hemisphere reach; aoTarget is vertex, texture (colour atlas texels, needs colorAtlas) or both. bake (with colorAtlas) paints ray-traced occlusion and a sun with shadows into the atlas, to draw unshaded. A skeleton writes a rigid skin. Clips become glTF animations. The reply counts the markers by kind; reply \"full\" lists each one.",
     ),
     (
         "mesh.export_batch",
-        "models",
-        "Write 1 to 16 .glb files. Each model is {path, source?, merge?, vertexColors?, exportHidden?, splitObjects?, colorAtlas?, aoStrength?, aoRadius?, aoTarget?, bake?}. source opens that .vox in a separate session, so the open document stays. The reply includes each file's node, mesh, skin and animation structure.",
+        "models, reply?",
+        "Write 1 to 16 .glb files. Each model is {path, source?, merge?, vertexColors?, exportHidden?, splitObjects?, colorAtlas?, aoStrength?, aoRadius?, aoTarget?, bake?}. source opens that .vox in a separate session, so the open document stays. The reply includes each file's node, mesh, skin and animation structure, and its markers counted by kind (reply \"full\" lists them).",
     ),
     (
         "mesh.bake_scene",

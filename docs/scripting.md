@@ -1567,7 +1567,8 @@ Any function that is not listed on this page is not registered.
 A script describes a family; MCP `export_variants` (or `froxel variants`,
 or the Export panel's **Export variants…**) bakes it once per parameter set
 and writes a `.vox`, a `.glb`, and a manifest with each set's parameters,
-markers, and bounds. Scripts themselves never write files, and they read none: `carve_from_views`, `project_paint`, `paint_from_views`, `decal`, and `fit_to_views` take rows, not PNGs.
+markers, and bounds; its reply sums each set up and counts the markers by
+kind, and `reply: "full"` returns the whole manifest. Scripts themselves never write files, and they read none: `carve_from_views`, `project_paint`, `paint_from_views`, `decal`, and `fit_to_views` take rows, not PNGs.
 
 ```json
 [
