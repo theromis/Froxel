@@ -37,6 +37,11 @@
   `list_bones` reports it, and the glTF joint node rests at it, so a fin
   sculpted flat sits at its angle in a game with no clip.
 
+### Changed
+
+- `bake_scene` and `froxel bake-scene` take up to 32768 instances, not 4096,
+  so a zone of many small path stones bakes as one file.
+
 ### Fixed
 
 - The marquee and the Project line hit a moved object's cells where they

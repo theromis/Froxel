@@ -1663,7 +1663,8 @@ texels. The open document is not touched.
 `bake_scene` takes `scene` (that object, or the path of a JSON file of it,
 whose folder its relative paths start from), `path` (the `.glb`), and optional
 `bake`, which replaces the scene's. The command line is `froxel bake-scene
---scene scene.json --output level.glb [--bake JSON|FILE]`.
+--scene scene.json --output level.glb [--bake JSON|FILE]`. A scene holds 1 to
+32768 instances; the atlas, at most 16384 texels a side, is the other bound.
 
 - **A placement** is the frame of the glb `export_mesh` writes, as a game places
   it: `world = translation + Lean × scale × Ry(yaw) × (x, z, −y)` of a cell

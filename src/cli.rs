@@ -117,7 +117,7 @@ instance or a mesh occluder, tilts it by degrees (-90..90) about its base so its
 top moves toward the yaw toward (0 is -Z, 90 is -X); without it, upright. sway
 (0..4, default 1) on an instance multiplies the sway of its moving slots. Occluders stop light and are not written: mesh is a
 .glb, .gltf or .obj, plane is solid below that height, height is y at grid
-points, rows[z][x]. bake is the option of froxel export, with distance in scene
+points, rows[z][x]. A scene holds 1 to 32768 instances. bake is the option of froxel export, with distance in scene
 units, and --bake replaces it. Without either it is occlusion alone. It prints
 the triangles, the atlas size and the memory used. See docs/mcp.md.";
 

@@ -432,7 +432,7 @@ refused.
   copy across, and `distance` is in scene units. `lean: {degrees, toward}` tilts
   a placement about its base so its top moves toward the yaw `toward` (0 is −Z,
   like `yaw`), e.g. reeds leaning to water; `sway` (0..4, default 1) multiplies
-  how far that instance's moving slots sway, so plant kinds sway apart. Triangles add up across placements, so check the
+  how far that instance's moving slots sway, so plant kinds sway apart. A scene holds up to 32768 instances. Triangles add up across placements, so check the
   reply's `triangles` and `memory`.
 - `export_models` writes up to 16 `.glb` files, each from its own `.vox`
   `source`, without touching the open document.

@@ -21,7 +21,9 @@ use super::bake::{self, Bake, Grid, Occluders, Patch, Rays};
 use super::quads::{self, axis_of, GreedyQuad};
 use super::*;
 
-pub const MAX_INSTANCES: usize = 4096;
+/// Nothing is sized by it (indices are u32, the atlas has its own cap); it
+/// only bounds a mistaken scene before its rays are cast.
+pub const MAX_INSTANCES: usize = 32768;
 /// Larger than most GPUs sample, so a level this size has to be split.
 pub const MAX_ATLAS: u32 = 16384;
 /// Off the surface, in cells.
