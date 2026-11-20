@@ -659,8 +659,10 @@ Prereleases go only to the Snap Store's `beta` channel.
 Set up on 2026-11-20: the apt repository (key in `secrets/linux`), COPR
 `theromis/froxel` (Fedora 43–45 and rawhide, EPEL 8–10; the `COPR_CONFIG`
 token expires on 2027-05-19, renew it from <https://copr.fedorainfracloud.org/api/>),
-OBS `home:theromis/froxel` (Tumbleweed and Leap 15.6, x86_64; `OBS_USER` set,
-`OBS_PASSWORD` set by the owner), and the Homebrew tap. Not yet: the Snap name
+OBS `home:theromis/froxel` (Tumbleweed x86_64, Tumbleweed ARM as
+`openSUSE_Factory_ARM`, Leap 16.0 and 15.6 for x86_64 and aarch64; `OBS_USER`
+set, `OBS_PASSWORD` set by the owner; the package must not have `scmsync` in its
+meta, or OBS refuses the upload), and the Homebrew tap. Not yet: the Snap name
 (`snapcraft register froxel`, then `export-login`), the AUR (registration is
 closed), and Flathub (needs a release with the metainfo).
 
@@ -675,6 +677,8 @@ and the hicolor icons. Flathub, Void, FreeBSD, and Nix build from source.
    and store `gpg --armor --export-secret-keys <fingerprint>` in
    `APT_GPG_PRIVATE_KEY`.
 2. Settings → Pages → Source: **GitHub Actions**.
+3. Settings → Environments → github-pages: allow the tag pattern `v*` beside
+   `main`, or the run a published release starts cannot deploy (done).
 
 Each publish replaces the site with the latest release; `froxel.gpg` there is
 the public key users install. A new key needs the users to fetch it again.
