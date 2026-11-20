@@ -67,6 +67,7 @@ Download the file for your system from the
 | Arch and any other Linux | `froxel-<version>-linux-<arch>.tar.gz` | Unpack and run `froxel`. Needs glibc 2.28 or newer (2.39 for riscv64). |
 | FreeBSD (x86_64) | `froxel-<version>-freebsd-x86_64.tar.gz` | |
 | Android 7.0+ (arm64) | `froxel-<version>-android-arm64.apk` | Open it on the phone. Android asks once to allow installs from the browser or file manager. |
+| Android 7.0+ from F-Droid, the Amazon Appstore, or the Galaxy Store | — | Coming: the same app, updated by the store. F-Droid builds it from source and signs it with its own key, so it does not update an install from the APK or another store. |
 | iOS 16+ simulator | `froxel-<version>-ios-simulator.zip` | Unzip and drag `Froxel.app` onto a booted simulator. The device build goes to the App Store. |
 | Godot 4.3+ plugin | `froxel-<version>-godot-addon.zip` | Unzip into the project folder. See [Godot and Blender](#godot-and-blender). |
 | Blender 4.2+ extension | `froxel-<version>-blender-addon.zip` | Preferences → Get Extensions → Install from Disk. |

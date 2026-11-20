@@ -13,6 +13,12 @@ which copies that version into the Godot `plugin.cfg`, the Blender
 `FROXEL_VERSION`. The `addons` job runs it with `--check` and fails when one
 is behind.
 
+For Android, also set `version_code` under `[package.metadata.store]` in
+`Cargo.toml` to `packaging/build_number.sh <version>`, and for a release
+(not a prerelease) write its What's new for F-Droid, 500 characters at
+most, to `fastlane/metadata/android/en-US/changelogs/<version_code>.txt`.
+The `Version` job fails without them ([F-Droid](#f-droid)).
+
 `.github/workflows/release.yml` builds every platform. It runs only on request:
 
 ```sh
@@ -126,6 +132,16 @@ boot time, `35F9.1`). After a dependency update, check the list again:
 nm -u target/aarch64-apple-ios/release/froxel | grep -E '_(f|l)?stat$|_mach_absolute_time|_statfs|_getattrlist'
 ```
 
+Android: cargo-apk sets the APK's versionCode from the version alone
+(`1 << 24 | major << 16 | minor << 8 | patch`), so a prerelease and its
+release share one. `packaging/android/apk.sh` links cargo-apk's manifest and
+resources again with the build number above, adds the native library
+uncompressed and 16 KB-aligned, and signs the result. That APK is the
+release download and what F-Droid, the Amazon Appstore, and the Galaxy
+Store get; it is also `froxel-<version>-android.apk` in the
+`store-<version>-android` artifact. The `android` job pins Rust 1.100.0
+and NDK 29.0.14206865, as the F-Droid recipe does.
+
 Android: Play takes only App Bundles. `packaging/android/bundle.sh` turns
 cargo-apk's output into `target/release/apk/froxel.aab` (aapt2 in proto
 format, bundletool, jarsigner; it needs a JDK). For Play, `ANDROID_KEYSTORE`
@@ -177,6 +193,99 @@ The issuer is `APPLE_API_ISSUER_ID`. A Developer key, like the notarization
 key, uploads builds but cannot submit them.
 
 Then publish the draft on the Releases page. Publishing creates the tag.
+
+## Android stores
+
+Besides Google Play, Froxel's APK goes to F-Droid, the Amazon Appstore, and
+the Samsung Galaxy Store. All of them get the APK from
+`packaging/android/apk.sh` (see [Store builds](#store-builds)); none of them
+has been run with a store account yet.
+
+### F-Droid
+
+F-Droid builds the app from source and signs it with its own key, so its
+install does not update one from the other channels. The listing is in this
+repository, in the Fastlane layout that F-Droid reads:
+`fastlane/metadata/android/en-US/` holds `title.txt`, `short_description.txt`
+(80 characters), `full_description.txt` (4000), `images/icon.png`,
+`images/featureGraphic.png`, `images/phoneScreenshots/`,
+`images/tenInchScreenshots/` (copies of `promo/store/play-*.png`), and
+`changelogs/<versionCode>.txt` (500 characters), the What's new of each
+release. The `Version` job fails a release without that file, or with
+`version_code` in `Cargo.toml` behind the version.
+
+The build recipe is `packaging/android/fdroid/com.lonje.froxel.yml`. It is
+submitted once, as `metadata/com.lonje.froxel.yml` in a merge request to
+[fdroiddata](https://gitlab.com/fdroid/fdroiddata), and from then on F-Droid
+finds new releases itself: `UpdateCheckMode: Tags` takes release tags
+(`v1.2.3`, not prereleases), reads `version` and `version_code` from that
+tag's `Cargo.toml`, and `AutoUpdateMode: Version` adds the build. The recipe
+installs Rust 1.100.0 with the `rustup` srclib, builds the pinned cargo-apk,
+builds with NDK 29.0.14206865, and runs `apk.sh` without a key, which leaves
+the APK unsigned for F-Droid to sign. Change the toolchain and the NDK there
+and in the `android` job together.
+
+The first recipe names the first release tag that has `apk.sh` and
+`version_code` (written as `v0.4.0`, `40099`); correct its `versionName`,
+`versionCode`, `commit`, and the `Current*` fields to the real one before the
+merge request. To try it, with a checkout of fdroiddata next to this one:
+
+```sh
+cp packaging/android/fdroid/com.lonje.froxel.yml ../fdroiddata/metadata/
+cd ../fdroiddata
+docker run --rm -v "$PWD:/repo" registry.gitlab.com/fdroid/fdroidserver:buildserver \
+  fdroid lint com.lonje.froxel
+docker run --rm -v "$PWD:/repo" registry.gitlab.com/fdroid/fdroidserver:buildserver \
+  fdroid build -v -l com.lonje.froxel
+```
+
+The dependency tree for Android has no prebuilt binaries and no non-free
+code (no Google Play Services; wgpu, winit, egui, and the `vendor/` patches
+are all source). The only binary in the tree, the test fixture
+`tests/fixtures/mesh/quad.bin`, is removed by the recipe before F-Droid's
+scanner runs. The app asks for no permissions, so it carries no
+anti-features.
+
+### Amazon Appstore
+
+The `Amazon Appstore` job (`upload-stores`) runs `tools/amazon_upload.py`
+with the App Submission API: it reuses the app's open edit or opens one,
+replaces its APK (keeping the device targeting), sets the en-US "What's new"
+from `tools/release_notes.py`, and validates the edit. The edit stays a
+draft in the Developer Console; with `submit-review` it is committed, which
+sends the version for review. Amazon's API takes APKs, not App Bundles, and
+updates only an app that exists: create the app and submit its first
+version by hand in the Developer Console (upload
+`froxel-<version>-android.apk` from the `store-<version>-android`
+artifact). An app in review cannot be changed; the job then fails with 412.
+
+| Secret | Value |
+|---|---|
+| `AMAZON_CLIENT_ID` | The client ID of a security profile (Developer Console, Settings, API Access, App Submission API), `amzn1.application-oa2-client.<id>` |
+| `AMAZON_CLIENT_SECRET` | That profile's client secret |
+| `AMAZON_APP_ID` | The app's ID, `amzn1.devportal.mobileapp.<id>` (the app's page, Additional information) |
+
+### Galaxy Store
+
+The `Galaxy Store` job (`upload-stores`) runs `tools/galaxy_upload.py` with
+the Content Publish API: it uploads the APK, opens an update of the app with
+the release notes as New features, adds the new binary with the device
+settings of the current one, and removes the older binaries from the update.
+The update stays in the Registering state in Seller Portal; with
+`submit-review` it is submitted for review. The API changes only an app that
+is registered and for sale, so register the app (`com.lonje.froxel`, no
+Google Mobile Services) and submit its first version by hand in
+[Seller Portal](https://seller.samsungapps.com).
+
+| Secret | Value |
+|---|---|
+| `GALAXY_SERVICE_ACCOUNT_ID` | A service account with the Publishing scope (Seller Portal, Assistance, API Service) |
+| `GALAXY_PRIVATE_KEY` | The private key downloaded when the account was made (PEM text); Samsung does not keep a copy |
+| `GALAXY_CONTENT_ID` | The app's content ID in Seller Portal |
+
+Both jobs skip with a notice when their secrets are not set, and fail
+without `ANDROID_KEYSTORE`: a store app must keep one signing key, and the
+throwaway key changes with every run.
 
 ## itch.io and Steam
 

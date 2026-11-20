@@ -78,6 +78,20 @@ jobs:
             echo "prerelease=$prerelease"
             echo "build=$build"
           } >>"$GITHUB_OUTPUT"
+          # F-Droid builds the release tag and reads its versionCode and What's new
+          # from the tagged tree, so a release of the committed version needs both.
+          if [ "$version" = "$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)" ]; then
+            code=$(sed -n 's/^version_code = \([0-9]*\)$/\1/p' Cargo.toml | head -n 1)
+            if [ "$code" != "$build" ]; then
+              echo "::error::Cargo.toml [package.metadata.store] version_code is '$code'; set it to $build for $version"
+              exit 1
+            fi
+            notes="fastlane/metadata/android/en-US/changelogs/$build.txt"
+            if [ "$prerelease" = false ] && [ ! -s "$notes" ]; then
+              echo "::error::$notes is missing: F-Droid's What's new for $version (500 characters at most)"
+              exit 1
+            fi
+          fi
           if [ "$SUBMIT_REVIEW" = true ] && { [ "$UPLOAD_STORES" != true ] || [ "$prerelease" = true ]; }; then
             echo "::error::submit-review needs upload-stores and a release version, not $version"
             exit 1
@@ -520,20 +534,26 @@ jobs:
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The toolchain and the NDK are pinned to the ones in the F-Droid recipe
+      # (packaging/android/fdroid/com.lonje.froxel.yml); change them together.
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: stable
+          toolchain: 1.100.0
           targets: aarch64-linux-android
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: release-android
       # cargo-apk and aapt2 link against the platform of target_sdk_version.
-      - name: Android platform
+      - name: Android platform and NDK
+        env:
+          NDK_VERSION: 29.0.14206865
         run: |
           set -euo pipefail
           sdk=$(sed -n 's/^target_sdk_version = \([0-9]*\)$/\1/p' Cargo.toml)
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-$sdk" >/dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+            "platforms;android-$sdk" "ndk;$NDK_VERSION" >/dev/null
           ls "$ANDROID_HOME/platforms/android-$sdk/android.jar"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$NDK_VERSION" >>"$GITHUB_ENV"
       - name: Install cargo-apk
         run: |
           cargo install --locked --git https://github.com/parasyte/cargo-apk.git \
@@ -571,9 +591,10 @@ jobs:
           # own entry in Cargo.lock.
           sed -i "s/^version = \".*\"$/version = \"$VERSION\"/" Cargo.toml
           grep -m 1 '^version = ' Cargo.toml
-          ANDROID_NDK_ROOT="$ANDROID_NDK_LATEST_HOME" \
-            cargo apk build --lib --features android-lib --release
-      # The App Bundle for Google Play is signed with the same key, the Play upload key.
+          cargo apk build --lib --features android-lib --release
+      # The APK is linked again with the store versionCode (packaging/android/apk.sh), so
+      # it matches the App Bundle and F-Droid's build, and a release updates its
+      # prereleases. Both are signed with the same key, the Play upload key.
       - name: Package
         env:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'android' }}
@@ -581,10 +602,13 @@ jobs:
           set -euo pipefail
           mkdir -p dist/release dist/store
           apk="dist/release/froxel-$VERSION-android-arm64.apk"
-          cp target/release/apk/froxel.apk "$apk"
+          store_apk=$(KEYSTORE="$CARGO_APK_RELEASE_KEYSTORE" packaging/android/apk.sh)
+          cp "$store_apk" "$apk"
           tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
           "$tools/apksigner" verify --print-certs "$apk"
           "$tools/aapt" dump badging "$apk" | head -n 3
+          # The Amazon Appstore and the Galaxy Store take the same APK.
+          cp "$apk" "dist/store/froxel-$VERSION-android.apk"
           aab=$(KEYSTORE="$CARGO_APK_RELEASE_KEYSTORE" packaging/android/bundle.sh)
           cp "$aab" "dist/store/froxel-$VERSION-android.aab"
           echo "Android: App Bundle versionCode $(packaging/build_number.sh "$VERSION")" >>"$GITHUB_STEP_SUMMARY"
@@ -764,6 +788,89 @@ jobs:
           python3 -u tools/play_upload.py "dist/store/froxel-$VERSION-android.aab" \
             --version "$VERSION" "${tracks[@]}" --notes-file "$RUNNER_TEMP/notes.txt" \
             | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # The Amazon Appstore and the Samsung Galaxy Store take the signed APK. Each skips with a
+  # notice when its secrets are not set. Not run with store accounts yet
+  # (docs/releasing.md, Amazon Appstore and Galaxy Store).
+  amazon:
+    name: Amazon Appstore
+    needs: [version, android]
+    if: inputs.upload-stores
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+      AMAZON_CLIENT_ID: ${{ secrets.AMAZON_CLIENT_ID }}
+      AMAZON_CLIENT_SECRET: ${{ secrets.AMAZON_CLIENT_SECRET }}
+      AMAZON_APP_ID: ${{ secrets.AMAZON_APP_ID }}
+      SUBMIT_REVIEW: ${{ inputs.submit-review }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: store-${{ env.VERSION }}-android
+          path: dist/store
+      - name: Upload to the Amazon Appstore
+        run: |
+          set -euo pipefail
+          if [ -z "$AMAZON_CLIENT_ID" ] || [ -z "$AMAZON_CLIENT_SECRET" ] || [ -z "$AMAZON_APP_ID" ]; then
+            echo "::notice::Amazon Appstore skipped: AMAZON_CLIENT_ID, AMAZON_CLIENT_SECRET and AMAZON_APP_ID are not all set"
+            echo "Amazon Appstore: skipped, no secrets" >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ -z "$ANDROID_KEYSTORE" ]; then
+            echo "::error::The Amazon Appstore needs the APK signed with ANDROID_KEYSTORE, not a throwaway key"
+            exit 1
+          fi
+          # Without submit-review the edit stays open as a draft in the Developer Console.
+          commit=()
+          if [ "$SUBMIT_REVIEW" = true ]; then
+            commit=(--commit)
+          fi
+          python3 -u tools/release_notes.py "$VERSION" >"$RUNNER_TEMP/notes.txt"
+          python3 -u tools/amazon_upload.py "dist/store/froxel-$VERSION-android.apk" \
+            --notes-file "$RUNNER_TEMP/notes.txt" "${commit[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  galaxy-store:
+    name: Galaxy Store
+    needs: [version, android]
+    if: inputs.upload-stores
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+      GALAXY_SERVICE_ACCOUNT_ID: ${{ secrets.GALAXY_SERVICE_ACCOUNT_ID }}
+      GALAXY_PRIVATE_KEY: ${{ secrets.GALAXY_PRIVATE_KEY }}
+      GALAXY_CONTENT_ID: ${{ secrets.GALAXY_CONTENT_ID }}
+      SUBMIT_REVIEW: ${{ inputs.submit-review }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: store-${{ env.VERSION }}-android
+          path: dist/store
+      - name: Upload to the Galaxy Store
+        run: |
+          set -euo pipefail
+          if [ -z "$GALAXY_SERVICE_ACCOUNT_ID" ] || [ -z "$GALAXY_PRIVATE_KEY" ] || [ -z "$GALAXY_CONTENT_ID" ]; then
+            echo "::notice::Galaxy Store skipped: GALAXY_SERVICE_ACCOUNT_ID, GALAXY_PRIVATE_KEY and GALAXY_CONTENT_ID are not all set"
+            echo "Galaxy Store: skipped, no secrets" >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ -z "$ANDROID_KEYSTORE" ]; then
+            echo "::error::The Galaxy Store needs the APK signed with ANDROID_KEYSTORE, not a throwaway key"
+            exit 1
+          fi
+          # Without submit-review the update stays in the Registering state in Seller Portal.
+          submit=()
+          if [ "$SUBMIT_REVIEW" = true ]; then
+            submit=(--submit)
+          fi
+          python3 -u tools/release_notes.py "$VERSION" >"$RUNNER_TEMP/notes.txt"
+          python3 -u tools/galaxy_upload.py "dist/store/froxel-$VERSION-android.apk" \
+            --notes-file "$RUNNER_TEMP/notes.txt" "${submit[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
 
   app-store:
     name: App Store

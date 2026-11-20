@@ -1,0 +1,25 @@
+Froxel is a voxel editor for Android phones and tablets. Build models cube by cube, paint them from the palette, and render them with a real path tracer that runs on the GPU.
+
+EDIT WITH TOUCH
+• One finger uses the active tool. Two fingers orbit and pinch to zoom. Three fingers pan.
+• Brush, line, circle, square, box, and face fill.
+• Generators and mutators.
+• Marquee, box select, and flood select.
+• Add, remove, and paint modes, with undo for every stroke.
+• Long-press the colour, then tap a voxel, to pick its colour.
+
+RENDER
+• Render mode path-traces the scene with sky, sun, metal, glass, and emission.
+• The image keeps refining while you look at it. Save Render writes a PNG.
+
+MAGICAVOXEL FILES
+• Opens and saves .vox files, keeping groups, layers, hidden objects, and materials.
+• Files saved in Froxel open in MagicaVoxel and on the desktop version of Froxel.
+• Your models stay in the app's storage.
+
+TABLETS
+• On a tablet the tools and the palette sit beside the viewport, as on the desktop.
+
+Try it on the bundled frog and lily pad, under the folder button.
+
+Froxel is open source (MIT) and also runs on macOS, Windows, Linux, FreeBSD, and iOS. It collects no data, needs no account, and asks for no permissions.

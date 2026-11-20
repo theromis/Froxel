@@ -59,8 +59,16 @@ path = "src/lib.rs"
 crate-type = ["cdylib"]
 required-features = ["android-lib"]
 
+# The store build number of `version` (`packaging/build_number.sh`), set with it
+# for each release: F-Droid reads the Android versionCode of a tag from here.
+# The release workflow fails when it does not match.
+[package.metadata.store]
+version_code = 30399
+
 # `cargo apk build --lib --features android-lib --release` for the APK, then
-# `packaging/android/bundle.sh` for the Play App Bundle.
+# `packaging/android/apk.sh` for the store APK (versionCode from
+# `packaging/build_number.sh`) and `packaging/android/bundle.sh` for the Play
+# App Bundle.
 [package.metadata.android]
 package = "com.lonje.froxel"
 apk_name = "froxel"

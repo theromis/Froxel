@@ -1,0 +1,1 @@
+Voxel editor for MagicaVoxel .vox files, with a GPU path tracer.

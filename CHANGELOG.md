@@ -4,6 +4,12 @@
 
 ### Added
 
+- Android stores: store metadata for F-Droid in
+  `fastlane/metadata/android/en-US` and its build recipe
+  (`packaging/android/fdroid`), and `upload-stores` jobs for the Amazon
+  Appstore and the Samsung Galaxy Store. The APK now has the same
+  versionCode as the Play bundle (`packaging/android/apk.sh`), so a
+  release updates its prereleases.
 - Windows channels: a Microsoft Store MSIX for x64, x86, and arm64 and an
   `.msixbundle` (`packaging/windows`; `froxel` on the PATH through an
   execution alias, `.vox` files open in it), built unsigned for the Store

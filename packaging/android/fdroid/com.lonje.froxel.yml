@@ -1,0 +1,48 @@
+Categories:
+  - Draw
+  - Graphics
+License: MIT
+SourceCode: https://github.com/theromis/Froxel
+IssueTracker: https://github.com/theromis/Froxel/issues
+Changelog: https://github.com/theromis/Froxel/blob/HEAD/CHANGELOG.md
+
+AutoName: Froxel
+
+RepoType: git
+Repo: https://github.com/theromis/Froxel.git
+
+Builds:
+  - versionName: 0.4.0
+    versionCode: 40099
+    commit: v0.4.0
+    timeout: 10800
+    sudo:
+      - apt-get update
+      - apt-get install -y build-essential zip unzip
+    output: target/release/apk/froxel-store.apk
+    srclibs:
+      - rustup@1.29.3
+    rm:
+      - tests/fixtures/mesh/quad.bin
+    prebuild: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+    build:
+      - $$rustup$$/rustup-init.sh -y --profile minimal --default-toolchain 1.100.0
+        --target aarch64-linux-android
+      - source $HOME/.cargo/env
+      - cargo install --locked --git https://github.com/parasyte/cargo-apk.git --rev
+        282639508eeed7d73f2e1eaeea042da2716436d5 cargo-apk
+      - keytool -genkeypair -keystore $HOME/throwaway.keystore -storepass android
+        -alias throwaway -keypass android -keyalg RSA -keysize 2048 -validity 1 -dname
+        CN=throwaway
+      - export ANDROID_HOME=$$SDK$$ ANDROID_NDK_ROOT=$$NDK$$
+      - export CARGO_APK_RELEASE_KEYSTORE=$HOME/throwaway.keystore CARGO_APK_RELEASE_KEYSTORE_PASSWORD=android
+      - cargo fetch --locked
+      - cargo apk build --lib --features android-lib --release
+      - packaging/android/apk.sh
+    ndk: 29.0.14206865
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags ^v[0-9]+\.[0-9]+\.[0-9]+$
+UpdateCheckData: Cargo.toml|version_code = (\d+)|.|\nversion = "([^"]+)"
+CurrentVersion: 0.4.0
+CurrentVersionCode: 40099
