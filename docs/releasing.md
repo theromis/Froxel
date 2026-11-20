@@ -1,7 +1,17 @@
 # Releasing
 
 Before a release, move the `Unreleased` entries in `CHANGELOG.md` under the
-new version and set `version` in `Cargo.toml`.
+new version and set `version` in `Cargo.toml`. Then run
+
+```sh
+python3 tools/sync_versions.py
+```
+
+which copies that version into the Godot `plugin.cfg`, the Blender
+`blender_manifest.toml` and `bl_info`, `server.json`, the Claude Code
+`.claude-plugin/plugin.json`, and the `Dockerfile`'s default
+`FROXEL_VERSION`. The `addons` job runs it with `--check` and fails when one
+is behind.
 
 `.github/workflows/release.yml` builds every platform. It runs only on request:
 
@@ -16,7 +26,9 @@ It builds macOS universal (`.dmg`, `.zip`), Windows x64, x86 and arm64
 (`.zip`), Linux x86_64, aarch64 and riscv64 (`.tar.gz`, `.deb`, `.rpm`) and FreeBSD
 x86_64 (`.tar.gz`), Android arm64 (`.apk`) and iOS (`.ipa` for devices, a
 zipped `Froxel.app` for the simulator), then creates or updates the draft release `v<version>`
-with a `SHA256SUMS.txt`. It also zips the Godot plugin and the Blender add-on.
+with a `SHA256SUMS.txt`. It also zips the Godot plugin (`godot-addon.zip`,
+and `godot-assetlib.zip` for the Asset Library) and builds the Blender
+extension (`blender-addon.zip`) with Blender 4.2 LTS.
 The Android App Bundle and an App Store-signed ipa are workflow artifacts
 named `store-<version>-android` and `store-<version>-ios`, not release files;
 see [Store builds](#store-builds).
@@ -278,3 +290,21 @@ One-time setup:
    log in again and replace the secret.
 7. Fill in the store page from `packaging/steam/store.md` and submit it
    and the build for Valve's review before the first release.
+
+## Registries
+
+Publishing the draft release starts `.github/workflows/mcp-registry.yml`: it
+pushes the `ghcr.io/theromis/froxel-mcp` image and publishes `server.json` to
+the official MCP Registry with GitHub OIDC; pre-releases are skipped. The
+Claude Code plugin is read from `main`, so it needs nothing beyond the version
+bump. Then, by hand:
+
+- Blender Extensions: upload the release's `froxel-<version>-blender-addon.zip`
+  as a new version of the extension.
+- Godot Asset Library:
+  `python3 tools/godot_assetlib.py --asset-id <id> --version <version>`
+  (with `GODOT_ASSETLIB_USER` and `GODOT_ASSETLIB_PASSWORD`), then wait for a
+  moderator.
+
+The first listings, the web forms, and what each registry needs are in
+[registries.md](registries.md).

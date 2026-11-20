@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.theromis/froxel",
+  "title": "Froxel",
+  "description": "Voxel editor: sculpt, script, paint, rig, preview, and export .vox models to glTF",
+  "version": "0.3.3",
+  "websiteUrl": "https://github.com/theromis/Froxel/blob/main/docs/mcp.md",
+  "repository": {
+    "url": "https://github.com/theromis/Froxel",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/theromis/froxel-mcp:0.3.3",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

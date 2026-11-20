@@ -705,21 +705,53 @@ jobs:
     name: Godot and Blender add-ons
     needs: version
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Zip the add-ons
+      # plugin.cfg, the Blender manifest, server.json, and the Claude Code
+      # plugin carry the Cargo.toml version; a release with one left behind
+      # would publish the old number to its registry.
+      - name: Registry versions match Cargo.toml
+        run: python3 tools/sync_versions.py --check
+      # Blender 4.2 LTS, the oldest the manifest allows, builds and validates
+      # the extension, so the zip is what extensions.blender.org accepts.
+      - name: Install Blender 4.2 LTS
+        run: sudo snap install blender --channel=4.2lts/stable --classic
+      - name: Build the Blender extension
         run: |
           set -euo pipefail
-          mkdir -p dist/release
-          python3 tools/package_bridge.py
-          mv dist/froxel_bridge.zip "dist/release/froxel-$VERSION-blender-addon.zip"
-          (cd godot && zip -r -X "../dist/release/froxel-$VERSION-godot-addon.zip" \
-            addons/froxel_bridge -x '*.uid')
+          mkdir -p dist/release dist/blender
+          cp -R blender/froxel_bridge dist/blender/froxel_bridge
+          cp LICENSE dist/blender/froxel_bridge/LICENSE
+          sed -i "s/^version = \".*\"$/version = \"$VERSION\"/" \
+            dist/blender/froxel_bridge/blender_manifest.toml
+          blender --command extension validate dist/blender/froxel_bridge
+          blender --command extension build \
+            --source-dir dist/blender/froxel_bridge --output-dir dist/blender
+          mv "dist/blender/froxel_bridge-$VERSION.zip" \
+            "dist/release/froxel-$VERSION-blender-addon.zip"
+          blender --command extension validate "dist/release/froxel-$VERSION-blender-addon.zip"
           unzip -l "dist/release/froxel-$VERSION-blender-addon.zip"
+      # godot-addon.zip unzips into a project as addons/froxel_bridge. The
+      # godot-assetlib.zip is the Asset Library download (Custom provider):
+      # the same files under one root folder, which the editor's installer
+      # strips as it does for a GitHub archive. LICENSE goes inside the addon
+      # folder only, so installing never replaces a project's own LICENSE.
+      - name: Zip the Godot plugin
+        run: |
+          set -euo pipefail
+          mkdir -p dist/godot/addons dist/assetlib/froxel_bridge
+          cp -R godot/addons/froxel_bridge dist/godot/addons/froxel_bridge
+          cp LICENSE dist/godot/addons/froxel_bridge/LICENSE
+          (cd dist/godot && zip -r -X "../release/froxel-$VERSION-godot-addon.zip" \
+            addons/froxel_bridge -x '*.uid')
+          cp -R dist/godot/addons dist/assetlib/froxel_bridge/addons
+          (cd dist/assetlib && zip -r -X "../release/froxel-$VERSION-godot-assetlib.zip" \
+            froxel_bridge -x '*.uid')
           unzip -l "dist/release/froxel-$VERSION-godot-addon.zip"
+          unzip -l "dist/release/froxel-$VERSION-godot-assetlib.zip"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: froxel-${{ env.VERSION }}-addons

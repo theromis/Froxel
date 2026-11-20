@@ -3,9 +3,12 @@
 #
 #   docker build -t froxel-mcp .
 #   docker run -i --rm froxel-mcp
+#
+# .github/workflows/mcp-registry.yml builds it for each published release as
+# ghcr.io/theromis/froxel-mcp:<version>, the package server.json lists.
 FROM debian:bookworm-slim
 
-ARG FROXEL_VERSION=0.2.0
+ARG FROXEL_VERSION=0.3.3
 # Set by BuildKit; amd64 when the builder does not set it.
 ARG TARGETARCH
 
@@ -29,5 +32,8 @@ RUN set -eu; \
     apt-get purge -y curl; \
     apt-get autoremove -y; \
     rm -rf /var/lib/apt/lists/*
+
+# The MCP Registry checks this label against the name in server.json.
+LABEL io.modelcontextprotocol.server.name="io.github.theromis/froxel"
 
 ENTRYPOINT ["froxel", "mcp"]

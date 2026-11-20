@@ -71,7 +71,9 @@ and ledges from there instead of computing them again.
 
 Unzip `froxel-<version>-godot-addon.zip` into the project folder. It creates
 `addons/froxel_bridge`. Then enable Froxel Bridge in Project Settings →
-Plugins. From a clone, copy `godot/addons/froxel_bridge` instead; `godot/` is
+Plugins. Once the Asset Library listing is accepted, the AssetLib tab finds it
+as Froxel Bridge and installs the same files (see
+[registries.md](registries.md#godot-asset-library)). From a clone, copy `godot/addons/froxel_bridge` instead; `godot/` is
 an example project with the plugin already enabled.
 
 Create a Node3D of type **FroxelBridge**. Set **Session File** to the printed
@@ -173,15 +175,20 @@ Godot 4.3+ is the target and 4.5 is tested. The glTF import uses
 
 ![The Froxel tab in Blender 5.2: the lily pad in the 3D view and its sliders and Bake into scene in the sidebar](images/blender-bridge.jpg)
 
-Install `froxel-<version>-blender-addon.zip` from Preferences → Add-ons →
-Install from Disk, then enable Froxel Bridge. From a clone, build the same zip
-with
+The add-on is a Blender extension (`blender_manifest.toml`). Install
+`froxel-<version>-blender-addon.zip` from Preferences → Get Extensions →
+Install from Disk (or drop it on the Blender window), then enable Froxel
+Bridge. It asks for two permissions: network, for the bridge on `127.0.0.1`,
+and files, for the session file and the glTF. Once it is on
+extensions.blender.org, Get Extensions finds it as Froxel Bridge (see
+[registries.md](registries.md#blender-extensions)). From a clone, build the
+same zip with
 
 ```sh
-python3 tools/package_bridge.py
+blender --command extension build --source-dir blender/froxel_bridge --output-dir dist
 ```
 
-and install `dist/froxel_bridge.zip`. In the 3D View sidebar, open the **Froxel**
+and install `dist/froxel_bridge-<version>.zip`. In the 3D View sidebar, open the **Froxel**
 tab, choose the session file, and click **Connect / Refresh**. Sliders match
 the script parameters and stop at their range. A list parameter is a text
 field holding JSON, such as `[[0, 0], [12, 4]]`; the label gives its longest

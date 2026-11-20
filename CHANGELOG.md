@@ -4,6 +4,22 @@
 
 ### Added
 
+- Registry listings for the add-ons and the MCP server (`docs/registries.md`).
+  The repository is a Claude Code plugin marketplace: `claude plugin
+  marketplace add theromis/Froxel`, then `claude plugin install froxel@froxel`
+  installs the `froxel mcp` server and the agent skill together. The Blender
+  add-on is now an extension (`blender_manifest.toml`, Blender 4.2+, network
+  and files permissions), built and validated with Blender 4.2 LTS by the
+  `addons` job, ready for extensions.blender.org. Releases also carry
+  `froxel-<version>-godot-assetlib.zip` for the Godot Asset Library, and
+  `tools/godot_assetlib.py` posts a new version to it. A published release
+  pushes the `ghcr.io/theromis/froxel-mcp` image and publishes `server.json`
+  (`io.github.theromis/froxel`) to the official MCP Registry
+  (`mcp-registry.yml`, GitHub OIDC); `glama.json` lets the owner claim the
+  Glama listing. `tools/sync_versions.py` keeps all of these at the
+  `Cargo.toml` version, and the release fails when one is behind. Not done
+  yet: the first Blender, Godot, and Glama submissions, which need accounts,
+  and the first registry run, which needs a release.
 - itch.io and Steam uploads: the `game-stores.yml` workflow pushes a
   published release to itch.io with butler, one channel per platform
   (`osx-universal`, `windows-x64`, `windows-x86`, `windows-arm64`,

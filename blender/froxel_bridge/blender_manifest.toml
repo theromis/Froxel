@@ -1,0 +1,26 @@
+schema_version = "1.0.0"
+
+# The extension id is also the Python package name; keep it as the folder name.
+id = "froxel_bridge"
+# The release workflow sets this to the Froxel version before it builds the zip.
+version = "0.3.3"
+name = "Froxel Bridge"
+tagline = "Import a live Froxel voxel model and bake it into the scene"
+maintainer = "Roman Vasilyev"
+type = "add-on"
+
+website = "https://github.com/theromis/Froxel/blob/main/docs/bridges.md#blender"
+
+tags = ["Import-Export", "Modeling", "Object"]
+
+blender_version_min = "4.2.0"
+
+license = ["SPDX:MIT"]
+copyright = ["2026 Roman Vasilyev"]
+
+[permissions]
+network = "Connect to the Froxel bridge on 127.0.0.1"
+files = "Read the bridge session file and import the glTF it writes"
+
+[build]
+paths_exclude_pattern = ["__pycache__/", "*.pyc", "/.git/"]

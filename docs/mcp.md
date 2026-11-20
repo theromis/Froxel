@@ -43,8 +43,18 @@ to reach the window does not silently edit a private document.
 ```
 
 Registering the server does not install the agent skill
-(`skills/froxel/SKILL.md`). For Claude Code, copy the `skills/froxel` folder
-into `~/.claude/skills/` (the README has a one-line download).
+(`skills/froxel/SKILL.md`). For Claude Code, the repository is also a plugin
+marketplace whose `froxel` plugin brings both, the server (`froxel mcp`, with
+`froxel` on `PATH`) and the skill:
+
+```sh
+claude plugin marketplace add theromis/Froxel
+claude plugin install froxel@froxel
+```
+
+Its tools are then `mcp__plugin_froxel_froxel__<tool>`. Without the plugin,
+copy the `skills/froxel` folder into `~/.claude/skills/` (the README has a
+one-line download).
 
 ### Docker
 
@@ -59,6 +69,21 @@ docker run -i --rm froxel-mcp
 
 Files the server opens or writes are inside the container; mount a folder
 with `-v` to reach them.
+
+Each published release (not a pre-release) is also built as
+`ghcr.io/theromis/froxel-mcp:<version>` for amd64 and arm64 by
+`.github/workflows/mcp-registry.yml`, which then publishes `server.json` to
+the official MCP Registry as `io.github.theromis/froxel`, so registry clients
+start it as
+
+```sh
+docker run -i --rm ghcr.io/theromis/froxel-mcp:<version>
+```
+
+The image carries the label `io.modelcontextprotocol.server.name` the
+registry checks. Glama builds the same `Dockerfile` (`glama.json` names the
+maintainer). Listings and what is still to be done by hand are in
+[registries.md](registries.md).
 
 ### Connected to the window
 

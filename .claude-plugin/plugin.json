@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "froxel",
+  "displayName": "Froxel",
+  "version": "0.3.3",
+  "description": "The Froxel voxel editor's MCP server (froxel mcp) and the skill for its tools. Needs the froxel binary on PATH.",
+  "author": {
+    "name": "Roman Vasilyev",
+    "url": "https://github.com/theromis"
+  },
+  "homepage": "https://github.com/theromis/Froxel/blob/main/docs/mcp.md",
+  "repository": "https://github.com/theromis/Froxel",
+  "license": "MIT",
+  "keywords": [
+    "voxel",
+    "vox",
+    "magicavoxel",
+    "gltf",
+    "3d",
+    "game-assets",
+    "mcp"
+  ],
+  "mcpServers": {
+    "froxel": {
+      "command": "froxel",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

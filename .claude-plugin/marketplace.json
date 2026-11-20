@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "froxel",
+  "owner": {
+    "name": "Roman Vasilyev",
+    "url": "https://github.com/theromis"
+  },
+  "description": "Froxel, a voxel editor: its MCP server and the agent skill for it",
+  "plugins": [
+    {
+      "name": "froxel",
+      "source": "./",
+      "description": "Build, sculpt, script, paint, rig, and export .vox models through the froxel mcp server, with the skill that explains its tools",
+      "category": "development",
+      "tags": ["voxel", "vox", "3d", "gltf", "game-assets", "mcp"]
+    }
+  ]
+}

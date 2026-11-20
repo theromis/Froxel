@@ -65,7 +65,7 @@ Download the file for your system from the
 | Android 7.0+ (arm64) | `froxel-<version>-android-arm64.apk` | Open it on the phone. Android asks once to allow installs from the browser or file manager. |
 | iOS 16+ simulator | `froxel-<version>-ios-simulator.zip` | Unzip and drag `Froxel.app` onto a booted simulator. The device build goes to the App Store. |
 | Godot 4.3+ plugin | `froxel-<version>-godot-addon.zip` | Unzip into the project folder. See [Godot and Blender](#godot-and-blender). |
-| Blender 4.2+ add-on | `froxel-<version>-blender-addon.zip` | Preferences → Add-ons → Install from Disk. |
+| Blender 4.2+ extension | `froxel-<version>-blender-addon.zip` | Preferences → Get Extensions → Install from Disk. |
 
 Each release will also go to [itch.io](https://theromis.itch.io/froxel)
 (Windows, macOS, Linux, and Android; the itch app installs and updates it) and
@@ -119,7 +119,18 @@ An agent can create objects, place voxels, fill boxes and ellipsoids, set the
 palette, add bones and clips, run scripts, export `.glb`, and path-trace a PNG
 to check its work. The frog in these pictures was built this way.
 
-Add it to Claude Code. On macOS, after installing from the dmg:
+In Claude Code, the plugin adds the server and the agent skill together. It
+runs `froxel` from `PATH`, so install Froxel first (on macOS, link the app's
+binary: `ln -s /Applications/Froxel.app/Contents/MacOS/froxel /usr/local/bin/froxel`):
+
+```sh
+claude plugin marketplace add theromis/Froxel
+claude plugin install froxel@froxel
+```
+
+Or in a session: `/plugin install froxel --marketplace theromis/Froxel`.
+
+Without the plugin, add the server by path. On macOS, after installing from the dmg:
 
 ```sh
 claude mcp add froxel -- /Applications/Froxel.app/Contents/MacOS/froxel mcp
@@ -134,7 +145,10 @@ copy the `skills/froxel` folder into `~/.claude/skills/`, or without a clone:
 mkdir -p ~/.claude/skills/froxel && curl -fsSL https://raw.githubusercontent.com/theromis/Froxel/main/skills/froxel/SKILL.md -o ~/.claude/skills/froxel/SKILL.md
 ```
 
-Or add it to any MCP client's config:
+Or add it to any MCP client's config. Releases from 0.3.4 on also go to the
+official MCP Registry as `io.github.theromis/froxel`, a container image that
+runs it headless (`docker run -i --rm ghcr.io/theromis/froxel-mcp`); see
+[docs/registries.md](docs/registries.md).
 
 ```json
 {
@@ -214,7 +228,10 @@ froxel --bridge 29771 tests/fixtures/examples/lily_pad.vox
 The Godot plugin is [`godot/addons/froxel_bridge`](godot/addons/froxel_bridge) and
 the Blender add-on is [`blender/froxel_bridge`](blender/froxel_bridge). Both are
 in every release since 0.2.0 as `froxel-<version>-godot-addon.zip` and
-`froxel-<version>-blender-addon.zip`. Tested with Godot 4.5 and Blender 5.2.
+`froxel-<version>-blender-addon.zip`; the Blender one is an extension for
+Blender 4.2+. Tested with Godot 4.5 and Blender 5.2. Listings on the Godot
+Asset Library and extensions.blender.org are being submitted
+([docs/registries.md](docs/registries.md)).
 Setup, the variant baker, and the protocol are in [docs/bridges.md](docs/bridges.md).
 
 ## Command line
