@@ -1,0 +1,16 @@
+// SteamPipe depot: macOS universal (Froxel.app, Apple silicon and Intel).
+// @STEAM_DEPOT_MACOS@ is a placeholder that packaging/steam/build.sh fills in
+// from the repository variable STEAM_DEPOT_MACOS (see app_build.vdf).
+// The files are the release build unpacked into content/macos-universal/.
+"DepotBuild"
+{
+	"DepotID" "@STEAM_DEPOT_MACOS@"
+	"ContentRoot" "@CONTENT_ROOT@/macos-universal"
+	"FileMapping"
+	{
+		"LocalPath" "*"
+		"DepotPath" "."
+		"Recursive" "1"
+	}
+	"FileExclusion" "*.pdb"
+}

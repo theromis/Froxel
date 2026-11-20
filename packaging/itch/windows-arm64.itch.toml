@@ -1,0 +1,15 @@
+# itch app manifest for the windows-arm64 channel (packaging/itch/push.sh copies it
+# to the build root as .itch.toml). https://itch.io/docs/itch/integrating/manifest.html
+
+[[actions]]
+name = "play"
+path = "froxel.exe"
+platform = "windows"
+
+# Opens the README in the browser from the itch app.
+[[actions]]
+name = "manual"
+path = "https://github.com/theromis/Froxel#readme"
+
+# itch has no ARM64 Visual C++ prerequisite, so none is listed; without the
+# runtime, Microsoft's arm64 redistributable (vc_redist.arm64.exe) supplies it.

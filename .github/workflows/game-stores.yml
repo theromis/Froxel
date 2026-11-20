@@ -1,0 +1,227 @@
+# itch.io and Steam uploads of a published GitHub Release (docs/releasing.md).
+#
+# Runs when a release is published, or by hand for a tag:
+#   gh workflow run game-stores.yml -f tag=v0.4.0                # itch.io
+#   gh workflow run game-stores.yml -f tag=v0.4.0 -f steam=true  # also Steam
+#   gh workflow run game-stores.yml -f tag=v0.4.0 -f steam=true -f dry-run=true
+#
+# itch.io: packaging/itch/push.sh unpacks the release files and pushes one butler
+# channel per platform with --userversion <version>. Prereleases are skipped.
+# Without the BUTLER_API_KEY secret the job notes it and stops.
+#
+# Steam: packaging/steam/build.sh stages the Windows x64, macOS, and Linux x86_64
+# depots and runs steamcmd, setting the build live on a beta branch (STEAM_BRANCH,
+# default beta), never on default. On a published release it runs only when the
+# repository variable STEAM_ON_RELEASE is true; by hand, with steam=true. Without
+# STEAM_APP_ID, STEAM_USERNAME, or STEAM_CONFIG_VDF it notes it and stops.
+#
+# dry-run unpacks and checks everything (butler validate for itch, the rendered
+# VDFs for Steam) and uploads nothing; it needs no secrets.
+name: Game stores
+run-name: Game stores ${{ inputs.tag || github.event.release.tag_name }}
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v0.4.0 (a published release)"
+        type: string
+        required: true
+      itch:
+        description: "Push to itch.io"
+        type: boolean
+        default: true
+      steam:
+        description: "Upload to Steam and set it live on the beta branch"
+        type: boolean
+        default: false
+      steam-branch:
+        description: "Steam branch to set live (not default)"
+        type: string
+        default: ""
+      dry-run:
+        description: "Unpack and check only; upload nothing"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: game-stores-${{ inputs.tag || github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  itch:
+    name: itch.io
+    if: github.event_name == 'release' || inputs.itch
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
+      DRY_RUN: ${{ inputs.dry-run && '1' || '' }}
+      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+      ITCH_PROJECT: ${{ vars.ITCH_PROJECT || 'theromis/froxel' }}
+      BUTLER_VERSION: ${{ vars.BUTLER_VERSION || 'LATEST' }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: check
+        name: Check the secret and the version
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          if [ -z "$BUTLER_API_KEY" ] && [ "$DRY_RUN" != 1 ]; then
+            echo "::notice::No BUTLER_API_KEY secret: nothing pushed to itch.io"
+            echo "itch.io: skipped, no BUTLER_API_KEY" >>"$GITHUB_STEP_SUMMARY"
+            echo "run=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case "$version" in
+          *-*)
+            echo "::notice::$TAG is a prerelease: itch.io gets releases only"
+            echo "itch.io: skipped, $TAG is a prerelease" >>"$GITHUB_STEP_SUMMARY"
+            echo "run=false" >>"$GITHUB_OUTPUT"
+            exit 0
+            ;;
+          esac
+          echo "run=true" >>"$GITHUB_OUTPUT"
+      - if: steps.check.outputs.run == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: packaging/itch
+      - if: steps.check.outputs.run == 'true'
+        name: Download the release files
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release"
+          gh release download "$TAG" --dir "$RUNNER_TEMP/release" \
+            --pattern 'froxel-*' --pattern SHA256SUMS.txt
+          cd "$RUNNER_TEMP/release"
+          sha256sum --check --ignore-missing SHA256SUMS.txt
+      - if: steps.check.outputs.run == 'true'
+        name: Install butler
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/butler"
+          mkdir -p "$dir"
+          curl -sSfL -o "$dir/butler.zip" \
+            "https://broth.itch.zone/butler/linux-amd64/$BUTLER_VERSION/archive/default"
+          unzip -q "$dir/butler.zip" -d "$dir"
+          chmod +x "$dir/butler"
+          "$dir/butler" -V
+          echo "$dir" >>"$GITHUB_PATH"
+      - if: steps.check.outputs.run == 'true'
+        name: Push the channels
+        env:
+          VALIDATE: "1"
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          set -euo pipefail
+          packaging/itch/push.sh "$RUNNER_TEMP/release" "$VERSION" | tee "$RUNNER_TEMP/itch.log"
+          if [ "$DRY_RUN" = 1 ]; then
+            echo "itch.io: dry run of $ITCH_PROJECT at $VERSION, nothing pushed" >>"$GITHUB_STEP_SUMMARY"
+          else
+            echo "itch.io: pushed $ITCH_PROJECT at $VERSION" >>"$GITHUB_STEP_SUMMARY"
+          fi
+
+  steam:
+    name: Steam
+    if: >-
+      (github.event_name == 'release' && vars.STEAM_ON_RELEASE == 'true') ||
+      (github.event_name == 'workflow_dispatch' && inputs.steam)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
+      DRY_RUN: ${{ inputs.dry-run && '1' || '' }}
+      STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+      STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
+      STEAM_APP_ID: ${{ vars.STEAM_APP_ID }}
+      STEAM_DEPOT_WINDOWS_X64: ${{ vars.STEAM_DEPOT_WINDOWS_X64 }}
+      STEAM_DEPOT_MACOS: ${{ vars.STEAM_DEPOT_MACOS }}
+      STEAM_DEPOT_LINUX_X86_64: ${{ vars.STEAM_DEPOT_LINUX_X86_64 }}
+      STEAM_BRANCH: ${{ inputs.steam-branch || vars.STEAM_BRANCH || 'beta' }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: check
+        name: Check the secrets and the app ID
+        run: |
+          set -euo pipefail
+          echo "version=${TAG#v}" >>"$GITHUB_OUTPUT"
+          missing=()
+          [ -n "$STEAM_APP_ID" ] || missing+=(STEAM_APP_ID)
+          [ -n "$STEAM_USERNAME" ] || missing+=(STEAM_USERNAME)
+          [ -n "$STEAM_CONFIG_VDF" ] || missing+=(STEAM_CONFIG_VDF)
+          if [ "${#missing[@]}" -gt 0 ] && [ "$DRY_RUN" != 1 ]; then
+            echo "::notice::No ${missing[*]}: nothing uploaded to Steam"
+            echo "Steam: skipped, no ${missing[*]}" >>"$GITHUB_STEP_SUMMARY"
+            echo "run=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "run=true" >>"$GITHUB_OUTPUT"
+      - if: steps.check.outputs.run == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: packaging/steam
+      - if: steps.check.outputs.run == 'true'
+        name: Download the release files
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release"
+          gh release download "$TAG" --dir "$RUNNER_TEMP/release" \
+            --pattern '*-windows-x64.zip' --pattern '*-macos-universal.zip' \
+            --pattern '*-linux-x86_64.tar.gz' --pattern SHA256SUMS.txt
+          cd "$RUNNER_TEMP/release"
+          sha256sum --check --ignore-missing SHA256SUMS.txt
+      - if: steps.check.outputs.run == 'true' && env.DRY_RUN != '1'
+        name: Install steamcmd
+        run: |
+          set -euo pipefail
+          sudo dpkg --add-architecture i386
+          sudo apt-get update -q
+          sudo apt-get install -yq lib32gcc-s1
+          dir="$RUNNER_TEMP/steamcmd"
+          mkdir -p "$dir"
+          curl -sSfL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz |
+            tar -xz -C "$dir"
+          # The first run updates steamcmd itself.
+          "$dir/steamcmd.sh" +quit || true
+          # The cached login from a machine that passed Steam Guard. steamcmd
+          # reads it from its own folder; ~/Steam covers the package layout.
+          for config in "$dir/config" "$HOME/Steam/config"; do
+            mkdir -p "$config"
+            printf '%s' "$STEAM_CONFIG_VDF" | base64 -d >"$config/config.vdf"
+            chmod 600 "$config/config.vdf"
+          done
+          echo "STEAMCMD=$dir/steamcmd.sh" >>"$GITHUB_ENV"
+      - if: steps.check.outputs.run == 'true'
+        name: Build the depots and upload
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
+          STEAM_WORK: ${{ runner.temp }}/steam
+        run: |
+          set -euo pipefail
+          packaging/steam/build.sh "$RUNNER_TEMP/release" "$VERSION"
+          if [ "$DRY_RUN" = 1 ]; then
+            echo "Steam: dry run of $VERSION, nothing uploaded" >>"$GITHUB_STEP_SUMMARY"
+          else
+            echo "Steam: $VERSION uploaded and live on '$STEAM_BRANCH' (default is set by hand)" >>"$GITHUB_STEP_SUMMARY"
+          fi
+      - if: always() && steps.check.outputs.run == 'true'
+        name: Upload the steamcmd logs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: steam-${{ steps.check.outputs.version }}-logs
+          path: |
+            ${{ runner.temp }}/steam/scripts/*.vdf
+            ${{ runner.temp }}/steam/output/*.log
+            ${{ runner.temp }}/steamcmd/logs/*.txt
+          if-no-files-found: ignore
+      - name: Remove the Steam login
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/steamcmd/config" "$HOME/Steam/config"

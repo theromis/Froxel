@@ -163,3 +163,118 @@ The issuer is `APPLE_API_ISSUER_ID`. A Developer key, like the notarization
 key, uploads builds but cannot submit them.
 
 Then publish the draft on the Releases page. Publishing creates the tag.
+
+## itch.io and Steam
+
+`.github/workflows/game-stores.yml` uploads a published release to itch.io
+and Steam. It starts when the draft is published, or by hand for a tag that is
+already published:
+
+```sh
+gh workflow run game-stores.yml -f tag=v0.4.0                 # itch.io
+gh workflow run game-stores.yml -f tag=v0.4.0 -f steam=true   # also Steam
+gh workflow run game-stores.yml -f tag=v0.4.0 -f steam=true -f dry-run=true
+```
+
+Both jobs download the release files, check them against `SHA256SUMS.txt`,
+and unpack them. Each one notes a missing secret in the run summary and
+stops without failing. `dry-run` needs no secrets: it unpacks, runs
+`butler validate` on every itch.io folder and renders the Steam VDFs, and
+uploads nothing. Not run yet against real accounts: the itch.io project, the
+Steamworks app, and the secrets below do not exist yet.
+
+### itch.io
+
+`packaging/itch/push.sh` pushes one butler channel per platform, with
+`--userversion` set to the release version and `--if-changed`:
+
+| Channel | From |
+|---|---|
+| `osx-universal` | `froxel-<version>-macos-universal.zip` (`Froxel.app`) |
+| `windows-x64`, `windows-x86`, `windows-arm64` | `froxel-<version>-windows-<arch>.zip` |
+| `linux-x86_64`, `linux-aarch64` | `froxel-<version>-linux-<arch>.tar.gz` |
+| `android` | `froxel-<version>-android-arm64.apk`, as a download |
+
+Each folder gets the channel's manifest from `packaging/itch/` as
+`.itch.toml`, so the itch app launches `froxel.exe`, `froxel`, or
+`Froxel.app` and offers the README as the manual. The x64 and x86 manifests
+ask the itch app for the Visual C++ runtime (`vcredist-v14-*`); itch has
+none for ARM64. Prereleases are skipped: the itch.io page lists releases
+only, and testers get prereleases from the GitHub Releases page or the Steam
+beta branch. The script runs locally too:
+
+```sh
+DRY_RUN=1 packaging/itch/push.sh dist/release 0.4.0   # prints the pushes
+```
+
+One-time setup:
+
+1. On itch.io, create the project (Dashboard → Create new project), kind
+   **Downloadable**, classification **Tools**, with the store text of
+   `packaging/steam/store.md`. Leave it as a draft until the first push has
+   landed, then set its visibility.
+2. Create an API key (Settings → API keys, or `butler login` and copy
+   `~/.config/itch/butler_creds`) and add it as the `BUTLER_API_KEY`
+   repository secret.
+3. The project is `theromis/froxel` unless the repository variable
+   `ITCH_PROJECT` names another `user/game`. `BUTLER_VERSION` pins butler
+   (default `LATEST`).
+4. After the first push, mark the `android` upload as Android in the
+   project's upload list if itch did not; the channel names tag the others.
+
+### Steam
+
+`packaging/steam/build.sh` unpacks Windows x64, macOS universal, and Linux
+x86_64 into one depot each, fills in the SteamPipe scripts
+(`packaging/steam/app_build.vdf` and `depot_*.vdf`), and runs
+`steamcmd +login <user> +run_app_build`. Every `@NAME@` in the VDFs is a
+placeholder; there are no real IDs in the repository. The build is set live
+on `STEAM_BRANCH` (default `beta`); the script refuses `default` and
+`public`, so a build reaches players only when it is set live on default by
+hand in Steamworks (Builds) after testing the beta. The job runs on a
+published release only when the repository variable `STEAM_ON_RELEASE` is
+`true`, and by hand with `steam=true`. The steamcmd logs and the rendered
+VDFs are kept as the `steam-<version>-logs` artifact.
+
+```sh
+DRY_RUN=1 packaging/steam/build.sh dist/release 0.4.0   # stages and renders
+```
+
+One-time setup:
+
+1. Join Steamworks (steamworks.com, a Steam Direct fee of $100 per app,
+   with the tax and bank forms) and create the app. Its type is
+   **Software**.
+2. In App Admin → SteamPipe → Depots, add three depots and set their
+   operating systems: Windows (64-bit), macOS, and Linux. Steam numbers
+   them after the app ID; `build.sh` assumes app ID + 1, + 2, + 3 unless
+   the variables say otherwise.
+3. In Installation → General, add the launch options: `froxel.exe` for
+   Windows, `Froxel.app` for macOS, and `froxel` for Linux (no Steam Linux
+   Runtime container is needed; it uses the system's Vulkan driver). Publish
+   the changes.
+4. Add a beta branch named `beta` in SteamPipe → Builds (a password is
+   optional), and publish.
+5. Repository variables: `STEAM_APP_ID`, and if they differ from the
+   convention `STEAM_DEPOT_WINDOWS_X64`, `STEAM_DEPOT_MACOS`,
+   `STEAM_DEPOT_LINUX_X86_64`; optionally `STEAM_BRANCH` and
+   `STEAM_ON_RELEASE`.
+6. Make a Steam account for builds only, give it the Steamworks permission
+   to edit app metadata and publish builds (not to set the default branch
+   live), and log it in once with steamcmd on a trusted machine so Steam
+   Guard caches the login:
+
+   ```sh
+   steamcmd +login froxel_builder +quit   # asks for the password and the Steam Guard code
+   base64 -i ~/Library/Application\ Support/Steam/config/config.vdf | pbcopy
+   ```
+
+   On Linux the file is `config/config.vdf` in the steamcmd folder
+   (`~/Steam` or `~/.steam/steam`), and `base64 -w0` prints it.
+
+   Add the account name as `STEAM_USERNAME` and the base64 text as
+   `STEAM_CONFIG_VDF`. The workflow never sees the password. Steam drops a
+   cached login after a long time unused or after a password change; then
+   log in again and replace the secret.
+7. Fill in the store page from `packaging/steam/store.md` and submit it
+   and the build for Valve's review before the first release.

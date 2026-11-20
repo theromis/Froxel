@@ -1,0 +1,16 @@
+# itch app manifest for the windows-x64 channel (packaging/itch/push.sh copies it
+# to the build root as .itch.toml). https://itch.io/docs/itch/integrating/manifest.html
+
+[[actions]]
+name = "play"
+path = "froxel.exe"
+platform = "windows"
+
+# Opens the README in the browser from the itch app.
+[[actions]]
+name = "manual"
+path = "https://github.com/theromis/Froxel#readme"
+
+# The Rust MSVC build links vcruntime140.dll dynamically.
+[[prereqs]]
+name = "vcredist-v14-x64"

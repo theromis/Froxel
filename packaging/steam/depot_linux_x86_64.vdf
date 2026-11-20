@@ -1,0 +1,16 @@
+// SteamPipe depot: Linux x86_64 (froxel, the desktop entry, icons, README.md, LICENSE).
+// @STEAM_DEPOT_LINUX_X86_64@ is a placeholder that packaging/steam/build.sh fills in
+// from the repository variable STEAM_DEPOT_LINUX_X86_64 (see app_build.vdf).
+// The files are the release build unpacked into content/linux-x86_64/.
+"DepotBuild"
+{
+	"DepotID" "@STEAM_DEPOT_LINUX_X86_64@"
+	"ContentRoot" "@CONTENT_ROOT@/linux-x86_64"
+	"FileMapping"
+	{
+		"LocalPath" "*"
+		"DepotPath" "."
+		"Recursive" "1"
+	}
+	"FileExclusion" "*.pdb"
+}

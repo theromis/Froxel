@@ -67,6 +67,11 @@ Download the file for your system from the
 | Godot 4.3+ plugin | `froxel-<version>-godot-addon.zip` | Unzip into the project folder. See [Godot and Blender](#godot-and-blender). |
 | Blender 4.2+ add-on | `froxel-<version>-blender-addon.zip` | Preferences → Add-ons → Install from Disk. |
 
+Each release will also go to [itch.io](https://theromis.itch.io/froxel)
+(Windows, macOS, Linux, and Android; the itch app installs and updates it) and
+to Steam (Windows, macOS, and Linux, first on a beta branch) once their store
+pages open.
+
 Linux needs a Vulkan driver (Mesa or the GPU vendor's); the packages pull in
 the Vulkan loader. Every release has a `SHA256SUMS.txt`. How the builds are signed is in
 [CODE_SIGNING.md](CODE_SIGNING.md).

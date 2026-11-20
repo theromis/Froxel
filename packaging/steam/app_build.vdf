@@ -1,0 +1,28 @@
+// SteamPipe app build for Froxel, rendered by packaging/steam/build.sh.
+//
+// Every @NAME@ is a placeholder that build.sh fills in; none of them is a real
+// ID yet. The app ID and the three depot IDs come from Steamworks (App Admin,
+// SteamPipe, Depots) once the app exists, and go into the repository
+// variables STEAM_APP_ID, STEAM_DEPOT_WINDOWS_X64, STEAM_DEPOT_MACOS, and
+// STEAM_DEPOT_LINUX_X86_64 (docs/releasing.md). By Steam's convention the
+// depots are the app ID plus 1, 2, and 3, which build.sh assumes when a depot
+// variable is empty.
+//
+// SetLive names a beta branch, never "default": build.sh refuses to render
+// default or public, and the default branch is set live by hand in
+// Steamworks (Builds) after testing.
+"AppBuild"
+{
+	"AppID" "@STEAM_APP_ID@"
+	"Desc" "@DESC@"
+	"ContentRoot" "@CONTENT_ROOT@"
+	"BuildOutput" "@BUILD_OUTPUT@"
+	"SetLive" "@BRANCH@"
+	"Preview" "@PREVIEW@"
+	"Depots"
+	{
+		"@STEAM_DEPOT_WINDOWS_X64@" "depot_windows_x64.vdf"
+		"@STEAM_DEPOT_MACOS@" "depot_macos.vdf"
+		"@STEAM_DEPOT_LINUX_X86_64@" "depot_linux_x86_64.vdf"
+	}
+}

@@ -1,0 +1,11 @@
+# itch app manifest for the linux-* channels (copied to the build root as .itch.toml).
+
+[[actions]]
+name = "play"
+path = "froxel"
+platform = "linux"
+
+# Opens the README in the browser from the itch app.
+[[actions]]
+name = "manual"
+path = "https://github.com/theromis/Froxel#readme"

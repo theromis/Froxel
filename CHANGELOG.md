@@ -4,6 +4,14 @@
 
 ### Added
 
+- itch.io and Steam uploads: the `game-stores.yml` workflow pushes a
+  published release to itch.io with butler, one channel per platform
+  (`osx-universal`, `windows-x64`, `windows-x86`, `windows-arm64`,
+  `linux-x86_64`, `linux-aarch64`, `android`) with an `.itch.toml` launch
+  manifest, and uploads the Windows x64, macOS, and Linux x86_64 depots to
+  Steam with steamcmd, live on a beta branch only. Prereleases skip itch.io.
+  The Steam store text is `packaging/steam/store.md`. Not run yet: the
+  itch.io project and the Steamworks app are still to be set up.
 - Linux `.rpm` packages for Fedora, RHEL, CentOS Stream, Rocky, Alma, and
   openSUSE (x86_64, aarch64, riscv64). The x86_64 and aarch64 Linux builds
   now need glibc 2.28 instead of 2.35, so they also run on RHEL 8 and its

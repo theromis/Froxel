@@ -1,0 +1,11 @@
+# itch app manifest for the osx-universal channel (copied to the build root as .itch.toml).
+
+[[actions]]
+name = "play"
+path = "Froxel.app"
+platform = "osx"
+
+# Opens the README in the browser from the itch app.
+[[actions]]
+name = "manual"
+path = "https://github.com/theromis/Froxel#readme"
