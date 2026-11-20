@@ -63,6 +63,13 @@ fi
 gpg --batch --yes --export "$key" >froxel.gpg
 gpg --batch --yes --armor --export "$key" >froxel.asc
 
-sed -e "s|@BASE@|$base|g" -e "s|@COPR@|${COPR_PROJECT:-theromis/froxel}|g" "$here/index.html" >index.html
+# The page lists the channels in CHANNELS (space-separated: copr aur flathub
+# snap); the other <!-- @IF name --> ... <!-- @END --> blocks are dropped.
+sed -e "s|@BASE@|$base|g" -e "s|@COPR@|${COPR_PROJECT:-theromis/froxel}|g" "$here/index.html" |
+  awk -v live=" ${CHANNELS:-} " '
+    /<!-- @IF [a-z]+ -->/ { split($0, w, " "); skip = index(live, " " w[3] " ") == 0; next }
+    /<!-- @END -->/ { skip = 0; next }
+    !skip { print }
+  ' >index.html
 touch .nojekyll
 find . -type f | sort

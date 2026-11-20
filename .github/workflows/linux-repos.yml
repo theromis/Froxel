@@ -19,6 +19,10 @@ on:
         description: "Release tag, e.g. v0.3.4 (empty: the latest release)"
         type: string
         default: ""
+      channels:
+        description: "Only these, space-separated: apt copr obs homebrew recipes aur snap flathub (empty: all)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -41,12 +45,17 @@ jobs:
       aur: ${{ steps.r.outputs.aur }}
       snap: ${{ steps.r.outputs.snap }}
       flathub: ${{ steps.r.outputs.flathub }}
+      flathub_files: ${{ steps.r.outputs.flathub_files }}
+      snap_build: ${{ steps.r.outputs.snap_build }}
+      recipes: ${{ steps.r.outputs.recipes }}
+      live: ${{ steps.r.outputs.live }}
       obs: ${{ steps.r.outputs.obs }}
       homebrew: ${{ steps.r.outputs.homebrew }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
       TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      ONLY: ${{ inputs.channels }}
     steps:
       - name: Resolve the release
         id: r
@@ -54,17 +63,32 @@ jobs:
           set -euo pipefail
           tag=${TAG:-$(gh release view --json tagName --jq .tagName)}
           prerelease=$(gh release view "$tag" --json isPrerelease --jq .isPrerelease)
+          # A channel runs when it is picked (all of them unless `channels` names some)
+          # and, for those that publish, when its secret is set.
+          want() { [ -z "$ONLY" ] || [[ " $ONLY " == *" $1 "* ]]; }
+          on() { if want "$1" && [ "$2" = true ]; then echo true; else echo false; fi; }
           {
             echo "tag=$tag"
             echo "version=${tag#v}"
             echo "prerelease=$prerelease"
-            echo "apt=${{ secrets.APT_GPG_PRIVATE_KEY != '' }}"
-            echo "copr=${{ secrets.COPR_CONFIG != '' }}"
-            echo "aur=${{ secrets.AUR_SSH_KEY != '' }}"
-            echo "snap=${{ secrets.SNAPCRAFT_STORE_CREDENTIALS != '' }}"
-            echo "flathub=${{ secrets.FLATHUB_TOKEN != '' }}"
-            echo "obs=${{ secrets.OBS_PASSWORD != '' }}"
-            echo "homebrew=${{ secrets.HOMEBREW_TAP_TOKEN != '' }}"
+            echo "apt=$(on apt ${{ secrets.APT_GPG_PRIVATE_KEY != '' }})"
+            echo "copr=$(on copr ${{ secrets.COPR_CONFIG != '' }})"
+            echo "aur=$(on aur ${{ secrets.AUR_SSH_KEY != '' }})"
+            echo "snap_build=$(on snap true)"
+            echo "snap=$(on snap ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS != '' }})"
+            echo "flathub_files=$(on flathub true)"
+            echo "flathub=$(on flathub ${{ secrets.FLATHUB_TOKEN != '' }})"
+            echo "obs=$(on obs ${{ secrets.OBS_PASSWORD != '' }})"
+            echo "homebrew=$(on homebrew ${{ secrets.HOMEBREW_TAP_TOKEN != '' }})"
+            echo "recipes=$(on recipes true)"
+            # The channels the apt page lists: those set up, whatever this run picks.
+            # Flathub counts once its update token exists, that is, after the app is accepted.
+            live=""
+            ${{ secrets.COPR_CONFIG != '' }} && live+=" copr"
+            ${{ secrets.AUR_SSH_KEY != '' }} && live+=" aur"
+            ${{ secrets.FLATHUB_TOKEN != '' }} && live+=" flathub"
+            ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS != '' }} && live+=" snap"
+            echo "live=${live# }"
           } | tee -a "$GITHUB_OUTPUT"
       - name: Download and check the Linux files
         run: |
@@ -102,6 +126,7 @@ jobs:
           APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
           APT_GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
           COPR_PROJECT: ${{ vars.COPR_PROJECT || 'theromis/froxel' }}
+          CHANNELS: ${{ needs.assets.outputs.live }}
         run: |
           set -euo pipefail
           printf '%s\n' "$APT_GPG_PRIVATE_KEY" | gpg --batch --import
@@ -221,7 +246,7 @@ jobs:
   recipes:
     name: Recipes for Gentoo, Void, FreeBSD, nixpkgs
     needs: assets
-    if: needs.assets.outputs.prerelease != 'true'
+    if: needs.assets.outputs.recipes == 'true' && needs.assets.outputs.prerelease != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
@@ -295,6 +320,7 @@ jobs:
   snap:
     name: Snap ${{ matrix.arch }}
     needs: assets
+    if: needs.assets.outputs.snap_build == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -341,7 +367,7 @@ jobs:
   flathub:
     name: Flathub
     needs: assets
-    if: needs.assets.outputs.prerelease != 'true'
+    if: needs.assets.outputs.flathub_files == 'true' && needs.assets.outputs.prerelease != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:

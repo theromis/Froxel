@@ -31,18 +31,26 @@ echo "deb [signed-by=/usr/share/keyrings/froxel.gpg] @BASE@ stable main" \
 sudo apt update &amp;&amp; sudo apt install froxel</pre>
 <p>Updates come with <code>sudo apt upgrade</code>. Debian 10+ and Ubuntu 20.04+, on x86_64, ARM64, and RISC-V.</p>
 
+<!-- @IF copr -->
 <h2>Fedora, RHEL, CentOS Stream, Rocky, Alma (dnf)</h2>
 <pre>sudo dnf copr enable @COPR@
 sudo dnf install froxel</pre>
 <p><code>copr</code> comes with <code>dnf-plugins-core</code>. Fedora, and RHEL 8+ and its rebuilds, on x86_64 and ARM64.</p>
+<!-- @END -->
 
+<!-- @IF aur -->
 <h2>Arch, Manjaro (AUR)</h2>
 <pre>yay -S froxel-bin</pre>
+<!-- @END -->
 
 <h2>Any distribution</h2>
-<pre>flatpak install flathub com.lonje.Froxel
-sudo snap install froxel</pre>
-<p>Or download a <code>.deb</code>, <code>.rpm</code>, or <code>.tar.gz</code> from the
+<!-- @IF flathub -->
+<pre>flatpak install flathub com.lonje.Froxel</pre>
+<!-- @END -->
+<!-- @IF snap -->
+<pre>sudo snap install froxel</pre>
+<!-- @END -->
+<p>Download a <code>.deb</code>, <code>.rpm</code>, or <code>.tar.gz</code> from the
 <a href="https://github.com/theromis/Froxel/releases/latest">latest release</a>.</p>
 </main>
 </body>
