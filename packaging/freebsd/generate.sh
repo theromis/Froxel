@@ -54,8 +54,8 @@ RUN_DEPENDS=	vulkan-loader>0:graphics/vulkan-loader \\
 USES=		cargo
 USE_GITHUB=	yes
 GH_ACCOUNT=	theromis
-GH_PROJECT=	Froxel
-$(if [ -n "${GH_TAGNAME:-}" ]; then printf 'GH_TAGNAME=	%s\n' "$GH_TAGNAME"; fi)
+GH_PROJECT=	Froxel${GH_TAGNAME:+
+GH_TAGNAME=	$GH_TAGNAME}
 
 PLIST_FILES=	bin/froxel \\
 		share/applications/froxel.desktop \\
