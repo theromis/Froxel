@@ -1,0 +1,53 @@
+{
+    "version": "0.3.3",
+    "description": "Voxel editor with a path tracer, rigging, glTF export, and an MCP server for agents.",
+    "homepage": "https://github.com/theromis/Froxel",
+    "license": "MIT",
+    "notes": "Windows builds are not code-signed yet; SmartScreen may ask on the first launch.",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/theromis/Froxel/releases/download/v0.3.3/froxel-0.3.3-windows-x64.zip",
+            "hash": "d5bc6b780b5711587a2919ec8150eec9484203ec8740352898e0eb3fc866bb29",
+            "extract_dir": "froxel-0.3.3-windows-x64"
+        },
+        "32bit": {
+            "url": "https://github.com/theromis/Froxel/releases/download/v0.3.3/froxel-0.3.3-windows-x86.zip",
+            "hash": "9614f4d374887b938099b61961cdbf48842c569c22ad90175d40771a842b2b54",
+            "extract_dir": "froxel-0.3.3-windows-x86"
+        },
+        "arm64": {
+            "url": "https://github.com/theromis/Froxel/releases/download/v0.3.3/froxel-0.3.3-windows-arm64.zip",
+            "hash": "fac88a12ef2604e14c5d0908a0e25d5c5f063f5eae3e98de6f67bf5e1e62461e",
+            "extract_dir": "froxel-0.3.3-windows-arm64"
+        }
+    },
+    "bin": "froxel.exe",
+    "shortcuts": [
+        [
+            "froxel.exe",
+            "Froxel"
+        ]
+    ],
+    "checkver": {
+        "github": "https://github.com/theromis/Froxel"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/theromis/Froxel/releases/download/v$version/froxel-$version-windows-x64.zip",
+                "extract_dir": "froxel-$version-windows-x64"
+            },
+            "32bit": {
+                "url": "https://github.com/theromis/Froxel/releases/download/v$version/froxel-$version-windows-x86.zip",
+                "extract_dir": "froxel-$version-windows-x86"
+            },
+            "arm64": {
+                "url": "https://github.com/theromis/Froxel/releases/download/v$version/froxel-$version-windows-arm64.zip",
+                "extract_dir": "froxel-$version-windows-arm64"
+            }
+        },
+        "hash": {
+            "url": "$baseurl/SHA256SUMS.txt"
+        }
+    }
+}

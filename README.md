@@ -58,6 +58,10 @@ Download the file for your system from the
 |---|---|---|
 | macOS 11+ (Apple silicon and Intel) | `froxel-<version>-macos-universal.dmg` | Signed and notarized. Drag Froxel to Applications. |
 | Windows (x64, x86, ARM64) | `froxel-<version>-windows-<arch>.zip` | Not signed yet ([why](CODE_SIGNING.md)). SmartScreen may ask once: choose **More info → Run anyway**. Windows 11 with Smart App Control on blocks it outright. |
+| Windows 10 1809+ with winget | — | `winget install Lonje.Froxel`, once the package is accepted into winget. The same zip, with `froxel` on the PATH. |
+| Windows with Scoop | — | `scoop bucket add froxel https://github.com/theromis/Froxel` then `scoop install froxel`. |
+| Windows with Chocolatey | — | `choco install froxel`, once it passes moderation (prereleases: `--pre`). |
+| Windows 10 1809+ from the Microsoft Store | — | Coming: the same app as an MSIX the Store signs, so SmartScreen does not ask. `froxel` works in a terminal and `.vox` files open in it. |
 | Debian 10+, Ubuntu 20.04+, Mint, Pop!_OS (x86_64, aarch64, riscv64) | `froxel-<version>-linux-<arch>.deb` | `sudo apt install ./froxel-*.deb` adds the menu entry and icon. |
 | Fedora, RHEL, CentOS Stream, Rocky, Alma 8+, openSUSE (x86_64, aarch64, riscv64) | `froxel-<version>-linux-<arch>.rpm` | `sudo dnf install ./froxel-*.rpm` (openSUSE: `sudo zypper install ./froxel-*.rpm`). |
 | Arch and any other Linux | `froxel-<version>-linux-<arch>.tar.gz` | Unpack and run `froxel`. Needs glibc 2.28 or newer (2.39 for riscv64). |

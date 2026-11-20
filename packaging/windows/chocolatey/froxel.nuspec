@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Template: packaging/windows/channels.py fills in @VERSION@ and @RELEASE_TAG@. -->
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>froxel</id>
+    <version>@VERSION@</version>
+    <title>Froxel</title>
+    <authors>Roman Vasilyev</authors>
+    <owners>Roman Vasilyev</owners>
+    <projectUrl>https://github.com/theromis/Froxel</projectUrl>
+    <projectSourceUrl>https://github.com/theromis/Froxel</projectSourceUrl>
+    <packageSourceUrl>https://github.com/theromis/Froxel/tree/main/packaging/windows/chocolatey</packageSourceUrl>
+    <docsUrl>https://github.com/theromis/Froxel#readme</docsUrl>
+    <bugTrackerUrl>https://github.com/theromis/Froxel/issues</bugTrackerUrl>
+    <releaseNotes>https://github.com/theromis/Froxel/releases/tag/@RELEASE_TAG@</releaseNotes>
+    <iconUrl>https://raw.githubusercontent.com/theromis/Froxel/main/packaging/icons/froxel.png</iconUrl>
+    <licenseUrl>https://github.com/theromis/Froxel/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <copyright>Copyright (c) 2026 Roman Vasilyev</copyright>
+    <tags>froxel voxel vox magicavoxel 3d editor path-tracer gltf mcp portable</tags>
+    <summary>Voxel editor with a path tracer, rigging, glTF export, and an MCP server for agents.</summary>
+    <description>Froxel is a voxel editor for MagicaVoxel `.vox` models: brushes and sculpt tools,
+bones and animation clips, a GPU path tracer, glTF export for game engines, and an MCP server
+(`froxel mcp`) that lets an agent build and check models. It also bridges to Godot and Blender.
+
+This is the portable build from the GitHub release: `froxel` is on the PATH after install.
+Windows builds are not code-signed yet, so SmartScreen may ask on the first launch.</description>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

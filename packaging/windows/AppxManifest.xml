@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The MSIX manifest for the Microsoft Store build. msix.ps1 fills in the @...@ fields:
+  the identity and publisher come from Partner Center (Product identity), the version is
+  major.minor.(patch * 100 + stage).0 from packaging/build_number.sh, and the architecture
+  is x64, x86, or arm64. The package is not signed here; the Store signs it.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap3 uap5 desktop desktop4 rescap">
+
+  <Identity
+    Name="@IDENTITY_NAME@"
+    Publisher="@PUBLISHER@"
+    Version="@VERSION@"
+    ProcessorArchitecture="@ARCH@" />
+
+  <Properties>
+    <DisplayName>Froxel</DisplayName>
+    <PublisherDisplayName>@PUBLISHER_DISPLAY_NAME@</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>Voxel editor with a path tracer, rigging, glTF export, and an MCP server for agents.</Description>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <!-- froxel.exe is a console program: `froxel mcp` speaks MCP over stdio, so the alias
+         keeps the terminal's console and the Start menu entry opens the window as before. -->
+    <Application
+      Id="Froxel"
+      Executable="froxel.exe"
+      EntryPoint="Windows.FullTrustApplication"
+      desktop4:Subsystem="console"
+      desktop4:SupportsMultipleInstances="true">
+      <uap:VisualElements
+        DisplayName="Froxel"
+        Description="Froxel voxel editor"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile
+          Wide310x150Logo="Assets\Wide310x150Logo.png"
+          Square71x71Logo="Assets\Square71x71Logo.png"
+          Square310x310Logo="Assets\Square310x310Logo.png"
+          ShortName="Froxel" />
+      </uap:VisualElements>
+      <Extensions>
+        <!-- `froxel` on the PATH, for `froxel mcp` and the command-line tools. -->
+        <uap5:Extension Category="windows.appExecutionAlias" Executable="froxel.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap5:AppExecutionAlias desktop4:Subsystem="console">
+            <uap5:ExecutionAlias Alias="froxel.exe" />
+          </uap5:AppExecutionAlias>
+        </uap5:Extension>
+        <!-- Opening a .vox runs `froxel <file.vox>`. -->
+        <uap3:Extension Category="windows.fileTypeAssociation">
+          <uap3:FileTypeAssociation Name="vox" Parameters="&quot;%1&quot;">
+            <uap:DisplayName>Voxel model</uap:DisplayName>
+            <uap:Logo>Assets\Square44x44Logo.png</uap:Logo>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.vox</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap3:FileTypeAssociation>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- The MCP control port, the Godot/Blender bridge, and `froxel mcp` with a
+         connect address listen on and connect to 127.0.0.1. -->
+    <Capability Name="internetClientServer" />
+    <Capability Name="privateNetworkClientServer" />
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

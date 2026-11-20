@@ -7,6 +7,10 @@ Windows builds are not code-signed. SmartScreen may ask before the first
 launch (**More info → Run anyway**), and Windows 11 with Smart App Control
 turned on blocks unsigned programs outright. Signing will come back when the
 project qualifies for a free open source certificate or takes up a paid one.
+The Microsoft Store build is the exception: the release workflow makes an
+unsigned MSIX and the Store signs it with Microsoft's certificate when it
+publishes it. winget, Scoop, and Chocolatey install the same unsigned zip as
+the release, checked against its SHA-256.
 
 Linux and FreeBSD builds are not signed; check them against `SHA256SUMS.txt`.
 

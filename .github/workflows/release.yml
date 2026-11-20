@@ -283,11 +283,137 @@ jobs:
           New-Item -ItemType Directory -Force -Path $stage, dist/release | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/froxel.exe", README.md, LICENSE $stage
           Compress-Archive -Path $stage -DestinationPath "dist/release/$name.zip"
+      # The Microsoft Store package, unsigned: the Store signs it. The identity is Partner
+      # Center's (repository variables, docs/releasing.md); without them it installs only
+      # test-signed, as in the next step. A store package failure does not hold back the
+      # zip and the draft release: the bundle job then finds no MSIX and fails on its own.
+      - name: MSIX
+        id: msix
+        continue-on-error: true
+        shell: pwsh
+        env:
+          BUILD: ${{ needs.version.outputs.build }}
+          MSSTORE_IDENTITY_NAME: ${{ vars.MSSTORE_IDENTITY_NAME }}
+          MSSTORE_PUBLISHER: ${{ vars.MSSTORE_PUBLISHER }}
+          MSSTORE_PUBLISHER_DISPLAY_NAME: ${{ vars.MSSTORE_PUBLISHER_DISPLAY_NAME }}
+        run: |
+          $identity = @{}
+          if ($env:MSSTORE_IDENTITY_NAME) { $identity.IdentityName = $env:MSSTORE_IDENTITY_NAME }
+          if ($env:MSSTORE_PUBLISHER) { $identity.Publisher = $env:MSSTORE_PUBLISHER }
+          if ($env:MSSTORE_PUBLISHER_DISPLAY_NAME) { $identity.PublisherDisplayName = $env:MSSTORE_PUBLISHER_DISPLAY_NAME }
+          ./packaging/windows/msix.ps1 -Exe "target/${{ matrix.target }}/release/froxel.exe" `
+            -Arch ${{ matrix.arch }} -Build $env:BUILD `
+            -Out "dist/msix/froxel-$env:VERSION-windows-${{ matrix.arch }}.msix" @identity
+      # Installs a test-signed copy and runs it through its alias; the runner is x64.
+      - name: Check the MSIX installs
+        id: msix-check
+        if: matrix.arch == 'x64' && steps.msix.outcome == 'success'
+        continue-on-error: true
+        shell: pwsh
+        run: ./packaging/windows/msix_check.ps1 -Msix "dist/msix/froxel-$env:VERSION-windows-x64.msix"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: froxel-${{ env.VERSION }}-windows-${{ matrix.arch }}
           path: dist/release/*
           if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.msix.outcome == 'success' && steps.msix-check.outcome != 'failure'
+        with:
+          name: msix-${{ env.VERSION }}-windows-${{ matrix.arch }}
+          path: dist/msix/*.msix
+          if-no-files-found: error
+
+  # The three MSIX files in one bundle, and the .msixupload Partner Center takes: the
+  # `store-<version>-windows` artifact, not a release file.
+  msix-bundle:
+    name: Microsoft Store bundle
+    needs: [version, windows]
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: packaging/windows
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: msix-${{ needs.version.outputs.version }}-windows-*
+          path: dist/msix
+          merge-multiple: true
+      - name: Bundle
+        shell: pwsh
+        env:
+          BUILD: ${{ needs.version.outputs.build }}
+        run: ./packaging/windows/bundle.ps1 -Dir dist/msix -Build $env:BUILD -Out "dist/store/froxel-$env:VERSION-windows"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: store-${{ env.VERSION }}-windows
+          path: |
+            dist/store/*.msixbundle
+            dist/store/*.msixupload
+          if-no-files-found: error
+
+  # With upload-stores, a Partner Center submission of the bundle: a draft, or with
+  # submit-review committed for certification. Skipped without the Partner Center secrets.
+  # A prerelease goes to the package flight MSSTORE_FLIGHT_ID, or is skipped without one.
+  # Not run against Partner Center yet.
+  ms-store:
+    name: Microsoft Store
+    needs: [version, msix-bundle]
+    if: inputs.upload-stores
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      PRERELEASE: ${{ needs.version.outputs.prerelease }}
+      SUBMIT_REVIEW: ${{ inputs.submit-review }}
+      MSSTORE_PRODUCT_ID: ${{ vars.MSSTORE_PRODUCT_ID }}
+      MSSTORE_FLIGHT_ID: ${{ vars.MSSTORE_FLIGHT_ID }}
+      PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
+      PARTNER_CENTER_SELLER_ID: ${{ secrets.PARTNER_CENTER_SELLER_ID }}
+      PARTNER_CENTER_CLIENT_ID: ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
+      PARTNER_CENTER_CLIENT_SECRET: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
+    steps:
+      - name: Check the Partner Center settings
+        id: check
+        shell: bash
+        run: |
+          set -euo pipefail
+          run=true
+          if [ -z "$PARTNER_CENTER_TENANT_ID" ] || [ -z "$PARTNER_CENTER_SELLER_ID" ] \
+            || [ -z "$PARTNER_CENTER_CLIENT_ID" ] || [ -z "$PARTNER_CENTER_CLIENT_SECRET" ] \
+            || [ -z "$MSSTORE_PRODUCT_ID" ]; then
+            echo "::notice::Microsoft Store: the PARTNER_CENTER_* secrets or MSSTORE_PRODUCT_ID are not set; skipped"
+            run=false
+          elif [ "$PRERELEASE" = true ] && [ -z "$MSSTORE_FLIGHT_ID" ]; then
+            echo "::notice::Microsoft Store: $VERSION is a prerelease and MSSTORE_FLIGHT_ID is not set; skipped"
+            run=false
+          fi
+          echo "run=$run" >>"$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: steps.check.outputs.run == 'true'
+        with:
+          name: store-${{ env.VERSION }}-windows
+          path: dist/store
+      - uses: microsoft/microsoft-store-apppublisher@cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0 # v1.4
+        if: steps.check.outputs.run == 'true'
+      - name: Submit to Partner Center
+        if: steps.check.outputs.run == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          msstore reconfigure --tenantId $env:PARTNER_CENTER_TENANT_ID --sellerId $env:PARTNER_CENTER_SELLER_ID `
+            --clientId $env:PARTNER_CENTER_CLIENT_ID --clientSecret $env:PARTNER_CENTER_CLIENT_SECRET
+          if ($LASTEXITCODE) { throw "msstore reconfigure failed ($LASTEXITCODE)" }
+          $flags = @('--appId', $env:MSSTORE_PRODUCT_ID)
+          # A prerelease goes to the flight; a release to the public submission.
+          if ($env:PRERELEASE -eq 'true') { $flags += @('--flightId', $env:MSSTORE_FLIGHT_ID) }
+          if ($env:SUBMIT_REVIEW -ne 'true') { $flags += '--noCommit' }
+          msstore publish dist/store --inputFile "dist/store/froxel-$env:VERSION-windows.msixupload" @flags
+          if ($LASTEXITCODE) { throw "msstore publish failed ($LASTEXITCODE)" }
+          $state = if ($env:SUBMIT_REVIEW -eq 'true') { 'submitted for certification' } else { 'uploaded to a draft submission' }
+          "Microsoft Store: $env:VERSION $state" >> $env:GITHUB_STEP_SUMMARY
 
   linux:
     name: Linux ${{ matrix.arch }}

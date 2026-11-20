@@ -32,6 +32,8 @@ extension (`blender-addon.zip`) with Blender 4.2 LTS.
 The Android App Bundle and an App Store-signed ipa are workflow artifacts
 named `store-<version>-android` and `store-<version>-ios`, not release files;
 see [Store builds](#store-builds).
+The Microsoft Store bundle is `store-<version>-windows`; see
+[Windows channels](#windows-channels).
 The Linux x86_64 and aarch64 builds run in an AlmaLinux 8 container, so they
 need only glibc 2.28; riscv64 is cross-compiled on Ubuntu 24.04 (glibc 2.39).
 `packaging/linux/package.sh` makes the three Linux files from a built binary
@@ -290,6 +292,140 @@ One-time setup:
    log in again and replace the secret.
 7. Fill in the store page from `packaging/steam/store.md` and submit it
    and the build for Valve's review before the first release.
+
+## Windows channels
+
+Windows reaches four channels besides the release zips. Nothing here has been
+run against a real account yet: the Partner Center app, the winget
+package, and the Chocolatey package do not exist until the one-time setup
+below is done, and each publish step is skipped, with a notice, until its
+secret is set.
+
+| Channel | Made by | Published by | Prereleases |
+|---|---|---|---|
+| Microsoft Store | `release.yml`, jobs `windows` and `Microsoft Store bundle` | `release.yml` job `Microsoft Store`, with `upload-stores` | Only to the package flight `MSSTORE_FLIGHT_ID`; skipped without one |
+| winget | `windows-repos.yml` from the release zips | a pull request to `microsoft/winget-pkgs` | Skipped: winget has no prerelease track |
+| Scoop | `windows-repos.yml` | a commit of `bucket/froxel.json` to `main` | Skipped: the bucket follows releases |
+| Chocolatey | `windows-repos.yml` | `choco push` to the community repository | Pushed as a prerelease (`0.4.0-rc.1` is `0.4.0-rc01`) |
+
+`.github/workflows/windows-repos.yml` runs when a release is published. By
+hand it takes a tag and is a dry run unless `dry-run` is off; the dry run
+writes and checks every manifest, installs from each (winget when the runner
+has it, Scoop, Chocolatey), builds the MSIX from the release's x64 zip,
+installs a test-signed copy, and publishes nothing:
+
+```sh
+gh workflow run windows-repos.yml -f tag=v0.3.3                  # dry run
+gh workflow run windows-repos.yml -f tag=v0.3.3 -f dry-run=false # publish again
+```
+
+`packaging/windows/channels.py <version> SHA256SUMS.txt` writes the winget,
+Scoop, and Chocolatey files from the release checksums, and
+`packaging/windows/check_manifests.py` checks the winget and Scoop ones
+against their JSON schemas on any system.
+
+### Microsoft Store
+
+The `windows` job packs each build into an unsigned MSIX
+(`packaging/windows/msix.ps1`: `AppxManifest.xml`, the logos in
+`packaging/windows/Assets`, `makepri` and `makeappx` from the Windows SDK) and
+installs a test-signed copy of the x64 one (`msix_check.ps1`). `Microsoft
+Store bundle` joins the three into `froxel-<version>-windows.msixbundle` and
+the `.msixupload` Partner Center takes, the `store-<version>-windows`
+artifact. The package is a full-trust desktop app (`runFullTrust`), declares
+`internetClientServer` and `privateNetworkClientServer` for the loopback
+`--control` and bridge ports, opens `.vox` files, and puts `froxel` on the
+PATH through an execution alias (console subsystem, so `froxel mcp` keeps
+stdio). The MSIX version is `major.minor.(patch * 100 + stage).0` from
+`packaging/build_number.sh`: `0.3.3` is `0.3.399.0`, `0.4.0-rc.1` is
+`0.4.1.0`, and `0.4.0` is `0.4.99.0`, so every upload is newer than the last. A store package failure does not hold
+back the zips or the draft release.
+
+The logos come from `packaging/icons/froxel.png`; after `make_icons.py`, run
+`uv run --with pillow python packaging/windows/make_logos.py`.
+
+One-time setup:
+
+1. Register as an app developer in
+   [Partner Center](https://partner.microsoft.com/dashboard) (an individual
+   account is free) and reserve the name Froxel.
+2. Under the app, Product management, Product identity, copy
+   `Package/Identity/Name`, `Package/Identity/Publisher`, and
+   `Package/Properties/PublisherDisplayName` into the repository variables
+   below, and the Store ID (`9N…`) into `MSSTORE_PRODUCT_ID`.
+3. Fill in the first submission (pricing, properties, age rating, store
+   listing, and the `runFullTrust` justification: Froxel is a desktop editor
+   that reads and writes the user's model files and runs a local MCP server)
+   and upload the first `.msixupload` from the `store-<version>-windows`
+   artifact by hand.
+4. In Partner Center, Account settings, User management, Microsoft Entra
+   applications, add an Entra ID (Azure AD) app with the Manager role, and
+   create a client secret for it. Its tenant ID, client ID, and secret, and
+   the Seller ID from Account settings, Legal info, are the secrets below.
+5. For prereleases, create a package flight under the app and set its ID as
+   `MSSTORE_FLIGHT_ID`.
+
+| Repository variable | Value |
+|---|---|
+| `MSSTORE_IDENTITY_NAME` | `Package/Identity/Name`, as in `12345Lonje.Froxel` |
+| `MSSTORE_PUBLISHER` | `Package/Identity/Publisher`, as in `CN=…` |
+| `MSSTORE_PUBLISHER_DISPLAY_NAME` | `Package/Properties/PublisherDisplayName` |
+| `MSSTORE_PRODUCT_ID` | The Store ID of the app |
+| `MSSTORE_FLIGHT_ID` | Optional: the package flight for prereleases |
+
+| Secret | Value |
+|---|---|
+| `PARTNER_CENTER_TENANT_ID` | The Entra ID tenant |
+| `PARTNER_CENTER_SELLER_ID` | The Partner Center Seller ID |
+| `PARTNER_CENTER_CLIENT_ID` | The Entra ID app's client (application) ID |
+| `PARTNER_CENTER_CLIENT_SECRET` | Its client secret; it expires, so renew it before then |
+
+Without the variables the MSIX carries a placeholder identity: it installs
+test-signed, and Partner Center refuses it. With `upload-stores`, the
+`Microsoft Store` job sends the `.msixupload` with the Microsoft Store
+Developer CLI (`msstore publish --noCommit`), which leaves a draft
+submission; with `submit-review` it commits the submission, which sends it
+to certification. `msstore publish` replaces a pending draft, so edit the
+listing after the upload, not before.
+
+### winget
+
+The manifests are `Lonje.Froxel`, schema 1.10: the release zip of each
+architecture with the nested portable `froxel.exe` and the `froxel` command.
+The first version is reviewed by the winget maintainers like any other;
+later ones are merged by their bots once validation passes.
+
+1. Make a classic personal access token with the `public_repo` scope on an
+   account that may fork `microsoft/winget-pkgs` (wingetcreate forks it and
+   opens the pull request from the fork).
+2. Save it as the `WINGET_TOKEN` secret.
+
+### Scoop
+
+The bucket is this repository's `bucket/` folder, not a repository of its
+own: Scoop reads manifests from a `bucket/` folder of any repository, so
+there is no second repository to keep or token to store, and the manifest is
+reviewed with the code. `windows-repos.yml` commits the new
+`bucket/froxel.json` to `main` with `GITHUB_TOKEN` when a release is
+published. The manifest also has `checkver` and `autoupdate` (from the
+release's `SHA256SUMS.txt`), so `scoop`'s own `checkver.ps1 -u` updates it
+by hand too, and it can move to the Extras bucket unchanged if Froxel gets
+in there. Nothing to set up; a branch protection rule on `main` would have
+to let `github-actions[bot]` push.
+
+### Chocolatey
+
+`packaging/windows/chocolatey` is the package: `froxel.nuspec` and
+`tools/chocolateyinstall.ps1`, which downloads the release zip (x86, x64,
+or arm64 on an ARM64 Windows) and checks its SHA-256; Chocolatey shims
+`froxel.exe` onto the PATH. `channels.py` fills in the version and checksums.
+
+1. Make an account on [community.chocolatey.org](https://community.chocolatey.org).
+2. Copy the API key from the account page into the `CHOCOLATEY_API_KEY`
+   secret.
+
+Every version waits in the community moderation queue (automatic checks,
+then a human for new packages) before `choco install froxel` finds it.
 
 ## Registries
 

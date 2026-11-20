@@ -4,6 +4,14 @@
 
 ### Added
 
+- Windows channels: a Microsoft Store MSIX for x64, x86, and arm64 and an
+  `.msixbundle` (`packaging/windows`; `froxel` on the PATH through an
+  execution alias, `.vox` files open in it), built unsigned for the Store
+  to sign and sent to Partner Center by `upload-stores`; and, when a
+  release is published, a winget manifest (`Lonje.Froxel`), the Scoop
+  bucket in this repository (`bucket/froxel.json`), and a portable
+  Chocolatey package, all from the release zips and their checksums
+  (`.github/workflows/windows-repos.yml`).
 - Registry listings for the add-ons and the MCP server (`docs/registries.md`).
   The repository is a Claude Code plugin marketplace: `claude plugin
   marketplace add theromis/Froxel`, then `claude plugin install froxel@froxel`

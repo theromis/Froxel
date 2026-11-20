@@ -1,0 +1,291 @@
+# Publishes a GitHub Release's Windows zips to the Windows package managers: winget
+# (a pull request to microsoft/winget-pkgs), Scoop (bucket/froxel.json in this
+# repository), and Chocolatey (the community repository). The Microsoft Store MSIX is
+# release.yml's (upload-stores). Every channel installs the portable zip of the release,
+# checked against its SHA256SUMS.txt.
+# It runs when a release is published, or by hand for a tag; by hand, dry-run (the
+# default) builds and checks everything and publishes nothing. A channel whose secret is
+# not set is skipped. winget and Scoop have no prerelease track, so a prerelease goes only
+# to Chocolatey (as a prerelease, `choco install froxel --pre`). Setup and secrets:
+# docs/releasing.md, "Windows channels".
+name: Windows channels
+run-name: Windows channels ${{ github.event.release.tag_name || inputs.tag || 'latest' }}${{ (github.event_name == 'workflow_dispatch' && inputs.dry-run) && ' (dry run)' || '' }}
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v0.3.4 (empty: the latest release)"
+        type: string
+        default: ""
+      dry-run:
+        description: "Build and check the manifests, the Chocolatey package, and the MSIX; publish nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-channels
+  cancel-in-progress: false
+
+jobs:
+  manifests:
+    name: Manifests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.r.outputs.tag }}
+      version: ${{ steps.r.outputs.version }}
+      prerelease: ${{ steps.r.outputs.prerelease }}
+      publish: ${{ steps.r.outputs.publish }}
+      winget: ${{ steps.r.outputs.winget }}
+      chocolatey: ${{ steps.r.outputs.chocolatey }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: packaging/windows
+      - name: Resolve the release
+        id: r
+        run: |
+          set -euo pipefail
+          tag=${TAG:-$(gh release view --json tagName --jq .tagName)}
+          prerelease=$(gh release view "$tag" --json isPrerelease --jq .isPrerelease)
+          published=$(gh release view "$tag" --json publishedAt --jq .publishedAt)
+          {
+            echo "tag=$tag"
+            echo "version=${tag#v}"
+            echo "prerelease=$prerelease"
+            echo "date=${published%%T*}"
+            echo "publish=$([ "$DRY_RUN" = true ] && echo false || echo true)"
+            echo "winget=${{ secrets.WINGET_TOKEN != '' }}"
+            echo "chocolatey=${{ secrets.CHOCOLATEY_API_KEY != '' }}"
+          } | tee -a "$GITHUB_OUTPUT"
+      - name: Download and check the Windows zips
+        run: |
+          set -euo pipefail
+          mkdir -p dist/release && cd dist/release
+          gh release download "${{ steps.r.outputs.tag }}" -p 'froxel-*-windows-*.zip' -p SHA256SUMS.txt
+          sha256sum --check --ignore-missing SHA256SUMS.txt
+          ls -l
+      - name: Write the manifests
+        env:
+          VERSION: ${{ steps.r.outputs.version }}
+          DATE: ${{ steps.r.outputs.date }}
+        run: python3 packaging/windows/channels.py "$VERSION" dist/release/SHA256SUMS.txt --out dist/channels --release-date "$DATE"
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - name: Check them against the winget and Scoop schemas
+        run: uv run --no-project --with pyyaml --with jsonschema python packaging/windows/check_manifests.py dist/channels
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-channels
+          path: dist/channels
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-release
+          path: dist/release/*
+          if-no-files-found: error
+
+  winget:
+    name: winget
+    needs: manifests
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.manifests.outputs.version }}
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-channels
+          path: dist/channels
+      - name: Validate and install from the manifests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = "dist/channels/winget/manifests/l/Lonje/Froxel/$env:VERSION"
+          if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+            Write-Output '::notice::winget is not on this runner; the Manifests job checked the schemas'
+            exit 0
+          }
+          winget validate --manifest $dir
+          if ($LASTEXITCODE) { throw "winget validate failed ($LASTEXITCODE)" }
+          winget settings --enable LocalManifestFiles
+          winget install --manifest $dir --accept-package-agreements --accept-source-agreements --disable-interactivity
+          if ($LASTEXITCODE) { throw "winget install failed ($LASTEXITCODE)" }
+          $env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + $env:Path
+          cmd /c "froxel --help 2>&1" | Select-Object -First 1
+          if ($LASTEXITCODE) { throw "froxel --help failed ($LASTEXITCODE)" }
+      # wingetcreate forks microsoft/winget-pkgs under the token's account and opens the PR.
+      - name: Submit to microsoft/winget-pkgs
+        if: needs.manifests.outputs.publish == 'true'
+        shell: pwsh
+        env:
+          PRERELEASE: ${{ needs.manifests.outputs.prerelease }}
+          TAG: ${{ needs.manifests.outputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:PRERELEASE -eq 'true') {
+            Write-Output "::notice::winget: $env:TAG is a prerelease, and winget has no prerelease track; skipped"
+            exit 0
+          }
+          if (-not $env:WINGET_TOKEN) {
+            Write-Output '::notice::winget: WINGET_TOKEN is not set; skipped'
+            exit 0
+          }
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          ./wingetcreate.exe submit --token $env:WINGET_TOKEN `
+            --prtitle "New version: Lonje.Froxel version $env:VERSION" `
+            "dist/channels/winget/manifests/l/Lonje/Froxel/$env:VERSION"
+          if ($LASTEXITCODE) { throw "wingetcreate submit failed ($LASTEXITCODE)" }
+          "winget: pull request opened for Lonje.Froxel $env:VERSION" >> $env:GITHUB_STEP_SUMMARY
+
+  # The bucket is this repository's bucket/ folder (`scoop bucket add froxel
+  # https://github.com/theromis/Froxel`), so the new manifest is a commit on main.
+  scoop:
+    name: Scoop
+    needs: manifests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.manifests.outputs.version }}
+      TAG: ${{ needs.manifests.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-channels
+          path: ${{ runner.temp }}/channels
+      - name: Update bucket/froxel.json
+        env:
+          PUBLISH: ${{ needs.manifests.outputs.publish }}
+          PRERELEASE: ${{ needs.manifests.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          if [ "$PRERELEASE" = true ]; then
+            echo "::notice::Scoop: $TAG is a prerelease, and the bucket follows releases only; skipped"
+            exit 0
+          fi
+          cp "$RUNNER_TEMP/channels/scoop/froxel.json" bucket/froxel.json
+          if git diff --quiet -- bucket/froxel.json; then
+            echo "Scoop: bucket/froxel.json is already $VERSION" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git diff -- bucket/froxel.json
+          if [ "$PUBLISH" != true ]; then
+            echo "Scoop: dry run, bucket/froxel.json not committed" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bucket/froxel.json
+          git commit -m "Scoop: Froxel $VERSION"
+          git push origin HEAD:main
+          echo "Scoop: bucket/froxel.json is now $VERSION" >>"$GITHUB_STEP_SUMMARY"
+
+  scoop-install:
+    name: Scoop install check
+    needs: manifests
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-channels
+          path: dist/channels
+      - name: Install from the manifest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Invoke-RestMethod -Uri https://get.scoop.sh -OutFile install-scoop.ps1
+          ./install-scoop.ps1 -RunAsAdmin
+          $env:Path = "$env:USERPROFILE\scoop\shims;$env:Path"
+          scoop install dist/channels/scoop/froxel.json
+          if ($LASTEXITCODE) { throw "scoop install failed ($LASTEXITCODE)" }
+          cmd /c "froxel --help 2>&1" | Select-Object -First 1
+          if ($LASTEXITCODE) { throw "froxel --help failed ($LASTEXITCODE)" }
+
+  chocolatey:
+    name: Chocolatey
+    needs: manifests
+    runs-on: windows-2025
+    timeout-minutes: 20
+    env:
+      VERSION: ${{ needs.manifests.outputs.version }}
+      CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-channels
+          path: dist/channels
+      - name: Pack and install
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-Location dist/channels/chocolatey
+          choco pack froxel.nuspec --out .
+          if ($LASTEXITCODE) { throw "choco pack failed ($LASTEXITCODE)" }
+          $nupkg = @(Get-ChildItem froxel.*.nupkg)[0]
+          choco install froxel --source . --prerelease --yes --no-progress
+          if ($LASTEXITCODE) { throw "choco install failed ($LASTEXITCODE)" }
+          cmd /c "froxel --help 2>&1" | Select-Object -First 1
+          if ($LASTEXITCODE) { throw "froxel --help failed ($LASTEXITCODE)" }
+          choco uninstall froxel --yes
+          if ($LASTEXITCODE) { throw "choco uninstall failed ($LASTEXITCODE)" }
+          "nupkg=$($nupkg.FullName)" >> $env:GITHUB_ENV
+      # A new package, and every version after it, waits in the community moderation queue.
+      - name: Push to the Chocolatey community repository
+        if: needs.manifests.outputs.publish == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:CHOCOLATEY_API_KEY) {
+            Write-Output '::notice::Chocolatey: CHOCOLATEY_API_KEY is not set; skipped'
+            exit 0
+          }
+          choco push $env:nupkg --source https://push.chocolatey.org/ --api-key $env:CHOCOLATEY_API_KEY
+          if ($LASTEXITCODE) { throw "choco push failed ($LASTEXITCODE)" }
+          "Chocolatey: pushed $(Split-Path -Leaf $env:nupkg) for moderation" >> $env:GITHUB_STEP_SUMMARY
+
+  # The Store MSIX from the release's x64 zip, installed and run here the way the Store
+  # would install it (test-signed), so a manifest change can be checked without a release.
+  msix:
+    name: MSIX install check
+    needs: manifests
+    runs-on: windows-2025
+    timeout-minutes: 20
+    env:
+      VERSION: ${{ needs.manifests.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Cone mode also checks out the root files msix.ps1 copies (README.md, LICENSE).
+          sparse-checkout: packaging
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-release
+          path: dist/release
+      - name: Pack, install, and run
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $build = bash packaging/build_number.sh $env:VERSION
+          if ($LASTEXITCODE) { throw "build_number.sh failed" }
+          Expand-Archive "dist/release/froxel-$env:VERSION-windows-x64.zip" dist/zip
+          $msix = "dist/msix/froxel-$env:VERSION-windows-x64.msix"
+          ./packaging/windows/msix.ps1 -Exe "dist/zip/froxel-$env:VERSION-windows-x64/froxel.exe" `
+            -Arch x64 -Build $build -Out $msix
+          ./packaging/windows/msix_check.ps1 -Msix $msix
