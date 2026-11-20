@@ -34,8 +34,18 @@ pub enum Action {
 pub enum Entry {
     Item(Action),
     OpenRecent,
+    /// Grant Folder Access…, shown only in the App Sandbox (`sandbox.rs`).
+    GrantFolder,
     Separator,
 }
+
+/// The label of [`Entry::GrantFolder`].
+pub const GRANT_FOLDER: &str = "Grant Folder Access…";
+
+/// What [`Entry::GrantFolder`] does, for its tooltip in the in-window menu.
+pub const GRANT_FOLDER_HINT: &str = "The Mac App Store build is sandboxed: MCP tools reach \
+     only files you opened or saved here and the folders you grant. A granted folder stays \
+     granted after a relaunch.";
 
 pub struct Menu {
     pub title: &'static str,
@@ -51,6 +61,7 @@ pub const MENUS: &[Menu] = &[
             Entry::Item(Action::New),
             Entry::Item(Action::Open),
             Entry::OpenRecent,
+            Entry::GrantFolder,
             Entry::Separator,
             Entry::Item(Action::Save),
             Entry::Item(Action::SaveAs),

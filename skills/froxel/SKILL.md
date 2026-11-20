@@ -13,6 +13,12 @@ If the tools are missing, the server is not configured. Point the user to
 `docs/mcp.md` in the Froxel repository: `froxel mcp` runs headless, and
 `froxel mcp --connect 127.0.0.1:7979 --launch` drives the editor window.
 
+If a path fails with "Operation not permitted" and a note about Grant Folder
+Access, the server is the sandboxed Mac App Store build: it reads and writes
+only its container and folders the user granted. Ask the user to choose
+**File > Grant Folder Access…** in the Froxel window for that folder, then
+`reload` (a headless server) and call the tool again; do not guess other paths.
+
 If a tool that Froxel's docs or a recent commit mention is missing, the
 server is older than the binary: call `reload` (the server re-executes the
 rebuilt binary in place, keeps the open document, and sends

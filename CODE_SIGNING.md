@@ -1,7 +1,10 @@
 # Code signing policy
 
 macOS builds are signed with the maintainer's Apple Developer ID and notarized
-by Apple.
+by Apple. The Mac App Store build is the same source in the App Sandbox,
+signed with the maintainer's Apple Distribution certificate and a Mac App
+Store provisioning profile, and packaged with the Mac Installer Distribution
+certificate; Apple re-signs it for the store.
 
 Windows builds are not code-signed. SmartScreen may ask before the first
 launch (**More info → Run anyway**), and Windows 11 with Smart App Control
@@ -35,3 +38,6 @@ only after an approver checks the draft.
 Froxel sends no telemetry and no personal data. It opens network connections
 only when you ask for them: the `--control` and `--bridge` ports listen on
 `127.0.0.1`, and `froxel mcp --connect` connects to the address you pass it.
+The Mac App Store build additionally runs in the App Sandbox: it reads and
+writes only its container, files you open or save, and folders you grant with
+File > Grant Folder Access….

@@ -116,6 +116,18 @@ impl NativeMenu {
                     Entry::OpenRecent => {
                         let _ = submenu.append(&recent);
                     }
+                    Entry::GrantFolder => {
+                        if crate::sandbox::active() {
+                            let entry = MenuItem::with_id(
+                                "mv-grant-folder",
+                                menu::GRANT_FOLDER,
+                                true,
+                                None,
+                            );
+                            let _ = submenu.append(&entry);
+                            items.push(entry);
+                        }
+                    }
                     Entry::Separator => {
                         let separator = PredefinedMenuItem::separator();
                         let _ = submenu.append(&separator);
@@ -151,6 +163,11 @@ impl NativeMenu {
                     }
                     ctx.request_repaint();
                 }
+                continue;
+            }
+            if id == "grant-folder" {
+                session.grant_folder_dialog();
+                ctx.request_repaint();
                 continue;
             }
             if let Some(action) = Action::from_id(id) {

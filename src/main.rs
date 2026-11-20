@@ -41,6 +41,7 @@ mod panels;
 mod preview;
 mod remote;
 mod rig;
+mod sandbox;
 mod script;
 mod sheet;
 mod silhouette;
@@ -226,6 +227,8 @@ fn main(
     #[cfg(target_os = "android")]
     hide_system_bars(&app);
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // The Mac App Store build: reopen the granted folders and recent files.
+    sandbox::restore();
     if args.first().is_some_and(|arg| arg == "mcp") {
         std::process::exit(mcp::run(&args[1..]));
     }

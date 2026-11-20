@@ -53,9 +53,12 @@ froxel --bridge 29771 tests/fixtures/examples/lily_pad.vox
 ```
 
 `FROXEL_BRIDGE_PORT` is the port when `--bridge` is omitted. The session path
-is printed on stderr and shown in the status bar. Each `evaluate` from a
-client is one undo step in the window. Voxel edits made in the window are
-included in the next import.
+is printed on stderr and shown in the status bar. In the Mac App Store build
+the session folder is inside the app's sandbox container
+(`~/Library/Containers/com.lonje.froxel/Data/tmp/froxel-bridge-…`); macOS may
+ask once whether Godot or Blender may read another app's data. Each
+`evaluate` from a client is one undo step in the window. Voxel edits made in
+the window are included in the next import.
 
 ## Markers
 

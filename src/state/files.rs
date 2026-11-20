@@ -1183,9 +1183,25 @@ impl Session {
         self.recent.clone()
     }
 
+    /// File > Grant Folder Access… in the App Sandbox: pick a folder that MCP
+    /// tools may read and write from now on (`sandbox.rs`).
+    pub fn grant_folder_dialog(&mut self) {
+        let Some(folder) = dialog::pick_folder("Grant Froxel access to a folder") else {
+            return;
+        };
+        self.status = match crate::sandbox::grant_folder(&folder) {
+            Ok(()) => format!(
+                "Froxel can now read and write {} and everything in it.",
+                folder.display()
+            ),
+            Err(err) => err,
+        };
+    }
+
     pub(super) fn remember_path(&mut self, path: &Path) {
         remember(&mut self.recent, path);
         store_recent(&self.recent);
+        crate::sandbox::keep_recent(&self.recent);
     }
 
     pub fn clear_ui(&mut self) {

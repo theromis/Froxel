@@ -2,10 +2,12 @@
 # Builds Froxel for every desktop platform and creates or updates the draft GitHub
 # Release "Froxel v<version>". With the Apple secrets set (docs/releasing.md), the macOS app
 # and dmg are signed with Developer ID and notarized; without them they get an ad-hoc
-# signature. The other platforms are unsigned. With upload-stores on, the iOS build goes to
-# TestFlight and the Android bundle to a Google Play track; submit-review also sends both
-# for store review (docs/releasing.md). The store steps are jobs of their own (Google Play,
-# App Store), so a store failure does not stop the draft release.
+# signature. The other platforms are unsigned. The sandboxed Mac App Store app is a build of
+# its own (macos-appstore). With upload-stores on, the iOS build goes to TestFlight, the
+# Mac App Store pkg to App Store Connect, and the Android bundle to a Google Play track;
+# submit-review also sends them for store review (docs/releasing.md). The store steps are
+# jobs of their own (Google Play, App Store, Mac App Store), so a store failure does not
+# stop the draft release.
 name: Release
 # run-name sees only the inputs, so an empty version names the branch instead.
 run-name: Release ${{ inputs.version || format('(Cargo.toml, {0})', github.ref_name) }}
@@ -22,7 +24,7 @@ on:
         type: boolean
         default: true
       upload-stores:
-        description: "Upload the iOS build to TestFlight and the Android bundle to Google Play"
+        description: "Upload the iOS and Mac App Store builds to App Store Connect and the Android bundle to Google Play"
         type: boolean
         default: false
       submit-review:
@@ -752,6 +754,107 @@ jobs:
           security delete-keychain "$IOS_SIGN_KEYCHAIN" || true
           rm -f "$IOS_PROFILE" "$RUNNER_TEMP/profile.plist" "$RUNNER_TEMP/entitlements.plist"
 
+  # The sandboxed Mac App Store app and its pkg, a store artifact only. Built on macos-26:
+  # App Store Connect takes builds made with Xcode 26 and its SDKs or later, while the
+  # Developer ID build above stays on macos-15. Not run with Apple credentials yet.
+  macos-appstore:
+    name: Mac App Store
+    needs: version
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+      MAS_CERTIFICATE: ${{ secrets.MAS_CERTIFICATE }}
+      MAS_CERTIFICATE_PASSWORD: ${{ secrets.MAS_CERTIFICATE_PASSWORD }}
+      MAS_PROVISIONING_PROFILE: ${{ secrets.MAS_PROVISIONING_PROFILE }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      # A throwaway keychain holds the application and installer identities for this job.
+      - name: Import the Mac App Store certificates and profile
+        if: env.MAS_CERTIFICATE != ''
+        run: |
+          set -euo pipefail
+          if [ -z "$MAS_PROVISIONING_PROFILE" ]; then
+            echo "::error::MAS_CERTIFICATE is set but MAS_PROVISIONING_PROFILE is missing"
+            exit 1
+          fi
+          keychain="$RUNNER_TEMP/mas-signing.keychain-db"
+          password=$(openssl rand -hex 24)
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          printf '%s' "$MAS_CERTIFICATE" | base64 --decode >"$RUNNER_TEMP/mas.p12"
+          security import "$RUNNER_TEMP/mas.p12" -k "$keychain" \
+            -P "$MAS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productbuild
+          rm "$RUNNER_TEMP/mas.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" >/dev/null
+          # The existing search list is one path per word.
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity=$(security find-identity -v -p codesigning "$keychain" \
+            | sed -En 's/.*"((Apple Distribution|3rd Party Mac Developer Application): .*)"/\1/p' \
+            | head -n 1)
+          # Installer identities are not code signing ones, so list them all.
+          installer=$(security find-identity -v "$keychain" \
+            | sed -En 's/.*"((3rd Party Mac Developer Installer|Mac Installer Distribution): .*)"/\1/p' \
+            | head -n 1)
+          if [ -z "$identity" ] || [ -z "$installer" ]; then
+            echo "::error::MAS_CERTIFICATE needs an Apple Distribution (or 3rd Party Mac Developer Application) and a Mac Installer Distribution (or 3rd Party Mac Developer Installer) identity"
+            exit 1
+          fi
+          profile="$RUNNER_TEMP/froxel.provisionprofile"
+          printf '%s' "$MAS_PROVISIONING_PROFILE" | base64 --decode >"$profile"
+          echo "Signing as $identity, packaging as $installer"
+          {
+            echo "SIGN_IDENTITY=$identity"
+            echo "INSTALLER_IDENTITY=$installer"
+            echo "KEYCHAIN=$keychain"
+            echo "PROFILE=$profile"
+          } >>"$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: release-macos-appstore
+      - name: Build
+        run: |
+          xcodebuild -version
+          cargo build --release --locked --target aarch64-apple-darwin --bin froxel
+          cargo build --release --locked --target x86_64-apple-darwin --bin froxel
+      # Without the secrets the app gets an ad-hoc signature and no pkg is made: it still
+      # checks the bundle and the sandbox entitlements, and the store artifact stays empty.
+      - name: Bundle the sandboxed app and the pkg
+        run: |
+          set -euo pipefail
+          mkdir -p dist/store
+          if [ -z "${SIGN_IDENTITY:-}" ]; then
+            echo "::warning::No Mac App Store secrets: the sandboxed app is ad-hoc signed and no pkg is made"
+          fi
+          OUT="$PWD/dist/stage" packaging/macos/appstore.sh \
+            target/aarch64-apple-darwin/release/froxel \
+            target/x86_64-apple-darwin/release/froxel
+          # The sandbox must not keep the binary from starting.
+          dist/stage/Froxel.app/Contents/MacOS/froxel --help >/dev/null
+          if [ -n "${INSTALLER_IDENTITY:-}" ]; then
+            cp "dist/stage/froxel-$VERSION-macos.pkg" dist/store/
+            echo "Mac App Store: signed as $SIGN_IDENTITY, build $(packaging/build_number.sh "$VERSION")" >>"$GITHUB_STEP_SUMMARY"
+          else
+            echo "Mac App Store: ad-hoc signature, no pkg" >>"$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: store-${{ env.VERSION }}-macos
+          path: dist/store/*
+          if-no-files-found: ignore
+      - name: Remove the signing keychain
+        if: always() && env.KEYCHAIN != ''
+        run: |
+          security delete-keychain "$KEYCHAIN" || true
+          rm -f "$PROFILE"
+
   # The store uploads are jobs of their own: a store failure shows here and does not stop
   # the draft GitHub Release, which needs only the builds.
   play:
@@ -929,6 +1032,69 @@ jobs:
           fi
           python3 -u tools/release_notes.py "$VERSION" >"$RUNNER_TEMP/notes.txt"
           python3 -u tools/asc_release.py --version "$VERSION" --build "$BUILD" \
+            --notes-file "$RUNNER_TEMP/notes.txt" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Remove the API key
+        if: always()
+        run: rm -rf "$HOME/.appstoreconnect"
+
+  # Not run with Apple credentials yet (docs/releasing.md, Mac App Store).
+  mac-app-store:
+    name: Mac App Store upload
+    needs: [version, macos-appstore]
+    if: inputs.upload-stores
+    # altool from Xcode 26, as for iOS.
+    runs-on: macos-26
+    # submit-review waits for App Store Connect to process the build.
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: store-${{ env.VERSION }}-macos
+          path: dist/store
+        # Without the Mac App Store secrets there is no pkg; the next step says so.
+        continue-on-error: true
+      # altool reads the key from ~/.appstoreconnect/private_keys/AuthKey_<id>.p8.
+      - name: Upload to App Store Connect
+        run: |
+          set -euo pipefail
+          pkg="dist/store/froxel-$VERSION-macos.pkg"
+          if [ ! -f "$pkg" ]; then
+            echo "::error::upload-stores needs the Mac App Store certificates and profile (MAS_CERTIFICATE, MAS_PROVISIONING_PROFILE)"
+            exit 1
+          fi
+          if [ -z "$APPLE_API_KEY" ] || [ -z "$APPLE_API_KEY_ID" ] || [ -z "$APPLE_API_ISSUER_ID" ]; then
+            echo "::error::upload-stores needs APPLE_API_KEY, APPLE_API_KEY_ID and APPLE_API_ISSUER_ID"
+            exit 1
+          fi
+          keys="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$keys"
+          printf '%s' "$APPLE_API_KEY" >"$keys/AuthKey_$APPLE_API_KEY_ID.p8"
+          xcrun altool --validate-app "$pkg" \
+            --api-key "$APPLE_API_KEY_ID" --api-issuer "$APPLE_API_ISSUER_ID"
+          xcrun altool --upload-package "$pkg" \
+            --api-key "$APPLE_API_KEY_ID" --api-issuer "$APPLE_API_ISSUER_ID"
+          echo "macOS: uploaded to App Store Connect; it shows in TestFlight once processed" >>"$GITHUB_STEP_SUMMARY"
+      - name: Submit for Mac App Store review
+        if: inputs.submit-review
+        env:
+          ASC_KEY: ${{ secrets.ASC_RELEASE_KEY }}
+          ASC_KEY_ID: ${{ secrets.ASC_RELEASE_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          BUILD: ${{ needs.version.outputs.build }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ASC_KEY" ] || [ -z "$ASC_KEY_ID" ]; then
+            echo "::error::submit-review needs ASC_RELEASE_KEY and ASC_RELEASE_KEY_ID"
+            exit 1
+          fi
+          python3 -u tools/release_notes.py "$VERSION" >"$RUNNER_TEMP/notes.txt"
+          python3 -u tools/asc_release.py --platform MAC_OS --version "$VERSION" --build "$BUILD" \
             --notes-file "$RUNNER_TEMP/notes.txt" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Remove the API key
         if: always()

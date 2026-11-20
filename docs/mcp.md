@@ -128,6 +128,32 @@ The path is printed on stderr when the port opens; the token is not.
 Edits from a connected client appear in the open window. The headless session
 and the window are different documents.
 
+### Mac App Store build
+
+The Mac App Store Froxel runs in the App Sandbox; the dmg, Homebrew, and every
+other build do not. Its binary is `/Applications/Froxel.app/Contents/MacOS/froxel`,
+and `froxel mcp`, `--connect`, and `--launch` work as above with that path as
+the `command`. The control port and the token stay on loopback and inside the
+app's container (`~/Library/Containers/com.lonje.froxel/Data`, which is `HOME`
+and `TMPDIR` for every sandboxed process), so a client must be the same app's
+binary; another Froxel's `froxel mcp` cannot read the token.
+
+Tools that take a path reach only:
+
+- the container, and
+- the folders granted with **File > Grant Folder Access…** in the window, and
+  the files opened or saved through the window's panels (Open Recent keeps
+  those across launches).
+
+Grants are security-scoped bookmarks in the container's
+`Library/Application Support/Froxel/bookmarks.json`; every `froxel` process of
+the app, headless or not, starts using them when it starts, so a `reload`
+picks up a folder granted since. Grant the project folder once and relative
+paths from the client's working directory work too. Any other path fails with
+"Operation not permitted" and a note naming the menu item. When the server runs
+sandboxed, its `initialize` instructions end with the container and the
+granted folders.
+
 ### Protocol
 
 Newline-delimited JSON-RPC 2.0: one message per line, 16 MiB limit,

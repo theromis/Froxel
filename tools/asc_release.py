@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-"""Submit an uploaded iOS build for App Store review.
+"""Submit an uploaded iOS or macOS build for App Store review.
 
-    tools/asc_release.py --version 0.3.1 --build 30199 [--notes-file notes.txt] [--dry-run]
+    tools/asc_release.py --version 0.3.1 --build 30199 [--platform IOS|MAC_OS] [--notes-file notes.txt] [--dry-run]
 
 ASC_KEY is the App Store Connect API key's text (or a path to the .p8),
 ASC_KEY_ID its ID, and ASC_ISSUER_ID the issuer. The key needs the App Manager
 role; a Developer key uploads builds but cannot edit a version or submit it.
 Only the standard library and the openssl command are used.
 
-It waits until App Store Connect has processed the build, then takes the iOS
-version that can still be edited (or creates one), sets its version string to
-the marketing version, sets What's New from --notes-file, attaches the build,
-and submits it for review. The release type set on the version (manual or
-after approval) is kept. --dry-run reads everything and changes nothing.
+It waits until App Store Connect has processed the build, then takes the
+version of --platform (IOS, or MAC_OS for the Mac App Store pkg) that can
+still be edited (or creates one), sets its version string to the marketing
+version, sets What's New from --notes-file, attaches the build, and submits it
+for review. The release type set on the version (manual or after approval) is
+kept. --dry-run reads everything and changes nothing.
 """
 
 import argparse
@@ -107,10 +108,15 @@ class Client:
         return json.loads(text) if text else {}
 
 
-def wait_for_build(client, app, number, minutes):
+def wait_for_build(client, app, platform, number, minutes):
+    # The iOS and macOS builds of one version share the build number.
     deadline = time.time() + minutes * 60
     while True:
-        builds = client.call("GET", f"/v1/builds?filter[app]={app}&filter[version]={number}&limit=1")["data"]
+        builds = client.call(
+            "GET",
+            f"/v1/builds?filter[app]={app}&filter[version]={number}"
+            f"&filter[preReleaseVersion.platform]={platform}&limit=1",
+        )["data"]
         state = builds[0]["attributes"]["processingState"] if builds else "not uploaded yet"
         if state == "VALID":
             return builds[0]["id"]
@@ -122,8 +128,8 @@ def wait_for_build(client, app, number, minutes):
         time.sleep(60)
 
 
-def open_submission(client, app, version_id):
-    """An unsubmitted iOS review submission to reuse, and whether it already holds the version.
+def open_submission(client, app, platform, version_id):
+    """An unsubmitted review submission of the platform to reuse, and whether it already holds the version.
 
     A version belongs to one submission at a time, so one left open by an earlier run or
     by App Store Connect is submitted instead of a new one. Prefer the one holding the
@@ -131,7 +137,7 @@ def open_submission(client, app, version_id):
     """
     open_ones = client.call(
         "GET",
-        f"/v1/reviewSubmissions?filter[app]={app}&filter[platform]=IOS"
+        f"/v1/reviewSubmissions?filter[app]={app}&filter[platform]={platform}"
         "&filter[state]=READY_FOR_REVIEW,UNRESOLVED_ISSUES&limit=20",
     )["data"]
     for sub in open_ones:
@@ -148,6 +154,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--version", required=True, help="marketing version, e.g. 0.3.1")
     parser.add_argument("--build", required=True, help="CFBundleVersion, e.g. 30199")
+    parser.add_argument("--platform", choices=["IOS", "MAC_OS"], default="IOS")
     parser.add_argument("--notes-file", type=pathlib.Path)
     parser.add_argument("--wait-minutes", type=int, default=45)
     parser.add_argument("--dry-run", action="store_true")
@@ -157,10 +164,11 @@ def main():
 
     client = Client(args.dry_run)
     app = client.call("GET", f"/v1/apps?filter[bundleId]={BUNDLE}")["data"][0]["id"]
-    build = wait_for_build(client, app, args.build, args.wait_minutes)
+    platform = args.platform
+    build = wait_for_build(client, app, platform, args.build, args.wait_minutes)
     print(f"build {args.build} is processed")
 
-    versions = client.call("GET", f"/v1/apps/{app}/appStoreVersions?filter[platform]=IOS&limit=20")["data"]
+    versions = client.call("GET", f"/v1/apps/{app}/appStoreVersions?filter[platform]={platform}&limit=20")["data"]
     editable = [v for v in versions if v["attributes"]["appStoreState"] in EDITABLE]
     first_release = not any(v["attributes"]["appStoreState"] == "READY_FOR_SALE" for v in versions)
     if editable:
@@ -185,7 +193,7 @@ def main():
             {
                 "data": {
                     "type": "appStoreVersions",
-                    "attributes": {"platform": "IOS", "versionString": version},
+                    "attributes": {"platform": platform, "versionString": version},
                     "relationships": {"app": {"data": {"type": "apps", "id": app}}},
                 }
             },
@@ -209,7 +217,7 @@ def main():
     )
     print(f"build {args.build} attached")
 
-    submission, has_version = open_submission(client, app, target)
+    submission, has_version = open_submission(client, app, platform, target)
     if submission:
         print(f"review submission {submission}: reusing the open one")
     else:
@@ -219,7 +227,7 @@ def main():
             {
                 "data": {
                     "type": "reviewSubmissions",
-                    "attributes": {"platform": "IOS"},
+                    "attributes": {"platform": platform},
                     "relationships": {"app": {"data": {"type": "apps", "id": app}}},
                 }
             },
@@ -243,7 +251,7 @@ def main():
         f"/v1/reviewSubmissions/{submission}",
         {"data": {"type": "reviewSubmissions", "id": submission, "attributes": {"submitted": True}}},
     )
-    print(f"Froxel {version} ({args.build}) submitted for App Store review")
+    print(f"Froxel {version} ({args.build}, {platform}) submitted for App Store review")
 
 
 if __name__ == "__main__":

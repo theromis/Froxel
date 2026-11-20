@@ -52,6 +52,16 @@ pub fn show(ui: &mut egui::Ui, session: &mut Session) {
                         match entry {
                             Entry::Item(action) => item(ui, session, *action),
                             Entry::OpenRecent => open_recent(ui, session),
+                            Entry::GrantFolder => {
+                                if crate::sandbox::active()
+                                    && ui
+                                        .button(menu::GRANT_FOLDER)
+                                        .on_hover_text(menu::GRANT_FOLDER_HINT)
+                                        .clicked()
+                                {
+                                    session.grant_folder_dialog();
+                                }
+                            }
                             Entry::Separator => {
                                 ui.separator();
                             }

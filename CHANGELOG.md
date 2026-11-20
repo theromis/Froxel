@@ -4,6 +4,17 @@
 
 ### Added
 
+- A Mac App Store build: the `Mac App Store` job of `release.yml` makes a
+  sandboxed `Froxel.app` (`packaging/macos/appstore.sh`, App Sandbox
+  entitlements in `packaging/macos/Froxel.entitlements`) signed for the store
+  and its installer `.pkg`, the `store-<version>-macos` artifact; with
+  `upload-stores` it goes to App Store Connect beside the iOS build, and with
+  `submit-review` to review (`tools/asc_release.py --platform MAC_OS`). In the
+  sandbox, **File > Grant Folder Access…** gives MCP tools a folder for good
+  (security-scoped bookmarks, also kept for Open Recent), and a path outside
+  the container and the granted folders fails with a note saying so. Not run
+  yet: the store certificates, profile, and the macOS platform of the App
+  Store Connect record are still to be set up.
 - Android stores: store metadata for F-Droid in
   `fastlane/metadata/android/en-US` and its build recipe
   (`packaging/android/fdroid`), and `upload-stores` jobs for the Amazon

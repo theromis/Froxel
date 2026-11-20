@@ -25,7 +25,7 @@ The `Version` job fails without them ([F-Droid](#f-droid)).
 gh workflow run release.yml                      # version from Cargo.toml
 gh workflow run release.yml -f version=0.1.0-rc.1
 gh workflow run release.yml -f draft-release=false  # artifacts only
-gh workflow run release.yml -f upload-stores=true   # also TestFlight and Google Play
+gh workflow run release.yml -f upload-stores=true   # also App Store Connect and Google Play
 ```
 
 It builds macOS universal (`.dmg`, `.zip`), Windows x64, x86 and arm64
@@ -35,9 +35,9 @@ zipped `Froxel.app` for the simulator), then creates or updates the draft releas
 with a `SHA256SUMS.txt`. It also zips the Godot plugin (`godot-addon.zip`,
 and `godot-assetlib.zip` for the Asset Library) and builds the Blender
 extension (`blender-addon.zip`) with Blender 4.2 LTS.
-The Android App Bundle and an App Store-signed ipa are workflow artifacts
-named `store-<version>-android` and `store-<version>-ios`, not release files;
-see [Store builds](#store-builds).
+The Android App Bundle, an App Store-signed ipa, and the Mac App Store pkg are
+workflow artifacts named `store-<version>-android`, `store-<version>-ios`, and
+`store-<version>-macos`, not release files; see [Store builds](#store-builds).
 The Microsoft Store bundle is `store-<version>-windows`; see
 [Windows channels](#windows-channels).
 The Linux x86_64 and aarch64 builds run in an AlmaLinux 8 container, so they
@@ -68,6 +68,79 @@ The certificate comes from Certificates, Identifiers & Profiles in the Apple
 Developer account (Developer ID Application, created by the Account Holder).
 The API key comes from App Store Connect, Users and Access, Integrations, Team
 Keys, with the Developer role.
+
+## Mac App Store
+
+Not run yet: the job and the upload are written, but no store certificate,
+profile, or macOS App Store Connect platform exists yet, so neither has run
+with Apple credentials. Only the ad-hoc path (below) has been checked, on a
+local build.
+
+The `Mac App Store` job builds a second, sandboxed `Froxel.app` on `macos-26`
+with `packaging/macos/appstore.sh`: the same universal binary and bundle id
+`com.lonje.froxel`, the App Sandbox entitlements in
+`packaging/macos/Froxel.entitlements` (user-selected files read-write,
+app-scoped bookmarks, network server and client for the loopback `--control`
+port and the bridge), the profile's application and team identifiers,
+`CFBundleVersion` from `packaging/build_number.sh`,
+`LSApplicationCategoryType` graphics-design, `ITSAppUsesNonExemptEncryption`
+false, an asset catalog icon, and the privacy manifest. `productbuild` wraps
+it in `froxel-<version>-macos.pkg`, signed with the installer identity, the
+`store-<version>-macos` artifact. Without the secrets the app is ad-hoc signed,
+still sandboxed, and checked with `--help`; no pkg is made and the artifact is
+empty. The Developer ID dmg is not sandboxed and does not change.
+
+| Secret | Value |
+|---|---|
+| `MAS_CERTIFICATE` | One `.p12` with two identities and their private keys, base64: an Apple Distribution (or 3rd Party Mac Developer Application) and a Mac Installer Distribution (or 3rd Party Mac Developer Installer) certificate. Select both in Keychain Access and export them together. |
+| `MAS_CERTIFICATE_PASSWORD` | The password the `.p12` was exported with |
+| `MAS_PROVISIONING_PROFILE` | A Mac App Store Connect profile for `com.lonje.froxel` made with that Apple Distribution certificate, base64: `base64 -i Froxel.provisionprofile \| pbcopy` |
+
+The iOS `IOS_CERTIFICATE` may hold the same Apple Distribution certificate;
+the Developer ID certificate signs neither.
+
+With `upload-stores`, the `Mac App Store upload` job validates and uploads the
+pkg with `xcrun altool` and the `APPLE_API_KEY` secrets, like the iOS ipa. With
+`submit-review`, it runs `tools/asc_release.py --platform MAC_OS` with the
+`ASC_RELEASE_KEY` secrets ([Store builds](#store-builds)): the macOS version
+of the same app record is edited and submitted on its own, so a macOS
+rejection does not hold back iOS. iOS and macOS builds of one version share the
+build number; App Store Connect keeps them apart by platform.
+
+One-time setup:
+
+1. Certificates, Identifiers & Profiles: in the explicit App ID
+   `com.lonje.froxel`, keep the capabilities the iOS app has; the sandbox
+   needs no capability there.
+2. Certificates: create a Mac Installer Distribution certificate (and an
+   Apple Distribution one if the iOS one is not to be shared). Install both,
+   then export them together as the `MAS_CERTIFICATE` `.p12`.
+3. Profiles: create a Mac App Store Connect profile (Distribution, macOS) for
+   `com.lonje.froxel` with the Apple Distribution certificate, download it,
+   and store it as `MAS_PROVISIONING_PROFILE`.
+4. App Store Connect: open the existing Froxel app, Add Platform, macOS. Fill
+   in the macOS version's screenshots (at least one at 1280x800 or larger),
+   description, and App Privacy (already done for iOS: no data collected); in
+   App Review Information, note that the MCP server and the Godot/Blender
+   bridge listen on 127.0.0.1 only and that File > Grant Folder Access… is how
+   MCP clients reach a folder.
+5. Run `gh workflow run release.yml -f upload-stores=true` once; the first
+   macOS build appears in TestFlight for Mac. The first submission for review
+   can then be made with `submit-review` or by hand.
+
+To try the sandbox locally, without any certificate:
+
+```sh
+cargo build --release
+packaging/macos/appstore.sh          # target/appstore/Froxel.app, ad-hoc, sandboxed
+open target/appstore/Froxel.app
+target/appstore/Froxel.app/Contents/MacOS/froxel mcp
+```
+
+The app's container is `~/Library/Containers/com.lonje.froxel/Data`. macOS
+ties a container to the signature that created it, so delete it after local
+tests (`rm -rf ~/Library/Containers/com.lonje.froxel`) before installing the
+store build.
 
 ## Android signing
 
@@ -123,7 +196,8 @@ minor and patch below 100, and end each prerelease in a number. The `Version`
 job fails early on a version without a build number.
 
 iOS: the `ios` and `App Store` jobs run on `macos-26`, since App Store Connect takes only
-builds made with Xcode 26 and the iOS 26 SDK or later. The app carries
+builds made with Xcode 26 and the iOS 26 SDK or later; so do the two Mac
+App Store jobs. The app carries
 `packaging/ios/PrivacyInfo.xcprivacy`: no tracking, no collected data, and
 the required-reason APIs the binary links (file timestamps, `C617.1`; system
 boot time, `35F9.1`). After a dependency update, check the list again:
@@ -151,7 +225,8 @@ second with `llvm-readelf -lW target/release/apk/lib/arm64-v8a/libfroxel.so`
 (alignment `0x4000`).
 
 With `upload-stores`, two more jobs take the builds' `store-<version>-*`
-artifacts. `App Store` validates the ipa and uploads it to App Store Connect
+artifacts (`Mac App Store upload` and the other stores have sections of their
+own). `App Store` validates the ipa and uploads it to App Store Connect
 with `xcrun altool` and the `APPLE_API_KEY` secrets; the ipa needs an Apple
 Distribution certificate and an App Store profile. `Google Play` sends the
 bundle to the internal track as a draft with `tools/play_upload.py` and
