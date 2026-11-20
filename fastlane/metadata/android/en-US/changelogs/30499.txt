@@ -1,0 +1,5 @@
+• Blended shapes: spheres, boxes, capsules, and tori that flow into each other like clay.
+• Radial relief: flutes round a column and gores over a dome.
+• Edit a posed part where it is drawn, and give bones a saved rest angle.
+• Larger scene bakes (32768 instances) and shorter export replies.
+• Fix: the marquee and Project line hit moved objects where they are drawn.

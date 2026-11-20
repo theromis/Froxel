@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.4 – 2026-11-20
+
 ### Added
 
 - Linux channels: a signed apt repository on GitHub Pages, COPR (Fedora,

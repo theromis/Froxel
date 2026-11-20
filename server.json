@@ -3,7 +3,7 @@
   "name": "io.github.theromis/froxel",
   "title": "Froxel",
   "description": "Voxel editor: sculpt, script, paint, rig, preview, and export .vox models to glTF",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "websiteUrl": "https://github.com/theromis/Froxel/blob/main/docs/mcp.md",
   "repository": {
     "url": "https://github.com/theromis/Froxel",
@@ -12,7 +12,7 @@
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/theromis/froxel-mcp:0.3.3",
+      "identifier": "ghcr.io/theromis/froxel-mcp:0.3.4",
       "transport": {
         "type": "stdio"
       }
