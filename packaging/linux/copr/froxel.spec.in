@@ -15,6 +15,9 @@ Source0: %{url}/releases/download/v%{upstream_version}/froxel-%{upstream_version
 Source1: %{url}/releases/download/v%{upstream_version}/froxel-%{upstream_version}-linux-aarch64.tar.gz
 Source2: %{url}/releases/download/v%{upstream_version}/froxel-%{upstream_version}-linux-riscv64.tar.gz
 ExclusiveArch: x86_64 aarch64 riscv64
+# Owns the hicolor icon directories, which openSUSE checks.
+BuildRequires: hicolor-icon-theme
+Requires: hicolor-icon-theme
 Requires: libvulkan.so.1()(64bit)
 Requires: libxkbcommon.so.0()(64bit)
 Recommends: libwayland-client.so.0()(64bit)
