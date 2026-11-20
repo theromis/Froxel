@@ -485,11 +485,12 @@ One-time setup:
 
 ## Windows channels
 
-Windows reaches four channels besides the release zips. Nothing here has been
-run against a real account yet: the Partner Center app, the winget
-package, and the Chocolatey package do not exist until the one-time setup
-below is done, and each publish step is skipped, with a notice, until its
-secret is set.
+Windows reaches four channels besides the release zips. Each publish step is
+skipped, with a notice, until its secret is set. The Partner Center app exists
+(Store ID `9NZZHD2J1JJZ`, identity `RomanVasilyev.Froxel`, set in the
+`MSSTORE_*` variables) and its first submission, 0.3.4-rc.2, went to
+certification by hand on 2026-11-20; the Partner Center API secrets, winget,
+and Chocolatey are not set up yet.
 
 | Channel | Made by | Published by | Prereleases |
 |---|---|---|---|
