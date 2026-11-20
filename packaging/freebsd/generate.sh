@@ -6,7 +6,9 @@
 #
 #   packaging/freebsd/generate.sh <version> <ports-dir>
 #
-# MAINTAINER_EMAIL is the port maintainer the ports tree requires.
+# MAINTAINER_EMAIL is the port maintainer the ports tree requires. GH_TAGNAME
+# builds that commit instead of the tag v<version> (to test a port before the
+# release is tagged; <version> should then be the commit's Cargo.toml version).
 set -euo pipefail
 
 version=${1:?version}
@@ -16,7 +18,8 @@ root=$(cd "$here/../.." && pwd)
 dir="$ports/graphics/froxel"
 mkdir -p "$dir"
 
-lock=$(git -C "$root" show "v$version:Cargo.lock" 2>/dev/null || cat "$root/Cargo.lock")
+ref=${GH_TAGNAME:-v$version}
+lock=$(git -C "$root" show "$ref:Cargo.lock" 2>/dev/null || cat "$root/Cargo.lock")
 {
   echo "CARGO_CRATES=	\\"
   printf '%s\n' "$lock" | awk '
@@ -42,14 +45,16 @@ WWW=		https://github.com/theromis/Froxel
 LICENSE=	MIT
 LICENSE_FILE=	\${WRKSRC}/LICENSE
 
-LIB_DEPENDS=	libvulkan.so:graphics/vulkan-loader \\
-		libxkbcommon.so:x11/libxkbcommon \\
-		libwayland-client.so:graphics/wayland
+# Vulkan, xkbcommon, and Wayland are opened at run time, not linked.
+RUN_DEPENDS=	vulkan-loader>0:graphics/vulkan-loader \\
+		libxkbcommon>0:x11/libxkbcommon \\
+		wayland>0:graphics/wayland
 
 USES=		cargo
 USE_GITHUB=	yes
 GH_ACCOUNT=	theromis
 GH_PROJECT=	Froxel
+$(if [ -n "${GH_TAGNAME:-}" ]; then printf 'GH_TAGNAME=	%s\n' "$GH_TAGNAME"; fi)
 
 PLIST_FILES=	bin/froxel \\
 		share/applications/froxel.desktop \\

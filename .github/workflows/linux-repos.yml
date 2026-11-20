@@ -20,7 +20,11 @@ on:
         type: string
         default: ""
       channels:
-        description: "Only these, space-separated: apt copr obs homebrew recipes aur snap flathub (empty: all)"
+        description: "Only these, space-separated: apt copr obs homebrew recipes freebsd aur snap flathub (empty: all)"
+        type: string
+        default: ""
+      freebsd-commit:
+        description: "freebsd: build the port from this commit instead of the tag (a test before tagging)"
         type: string
         default: ""
 
@@ -49,6 +53,7 @@ jobs:
       snap_build: ${{ steps.r.outputs.snap_build }}
       recipes: ${{ steps.r.outputs.recipes }}
       live: ${{ steps.r.outputs.live }}
+      freebsd: ${{ steps.r.outputs.freebsd }}
       obs: ${{ steps.r.outputs.obs }}
       homebrew: ${{ steps.r.outputs.homebrew }}
     env:
@@ -81,6 +86,7 @@ jobs:
             echo "obs=$(on obs ${{ secrets.OBS_PASSWORD != '' }})"
             echo "homebrew=$(on homebrew ${{ secrets.HOMEBREW_TAP_TOKEN != '' }})"
             echo "recipes=$(on recipes true)"
+            echo "freebsd=$(on freebsd true)"
             # The channels the apt page lists: those set up, whatever this run picks.
             # Flathub counts once its update token exists, that is, after the app is accepted.
             live=""
@@ -276,6 +282,76 @@ jobs:
           name: recipes-${{ needs.assets.outputs.version }}
           path: recipes
           include-hidden-files: true
+          if-no-files-found: error
+
+  # The FreeBSD port, checked the way a ports committer would: distinfo from
+  # `make makesum`, portlint, and a build with stage-qa and check-plist in a
+  # FreeBSD VM. The `freebsd-port-<version>` artifact is the port directory and a
+  # diff against the ports tree, to attach to a new-port report on bugs.freebsd.org.
+  freebsd:
+    name: FreeBSD port
+    needs: assets
+    if: needs.assets.outputs.freebsd == 'true' && (needs.assets.outputs.prerelease != 'true' || inputs.freebsd-commit != '')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      VERSION: ${{ needs.assets.outputs.version }}
+      GH_TAGNAME: ${{ inputs.freebsd-commit }}
+      MAINTAINER_EMAIL: ${{ vars.PACKAGE_MAINTAINER_EMAIL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Write the port
+        run: |
+          set -euo pipefail
+          if [ -n "$GH_TAGNAME" ]; then
+            GH_TAGNAME=$(git rev-parse "$GH_TAGNAME^{commit}")
+            VERSION=$(git show "$GH_TAGNAME:Cargo.toml" | sed -n 's/^version = "\(.*\)"$/\1/p' | head -n1)
+            echo "GH_TAGNAME=$GH_TAGNAME" >>"$GITHUB_ENV"
+            echo "VERSION=$VERSION" >>"$GITHUB_ENV"
+          fi
+          GH_TAGNAME=$GH_TAGNAME packaging/freebsd/generate.sh "$VERSION" port
+      - name: Check and build in a FreeBSD VM
+        uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc # v1.5.9
+        with:
+          release: "15.1"
+          usesh: true
+          cpu: 4
+          mem: 12288
+          prepare: |
+            pkg install -y git-tiny portlint
+          run: |
+            set -eu
+            ws=$(pwd)
+            git clone -q --depth 1 https://git.FreeBSD.org/ports.git /usr/ports
+            rm -rf /usr/ports/graphics/froxel
+            cp -R port/graphics/froxel /usr/ports/graphics/froxel
+            cd /usr/ports/graphics/froxel
+            make BATCH=yes makesum
+            status=0
+            portlint -AC || status=$?
+            make BATCH=yes install-missing-packages
+            make BATCH=yes DEVELOPER=yes stage stage-qa check-plist package
+            "$(make -V STAGEDIR)$(make -V PREFIX)/bin/froxel" --help | head -n 1
+            cp distinfo "$ws/port/graphics/froxel/"
+            # The new port as one commit against the ports tree, SUBDIR kept sorted.
+            cd /usr/ports
+            awk '!done && /^    SUBDIR \+= / && $3 > "froxel" { print "    SUBDIR += froxel"; done = 1 } { print }' \
+              graphics/Makefile >graphics/Makefile.new
+            mv graphics/Makefile.new graphics/Makefile
+            git add graphics/Makefile graphics/froxel
+            git -c user.name=Froxel -c user.email=noreply@github.com commit -qm "graphics/froxel: New port: voxel editor with a path tracer"
+            mkdir -p "$ws/out"
+            git format-patch -1 --stdout >"$ws/out/froxel-new-port.patch"
+            exit $status
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: freebsd-port-${{ env.VERSION }}
+          path: |
+            port
+            out
           if-no-files-found: error
 
   aur:
