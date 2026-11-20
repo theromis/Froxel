@@ -4,6 +4,10 @@
 
 ### Added
 
+- Linux `.rpm` packages for Fedora, RHEL, CentOS Stream, Rocky, Alma, and
+  openSUSE (x86_64, aarch64, riscv64). The x86_64 and aarch64 Linux builds
+  now need glibc 2.28 instead of 2.35, so they also run on RHEL 8 and its
+  rebuilds, Debian 10 and 11, and Ubuntu 20.04.
 - Blended shapes: spheres, ellipsoids, rounded boxes, capsules (tapered, or
   bent through points), and tori as signed distance fields joined by a
   smooth minimum, so they flow into each other like clay (MCP

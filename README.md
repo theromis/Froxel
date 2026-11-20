@@ -58,15 +58,17 @@ Download the file for your system from the
 |---|---|---|
 | macOS 11+ (Apple silicon and Intel) | `froxel-<version>-macos-universal.dmg` | Signed and notarized. Drag Froxel to Applications. |
 | Windows (x64, x86, ARM64) | `froxel-<version>-windows-<arch>.zip` | Not signed yet ([why](CODE_SIGNING.md)). SmartScreen may ask once: choose **More info → Run anyway**. Windows 11 with Smart App Control on blocks it outright. |
-| Debian, Ubuntu (x86_64, aarch64, riscv64) | `froxel-<version>-linux-<arch>.deb` | `sudo apt install ./froxel-*.deb` adds the menu entry and icon. Needs Vulkan. |
-| Other Linux | `froxel-<version>-linux-<arch>.tar.gz` | Needs Vulkan and glibc 2.35 or newer (2.39 for riscv64). |
+| Debian 10+, Ubuntu 20.04+, Mint, Pop!_OS (x86_64, aarch64, riscv64) | `froxel-<version>-linux-<arch>.deb` | `sudo apt install ./froxel-*.deb` adds the menu entry and icon. |
+| Fedora, RHEL, CentOS Stream, Rocky, Alma 8+, openSUSE (x86_64, aarch64, riscv64) | `froxel-<version>-linux-<arch>.rpm` | `sudo dnf install ./froxel-*.rpm` (openSUSE: `sudo zypper install ./froxel-*.rpm`). |
+| Arch and any other Linux | `froxel-<version>-linux-<arch>.tar.gz` | Unpack and run `froxel`. Needs glibc 2.28 or newer (2.39 for riscv64). |
 | FreeBSD (x86_64) | `froxel-<version>-freebsd-x86_64.tar.gz` | |
 | Android 7.0+ (arm64) | `froxel-<version>-android-arm64.apk` | Open it on the phone. Android asks once to allow installs from the browser or file manager. |
 | iOS 16+ simulator | `froxel-<version>-ios-simulator.zip` | Unzip and drag `Froxel.app` onto a booted simulator. The device build goes to the App Store. |
 | Godot 4.3+ plugin | `froxel-<version>-godot-addon.zip` | Unzip into the project folder. See [Godot and Blender](#godot-and-blender). |
 | Blender 4.2+ add-on | `froxel-<version>-blender-addon.zip` | Preferences → Add-ons → Install from Disk. |
 
-Every release has a `SHA256SUMS.txt`. How the builds are signed is in
+Linux needs a Vulkan driver (Mesa or the GPU vendor's); the packages pull in
+the Vulkan loader. Every release has a `SHA256SUMS.txt`. How the builds are signed is in
 [CODE_SIGNING.md](CODE_SIGNING.md).
 
 Try it on the frog, [`examples/frog.vox`](examples/frog.vox), or on the scripted

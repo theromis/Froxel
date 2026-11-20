@@ -13,13 +13,17 @@ gh workflow run release.yml -f upload-stores=true   # also TestFlight and Google
 ```
 
 It builds macOS universal (`.dmg`, `.zip`), Windows x64, x86 and arm64
-(`.zip`), Linux x86_64, aarch64 and riscv64 (`.tar.gz`, `.deb`) and FreeBSD
+(`.zip`), Linux x86_64, aarch64 and riscv64 (`.tar.gz`, `.deb`, `.rpm`) and FreeBSD
 x86_64 (`.tar.gz`), Android arm64 (`.apk`) and iOS (`.ipa` for devices, a
 zipped `Froxel.app` for the simulator), then creates or updates the draft release `v<version>`
 with a `SHA256SUMS.txt`. It also zips the Godot plugin and the Blender add-on.
 The Android App Bundle and an App Store-signed ipa are workflow artifacts
 named `store-<version>-android` and `store-<version>-ios`, not release files;
 see [Store builds](#store-builds).
+The Linux x86_64 and aarch64 builds run in an AlmaLinux 8 container, so they
+need only glibc 2.28; riscv64 is cross-compiled on Ubuntu 24.04 (glibc 2.39).
+`packaging/linux/package.sh` makes the three Linux files from a built binary
+and reads the minimum glibc for the package dependencies from it.
 The release notes are the version's section of `CHANGELOG.md`; without one,
 GitHub generates them from the commits.
 

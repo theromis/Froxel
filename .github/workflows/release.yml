@@ -293,26 +293,38 @@ jobs:
     name: Linux ${{ matrix.arch }}
     needs: version
     runs-on: ${{ matrix.runner }}
+    # x86_64 and aarch64 build in AlmaLinux 8, so the binary needs only glibc 2.28:
+    # RHEL, CentOS Stream, Rocky and Alma 8+, Debian 10+, Ubuntu 20.04+, Fedora,
+    # openSUSE Leap 15.3+, Arch. An empty container runs on the runner itself.
+    container: ${{ matrix.container }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { arch: x86_64, runner: ubuntu-22.04, target: x86_64-unknown-linux-gnu, deb: amd64, glibc: "2.35" }
-          - { arch: aarch64, runner: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu, deb: arm64, glibc: "2.35" }
-          # Cross-compiled. 22.04 lacks a matching riscv64 libc for its toolchain, so the
-          # binary needs the newer glibc of 24.04.
-          - { arch: riscv64, runner: ubuntu-24.04, target: riscv64gc-unknown-linux-gnu, deb: riscv64, glibc: "2.39", cross: riscv64-linux-gnu }
+          - { arch: x86_64, runner: ubuntu-24.04, container: "almalinux:8", target: x86_64-unknown-linux-gnu }
+          - { arch: aarch64, runner: ubuntu-24.04-arm, container: "almalinux:8", target: aarch64-unknown-linux-gnu }
+          # Cross-compiled on the runner. Rust's riscv64 target starts at glibc 2.29 and
+          # 22.04 lacks a matching riscv64 libc for its toolchain, so the binary needs
+          # the glibc of 24.04 (2.39).
+          - { arch: riscv64, runner: ubuntu-24.04, container: "", target: riscv64gc-unknown-linux-gnu, cross: riscv64-linux-gnu }
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
+      # git for the checkout, gcc as the linker, rpm-build and dpkg (EPEL) for the packages.
+      - name: Prepare the AlmaLinux container
+        if: matrix.container
+        run: |
+          dnf install -y gcc binutils git rpm-build epel-release
+          dnf install -y dpkg
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install the cross linker
+      - name: Install the cross linker and rpmbuild
         if: matrix.cross
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends gcc-${{ matrix.cross }} libc6-dev-${{ matrix.deb }}-cross
+          sudo apt-get install -y --no-install-recommends gcc-${{ matrix.cross }} libc6-dev-riscv64-cross rpm
           echo "CARGO_TARGET_$(echo '${{ matrix.target }}' | tr 'a-z-' 'A-Z_')_LINKER=${{ matrix.cross }}-gcc" >>"$GITHUB_ENV"
+          echo "OBJDUMP=${{ matrix.cross }}-objdump" >>"$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: stable
@@ -320,50 +332,17 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: release-linux-${{ matrix.arch }}
-      # Wayland, X11 and Vulkan are loaded at run time, so the build needs no -dev packages.
+      # Wayland, X11, Vulkan and fontconfig are loaded at run time, so the build needs
+      # no -dev packages.
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }}
-      - name: Package tar.gz and deb
-        run: |
-          set -euo pipefail
-          bin="target/${{ matrix.target }}/release/froxel"
-          name="froxel-$VERSION-linux-${{ matrix.arch }}"
-          mkdir -p "dist/stage/$name" dist/release
-          cp "$bin" README.md LICENSE packaging/linux/froxel.desktop packaging/icons/froxel.png "dist/stage/$name/"
-          tar -C dist/stage -czf "dist/release/$name.tar.gz" "$name"
-
-          root="dist/stage/deb"
-          install -Dm755 "$bin" "$root/usr/bin/froxel"
-          install -Dm644 packaging/linux/froxel.desktop "$root/usr/share/applications/froxel.desktop"
-          for png in packaging/icons/hicolor/*.png; do
-            size=$(basename "$png" .png)
-            install -Dm644 "$png" "$root/usr/share/icons/hicolor/$size/apps/froxel.png"
-          done
-          install -Dm644 LICENSE "$root/usr/share/doc/froxel/copyright"
-          install -Dm644 README.md "$root/usr/share/doc/froxel/README.md"
-          mkdir -p "$root/DEBIAN"
-          # Debian sorts 1.0~rc1 before 1.0, as semver sorts 1.0-rc1.
-          deb_version=$(printf '%s' "$VERSION" | tr - '~')
-          cat >"$root/DEBIAN/control" <<EOF
-          Package: froxel
-          Version: $deb_version
-          Architecture: ${{ matrix.deb }}
-          Maintainer: Froxel <noreply@github.com>
-          Section: graphics
-          Priority: optional
-          Installed-Size: $(du -sk "$root/usr" | cut -f1)
-          Depends: libc6 (>= ${{ matrix.glibc }}), libvulkan1, libxkbcommon0
-          Recommends: libwayland-client0, libxkbcommon-x11-0, libx11-6, xdg-desktop-portal
-          Homepage: https://github.com/${{ github.repository }}
-          Description: Voxel editor
-           A voxel editor in the spirit of MagicaVoxel, with a wgpu viewport,
-           a path tracer and an MCP server for automation.
-          EOF
-          dpkg-deb --root-owner-group --build "$root" "dist/release/$name.deb"
-          dpkg-deb --info "dist/release/$name.deb"
+      - name: Package tar.gz, deb and rpm
+        run: packaging/linux/package.sh ${{ matrix.arch }} "target/${{ matrix.target }}/release/froxel" dist/release
+        env:
+          HOMEPAGE: https://github.com/${{ github.repository }}
       - name: Smoke test
         if: ${{ !matrix.cross }}
-        run: '"dist/stage/froxel-$VERSION-linux-${{ matrix.arch }}/froxel" --help'
+        run: '"target/${{ matrix.target }}/release/froxel" --help'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: froxel-${{ env.VERSION }}-linux-${{ matrix.arch }}
