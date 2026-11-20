@@ -59,7 +59,8 @@ try {
 
     # A packaged association shows as an AppX… ProgID under the extension's OpenWithProgids.
     $ext = Get-Item 'Registry::HKEY_CURRENT_USER\Software\Classes\.vox\OpenWithProgids' -ErrorAction SilentlyContinue
-    $progids = if ($ext) { @($ext.GetValueNames() | Where-Object { $_ -like 'AppX*' }) } else { @() }
+    # @() outside the if: assigning an if's output unrolls an empty or one-item array.
+    $progids = @(if ($ext) { $ext.GetValueNames() | Where-Object { $_ -like 'AppX*' } })
     if ($progids.Count -eq 0) { throw 'The .vox file type association is not registered' }
     Write-Output ".vox association: $($progids -join ', ')"
 } finally {
