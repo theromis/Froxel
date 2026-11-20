@@ -656,6 +656,14 @@ Prereleases go only to the Snap Store's `beta` channel.
 | Gentoo GURU, Void, FreeBSD ports, nixpkgs | by hand, from the `recipes-<version>` artifact | variables `PACKAGE_MAINTAINER` (`Name <email>`), `PACKAGE_MAINTAINER_NAME`, `PACKAGE_MAINTAINER_EMAIL` | `packaging/{gentoo,void,freebsd,nix}` |
 | Nix flake | `nix run github:theromis/Froxel` | none, it builds `main` or a tag | `flake.nix`, `packaging/nix` |
 
+Set up on 2026-11-20: the apt repository (key in `secrets/linux`), COPR
+`theromis/froxel` (Fedora 43–45 and rawhide, EPEL 8–10; the `COPR_CONFIG`
+token expires on 2027-05-19, renew it from <https://copr.fedorainfracloud.org/api/>),
+OBS `home:theromis/froxel` (Tumbleweed and Leap 15.6, x86_64; `OBS_USER` set,
+`OBS_PASSWORD` set by the owner), and the Homebrew tap. Not yet: the Snap name
+(`snapcraft register froxel`, then `export-login`), the AUR (registration is
+closed), and Flathub (needs a release with the metainfo).
+
 The AUR, COPR, OBS, Gentoo, and Homebrew packages repack the release
 tarballs, which carry the binary, `froxel.desktop`, the AppStream metadata,
 and the hicolor icons. Flathub, Void, FreeBSD, and Nix build from source.
