@@ -84,7 +84,7 @@ jobs:
             echo "flathub_files=$(on flathub true)"
             echo "flathub=$(on flathub ${{ secrets.FLATHUB_TOKEN != '' }})"
             echo "obs=$(on obs ${{ secrets.OBS_PASSWORD != '' }})"
-            echo "homebrew=$(on homebrew ${{ secrets.HOMEBREW_TAP_TOKEN != '' }})"
+            echo "homebrew=$(on homebrew ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY != '' }})"
             echo "recipes=$(on recipes true)"
             echo "freebsd=$(on freebsd true)"
             # The channels the apt page lists: those set up, whatever this run picks.
@@ -229,14 +229,19 @@ jobs:
           path: dist
       - name: Update the cask and the formula
         env:
-          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
           TAP: ${{ vars.HOMEBREW_TAP || format('{0}/homebrew-froxel', github.repository_owner) }}
           REPOSITORY: ${{ github.repository }}
           VERSION: ${{ needs.assets.outputs.version }}
         run: |
           set -euo pipefail
-          gh auth setup-git
-          gh repo clone "$TAP" tap -- --depth 1
+          # A deploy key with write access to the tap repository only.
+          install -dm700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" >~/.ssh/tap
+          chmod 600 ~/.ssh/tap
+          ssh-keyscan -t ed25519 github.com >>~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/tap -o IdentitiesOnly=yes"
+          git clone --depth 1 "git@github.com:$TAP.git" tap
           packaging/homebrew/generate.sh "$VERSION" dist/SHA256SUMS.txt tap
           cd tap
           git config user.name "Froxel release"
@@ -248,6 +253,7 @@ jobs:
             git commit -m "froxel $VERSION"
             git push
           fi
+          rm ~/.ssh/tap
 
   recipes:
     name: Recipes for Gentoo, Void, FreeBSD, nixpkgs

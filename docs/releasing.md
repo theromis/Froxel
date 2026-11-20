@@ -652,7 +652,7 @@ Prereleases go only to the Snap Store's `beta` channel.
 | AUR | `yay -S froxel-bin` | `AUR_SSH_KEY`; variable `PACKAGE_MAINTAINER` | `packaging/linux/aur` |
 | Snap Store | `sudo snap install froxel` | `SNAPCRAFT_STORE_CREDENTIALS` | `packaging/snap` |
 | Flathub | `flatpak install flathub com.lonje.Froxel` | `FLATHUB_TOKEN` | `packaging/flatpak` |
-| Homebrew tap | `brew install --cask theromis/froxel/froxel` (macOS), `brew install theromis/froxel/froxel` (Linux) | `HOMEBREW_TAP_TOKEN`; variable `HOMEBREW_TAP` (default `<owner>/homebrew-froxel`) | `packaging/homebrew` |
+| Homebrew tap | `brew install --cask theromis/froxel/froxel` (macOS), `brew install theromis/froxel/froxel` (Linux) | `HOMEBREW_TAP_DEPLOY_KEY`; variable `HOMEBREW_TAP` (default `<owner>/homebrew-froxel`) | `packaging/homebrew` |
 | Gentoo GURU, Void, FreeBSD ports, nixpkgs | by hand, from the `recipes-<version>` artifact | variables `PACKAGE_MAINTAINER` (`Name <email>`), `PACKAGE_MAINTAINER_NAME`, `PACKAGE_MAINTAINER_EMAIL` | `packaging/{gentoo,void,freebsd,nix}` |
 | Nix flake | `nix run github:theromis/Froxel` | none, it builds `main` or a tag | `flake.nix`, `packaging/nix` |
 
@@ -733,8 +733,13 @@ bridges, and `--filesystem=home` because MCP tools take file paths.
 
 ### Homebrew
 
-1. Create the public repository `<owner>/homebrew-froxel`.
-2. A fine-grained token with Contents write on it goes in `HOMEBREW_TAP_TOKEN`.
+1. Create the public repository `<owner>/homebrew-froxel` (done:
+   `theromis/homebrew-froxel`).
+2. Add a deploy key with write access to it and store the private key in
+   `HOMEBREW_TAP_DEPLOY_KEY` (done; the key is in `secrets/macos`):
+   `ssh-keygen -t ed25519 -f tap-key`, then
+   `gh repo deploy-key add tap-key.pub -R <owner>/homebrew-froxel --allow-write`
+   and `gh secret set HOMEBREW_TAP_DEPLOY_KEY < tap-key`.
 
 The cask installs the notarized dmg and links `froxel` onto the PATH; the
 formula is the Linux tarball.
