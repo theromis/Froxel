@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Froxel
+Comment=Voxel editor
+Exec=froxel %f
+Icon=${SNAP}/meta/gui/froxel.png
+Terminal=false
+Categories=Graphics;3DGraphics;
+Keywords=voxel;vox;MagicaVoxel;3D;
+StartupWMClass=Froxel

@@ -1,0 +1,47 @@
+# The COPR package: repacks the release tarballs, which the source rpm carries,
+# so a COPR build needs no network. make-srpm.sh fills in the versions.
+%global debug_package %{nil}
+%global __os_install_post %{nil}
+%define _build_id_links none
+%global upstream_version @UPSTREAM_VERSION@
+
+Name: froxel
+Version: @RPM_VERSION@
+Release: 1%{?dist}
+Summary: Voxel editor with a path tracer and an MCP server
+License: MIT
+URL: https://github.com/@REPOSITORY@
+Source0: %{url}/releases/download/v%{upstream_version}/froxel-%{upstream_version}-linux-x86_64.tar.gz
+Source1: %{url}/releases/download/v%{upstream_version}/froxel-%{upstream_version}-linux-aarch64.tar.gz
+Source2: %{url}/releases/download/v%{upstream_version}/froxel-%{upstream_version}-linux-riscv64.tar.gz
+ExclusiveArch: x86_64 aarch64 riscv64
+Requires: libvulkan.so.1()(64bit)
+Requires: libxkbcommon.so.0()(64bit)
+Recommends: libwayland-client.so.0()(64bit)
+Recommends: libxkbcommon-x11.so.0()(64bit)
+Recommends: libX11.so.6()(64bit)
+Recommends: xdg-desktop-portal
+
+%description
+A voxel editor in the spirit of MagicaVoxel, with a wgpu viewport,
+a path tracer and an MCP server for automation.
+
+%prep
+%setup -q -T -c
+tar -xzf %{_sourcedir}/froxel-%{upstream_version}-linux-%{_arch}.tar.gz --strip-components=1
+
+%install
+install -Dm755 froxel %{buildroot}%{_bindir}/froxel
+install -Dm644 froxel.desktop %{buildroot}%{_datadir}/applications/froxel.desktop
+install -Dm644 com.lonje.Froxel.metainfo.xml %{buildroot}%{_datadir}/metainfo/com.lonje.Froxel.metainfo.xml
+for png in icons/*.png; do
+  install -Dm644 "$png" "%{buildroot}%{_datadir}/icons/hicolor/$(basename "$png" .png)/apps/froxel.png"
+done
+
+%files
+%license LICENSE
+%doc README.md
+%{_bindir}/froxel
+%{_datadir}/applications/froxel.desktop
+%{_datadir}/metainfo/com.lonje.Froxel.metainfo.xml
+%{_datadir}/icons/hicolor/*/apps/froxel.png

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata: what GNOME Software, KDE Discover, and Flathub show.
+     A release adds its <release> at the top of <releases> (docs/releasing.md). -->
+<component type="desktop-application">
+  <id>com.lonje.Froxel</id>
+  <name>Froxel</name>
+  <summary>Voxel editor with a path tracer</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="com.lonje">
+    <name>Roman Vasilyev</name>
+  </developer>
+  <description>
+    <p>
+      Froxel is a voxel editor for MagicaVoxel .vox models. Sculpt with
+      brushes, lines, boxes, and faces, rig models into parts with bones and
+      clips, and see them in a GPU path tracer with an atmospheric sky, metal,
+      and glass.
+    </p>
+    <ul>
+      <li>Edits .vox scenes with their groups, layers, and animation frames</li>
+      <li>Imports glTF and OBJ meshes and voxelizes them</li>
+      <li>Exports glTF with merged faces, a colour atlas, and baked occlusion</li>
+      <li>An MCP server lets an AI agent build and edit models</li>
+      <li>Rhai scripting, and bridges to Godot and Blender</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">froxel.desktop</launchable>
+  <icon type="remote" width="256" height="256">https://raw.githubusercontent.com/theromis/Froxel/main/packaging/icons/hicolor/256x256.png</icon>
+  <url type="homepage">https://github.com/theromis/Froxel</url>
+  <url type="bugtracker">https://github.com/theromis/Froxel/issues</url>
+  <url type="vcs-browser">https://github.com/theromis/Froxel</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>The editor with a model, the palette, and the Inspector</caption>
+      <image>https://raw.githubusercontent.com/theromis/Froxel/main/docs/images/editor.jpg</image>
+    </screenshot>
+    <screenshot>
+      <caption>A scene in the path tracer</caption>
+      <image>https://raw.githubusercontent.com/theromis/Froxel/main/docs/images/hero.jpg</image>
+    </screenshot>
+  </screenshots>
+  <categories>
+    <category>Graphics</category>
+    <category>3DGraphics</category>
+  </categories>
+  <keywords>
+    <keyword>voxel</keyword>
+    <keyword>vox</keyword>
+    <keyword>MagicaVoxel</keyword>
+    <keyword>3D</keyword>
+    <keyword>MCP</keyword>
+  </keywords>
+  <provides>
+    <binary>froxel</binary>
+  </provides>
+  <requires>
+    <display_length compare="ge">768</display_length>
+  </requires>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.3.3" date="2026-11-12">
+      <url type="details">https://github.com/theromis/Froxel/releases/tag/v0.3.3</url>
+    </release>
+    <release version="0.3.2" date="2026-11-10">
+      <url type="details">https://github.com/theromis/Froxel/releases/tag/v0.3.2</url>
+    </release>
+  </releases>
+</component>

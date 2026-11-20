@@ -1,0 +1,385 @@
+# Publishes a GitHub Release's Linux files to the Linux channels: the apt
+# repository on GitHub Pages, COPR (Fedora, RHEL, EPEL), the openSUSE Build
+# Service, the AUR (froxel-bin), the Snap Store, Flathub (a pull request to
+# flathub/com.lonje.Froxel), and the Homebrew tap (macOS cask, Linux formula).
+# The recipes that go in by hand (Gentoo GURU, Void, FreeBSD ports) are an
+# artifact, `recipes-<version>`.
+# It runs when a release is published, or by hand for a tag. A channel whose
+# secret is not set is skipped; prereleases go only to the Snap Store's beta
+# channel. Setup and secrets: docs/releasing.md, "Linux channels".
+name: Linux channels
+run-name: Linux channels ${{ github.event.release.tag_name || inputs.tag || 'latest' }}
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v0.3.4 (empty: the latest release)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-channels
+  cancel-in-progress: false
+
+jobs:
+  assets:
+    name: Release files
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.r.outputs.tag }}
+      version: ${{ steps.r.outputs.version }}
+      prerelease: ${{ steps.r.outputs.prerelease }}
+      apt: ${{ steps.r.outputs.apt }}
+      copr: ${{ steps.r.outputs.copr }}
+      aur: ${{ steps.r.outputs.aur }}
+      snap: ${{ steps.r.outputs.snap }}
+      flathub: ${{ steps.r.outputs.flathub }}
+      obs: ${{ steps.r.outputs.obs }}
+      homebrew: ${{ steps.r.outputs.homebrew }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - name: Resolve the release
+        id: r
+        run: |
+          set -euo pipefail
+          tag=${TAG:-$(gh release view --json tagName --jq .tagName)}
+          prerelease=$(gh release view "$tag" --json isPrerelease --jq .isPrerelease)
+          {
+            echo "tag=$tag"
+            echo "version=${tag#v}"
+            echo "prerelease=$prerelease"
+            echo "apt=${{ secrets.APT_GPG_PRIVATE_KEY != '' }}"
+            echo "copr=${{ secrets.COPR_CONFIG != '' }}"
+            echo "aur=${{ secrets.AUR_SSH_KEY != '' }}"
+            echo "snap=${{ secrets.SNAPCRAFT_STORE_CREDENTIALS != '' }}"
+            echo "flathub=${{ secrets.FLATHUB_TOKEN != '' }}"
+            echo "obs=${{ secrets.OBS_PASSWORD != '' }}"
+            echo "homebrew=${{ secrets.HOMEBREW_TAP_TOKEN != '' }}"
+          } | tee -a "$GITHUB_OUTPUT"
+      - name: Download and check the Linux files
+        run: |
+          set -euo pipefail
+          mkdir dist && cd dist
+          gh release download "${{ steps.r.outputs.tag }}" -p 'froxel-*-linux-*' -p 'froxel-*-macos-universal.dmg' -p SHA256SUMS.txt
+          sha256sum --check --ignore-missing SHA256SUMS.txt
+          ls -l
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-release
+          path: dist/*
+          if-no-files-found: error
+
+  apt:
+    name: apt repository (GitHub Pages)
+    needs: assets
+    if: needs.assets.outputs.apt == 'true' && needs.assets.outputs.prerelease != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-release
+          path: dist
+      - name: Build the signed repository
+        env:
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+          APT_GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+          COPR_PROJECT: ${{ vars.COPR_PROJECT || 'theromis/froxel' }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$APT_GPG_PRIVATE_KEY" | gpg --batch --import
+          owner=${GITHUB_REPOSITORY%%/*}
+          base="https://${owner,,}.github.io/${GITHUB_REPOSITORY#*/}"
+          packaging/linux/apt/build-repo.sh dist site "$base"
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+      - uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+        id: deploy
+
+  copr:
+    name: COPR
+    needs: assets
+    if: needs.assets.outputs.copr == 'true' && needs.assets.outputs.prerelease != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-release
+          path: dist
+      - name: Build the source rpm
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends rpm
+          packaging/linux/copr/make-srpm.sh "${{ needs.assets.outputs.version }}" dist srpm
+      - name: Submit to COPR
+        env:
+          COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+          COPR_PROJECT: ${{ vars.COPR_PROJECT || 'theromis/froxel' }}
+        run: |
+          set -euo pipefail
+          pipx install copr-cli
+          mkdir -p ~/.config
+          printf '%s\n' "$COPR_CONFIG" >~/.config/copr
+          copr-cli build "$COPR_PROJECT" srpm/*.src.rpm
+          rm ~/.config/copr
+
+  obs:
+    name: openSUSE Build Service
+    needs: assets
+    if: needs.assets.outputs.obs == 'true' && needs.assets.outputs.prerelease != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-release
+          path: dist
+      - name: Commit the spec and tarballs
+        env:
+          OBS_USER: ${{ secrets.OBS_USER }}
+          OBS_PASSWORD: ${{ secrets.OBS_PASSWORD }}
+          OBS_PROJECT: ${{ vars.OBS_PROJECT || format('home:{0}', secrets.OBS_USER) }}
+          VERSION: ${{ needs.assets.outputs.version }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends rpm osc
+          packaging/linux/copr/make-srpm.sh "$VERSION" dist srpm
+          mkdir -p ~/.config/osc
+          umask 077
+          cat >~/.config/osc/oscrc <<EOF
+          [general]
+          apiurl = https://api.opensuse.org
+          [https://api.opensuse.org]
+          user = $OBS_USER
+          pass = $OBS_PASSWORD
+          credentials_mgr_class = osc.credentials.PlaintextConfigFileCredentialsManager
+          EOF
+          osc checkout "$OBS_PROJECT" froxel -o obs
+          rm -f obs/*.tar.gz obs/froxel.spec
+          cp srpm/froxel.spec dist/froxel-"$VERSION"-linux-*.tar.gz obs/
+          cd obs
+          osc addremove
+          osc commit -m "Update to $VERSION"
+          rm ~/.config/osc/oscrc
+
+  homebrew:
+    name: Homebrew tap
+    needs: assets
+    if: needs.assets.outputs.homebrew == 'true' && needs.assets.outputs.prerelease != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-release
+          path: dist
+      - name: Update the cask and the formula
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAP: ${{ vars.HOMEBREW_TAP || format('{0}/homebrew-froxel', github.repository_owner) }}
+          REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ needs.assets.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+          gh repo clone "$TAP" tap -- --depth 1
+          packaging/homebrew/generate.sh "$VERSION" dist/SHA256SUMS.txt tap
+          cd tap
+          git config user.name "Froxel release"
+          git config user.email "noreply@github.com"
+          git add Casks/froxel.rb Formula/froxel.rb
+          if git diff --cached --quiet; then
+            echo "The tap is already at $VERSION"
+          else
+            git commit -m "froxel $VERSION"
+            git push
+          fi
+
+  recipes:
+    name: Recipes for Gentoo, Void, FreeBSD, nixpkgs
+    needs: assets
+    if: needs.assets.outputs.prerelease != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      VERSION: ${{ needs.assets.outputs.version }}
+      REPOSITORY: ${{ github.repository }}
+      MAINTAINER: ${{ vars.PACKAGE_MAINTAINER }}
+      MAINTAINER_NAME: ${{ vars.PACKAGE_MAINTAINER_NAME }}
+      MAINTAINER_EMAIL: ${{ vars.PACKAGE_MAINTAINER_EMAIL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-release
+          path: dist
+      - name: Write the recipes
+        run: |
+          set -euo pipefail
+          packaging/gentoo/generate.sh "$VERSION" dist recipes/gentoo
+          packaging/void/generate.sh "$VERSION" recipes/void
+          packaging/freebsd/generate.sh "$VERSION" recipes/freebsd
+          mkdir -p recipes/nixpkgs
+          cp packaging/nix/package.nix recipes/nixpkgs/
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: recipes-${{ needs.assets.outputs.version }}
+          path: recipes
+          include-hidden-files: true
+          if-no-files-found: error
+
+  aur:
+    name: AUR froxel-bin
+    needs: assets
+    if: needs.assets.outputs.aur == 'true' && needs.assets.outputs.prerelease != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-release
+          path: dist
+      - name: Push PKGBUILD and .SRCINFO
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+          REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ needs.assets.outputs.version }}
+          MAINTAINER: ${{ vars.PACKAGE_MAINTAINER }}
+        run: |
+          set -euo pipefail
+          install -dm700 ~/.ssh
+          printf '%s\n' "$AUR_SSH_KEY" >~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          ssh-keyscan -t ed25519 aur.archlinux.org >>~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/aur -o IdentitiesOnly=yes"
+          git clone ssh://aur@aur.archlinux.org/froxel-bin.git aur
+          packaging/linux/aur/generate.sh "$VERSION" dist/SHA256SUMS.txt aur
+          cd aur
+          git config user.name "Froxel release"
+          git config user.email "noreply@github.com"
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then
+            echo "froxel-bin is already at $VERSION"
+          else
+            git commit -m "Update to $VERSION"
+            git push origin HEAD:master
+          fi
+          rm ~/.ssh/aur
+
+  snap:
+    name: Snap ${{ matrix.arch }}
+    needs: assets
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04, linux: x86_64 }
+          - { arch: arm64, runner: ubuntu-24.04-arm, linux: aarch64 }
+    env:
+      VERSION: ${{ needs.assets.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-release
+          path: dist
+      - name: Stage the release files
+        run: |
+          set -euo pipefail
+          mkdir packaging/snap/froxel
+          tar -xzf "dist/froxel-$VERSION-linux-${{ matrix.linux }}.tar.gz" --strip-components=1 -C packaging/snap/froxel
+          cp packaging/icons/hicolor/512x512.png packaging/snap/snap/gui/froxel.png
+          sed -i "s/^version: .*/version: \"$VERSION\"/" packaging/snap/snap/snapcraft.yaml
+          if [ "${{ needs.assets.outputs.prerelease }}" = true ]; then
+            sed -i 's/^grade: stable/grade: devel/' packaging/snap/snap/snapcraft.yaml
+          fi
+      - uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79 # v1.3.0
+        id: build
+        with:
+          path: packaging/snap
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: snap-${{ matrix.arch }}
+          path: ${{ steps.build.outputs.snap }}
+          if-no-files-found: error
+      - uses: snapcore/action-publish@214b86e5ca036ead1668c79afb81e550e6c54d40 # v1.2.0
+        if: needs.assets.outputs.snap == 'true'
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        with:
+          snap: ${{ steps.build.outputs.snap }}
+          release: ${{ needs.assets.outputs.prerelease == 'true' && 'beta' || 'stable' }}
+
+  flathub:
+    name: Flathub
+    needs: assets
+    if: needs.assets.outputs.prerelease != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TAG: ${{ needs.assets.outputs.tag }}
+      VERSION: ${{ needs.assets.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Manifest and cargo sources for the tag
+        run: |
+          set -euo pipefail
+          pip install --user aiohttp tomlkit
+          REPOSITORY_URL="https://github.com/$GITHUB_REPOSITORY.git" packaging/flatpak/flathub.sh "$TAG" flathub
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: flathub-${{ needs.assets.outputs.version }}
+          path: flathub/*
+          if-no-files-found: error
+      # Flathub builds the pull request and publishes it once a maintainer merges it.
+      - name: Open the update pull request
+        if: needs.assets.outputs.flathub == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.FLATHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh repo clone flathub/com.lonje.Froxel app -- --depth 1
+          cp flathub/com.lonje.Froxel.yml flathub/cargo-sources.json app/
+          cd app
+          git config user.name "Froxel release"
+          git config user.email "noreply@github.com"
+          git checkout -b "update-$VERSION"
+          git add com.lonje.Froxel.yml cargo-sources.json
+          if git diff --cached --quiet; then
+            echo "Flathub is already at $VERSION"
+            exit 0
+          fi
+          git commit -m "Update to $VERSION"
+          git push origin "update-$VERSION"
+          gh pr create --repo flathub/com.lonje.Froxel --head "update-$VERSION" \
+            --title "Update to $VERSION" --body "Froxel $TAG: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"

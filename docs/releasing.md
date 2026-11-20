@@ -47,6 +47,12 @@ and reads the minimum glibc for the package dependencies from it.
 The release notes are the version's section of `CHANGELOG.md`; without one,
 GitHub generates them from the commits.
 
+For a release (not a prerelease), also add
+`<release version="<version>" date="YYYY-MM-DD">` at the top of `<releases>` in
+`packaging/linux/com.lonje.Froxel.metainfo.xml`: Flathub, GNOME Software, and
+KDE Discover read it, and the `Version` job fails without it
+([Linux channels](#linux-channels)).
+
 ## macOS signing
 
 The macOS app (`com.lonje.froxel`) and its dmg are signed with Developer ID,
@@ -628,3 +634,123 @@ bump. Then, by hand:
 
 The first listings, the web forms, and what each registry needs are in
 [registries.md](registries.md).
+
+## Linux channels
+
+Publishing the draft release starts `.github/workflows/linux-repos.yml`
+(also `gh workflow run linux-repos.yml -f tag=v<version>`). It downloads the
+release's Linux files, checks them against `SHA256SUMS.txt`, and sends them to
+every channel whose secret is set; a channel without its secret is skipped.
+Prereleases go only to the Snap Store's `beta` channel.
+
+| Channel | Users run | Secrets and variables | Files |
+|---|---|---|---|
+| apt on GitHub Pages | the commands on `https://theromis.github.io/Froxel/` | `APT_GPG_PRIVATE_KEY`, optional `APT_GPG_PASSPHRASE` | `packaging/linux/apt` |
+| COPR | `sudo dnf copr enable theromis/froxel && sudo dnf install froxel` | `COPR_CONFIG`; variable `COPR_PROJECT` (default `theromis/froxel`) | `packaging/linux/copr` |
+| openSUSE Build Service | `zypper addrepo` of the project's repository | `OBS_USER`, `OBS_PASSWORD`; variable `OBS_PROJECT` (default `home:<user>`) | `packaging/linux/copr` (the same spec) |
+| AUR | `yay -S froxel-bin` | `AUR_SSH_KEY`; variable `PACKAGE_MAINTAINER` | `packaging/linux/aur` |
+| Snap Store | `sudo snap install froxel` | `SNAPCRAFT_STORE_CREDENTIALS` | `packaging/snap` |
+| Flathub | `flatpak install flathub com.lonje.Froxel` | `FLATHUB_TOKEN` | `packaging/flatpak` |
+| Homebrew tap | `brew install --cask theromis/froxel/froxel` (macOS), `brew install theromis/froxel/froxel` (Linux) | `HOMEBREW_TAP_TOKEN`; variable `HOMEBREW_TAP` (default `<owner>/homebrew-froxel`) | `packaging/homebrew` |
+| Gentoo GURU, Void, FreeBSD ports, nixpkgs | by hand, from the `recipes-<version>` artifact | variables `PACKAGE_MAINTAINER` (`Name <email>`), `PACKAGE_MAINTAINER_NAME`, `PACKAGE_MAINTAINER_EMAIL` | `packaging/{gentoo,void,freebsd,nix}` |
+| Nix flake | `nix run github:theromis/Froxel` | none, it builds `main` or a tag | `flake.nix`, `packaging/nix` |
+
+The AUR, COPR, OBS, Gentoo, and Homebrew packages repack the release
+tarballs, which carry the binary, `froxel.desktop`, the AppStream metadata,
+and the hicolor icons. Flathub, Void, FreeBSD, and Nix build from source.
+
+### apt repository
+
+1. Make a signing key with no expiry you will forget about, for example
+   `gpg --quick-gen-key "Froxel apt <noreply@github.com>" ed25519 sign 5y`,
+   and store `gpg --armor --export-secret-keys <fingerprint>` in
+   `APT_GPG_PRIVATE_KEY`.
+2. Settings → Pages → Source: **GitHub Actions**.
+
+Each publish replaces the site with the latest release; `froxel.gpg` there is
+the public key users install. A new key needs the users to fetch it again.
+
+### COPR
+
+1. Sign in at [copr.fedorainfracloud.org](https://copr.fedorainfracloud.org)
+   with a Fedora account and create the project `froxel` with the chroots
+   `fedora-*-x86_64`, `fedora-*-aarch64`, `epel-8-*`, `epel-9-*`, and
+   `epel-10-*`.
+2. Copy the API text from <https://copr.fedorainfracloud.org/api/> into
+   `COPR_CONFIG`.
+
+The source rpm carries the three tarballs, so the build needs no network
+access.
+
+### openSUSE Build Service
+
+1. Make an account on [build.opensuse.org](https://build.opensuse.org),
+   create the package `froxel` in `home:<user>` (or the `OBS_PROJECT`), and add
+   the repositories `openSUSE_Tumbleweed` and `15.6` for x86_64 and aarch64.
+2. Set `OBS_USER` and `OBS_PASSWORD`.
+
+### AUR
+
+1. Make an account on [aur.archlinux.org](https://aur.archlinux.org) and add
+   an SSH public key to it; put the private key in `AUR_SSH_KEY`.
+2. Set the variable `PACKAGE_MAINTAINER` to `Name <email>`.
+
+The first push creates `froxel-bin`. `packaging/linux/aur/generate.sh` writes
+the PKGBUILD and the `.SRCINFO` that `makepkg --printsrcinfo` would print.
+
+### Snap Store
+
+1. `snapcraft register froxel`, then
+   `snapcraft export-login --snaps froxel --channels stable,beta -` into
+   `SNAPCRAFT_STORE_CREDENTIALS`.
+
+The snap repacks the tarball on core24 with the GNOME extension (Mesa and
+Vulkan come from it), strictly confined with `home`, `removable-media`,
+`network`, and `network-bind`. Every run builds the amd64 and arm64 snaps as
+`snap-<arch>` artifacts, with or without the secret.
+
+### Flathub
+
+The app id is `com.lonje.Froxel`. The first submission is by hand:
+
+1. Put the verification token Flathub shows into
+   `https://lonje.com/.well-known/org.flathub.VerifiedApps.txt`.
+2. `packaging/flatpak/flathub.sh v<version> <dir>` writes the manifest for the
+   tag and its `cargo-sources.json`. Open a pull request with both against
+   the `new-pr` branch of [flathub/flathub](https://github.com/flathub/flathub),
+   following its submission guide.
+3. Once it is accepted, Flathub makes `flathub/com.lonje.Froxel`. A token with
+   push access to it in `FLATHUB_TOKEN` lets later releases open the update
+   pull request; without it, the `flathub-<version>` artifact holds the files.
+
+The tag has to contain `packaging/linux/com.lonje.Froxel.metainfo.xml`, so
+v0.3.3 and older cannot be submitted. To build locally:
+`packaging/flatpak/flathub.sh --local`, then
+`flatpak-builder --user --install --force-clean build packaging/flatpak/com.lonje.Froxel.yml`.
+The sandbox has `--share=network` for the loopback MCP control port and
+bridges, and `--filesystem=home` because MCP tools take file paths.
+
+### Homebrew
+
+1. Create the public repository `<owner>/homebrew-froxel`.
+2. A fine-grained token with Contents write on it goes in `HOMEBREW_TAP_TOKEN`.
+
+The cask installs the notarized dmg and links `froxel` onto the PATH; the
+formula is the Linux tarball.
+
+### Gentoo, Void, FreeBSD, nixpkgs
+
+These take a pull request by hand from the `recipes-<version>` artifact:
+
+- Gentoo GURU: `gentoo/media-gfx/froxel-bin` (ebuild, thin Manifest,
+  `metadata.xml`), pushed to GURU's `dev` branch once you have GURU access.
+- Void: `void/srcpkgs/froxel/template`, a pull request to
+  [void-linux/void-packages](https://github.com/void-linux/void-packages); test it
+  there with `./xbps-src pkg froxel`.
+- FreeBSD: `freebsd/graphics/froxel`; on FreeBSD run `make makesum` (writes
+  `distinfo`) and `make stage check-plist package`, then file it on
+  [bugs.freebsd.org](https://bugs.freebsd.org).
+- nixpkgs: `nixpkgs/package.nix` goes to `pkgs/by-name/fr/froxel/package.nix`
+  with `src` replaced by `fetchFromGitHub` at the tag and `cargoLock` by
+  `cargoHash`; `nix-build -A froxel` prints the hash to put there.
+

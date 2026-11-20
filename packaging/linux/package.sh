@@ -39,15 +39,20 @@ trap 'rm -rf "$work"' EXIT
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
 
-# The tarball: the binary, the desktop entry, and the icon.
-mkdir -p "$work/$name"
-cp "$bin" README.md LICENSE packaging/linux/froxel.desktop packaging/icons/froxel.png "$work/$name/"
+# The tarball: the binary, the desktop entry, the AppStream metadata, and the
+# icons (froxel.png, and icons/<size>.png for the hicolor theme). The AUR and
+# COPR packages install from it.
+mkdir -p "$work/$name/icons"
+cp "$bin" README.md LICENSE packaging/linux/froxel.desktop packaging/linux/com.lonje.Froxel.metainfo.xml \
+  packaging/icons/froxel.png "$work/$name/"
+cp packaging/icons/hicolor/*.png "$work/$name/icons/"
 tar -C "$work" -czf "$out/$name.tar.gz" "$name"
 
 # The file tree that both packages install.
 root="$work/root"
 install -Dm755 "$bin" "$root/usr/bin/froxel"
 install -Dm644 packaging/linux/froxel.desktop "$root/usr/share/applications/froxel.desktop"
+install -Dm644 packaging/linux/com.lonje.Froxel.metainfo.xml "$root/usr/share/metainfo/com.lonje.Froxel.metainfo.xml"
 for png in packaging/icons/hicolor/*.png; do
   size=$(basename "$png" .png)
   install -Dm644 "$png" "$root/usr/share/icons/hicolor/$size/apps/froxel.png"
@@ -115,6 +120,7 @@ cp -a "$root/." %{buildroot}/
 %doc /usr/share/doc/froxel/README.md
 /usr/bin/froxel
 /usr/share/applications/froxel.desktop
+/usr/share/metainfo/com.lonje.Froxel.metainfo.xml
 /usr/share/icons/hicolor/*/apps/froxel.png
 EOF
 rpmbuild -bb --target "$arch" --define "_topdir $top" "$top/SPECS/froxel.spec"

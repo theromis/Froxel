@@ -4,6 +4,15 @@
 
 ### Added
 
+- Linux channels: a signed apt repository on GitHub Pages, COPR (Fedora,
+  RHEL, EPEL), the openSUSE Build Service, the AUR (`froxel-bin`), the Snap
+  Store, Flathub (`com.lonje.Froxel`), and a Homebrew tap (macOS cask, Linux
+  formula), filled from a published release by `linux-repos.yml`; ebuild,
+  Void template, FreeBSD port, and nixpkgs recipes as an artifact; and a Nix
+  flake (`nix run github:theromis/Froxel`). Linux packages now carry AppStream
+  metadata (`com.lonje.Froxel.metainfo.xml`) and the release tarball the
+  hicolor icons. Not run yet: every channel needs its account and secret
+  (docs/releasing.md, "Linux channels").
 - A Mac App Store build: the `Mac App Store` job of `release.yml` makes a
   sandboxed `Froxel.app` (`packaging/macos/appstore.sh`, App Sandbox
   entitlements in `packaging/macos/Froxel.entitlements`) signed for the store

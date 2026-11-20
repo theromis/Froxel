@@ -66,6 +66,12 @@ Download the file for your system from the
 | Debian 10+, Ubuntu 20.04+, Mint, Pop!_OS (x86_64, aarch64, riscv64) | `froxel-<version>-linux-<arch>.deb` | `sudo apt install ./froxel-*.deb` adds the menu entry and icon. |
 | Fedora, RHEL, CentOS Stream, Rocky, Alma 8+, openSUSE (x86_64, aarch64, riscv64) | `froxel-<version>-linux-<arch>.rpm` | `sudo dnf install ./froxel-*.rpm` (openSUSE: `sudo zypper install ./froxel-*.rpm`). |
 | Arch and any other Linux | `froxel-<version>-linux-<arch>.tar.gz` | Unpack and run `froxel`. Needs glibc 2.28 or newer (2.39 for riscv64). |
+| Ubuntu, Debian with automatic updates | — | Add the apt repository: the commands are on [theromis.github.io/Froxel](https://theromis.github.io/Froxel/). |
+| Fedora, RHEL 8+ with automatic updates | — | `sudo dnf copr enable theromis/froxel && sudo dnf install froxel` |
+| Arch, Manjaro | — | `yay -S froxel-bin` (AUR) |
+| Any Linux | — | `flatpak install flathub com.lonje.Froxel` or `sudo snap install froxel`, once the stores accept it. |
+| macOS and Linux with Homebrew | — | `brew install --cask theromis/froxel/froxel` (macOS) or `brew install theromis/froxel/froxel` (Linux). |
+| NixOS and Nix | — | `nix run github:theromis/Froxel` |
 | FreeBSD (x86_64) | `froxel-<version>-freebsd-x86_64.tar.gz` | |
 | Android 7.0+ (arm64) | `froxel-<version>-android-arm64.apk` | Open it on the phone. Android asks once to allow installs from the browser or file manager. |
 | Android 7.0+ from F-Droid, the Amazon Appstore, or the Galaxy Store | — | Coming: the same app, updated by the store. F-Droid builds it from source and signs it with its own key, so it does not update an install from the APK or another store. |

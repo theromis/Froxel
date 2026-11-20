@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Froxel for Linux</title>
+<style>
+  :root { --bg: #fafaf9; --fg: #1c1917; --muted: #57534e; --code: #f0efed; --link: #1d4ed8; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1c1917; --fg: #f5f5f4; --muted: #a8a29e; --code: #292524; --link: #93c5fd; }
+  }
+  body { background: var(--bg); color: var(--fg); font: 16px/1.55 system-ui, sans-serif; margin: 0; padding: 32px 16px; }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; }
+  p.lead { color: var(--muted); margin-top: 0; }
+  h2 { margin-top: 32px; font-size: 1.15rem; }
+  pre { background: var(--code); padding: 12px 14px; border-radius: 8px; overflow-x: auto; font-size: 14px; }
+  a { color: var(--link); }
+</style>
+</head>
+<body>
+<main>
+<h1>Froxel for Linux</h1>
+<p class="lead">A voxel editor with a path tracer and an MCP server.
+<a href="https://github.com/theromis/Froxel">Source and other systems</a>.</p>
+
+<h2>Debian, Ubuntu, Mint, Pop!_OS (apt)</h2>
+<pre>sudo curl -fsSLo /usr/share/keyrings/froxel.gpg @BASE@/froxel.gpg
+echo "deb [signed-by=/usr/share/keyrings/froxel.gpg] @BASE@ stable main" \
+  | sudo tee /etc/apt/sources.list.d/froxel.list
+sudo apt update &amp;&amp; sudo apt install froxel</pre>
+<p>Updates come with <code>sudo apt upgrade</code>. Debian 10+ and Ubuntu 20.04+, on x86_64, ARM64, and RISC-V.</p>
+
+<h2>Fedora, RHEL, CentOS Stream, Rocky, Alma (dnf)</h2>
+<pre>sudo dnf copr enable @COPR@
+sudo dnf install froxel</pre>
+<p><code>copr</code> comes with <code>dnf-plugins-core</code>. Fedora, and RHEL 8+ and its rebuilds, on x86_64 and ARM64.</p>
+
+<h2>Arch, Manjaro (AUR)</h2>
+<pre>yay -S froxel-bin</pre>
+
+<h2>Any distribution</h2>
+<pre>flatpak install flathub com.lonje.Froxel
+sudo snap install froxel</pre>
+<p>Or download a <code>.deb</code>, <code>.rpm</code>, or <code>.tar.gz</code> from the
+<a href="https://github.com/theromis/Froxel/releases/latest">latest release</a>.</p>
+</main>
+</body>
+</html>

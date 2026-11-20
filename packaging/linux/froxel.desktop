@@ -6,3 +6,5 @@ Exec=froxel %f
 Icon=froxel
 Terminal=false
 Categories=Graphics;3DGraphics;
+Keywords=voxel;vox;MagicaVoxel;3D;
+StartupWMClass=Froxel

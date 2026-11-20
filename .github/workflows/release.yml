@@ -94,6 +94,13 @@ jobs:
               exit 1
             fi
           fi
+          # Flathub, GNOME Software, and KDE Discover read the release list from the
+          # AppStream metadata in the tagged tree.
+          metainfo=packaging/linux/com.lonje.Froxel.metainfo.xml
+          if [ "$prerelease" = false ] && ! grep -q "<release version=\"$version\"" "$metainfo"; then
+            echo "::error::$metainfo has no <release version=\"$version\" date=\"YYYY-MM-DD\"> at the top of <releases>"
+            exit 1
+          fi
           if [ "$SUBMIT_REVIEW" = true ] && { [ "$UPLOAD_STORES" != true ] || [ "$prerelease" = true ]; }; then
             echo "::error::submit-review needs upload-stores and a release version, not $version"
             exit 1

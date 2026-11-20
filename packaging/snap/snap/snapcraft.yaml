@@ -1,0 +1,55 @@
+# The Snap Store package. It repacks the release tarball: the publish workflow
+# (.github/workflows/linux-repos.yml) unpacks froxel-<version>-linux-<arch>.tar.gz
+# into packaging/snap/froxel, copies the icon to snap/gui/froxel.png, sets
+# `version`, and builds on an amd64 and an arm64 runner.
+name: froxel
+title: Froxel
+base: core24
+version: "0" # set by the publish workflow
+summary: Voxel editor with a path tracer and an MCP server
+description: |
+  Froxel is a voxel editor for MagicaVoxel .vox models. Sculpt with brushes,
+  lines, boxes, and faces, rig models into parts with bones and clips, and see
+  them in a GPU path tracer. It imports glTF and OBJ meshes, exports glTF, and
+  its MCP server (`froxel mcp`) lets an AI agent build and edit models.
+
+  Files outside your home folder and removable media are not reachable from
+  the snap.
+license: MIT
+website: https://github.com/theromis/Froxel
+source-code: https://github.com/theromis/Froxel
+issues: https://github.com/theromis/Froxel/issues
+icon: snap/gui/froxel.png
+grade: stable
+confinement: strict
+
+platforms:
+  amd64:
+  arm64:
+
+apps:
+  froxel:
+    command: bin/froxel
+    common-id: com.lonje.Froxel
+    extensions: [gnome]
+    plugs:
+      - home
+      - removable-media
+      # The MCP control port and the Godot and Blender bridges listen on loopback.
+      - network
+      - network-bind
+
+parts:
+  froxel:
+    plugin: dump
+    source: froxel
+    organize:
+      froxel: bin/froxel
+      com.lonje.Froxel.metainfo.xml: usr/share/metainfo/com.lonje.Froxel.metainfo.xml
+    stage:
+      - bin/froxel
+      - usr/share/metainfo/com.lonje.Froxel.metainfo.xml
+    stage-packages:
+      - libvulkan1
+      - libxkbcommon0
+      - libxkbcommon-x11-0
