@@ -329,11 +329,10 @@ jobs:
             cp -R port/graphics/froxel /usr/ports/graphics/froxel
             cd /usr/ports/graphics/froxel
             make BATCH=yes makesum
-            status=0
-            portlint -AC || status=$?
             make BATCH=yes install-missing-packages
             make BATCH=yes DEVELOPER=yes stage stage-qa check-plist package
             "$(make -V STAGEDIR)$(make -V PREFIX)/bin/froxel" --help | head -n 1
+            make clean
             cp distinfo "$ws/port/graphics/froxel/"
             # The new port as one commit against the ports tree, SUBDIR kept sorted.
             cd /usr/ports
@@ -341,6 +340,9 @@ jobs:
               graphics/Makefile >graphics/Makefile.new
             mv graphics/Makefile.new graphics/Makefile
             git add graphics/Makefile graphics/froxel
+            # portlint wants the port clean and under git, as it would be committed.
+            status=0
+            (cd graphics/froxel && portlint -AC) || status=$?
             git -c user.name=Froxel -c user.email=noreply@github.com commit -qm "graphics/froxel: New port: voxel editor with a path tracer"
             mkdir -p "$ws/out"
             git format-patch -1 --stdout >"$ws/out/froxel-new-port.patch"

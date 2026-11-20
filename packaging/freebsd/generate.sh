@@ -6,7 +6,8 @@
 #
 #   packaging/freebsd/generate.sh <version> <ports-dir>
 #
-# MAINTAINER_EMAIL is the port maintainer the ports tree requires. GH_TAGNAME
+# MAINTAINER_EMAIL is the port maintainer (default ports@FreeBSD.org, the
+# ports tree's address for a port nobody maintains). GH_TAGNAME
 # builds that commit instead of the tag v<version> (to test a port before the
 # release is tagged; <version> should then be the commit's Cargo.toml version).
 set -euo pipefail
@@ -38,7 +39,7 @@ DISTVERSIONPREFIX=	v
 DISTVERSION=	$version
 CATEGORIES=	graphics
 
-MAINTAINER=	${MAINTAINER_EMAIL:-MAINTAINER_EMAIL}
+MAINTAINER=	${MAINTAINER_EMAIL:-ports@FreeBSD.org}
 COMMENT=	Voxel editor with a path tracer and an MCP server
 WWW=		https://github.com/theromis/Froxel
 
