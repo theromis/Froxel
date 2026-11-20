@@ -213,7 +213,8 @@ jobs:
           Invoke-RestMethod -Uri https://get.scoop.sh -OutFile install-scoop.ps1
           ./install-scoop.ps1 -RunAsAdmin
           $env:Path = "$env:USERPROFILE\scoop\shims;$env:Path"
-          scoop install dist/channels/scoop/froxel.json
+          # A full path: Scoop reads a relative one as <bucket>/<app>.
+          scoop install (Resolve-Path dist/channels/scoop/froxel.json).Path
           if ($LASTEXITCODE) { throw "scoop install failed ($LASTEXITCODE)" }
           cmd /c "froxel --help 2>&1" | Select-Object -First 1
           if ($LASTEXITCODE) { throw "froxel --help failed ($LASTEXITCODE)" }

@@ -464,7 +464,10 @@ jobs:
       - name: Manifest and cargo sources for the tag
         run: |
           set -euo pipefail
-          pip install --user aiohttp tomlkit
+          # A venv: flathub.sh runs the generator with python3 -I, which skips user site-packages.
+          python3 -m venv "$RUNNER_TEMP/venv"
+          . "$RUNNER_TEMP/venv/bin/activate"
+          pip install aiohttp tomlkit
           REPOSITORY_URL="https://github.com/$GITHUB_REPOSITORY.git" packaging/flatpak/flathub.sh "$TAG" flathub
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
