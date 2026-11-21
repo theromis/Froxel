@@ -20,7 +20,13 @@ UIScene, and winit 0.30 has none (eframe 0.37 needs winit 0.30).
   at creation (`window.rs`). `event_loop.rs` registers the class before
   `UIApplicationMain`.
 - The examples and tests are left out of the copy and its `Cargo.toml`.
+- `winit/src/platform_impl/macos/window_delegate.rs`: `set_blur` is a no-op,
+  and `ffi.rs` no longer declares `CGSMainConnectionID` and
+  `CGSSetWindowBackgroundBlurRadius`. Upstream calls that private API for
+  every window, and Mac App Store review rejects the binary for it
+  (guideline 2.5.1).
 
 `Cargo.toml` points at these copies through `[patch.crates-io]`. Drop the
 eframe and egui-wgpu copies once upstream sizes the surface the same way,
-and the winit copy once eframe moves to a winit with UIScene support.
+and the winit copy once eframe moves to a winit with UIScene support and
+without the private blur call.
