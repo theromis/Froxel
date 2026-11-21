@@ -606,6 +606,10 @@ later ones are merged by their bots once validation passes.
    opens the pull request from the fork).
 2. Save it as the `WINGET_TOKEN` secret.
 
+Set up on 2026-11-20: a classic token of `theromis` with `public_repo`,
+expiring 2027-11-20 (renew it then; a copy is in `secrets/microsoft`). The
+first pull request, for 0.3.4, is microsoft/winget-pkgs#485518.
+
 ### Scoop
 
 The bucket is this repository's `bucket/` folder, not a repository of its
