@@ -93,8 +93,9 @@ The `Mac App Store` job builds a second, sandboxed `Froxel.app` on `macos-26`
 with `packaging/macos/appstore.sh`: the same universal binary and bundle id
 `com.lonje.froxel`, the App Sandbox entitlements in
 `packaging/macos/Froxel.entitlements` (user-selected files read-write,
-app-scoped bookmarks, network server and client for the loopback `--control`
-port and the bridge), the profile's application and team identifiers,
+and app-scoped bookmarks; no network entitlements, so `--control`, `froxel mcp`
+`--connect` and `--launch`, and the bridge fail with a hint to use the dmg or
+Homebrew build), the profile's application and team identifiers,
 `CFBundleVersion` from `packaging/build_number.sh`,
 `LSApplicationCategoryType` graphics-design, `ITSAppUsesNonExemptEncryption`
 false, an asset catalog icon, and the privacy manifest. `productbuild` wraps

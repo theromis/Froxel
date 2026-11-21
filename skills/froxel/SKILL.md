@@ -18,6 +18,8 @@ Access, the server is the sandboxed Mac App Store build: it reads and writes
 only its container and folders the user granted. Ask the user to choose
 **File > Grant Folder Access…** in the Froxel window for that folder, then
 `reload` (a headless server) and call the tool again; do not guess other paths.
+The Mac App Store build also cannot use a port: `--connect`, `--launch`, and
+the Godot/Blender bridge need the Froxel from the dmg or Homebrew.
 
 If a tool that Froxel's docs or a recent commit mention is missing, the
 server is older than the binary: call `reload` (the server re-executes the

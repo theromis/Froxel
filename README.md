@@ -57,7 +57,7 @@ Download the file for your system from the
 | System | File | Notes |
 |---|---|---|
 | macOS 11+ (Apple silicon and Intel) | `froxel-<version>-macos-universal.dmg` | Signed and notarized. Drag Froxel to Applications. |
-| macOS 11+ from the Mac App Store | — | Coming: the same app in the App Sandbox. MCP tools reach only folders granted with **File > Grant Folder Access…** ([details](docs/mcp.md#mac-app-store-build)). |
+| macOS 11+ from the Mac App Store | — | Coming: the same app in the App Sandbox. MCP tools reach only folders granted with **File > Grant Folder Access…**, and there is no control port or bridge ([details](docs/mcp.md#mac-app-store-build)). |
 | Windows (x64, x86, ARM64) | `froxel-<version>-windows-<arch>.zip` | Not signed yet ([why](CODE_SIGNING.md)). SmartScreen may ask once: choose **More info → Run anyway**. Windows 11 with Smart App Control on blocks it outright. |
 | Windows 10 1809+ with winget | — | `winget install Lonje.Froxel`, once the package is accepted into winget. The same zip, with `froxel` on the PATH. |
 | Windows with Scoop | — | `scoop bucket add froxel https://github.com/theromis/Froxel` then `scoop install froxel`. |

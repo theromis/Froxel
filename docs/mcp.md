@@ -132,11 +132,11 @@ and the window are different documents.
 
 The Mac App Store Froxel runs in the App Sandbox; the dmg, Homebrew, and every
 other build do not. Its binary is `/Applications/Froxel.app/Contents/MacOS/froxel`,
-and `froxel mcp`, `--connect`, and `--launch` work as above with that path as
-the `command`. The control port and the token stay on loopback and inside the
-app's container (`~/Library/Containers/com.lonje.froxel/Data`, which is `HOME`
-and `TMPDIR` for every sandboxed process), so a client must be the same app's
-binary; another Froxel's `froxel mcp` cannot read the token.
+and `froxel mcp` works as above with that path as the `command`, on its own
+document. It cannot open a port, so `--control`, `--connect`, and `--launch`
+(and the bridge) fail with a hint; use the dmg or Homebrew Froxel to drive the
+window. Its `HOME` and `TMPDIR` are the app's container
+(`~/Library/Containers/com.lonje.froxel/Data`).
 
 Tools that take a path reach only:
 

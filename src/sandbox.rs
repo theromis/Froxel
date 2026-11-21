@@ -76,6 +76,18 @@ pub fn summary() -> Option<String> {
     ))
 }
 
+/// Fails in the sandbox, where the store build has no network entitlements:
+/// the control port (`--control`, `froxel mcp --connect` and `--launch`) and
+/// the bridge need the Froxel from the dmg or Homebrew.
+pub fn check_port(what: &str) -> std::io::Result<()> {
+    if active() {
+        return Err(std::io::Error::other(format!(
+            "the Mac App Store build of Froxel cannot use the {what} port; use the Froxel from the dmg or Homebrew"
+        )));
+    }
+    Ok(())
+}
+
 /// An error message with a hint when the sandbox is the likely cause.
 pub fn explain(message: &str) -> String {
     if !active() || !denied(message) {

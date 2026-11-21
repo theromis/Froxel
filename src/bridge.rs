@@ -70,6 +70,7 @@ impl BridgeServer {
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(&root, fs::Permissions::from_mode(0o700))?;
         }
+        crate::sandbox::check_port("bridge")?;
         let listener = TcpListener::bind(("127.0.0.1", port))?;
         let port = listener.local_addr()?.port();
         let session_path = root.join("session.json");

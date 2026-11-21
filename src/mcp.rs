@@ -154,6 +154,7 @@ fn parse_args(args: &[String]) -> Result<Option<Options>, String> {
 }
 
 fn prepare_remote(addr: &str, launch: bool) -> io::Result<()> {
+    crate::sandbox::check_port("control")?;
     if probe(addr) {
         return Ok(());
     }

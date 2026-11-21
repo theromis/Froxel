@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Changed
+
+- The Mac App Store build has no network entitlements, as App Review asked:
+  `--control`, `froxel mcp --connect` and `--launch`, and the Godot/Blender
+  bridge say to use the dmg or Homebrew Froxel. Headless `froxel mcp` works
+  as before.
+
+### Fixed
+
+- The macOS window no longer calls the private
+  `CGSSetWindowBackgroundBlurRadius` (from winit), which App Review rejects.
+
 ## 0.3.4 – 2026-11-20
 
 ### Added

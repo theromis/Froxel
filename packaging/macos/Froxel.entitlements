@@ -7,9 +7,10 @@
   - user-selected.read-write: files and folders picked in an open or save panel.
   - bookmarks.app-scope: security-scoped bookmarks, so recent files and the folders
     granted with File > Grant Folder Access… stay reachable after a relaunch.
-  - network.server: the MCP control port (the control option) and the Godot/Blender bridge
-    (the bridge option), both bound to 127.0.0.1.
-  - network.client: froxel mcp with its connect and launch options reaching that port.
+  - No network entitlements. App Review rejected network.server for a loopback port
+    that only a command-line option opens, so the control port (and with it froxel mcp
+    connect and launch) and the Godot/Blender bridge are left to the dmg and Homebrew
+    builds; sandbox::check_port says so.
 
   appstore.sh adds com.apple.application-identifier and
   com.apple.developer.team-identifier from the provisioning profile.
@@ -19,7 +20,5 @@
   <key>com.apple.security.app-sandbox</key><true/>
   <key>com.apple.security.files.user-selected.read-write</key><true/>
   <key>com.apple.security.files.bookmarks.app-scope</key><true/>
-  <key>com.apple.security.network.server</key><true/>
-  <key>com.apple.security.network.client</key><true/>
 </dict>
 </plist>

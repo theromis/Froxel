@@ -29,6 +29,7 @@ pub struct ControlServer {
 
 impl ControlServer {
     pub fn start(port: u16) -> io::Result<Self> {
+        crate::sandbox::check_port("control")?;
         let listener = TcpListener::bind(("127.0.0.1", port))?;
         let port = listener.local_addr()?.port();
         let token = issue(port)?;
@@ -157,6 +158,7 @@ pub struct ControlClient {
 
 impl ControlClient {
     pub fn connect(addr: &str) -> io::Result<Self> {
+        crate::sandbox::check_port("control")?;
         let port = addr
             .rsplit(':')
             .next()
