@@ -82,10 +82,12 @@ Distribution certificate `44N4TNRZPJ` (expires 2027-11-20), the profile
 `H79LZWF5F8` "Froxel Mac App Store" with the Apple Distribution certificate
 `39LYAR27BK`, both identities in `MAS_CERTIFICATE` (and
 `secrets/macos/mas-certificates.p12`), and the macOS version 0.3.4 with its
-description, two 1440x900 screenshots, and review notes. The first run built
-and signed the pkg; its upload waits for a run with the fixed launch check
-(a store-signed app is killed when it is started before Apple re-signs it,
-so the job checks it with `codesign --verify` instead).
+description, two 1440x900 screenshots, and review notes. Build 30499 was
+uploaded by the job and submitted for review on 2026-11-20. China mainland is
+off in the app's availability (it would need a security assessment and an
+AIGC filing there). A store-signed app is killed when it is started before
+Apple re-signs it, so the job checks it with `codesign --verify` instead of
+running it.
 
 The `Mac App Store` job builds a second, sandboxed `Froxel.app` on `macos-26`
 with `packaging/macos/appstore.sh`: the same universal binary and bundle id
