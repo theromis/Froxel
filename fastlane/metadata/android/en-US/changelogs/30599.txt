@@ -1,0 +1,2 @@
+• Fix: the Mac App Store build no longer uses a private window API.
+• Mac App Store build: no network entitlements; the control port and the bridge are in the dmg and Homebrew builds.

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.5 – 2026-11-21
+
 ### Changed
 
 - The Mac App Store build has no network entitlements, as App Review asked:
