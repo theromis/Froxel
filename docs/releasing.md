@@ -82,8 +82,11 @@ Distribution certificate `44N4TNRZPJ` (expires 2027-11-20), the profile
 `H79LZWF5F8` "Froxel Mac App Store" with the Apple Distribution certificate
 `39LYAR27BK`, both identities in `MAS_CERTIFICATE` (and
 `secrets/macos/mas-certificates.p12`), and the macOS version 0.3.4 with its
-description, two 1440x900 screenshots, and review notes. Build 30499 was
-uploaded by the job and submitted for review on 2026-11-20. China mainland is
+description, two 1440x900 screenshots, and review notes. Build 30499 (0.3.4)
+was submitted on 2026-11-20 and rejected on 2026-11-21 for winit's private
+`CGSSetWindowBackgroundBlurRadius` (2.5.1) and the `network.server`
+entitlement (2.4.5); both are gone, and the same version, renamed 0.3.5 with
+build 30599, was resubmitted that day. China mainland is
 off in the app's availability (it would need a security assessment and an
 AIGC filing there). A store-signed app is killed when it is started before
 Apple re-signs it, so the job checks it with `codesign --verify` instead of
