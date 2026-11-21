@@ -1,0 +1,10 @@
+<!-- The openSUSE Build Service package's source service. OBS runs it when
+     the linux-repos.yml job triggers it with a runservice token: it fetches
+     froxel.spec from the latest GitHub release, then the tarballs that the
+     spec's Source lines name. The package holds only this file. -->
+<services>
+  <service name="download_url">
+    <param name="url">https://github.com/theromis/Froxel/releases/latest/download/froxel.spec</param>
+  </service>
+  <service name="download_files"/>
+</services>

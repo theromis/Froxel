@@ -83,7 +83,7 @@ jobs:
             echo "snap=$(on snap ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS != '' }})"
             echo "flathub_files=$(on flathub true)"
             echo "flathub=$(on flathub ${{ secrets.FLATHUB_TOKEN != '' }})"
-            echo "obs=$(on obs ${{ secrets.OBS_PASSWORD != '' }})"
+            echo "obs=$(on obs ${{ secrets.OBS_TOKEN != '' }})"
             echo "homebrew=$(on homebrew ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY != '' }})"
             echo "recipes=$(on recipes true)"
             echo "freebsd=$(on freebsd true)"
@@ -179,41 +179,38 @@ jobs:
     needs: assets
     if: needs.assets.outputs.obs == 'true' && needs.assets.outputs.prerelease != 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 15
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: linux-release
           path: dist
-      - name: Commit the spec and tarballs
+      # The OBS package's _service (packaging/linux/obs/_service) fetches
+      # froxel.spec from the latest release and the tarballs its Source lines
+      # name. The job attaches the spec and runs that service with a
+      # runservice token, so no account password is stored.
+      - name: Attach the spec to the release
         env:
-          OBS_USER: ${{ secrets.OBS_USER }}
-          OBS_PASSWORD: ${{ secrets.OBS_PASSWORD }}
-          OBS_PROJECT: ${{ vars.OBS_PROJECT || format('home:{0}', secrets.OBS_USER) }}
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.assets.outputs.tag }}
           VERSION: ${{ needs.assets.outputs.version }}
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends rpm osc
+          sudo apt-get install -y --no-install-recommends rpm
           packaging/linux/copr/make-srpm.sh "$VERSION" dist srpm
-          mkdir -p ~/.config/osc
-          umask 077
-          cat >~/.config/osc/oscrc <<EOF
-          [general]
-          apiurl = https://api.opensuse.org
-          [https://api.opensuse.org]
-          user = $OBS_USER
-          pass = $OBS_PASSWORD
-          credentials_mgr_class = osc.credentials.PlaintextConfigFileCredentialsManager
-          EOF
-          osc checkout "$OBS_PROJECT" froxel -o obs
-          rm -f obs/*.tar.gz obs/froxel.spec
-          cp srpm/froxel.spec dist/froxel-"$VERSION"-linux-*.tar.gz obs/
-          cd obs
-          osc addremove
-          osc commit -m "Update to $VERSION"
-          rm ~/.config/osc/oscrc
+          gh release upload "$TAG" srpm/froxel.spec --clobber
+      - name: Run the OBS source service
+        env:
+          OBS_TOKEN: ${{ secrets.OBS_TOKEN }}
+          OBS_PROJECT: ${{ vars.OBS_PROJECT || format('home:{0}', secrets.OBS_USER) }}
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST -H "Authorization: Token $OBS_TOKEN" \
+            "https://api.opensuse.org/trigger/runservice?project=$OBS_PROJECT&package=froxel"
 
   homebrew:
     name: Homebrew tap
