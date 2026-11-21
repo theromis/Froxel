@@ -51,42 +51,25 @@ animation clips. An AI agent can drive all of it through the built-in
 
 ## Install
 
-Download the file for your system from the
-[latest release](https://github.com/theromis/Froxel/releases/latest).
+| System | Install |
+|---|---|
+| macOS 11+ | `brew install --cask theromis/froxel/froxel`, or the signed and notarized `.dmg` |
+| Windows 10 1809+ | [Microsoft Store](https://apps.microsoft.com/detail/9NZZHD2J1JJZ), or `scoop bucket add froxel https://github.com/theromis/Froxel` then `scoop install froxel` |
+| Debian, Ubuntu | Froxel's apt repository ([commands](docs/installation.md#debian-ubuntu-mint-pop_os)), or the `.deb` |
+| Fedora, RHEL 8+ | `sudo dnf copr enable theromis/froxel && sudo dnf install froxel` |
+| openSUSE | Froxel's OBS repository ([commands](docs/installation.md#opensuse)) |
+| Any Linux | `sudo snap install froxel`, `brew install theromis/froxel/froxel`, `nix run github:theromis/Froxel`, or the `.tar.gz` |
+| FreeBSD | the `.tar.gz` |
+| Android 7.0+ | [Google Play](https://play.google.com/store/apps/details?id=com.lonje.froxel), or the `.apk` |
+| Godot 4.3+, Blender 4.2+ | the add-on zips ([Godot and Blender](#godot-and-blender)) |
 
-| System | File | Notes |
-|---|---|---|
-| macOS 11+ (Apple silicon and Intel) | `froxel-<version>-macos-universal.dmg` | Signed and notarized. Drag Froxel to Applications. |
-| macOS 11+ from the Mac App Store | — | Coming: the same app in the App Sandbox. MCP tools reach only folders granted with **File > Grant Folder Access…**, and there is no control port or bridge ([details](docs/mcp.md#mac-app-store-build)). |
-| Windows (x64, x86, ARM64) | `froxel-<version>-windows-<arch>.zip` | Not signed yet ([why](CODE_SIGNING.md)). SmartScreen may ask once: choose **More info → Run anyway**. Windows 11 with Smart App Control on blocks it outright. |
-| Windows 10 1809+ with winget | — | `winget install Lonje.Froxel`, once the package is accepted into winget. The same zip, with `froxel` on the PATH. |
-| Windows with Scoop | — | `scoop bucket add froxel https://github.com/theromis/Froxel` then `scoop install froxel`. |
-| Windows with Chocolatey | — | `choco install froxel`, once it passes moderation (prereleases: `--pre`). |
-| Windows 10 1809+ from the Microsoft Store | — | Coming: the same app as an MSIX the Store signs, so SmartScreen does not ask. `froxel` works in a terminal and `.vox` files open in it. |
-| Debian 10+, Ubuntu 20.04+, Mint, Pop!_OS (x86_64, aarch64, riscv64) | `froxel-<version>-linux-<arch>.deb` | `sudo apt install ./froxel-*.deb` adds the menu entry and icon. |
-| Fedora, RHEL, CentOS Stream, Rocky, Alma 8+, openSUSE (x86_64, aarch64, riscv64) | `froxel-<version>-linux-<arch>.rpm` | `sudo dnf install ./froxel-*.rpm` (openSUSE: `sudo zypper install ./froxel-*.rpm`). |
-| Arch and any other Linux | `froxel-<version>-linux-<arch>.tar.gz` | Unpack and run `froxel`. Needs glibc 2.28 or newer (2.39 for riscv64). |
-| Ubuntu, Debian with automatic updates | — | Add the apt repository: the commands are on [theromis.github.io/Froxel](https://theromis.github.io/Froxel/). |
-| Fedora, RHEL 8+ with automatic updates | — | `sudo dnf copr enable theromis/froxel && sudo dnf install froxel` |
-| Arch, Manjaro | — | `yay -S froxel-bin` (AUR) |
-| Any Linux | — | `flatpak install flathub com.lonje.Froxel` or `sudo snap install froxel`, once the stores accept it. |
-| macOS and Linux with Homebrew | — | `brew install --cask theromis/froxel/froxel` (macOS) or `brew install theromis/froxel/froxel` (Linux). |
-| NixOS and Nix | — | `nix run github:theromis/Froxel` |
-| FreeBSD (x86_64) | `froxel-<version>-freebsd-x86_64.tar.gz` | |
-| Android 7.0+ (arm64) | `froxel-<version>-android-arm64.apk` | Open it on the phone. Android asks once to allow installs from the browser or file manager. |
-| Android 7.0+ from F-Droid, the Amazon Appstore, or the Galaxy Store | — | Coming: the same app, updated by the store. F-Droid builds it from source and signs it with its own key, so it does not update an install from the APK or another store. |
-| iOS 16+ simulator | `froxel-<version>-ios-simulator.zip` | Unzip and drag `Froxel.app` onto a booted simulator. The device build goes to the App Store. |
-| Godot 4.3+ plugin | `froxel-<version>-godot-addon.zip` | Unzip into the project folder. See [Godot and Blender](#godot-and-blender). |
-| Blender 4.2+ extension | `froxel-<version>-blender-addon.zip` | Preferences → Get Extensions → Install from Disk. |
-
-Each release will also go to [itch.io](https://theromis.itch.io/froxel)
-(Windows, macOS, Linux, and Android; the itch app installs and updates it) and
-to Steam (Windows, macOS, and Linux, first on a beta branch) once their store
-pages open.
-
-Linux needs a Vulkan driver (Mesa or the GPU vendor's); the packages pull in
-the Vulkan loader. Every release has a `SHA256SUMS.txt`. How the builds are signed is in
-[CODE_SIGNING.md](CODE_SIGNING.md).
+Files are on the [latest release](https://github.com/theromis/Froxel/releases/latest)
+with a `SHA256SUMS.txt`. Froxel is not in any distribution's own repositories
+yet: `apt` and `dnf` find it only after Froxel's repository is added.
+[docs/installation.md](docs/installation.md) has every channel and system,
+what is still in review (Mac App Store, iOS App Store, winget, Chocolatey), and
+how the builds are signed ([CODE_SIGNING.md](CODE_SIGNING.md)). Linux needs a
+Vulkan driver (Mesa or the GPU vendor's).
 
 Try it on the frog, [`examples/frog.vox`](examples/frog.vox), or on the scripted
 lily pad, [`tests/fixtures/examples/lily_pad.vox`](tests/fixtures/examples/lily_pad.vox).
