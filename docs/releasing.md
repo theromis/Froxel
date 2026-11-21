@@ -612,7 +612,9 @@ later ones are merged by their bots once validation passes.
 
 Set up on 2026-11-20: a classic token of `theromis` with `public_repo`,
 expiring 2027-11-20 (renew it then; a copy is in `secrets/microsoft`). The
-first pull request, for 0.3.4, is microsoft/winget-pkgs#485518.
+first pull request, for 0.3.4 (microsoft/winget-pkgs#485518), was closed in
+favour of the 0.3.5 one, microsoft/winget-pkgs#485839, so the new package has
+one pull request in review.
 
 ### Scoop
 
