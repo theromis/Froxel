@@ -843,8 +843,14 @@ jobs:
           OUT="$PWD/dist/stage" packaging/macos/appstore.sh \
             target/aarch64-apple-darwin/release/froxel \
             target/x86_64-apple-darwin/release/froxel
-          # The sandbox must not keep the binary from starting.
-          dist/stage/Froxel.app/Contents/MacOS/froxel --help >/dev/null
+          # The sandbox must not keep the binary from starting. A build signed
+          # for the store is killed on launch until Apple re-signs it, so only
+          # the ad-hoc build runs; the store build is checked by its signature.
+          if [ -z "${SIGN_IDENTITY:-}" ]; then
+            dist/stage/Froxel.app/Contents/MacOS/froxel --help >/dev/null
+          else
+            codesign --verify --strict --deep dist/stage/Froxel.app
+          fi
           if [ -n "${INSTALLER_IDENTITY:-}" ]; then
             cp "dist/stage/froxel-$VERSION-macos.pkg" dist/store/
             echo "Mac App Store: signed as $SIGN_IDENTITY, build $(packaging/build_number.sh "$VERSION")" >>"$GITHUB_STEP_SUMMARY"
