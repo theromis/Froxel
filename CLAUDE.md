@@ -179,7 +179,8 @@ until all of these exist. (User decision, 2026-11-02.)
 Before dispatching `release.yml`, set `version` in `Cargo.toml` (and the
 `froxel` entry in `Cargo.lock`) to the release version, move the `Unreleased`
 entries of `CHANGELOG.md` under that version, add its `<release>` to
-`packaging/linux/com.lonje.Froxel.metainfo.xml`, commit, and push. Then run
+`packaging/linux/com.lonje.Froxel.metainfo.xml`, set `version_code` and its
+F-Droid changelog, run `python3 tools/sync_versions.py`, commit, and push. Then run
 `gh workflow run release.yml` without `-f version`, so the build takes the
 version from `Cargo.toml` and the binary reports the same one
 (`docs/releasing.md`).
