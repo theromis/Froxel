@@ -320,6 +320,14 @@ docker run --rm -v "$PWD:/repo" registry.gitlab.com/fdroid/fdroidserver:buildser
   fdroid build -v -l com.lonje.froxel
 ```
 
+Status: the recipe for 0.3.4 is pushed to the `froxel` branch of the fork
+`theromis/fdroiddata`, and the merge request is not open yet. F-Droid's
+inclusion policy asks for an app developed for at least three months, and
+Froxel's first commit is 2026-10-24, so the merge request waits until after
+2027-01-24. Before opening it, rebase the branch on fdroiddata, point the
+recipe at the latest release, and say in the description that Froxel and the
+recipe were written with AI assistants.
+
 The dependency tree for Android has no prebuilt binaries and no non-free
 code (no Google Play Services; wgpu, winit, egui, and the `vendor/` patches
 are all source). The only binary in the tree, the test fixture
