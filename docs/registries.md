@@ -12,7 +12,7 @@ fails when one is behind (see [releasing.md](releasing.md)).
 | Glama | `glama.json`, `Dockerfile` | Automatic (Glama reads the repository) | Listed and claimed by `theromis` (2026-11-20) |
 | mcp.so | — | Nothing | Not yet done: web form, paid |
 | Smithery | — | — | Not applicable: closed to new servers |
-| Blender Extensions | `blender/froxel_bridge/blender_manifest.toml` | Upload the release's `blender-addon.zip` | Not yet done: the account needs multi-factor authentication before the first upload |
+| Blender Extensions | `blender/froxel_bridge/blender_manifest.toml` | None | Not listed: the site takes add-ons only under GPL-3.0-or-later, and the add-on stays MIT (owner's decision, 2026-11-20); users install the release's `blender-addon.zip` |
 | Godot Asset Library | `godot/addons/froxel_bridge`, `tools/godot_assetlib.py` | Run `tools/godot_assetlib.py` | Submitted 2026-11-20 (edit 25040), waiting for moderation |
 | Godot Asset Store (beta) | the same zip | Upload the zip | Not yet done: optional, needs an account |
 
@@ -160,7 +160,11 @@ blender --command extension validate blender/froxel_bridge
 blender --command extension build --source-dir blender/froxel_bridge --output-dir dist
 ```
 
-First upload, not yet done:
+Not listed there. extensions.blender.org refuses an add-on whose `license`
+is not GPL-3.0-or-later ("license for add-ons must be GPL v3.0 or later"),
+and the add-on stays MIT, so it is installed from the release's zip (Blender,
+Preferences, Get Extensions, Install from Disk). If that changes, the upload
+went like this:
 
 1. Sign in at https://extensions.blender.org with a Blender ID.
 2. **Upload Extension**, and choose the release's

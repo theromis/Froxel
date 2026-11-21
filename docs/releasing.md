@@ -639,8 +639,6 @@ the official MCP Registry with GitHub OIDC; pre-releases are skipped. The
 Claude Code plugin is read from `main`, so it needs nothing beyond the version
 bump. Then, by hand:
 
-- Blender Extensions: upload the release's `froxel-<version>-blender-addon.zip`
-  as a new version of the extension.
 - Godot Asset Library:
   `python3 tools/godot_assetlib.py --asset-id <id> --version <version>`
   (with `GODOT_ASSETLIB_USER` and `GODOT_ASSETLIB_PASSWORD`), then wait for a
