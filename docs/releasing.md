@@ -77,10 +77,15 @@ Keys, with the Developer role.
 
 ## Mac App Store
 
-Not run yet: the job and the upload are written, but no store certificate,
-profile, or macOS App Store Connect platform exists yet, so neither has run
-with Apple credentials. Only the ad-hoc path (below) has been checked, on a
-local build.
+Set up on 2026-11-20 through the App Store Connect API: the Mac Installer
+Distribution certificate `44N4TNRZPJ` (expires 2027-11-20), the profile
+`H79LZWF5F8` "Froxel Mac App Store" with the Apple Distribution certificate
+`39LYAR27BK`, both identities in `MAS_CERTIFICATE` (and
+`secrets/macos/mas-certificates.p12`), and the macOS version 0.3.4 with its
+description, two 1440x900 screenshots, and review notes. The first run built
+and signed the pkg; its upload waits for a run with the fixed launch check
+(a store-signed app is killed when it is started before Apple re-signs it,
+so the job checks it with `codesign --verify` instead).
 
 The `Mac App Store` job builds a second, sandboxed `Froxel.app` on `macos-26`
 with `packaging/macos/appstore.sh`: the same universal binary and bundle id
@@ -656,7 +661,7 @@ Prereleases go only to the Snap Store's `beta` channel.
 |---|---|---|---|
 | apt on GitHub Pages | the commands on `https://theromis.github.io/Froxel/` | `APT_GPG_PRIVATE_KEY`, optional `APT_GPG_PASSPHRASE` | `packaging/linux/apt` |
 | COPR | `sudo dnf copr enable theromis/froxel && sudo dnf install froxel` | `COPR_CONFIG`; variable `COPR_PROJECT` (default `theromis/froxel`) | `packaging/linux/copr` |
-| openSUSE Build Service | `zypper addrepo` of the project's repository | `OBS_USER`, `OBS_PASSWORD`; variable `OBS_PROJECT` (default `home:<user>`) | `packaging/linux/copr` (the same spec) |
+| openSUSE Build Service | `zypper addrepo` of the project's repository | `OBS_TOKEN`, `OBS_USER`; variable `OBS_PROJECT` (default `home:<user>`) | `packaging/linux/copr` (the same spec), `packaging/linux/obs/_service` |
 | AUR | `yay -S froxel-bin` | `AUR_SSH_KEY`; variable `PACKAGE_MAINTAINER` | `packaging/linux/aur` |
 | Snap Store | `sudo snap install froxel` | `SNAPCRAFT_STORE_CREDENTIALS` | `packaging/snap` |
 | Flathub | `flatpak install flathub com.lonje.Froxel` | `FLATHUB_TOKEN` | `packaging/flatpak` |
@@ -668,9 +673,9 @@ Set up on 2026-11-20: the apt repository (key in `secrets/linux`), COPR
 `theromis/froxel` (Fedora 43–45 and rawhide, EPEL 8–10; the `COPR_CONFIG`
 token expires on 2027-05-19, renew it from <https://copr.fedorainfracloud.org/api/>),
 OBS `home:theromis/froxel` (Tumbleweed x86_64, Tumbleweed ARM as
-`openSUSE_Factory_ARM`, Leap 16.0 and 15.6 for x86_64 and aarch64; `OBS_USER`
-set, `OBS_PASSWORD` set by the owner; the package must not have `scmsync` in its
-meta, or OBS refuses the upload), and the Homebrew tap. Not yet: the Snap name
+`openSUSE_Factory_ARM`, Leap 16.0 and 15.6 for x86_64 and aarch64; token
+13232 in `OBS_TOKEN` and `secrets/linux/obs-token`; the package holds only the
+`_service` and must not have `scmsync` in its meta), and the Homebrew tap. Not yet: the Snap name
 (`snapcraft register froxel`, then `export-login`), the AUR (registration is
 closed), and Flathub (needs a release with the metainfo).
 
@@ -708,7 +713,17 @@ access.
 1. Make an account on [build.opensuse.org](https://build.opensuse.org),
    create the package `froxel` in `home:<user>` (or the `OBS_PROJECT`), and add
    the repositories `openSUSE_Tumbleweed` and `15.6` for x86_64 and aarch64.
-2. Set `OBS_USER` and `OBS_PASSWORD`.
+2. Add `packaging/linux/obs/_service` to the package as its only file (the
+   web editor, or `osc add`); it fetches `froxel.spec` from the latest
+   release and the tarballs that the spec's Source lines name.
+3. Profile, Tokens: create a token of type `service` for the package and put
+   it in `OBS_TOKEN`; set `OBS_USER` (it only names the default project).
+
+The job attaches the filled-in `froxel.spec` to the release, then triggers
+the service with the token (`/trigger/runservice`), so no account password is
+stored. OBS takes only Basic auth from `osc`, not SSH keys, which is why the
+upload goes through the service. The service always reads the latest
+release, so a rerun for an older tag rebuilds the latest one.
 
 ### AUR
 

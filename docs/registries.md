@@ -9,11 +9,11 @@ fails when one is behind (see [releasing.md](releasing.md)).
 |---|---|---|---|
 | Claude Code plugin marketplace | `.claude-plugin/marketplace.json`, `.claude-plugin/plugin.json` | Nothing: users get the version on `main` | Live once pushed |
 | Official MCP Registry | `server.json`, `Dockerfile`, `.github/workflows/mcp-registry.yml` | Automatic on a published release | Not yet run; needs a first release with the workflow and a public GHCR package |
-| Glama | `glama.json`, `Dockerfile` | Automatic (Glama reads the repository) | Not yet done: add the server on the web |
+| Glama | `glama.json`, `Dockerfile` | Automatic (Glama reads the repository) | Listed and claimed by `theromis` (2026-11-20) |
 | mcp.so | — | Nothing | Not yet done: web form, paid |
 | Smithery | — | — | Not applicable: closed to new servers |
-| Blender Extensions | `blender/froxel_bridge/blender_manifest.toml` | Upload the release's `blender-addon.zip` | Not yet done: needs an account and the first upload |
-| Godot Asset Library | `godot/addons/froxel_bridge`, `tools/godot_assetlib.py` | Run `tools/godot_assetlib.py` | Not yet done: needs an account and the first submission |
+| Blender Extensions | `blender/froxel_bridge/blender_manifest.toml` | Upload the release's `blender-addon.zip` | Not yet done: the account needs multi-factor authentication before the first upload |
+| Godot Asset Library | `godot/addons/froxel_bridge`, `tools/godot_assetlib.py` | Run `tools/godot_assetlib.py` | Submitted 2026-11-20 (edit 25040), waiting for moderation |
 | Godot Asset Store (beta) | the same zip | Upload the zip | Not yet done: optional, needs an account |
 
 ## Claude Code plugin marketplace
