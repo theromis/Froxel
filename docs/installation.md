@@ -196,7 +196,8 @@ Not on Flathub yet; the submission is planned. Once it is accepted:
 FreeBSD 15.1 or newer on x86_64 (the build machine's release). Download `froxel-<version>-freebsd-x86_64.tar.gz`,
 unpack it, and run `froxel`. It needs `vulkan-loader`, `libxkbcommon`, and
 `wayland` (`pkg install vulkan-loader libxkbcommon wayland`). A port,
-`graphics/froxel`, is being submitted to the ports tree; after that it will be
+`graphics/froxel`, is in review for the ports tree
+([PR 301031](https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=301031)); after that it will be
 `pkg install froxel`.
 
 ## Android

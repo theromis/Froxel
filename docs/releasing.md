@@ -800,7 +800,14 @@ These take a pull request by hand from the `recipes-<version>` artifact:
   there with `./xbps-src pkg froxel`.
 - FreeBSD: `freebsd/graphics/froxel`; on FreeBSD run `make makesum` (writes
   `distinfo`) and `make stage check-plist package`, then file it on
-  [bugs.freebsd.org](https://bugs.freebsd.org).
+  [bugs.freebsd.org](https://bugs.freebsd.org). The `FreeBSD port` job of
+  `linux-repos.yml` does all of that in a FreeBSD VM and uploads
+  `freebsd-port-<version>`, whose `out/froxel-new-port.patch` is the patch to
+  attach (set its `From:` to the maintainer first). The Bugzilla account
+  (`theromis@gmail.com`) was created on request by bugmeister@FreeBSD.org. The new port, at 0.3.5, is
+  [PR 301031](https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=301031); a
+  later version goes into that report as a new attachment until it is
+  committed, then as an update PR.
 - nixpkgs: `nixpkgs/package.nix` goes to `pkgs/by-name/fr/froxel/package.nix`
   with `src` replaced by `fetchFromGitHub` at the tag and `cargoLock` by
   `cargoHash`; `nix-build -A froxel` prints the hash to put there.
