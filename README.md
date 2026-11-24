@@ -16,6 +16,10 @@ macOS, Windows, Linux, FreeBSD, Android, and iOS.
 <a href="#build-from-source">Build</a>
 </p>
 
+<p align="center">
+<a href="https://glama.ai/mcp/servers/theromis/Froxel"><img src="https://glama.ai/mcp/servers/theromis/Froxel/badges/score.svg" alt="theromis/Froxel MCP server"></a>
+</p>
+
 ![Froxel editing the frog: tools and palette on the left, the viewport with its skeleton, the inspector and the objects on the right](docs/images/editor.jpg)
 
 Froxel opens and saves MagicaVoxel `.vox` files, edits them with brushes, shapes,

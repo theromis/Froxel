@@ -10,6 +10,7 @@ fails when one is behind (see [releasing.md](releasing.md)).
 | Claude Code plugin marketplace | `.claude-plugin/marketplace.json`, `.claude-plugin/plugin.json` | Nothing: users get the version on `main` | Live once pushed |
 | Official MCP Registry | `server.json`, `Dockerfile`, `.github/workflows/mcp-registry.yml` | Automatic on a published release | Not yet run; needs a first release with the workflow and a public GHCR package |
 | Glama | `glama.json`, `Dockerfile` | Automatic (Glama reads the repository) | Listed and claimed by `theromis` (2026-11-20) |
+| awesome-mcp-servers | README Glama badge | Nothing | PR punkpeye/awesome-mcp-servers#17543 (branch `add-froxel` of `theromis/awesome-mcp-servers`); Glama badge added to the entry and the README 2026-11-23, waiting for review |
 | mcp.so | — | Nothing | Not yet done: web form, paid |
 | Smithery | — | — | Not applicable: closed to new servers |
 | Blender Extensions | `blender/froxel_bridge/blender_manifest.toml` | None | Not listed: the site takes add-ons only under GPL-3.0-or-later, and the add-on stays MIT (owner's decision, 2026-11-20); users install the release's `blender-addon.zip` |
