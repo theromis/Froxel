@@ -34,7 +34,8 @@ fixtures and their generator in `tests/fixtures/mesh`). `preview.rs` is the fast
 operation registry: `OPS` in `ops/mod.rs` names every MCP tool, its
 `remote::apply` method, its annotation hints, and whether it takes `batch`,
 `space`, and `mirror`; `ops/schema.rs` is each tool's argument schema. MCP
-`tools/list`, the tool-to-method map, `control.methods`, and the argument
+`tools/list`, the tool-to-method map, `control.methods`, `froxel run`
+(any tool from the command line, with `--list` and `<tool> --help`), and the argument
 check at the top of `remote::apply` (for MCP, the control port, the CLI,
 Rhai, and the panels alike) all read it. `mcp.rs`,
 `remote.rs`, and `control.rs` are the MCP server and the `--control` port;
