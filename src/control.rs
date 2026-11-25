@@ -8,12 +8,24 @@ use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
+
+/// The longest request line. A longer one closes the connection; nothing
+/// past this is buffered.
+const MAX_LINE: usize = 16 * 1024 * 1024;
+/// A connection has this long, in all, to send its first request with the
+/// token. A silent or trickling peer is dropped after it.
+const AUTH_DEADLINE: Duration = Duration::from_secs(5);
+/// An authenticated connection may sit idle this long between requests.
+const IDLE_TIMEOUT: Duration = Duration::from_secs(600);
+/// Connections served at once; one past this is closed at accept.
+const MAX_CONNECTIONS: usize = 16;
 
 pub struct Job {
     pub method: String,
@@ -69,16 +81,79 @@ fn accept_loop(
     tx: Sender<Job>,
     wake: Arc<Mutex<Option<egui::Context>>>,
 ) {
+    let open = Arc::new(AtomicUsize::new(0));
     for conn in listener.incoming() {
         let Ok(conn) = conn else { continue };
+        if open.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
+            open.fetch_sub(1, Ordering::SeqCst);
+            drop(conn);
+            continue;
+        }
         let token = token.clone();
         let tx = tx.clone();
         let wake = wake.clone();
+        let open = open.clone();
         thread::spawn(move || {
             if let Err(err) = serve_conn(conn, &token, &tx, &wake) {
                 eprintln!("control connection: {err}");
             }
+            open.fetch_sub(1, Ordering::SeqCst);
         });
+    }
+}
+
+/// Whether two tokens are equal, in time that depends only on their length.
+pub(crate) fn same_token(given: &str, token: &str) -> bool {
+    let (given, token) = (given.as_bytes(), token.as_bytes());
+    given.len() == token.len()
+        && given
+            .iter()
+            .zip(token)
+            .fold(0u8, |diff, (a, b)| diff | (a ^ b))
+            == 0
+}
+
+/// One line from `reader` without its newline, or `None` at the end.
+/// Nothing past `max` bytes is buffered, and with a `deadline` every read
+/// waits only for what is left of it, so a peer that trickles bytes cannot
+/// outlast it.
+pub(crate) fn read_line_within(
+    reader: &mut BufReader<TcpStream>,
+    max: usize,
+    deadline: Option<Instant>,
+) -> io::Result<Option<Vec<u8>>> {
+    let mut line = Vec::new();
+    loop {
+        if let Some(deadline) = deadline {
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                return Err(io::ErrorKind::TimedOut.into());
+            }
+            reader.get_ref().set_read_timeout(Some(left))?;
+        }
+        let buffer = match reader.fill_buf() {
+            Ok(buffer) => buffer,
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
+            Err(err) => return Err(err),
+        };
+        if buffer.is_empty() {
+            return Ok((!line.is_empty()).then_some(line));
+        }
+        let (taken, done) = match buffer.iter().position(|&byte| byte == b'\n') {
+            Some(end) => (end, true),
+            None => (buffer.len(), false),
+        };
+        if line.len() + taken > max {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "line too long"));
+        }
+        line.extend_from_slice(&buffer[..taken]);
+        reader.consume(taken + usize::from(done));
+        if done {
+            if line.last() == Some(&b'\r') {
+                line.pop();
+            }
+            return Ok(Some(line));
+        }
     }
 }
 
@@ -88,22 +163,32 @@ fn serve_conn(
     tx: &Sender<Job>,
     wake: &Mutex<Option<egui::Context>>,
 ) -> io::Result<()> {
-    conn.set_read_timeout(Some(Duration::from_secs(600)))?;
     let mut write = conn.try_clone()?;
-    let reader = BufReader::new(conn);
-    for line in reader.lines() {
-        let line = match line {
-            Ok(line) => line,
+    let mut reader = BufReader::new(conn);
+    let mut deadline = Some(Instant::now() + AUTH_DEADLINE);
+    loop {
+        let line = match read_line_within(&mut reader, MAX_LINE, deadline) {
+            Ok(Some(line)) => line,
+            Ok(None) => break,
+            Err(err) if err.kind() == io::ErrorKind::InvalidData => {
+                let _ = writeln!(write, r#"{{"id":null,"ok":false,"error":"line too long"}}"#);
+                break;
+            }
+            Err(err)
+                if deadline.is_some()
+                    && matches!(
+                        err.kind(),
+                        io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                    ) =>
+            {
+                break;
+            }
             Err(err) => return Err(err),
         };
-        if line.trim().is_empty() {
+        if line.iter().all(u8::is_ascii_whitespace) {
             continue;
         }
-        if line.len() > 16 * 1024 * 1024 {
-            let _ = writeln!(write, r#"{{"id":null,"ok":false,"error":"line too long"}}"#);
-            break;
-        }
-        let msg: Value = match serde_json::from_str::<Value>(&line) {
+        let msg: Value = match serde_json::from_slice::<Value>(&line) {
             Ok(msg) if msg.is_object() && msg.get("method").and_then(Value::as_str).is_some() => {
                 msg
             }
@@ -117,10 +202,13 @@ fn serve_conn(
         };
         let id = msg.get("id").cloned().unwrap_or(Value::Null);
         let given = msg.get("token").and_then(Value::as_str).unwrap_or("");
-        if given != token {
+        if !same_token(given, token) {
             let reply = json!({"id": id, "ok": false, "error": "unauthorized: missing or invalid control token"});
             writeln!(write, "{reply}")?;
-            continue;
+            break;
+        }
+        if deadline.take().is_some() {
+            reader.get_ref().set_read_timeout(Some(IDLE_TIMEOUT))?;
         }
         let method = msg["method"].as_str().unwrap().to_string();
         let params = msg.get("params").cloned().unwrap_or(json!({}));
@@ -164,14 +252,17 @@ impl ControlClient {
             .next()
             .and_then(|p| p.parse::<u16>().ok())
             .ok_or_else(|| io::Error::other(format!("no port in {addr}")))?;
+        let socket: std::net::SocketAddr = addr
+            .parse()
+            .map_err(|e| io::Error::other(format!("{addr}: {e}")))?;
+        // The token goes to whatever answers: only this machine may.
+        if !socket.ip().is_loopback() {
+            return Err(io::Error::other(format!(
+                "{addr} is not a loopback address; the control port listens on 127.0.0.1"
+            )));
+        }
         let token = read_token(port)?;
-        let stream = TcpStream::connect_timeout(
-            &addr
-                .parse()
-                .map_err(|e| io::Error::other(format!("{addr}: {e}")))?,
-            Duration::from_secs(5),
-        )
-        .map_err(|e| {
+        let stream = TcpStream::connect_timeout(&socket, Duration::from_secs(5)).map_err(|e| {
             io::Error::other(format!(
                 "Froxel is not answering at {addr} ({e}). Open it with `froxel --control {port}`"
             ))
@@ -234,10 +325,16 @@ fn issue(port: u16) -> io::Result<String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
+        // A stale file or a link someone left in its place is removed, and
+        // the token goes only into a file this process creates, owner-only.
+        match fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+            Err(err) => return Err(err),
+        }
         let mut file = fs::OpenOptions::new()
             .write(true)
-            .create(true)
-            .truncate(true)
+            .create_new(true)
             .mode(0o600)
             .open(&path)?;
         file.write_all(token.as_bytes())?;

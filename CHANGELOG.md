@@ -12,6 +12,19 @@
 - glTF buffers and images and OBJ `mtllib` and `map_Kd` must be paths
   relative to the mesh; an absolute path, a drive letter, or a URI scheme is
   refused (a warning for OBJ).
+- The `--control` port reads at most 16 MiB a line without buffering past
+  it, gives a connection 5 s in all to authenticate, closes it on a wrong
+  token, serves at most 16 at once, and compares tokens in constant time.
+  `froxel mcp --connect` sends its token only to a loopback address. The
+  token file is created anew, owner-only, instead of rewritten in place.
+- The Godot/Blender bridge serves up to 8 clients at once, so a connected
+  Godot no longer locks Blender out, and the 5 s to authenticate is a
+  deadline rather than a per-read timeout. A wrong protocol version and a
+  wrong token have their own errors, and the session directory name no
+  longer contains part of the token.
+- MCP `reload` hands its state over in a new owner-only directory with a
+  random name, in files it creates owner-only, not at a predictable path in
+  the shared temporary folder.
 
 ## 0.3.5 – 2026-11-21
 

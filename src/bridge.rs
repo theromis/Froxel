@@ -11,7 +11,7 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -25,8 +25,10 @@ use crate::state::Session;
 pub const DEFAULT_PORT: u16 = 29771;
 const MAX_FRAME: usize = 65_536;
 const KEPT_RESULTS: usize = 8;
-/// A connection has this long to send a request that passes the token check.
-/// Until then a silent peer would hold the one client slot.
+/// Clients served at once. Each one has its own thread.
+const MAX_CLIENTS: usize = 8;
+/// A connection has this long, in all, to send a request that passes the
+/// token check. Until then a silent or trickling peer holds a client slot.
 const AUTH_TIMEOUT: Duration = Duration::from_secs(5);
 /// Every script of one evaluate shares `SCRIPT_TIMEOUT`. The reply wait adds
 /// this much for a job queued behind the editor and for the glTF export, so
@@ -62,7 +64,9 @@ impl BridgeServer {
 
     fn launch(port: u16, auth_timeout: Duration, reply_timeout: Duration) -> io::Result<Self> {
         let token = random_token()?;
-        let root = std::env::temp_dir().join(format!("froxel-bridge-{}", &token[..16]));
+        // The directory name is its own random value: a listing of a shared
+        // temp directory reveals nothing of the token.
+        let root = std::env::temp_dir().join(format!("froxel-bridge-{}", &random_token()?[..16]));
         let _guard = DirGuard(root.clone());
         fs::create_dir(&root)?;
         #[cfg(unix)]
@@ -671,8 +675,12 @@ fn json_i64(value: &Value) -> Option<i64> {
 
 fn parse_request(msg: &Value, token: &str, last_id: i64) -> Result<(i64, Op), String> {
     let version_ok = msg.get("v").and_then(json_i64) == Some(1);
-    if !version_ok || msg.get("token").and_then(Value::as_str) != Some(token) {
-        return Err("invalid version or token".into());
+    if !version_ok {
+        return Err("unsupported protocol version; this Froxel speaks v 1".into());
+    }
+    let given = msg.get("token").and_then(Value::as_str).unwrap_or("");
+    if !crate::control::same_token(given, token) {
+        return Err("invalid token".into());
     }
     let Some(id) = msg.get("id").and_then(json_i64).filter(|id| *id >= 0) else {
         return Err("invalid id".into());
@@ -733,6 +741,7 @@ fn accept_loop(
     wake: Arc<Mutex<Option<egui::Context>>>,
     shutdown: Arc<AtomicBool>,
 ) {
+    let open = Arc::new(AtomicUsize::new(0));
     loop {
         if shutdown.load(Ordering::Relaxed) {
             break;
@@ -743,8 +752,35 @@ fn accept_loop(
         if shutdown.load(Ordering::Relaxed) {
             break;
         }
-        if let Err(err) = serve_conn(conn, &token, auth_timeout, reply_timeout, &tx, &wake) {
-            eprintln!("bridge connection: {err}");
+        // Each client is served on its own thread, so Godot holding its
+        // connection open does not lock Blender (or a second editor) out.
+        if open.fetch_add(1, Ordering::SeqCst) >= MAX_CLIENTS {
+            open.fetch_sub(1, Ordering::SeqCst);
+            let mut conn = conn;
+            let _ = write_json(
+                &mut conn,
+                &error_body(
+                    -1,
+                    &format!("the bridge already serves {MAX_CLIENTS} clients"),
+                ),
+            );
+            continue;
+        }
+        let token = token.clone();
+        let tx = tx.clone();
+        let wake = wake.clone();
+        let held = open.clone();
+        let spawned = thread::Builder::new()
+            .name("froxel-bridge-client".into())
+            .spawn(move || {
+                if let Err(err) = serve_conn(conn, &token, auth_timeout, reply_timeout, &tx, &wake)
+                {
+                    eprintln!("bridge connection: {err}");
+                }
+                held.fetch_sub(1, Ordering::SeqCst);
+            });
+        if spawned.is_err() {
+            open.fetch_sub(1, Ordering::SeqCst);
         }
     }
 }
@@ -764,7 +800,15 @@ fn serve_conn(
     let mut chunk = [0u8; 8192];
     let mut last_id = -1i64;
     let mut authenticated = false;
+    let deadline = std::time::Instant::now() + auth_timeout;
     loop {
+        if !authenticated {
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            if left.is_zero() {
+                break;
+            }
+            conn.set_read_timeout(Some(left))?;
+        }
         let read = match conn.read(&mut chunk) {
             Ok(0) => break,
             Ok(n) => n,

@@ -1366,7 +1366,15 @@ impl Session {
     /// The Compare panel's button: MCP `compare_silhouette` to a PNG in the
     /// temporary folder, then shown over the viewport.
     pub fn compare_from_panel(&mut self) {
-        let out = std::env::temp_dir().join("froxel-compare-silhouette.png");
+        // A random name, kept for the process, so another local user cannot
+        // plant a link there and each press overwrites the same overlay.
+        static TAG: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+        let tag = *TAG.get_or_init(|| {
+            let mut tag = [0u8; 8];
+            let _ = getrandom::fill(&mut tag);
+            u64::from_le_bytes(tag)
+        });
+        let out = std::env::temp_dir().join(format!("froxel-compare-silhouette-{tag:016x}.png"));
         let args = match self
             .silhouette
             .compare

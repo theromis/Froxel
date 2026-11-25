@@ -889,7 +889,10 @@ pub(crate) fn check_round_trip(path: &std::path::Path) -> Result<(), String> {
     for line in &failures {
         eprintln!("voxrt: FAIL: {line}");
     }
-    let kept = std::env::temp_dir().join("froxel-voxrt.vox");
+    let mut tag = [0u8; 8];
+    let _ = getrandom::fill(&mut tag);
+    let tag = u64::from_le_bytes(tag);
+    let kept = std::env::temp_dir().join(format!("froxel-voxrt-{tag:016x}.vox"));
     let _ = std::fs::write(&kept, &bytes);
     Err(format!(
         "voxrt: {} failure(s); round-trip file kept at {}",

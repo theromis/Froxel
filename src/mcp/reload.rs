@@ -88,20 +88,87 @@ impl Plan {
         if let Some(document) = &self.document {
             let _ = std::fs::remove_file(document);
         }
+        if let Some(dir) = self.state.parent() {
+            let _ = std::fs::remove_dir(dir);
+        }
     }
+}
+
+/// A new owner-only directory for one reload, under a random name, so no
+/// other local user can read the unsaved document or plant the state the
+/// new process trusts.
+fn private_dir() -> Result<PathBuf, String> {
+    let mut bytes = [0u8; 16];
+    getrandom::fill(&mut bytes).map_err(|err| format!("reload: {err}"))?;
+    let name: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    let dir = std::env::temp_dir().join(format!("froxel-mcp-reload-{name}"));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&dir)
+            .map_err(|err| format!("could not create {}: {err}", dir.display()))?;
+    }
+    #[cfg(not(unix))]
+    std::fs::create_dir(&dir)
+        .map_err(|err| format!("could not create {}: {err}", dir.display()))?;
+    Ok(dir)
+}
+
+/// Remove the reload directory `file` was in, once it is empty. Only a
+/// directory [`private_dir`] would have made is touched.
+fn remove_reload_dir(file: &Path) {
+    if let Some(dir) = file.parent() {
+        let ours = dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("froxel-mcp-reload-"));
+        if ours {
+            let _ = std::fs::remove_dir(dir);
+        }
+    }
+}
+
+/// Write `bytes` to a file this call creates, owner-only. A file already
+/// there is replaced only by removing it first, so a link is never followed.
+fn write_private(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let failed = |err: std::io::Error| format!("could not write {}: {err}", path.display());
+    match std::fs::remove_file(path) {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => return Err(failed(err)),
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    use std::io::Write;
+    options
+        .open(path)
+        .and_then(|mut file| file.write_all(bytes))
+        .map_err(failed)
 }
 
 /// Write the state the new process resumes from: the document (headless
 /// only) and `protocolVersion`.
 pub fn save(session: &mut Session, headless: bool, version: &str) -> Result<Plan, String> {
     let exe = exe().map_err(|err| format!("this server's binary: {err}"))?;
-    let dir = std::env::temp_dir();
-    let id = std::process::id();
-    let document = if headless {
-        let path = dir.join(format!("froxel-mcp-reload-{id}.vox"));
-        let bytes = session.export_bytes()?;
-        std::fs::write(&path, bytes)
-            .map_err(|err| format!("could not write {}: {err}", path.display()))?;
+    let bytes = if headless {
+        Some(session.export_bytes()?)
+    } else {
+        None
+    };
+    let dir = private_dir()?;
+    let document = if let Some(bytes) = bytes {
+        let path = dir.join("document.vox");
+        if let Err(err) = write_private(&path, &bytes) {
+            let _ = std::fs::remove_dir(&dir);
+            return Err(err);
+        }
         Some(path)
     } else {
         None
@@ -123,14 +190,17 @@ pub fn save(session: &mut Session, headless: bool, version: &str) -> Result<Plan
         "unsaved": headless && session.has_unsaved_changes(),
         "pending": [],
     });
-    let path = dir.join(format!("froxel-mcp-reload-{id}.json"));
-    std::fs::write(&path, state.to_string())
-        .map_err(|err| format!("could not write {}: {err}", path.display()))?;
-    Ok(Plan {
+    let path = dir.join("state.json");
+    let plan = Plan {
         exe,
         state: path,
         document,
-    })
+    };
+    if let Err(err) = write_private(&plan.state, state.to_string().as_bytes()) {
+        plan.clean_up();
+        return Err(err);
+    }
+    Ok(plan)
 }
 
 /// Hand over to the new binary with the input read past the request.
@@ -141,7 +211,7 @@ pub fn exec(plan: &Plan, args: &[String], pending: &[u8]) -> String {
         .and_then(|text| serde_json::from_str::<Value>(&text).map_err(|err| err.to_string()))
         .and_then(|mut state| {
             state["pending"] = json!(pending);
-            std::fs::write(&plan.state, state.to_string()).map_err(|err| err.to_string())
+            write_private(&plan.state, state.to_string().as_bytes())
         });
     if let Err(err) = result {
         return format!("could not hand over the state: {err}");
@@ -188,6 +258,7 @@ pub fn resume(path: &Path, session: &mut Session) -> Result<Resumed, String> {
     let text = std::fs::read_to_string(path)
         .map_err(|err| format!("reload state {}: {err}", path.display()))?;
     let _ = std::fs::remove_file(path);
+    remove_reload_dir(path);
     let state: Value = serde_json::from_str(&text).map_err(|err| format!("reload state: {err}"))?;
     if state["version"] != 1 {
         return Err(format!(
@@ -198,6 +269,7 @@ pub fn resume(path: &Path, session: &mut Session) -> Result<Resumed, String> {
     if let Some(document) = state["document"].as_str() {
         let bytes = std::fs::read(document).map_err(|err| format!("{document}: {err}"));
         let _ = std::fs::remove_file(document);
+        remove_reload_dir(Path::new(document));
         session.import_bytes(&bytes?)?;
         session.path = state["path"].as_str().map(PathBuf::from);
         session.name_hint = state["nameHint"].as_str().map(str::to_string);
