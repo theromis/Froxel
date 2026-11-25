@@ -31,6 +31,7 @@ pub(crate) fn load_vox(bytes: &[u8]) -> Result<Loaded, String> {
     let mut scripts = None;
     let mut markers = None;
     let mut scene_shift = None;
+    let mut warnings = Vec::new();
 
     while p + 12 <= end {
         let id = read_id(bytes, &mut p)?;
@@ -44,6 +45,13 @@ pub(crate) fn load_vox(bytes: &[u8]) -> Result<Loaded, String> {
             return Err("chunk extends past MAIN".into());
         }
         let body = &bytes[p..p + content];
+        // A Froxel chunk from a newer version is left out with a warning,
+        // so an older Froxel still opens the voxels of a newer file.
+        if let Some(note) = newer_chunk(&id, body) {
+            warnings.push(note);
+            p += content + children;
+            continue;
+        }
         if &id == b"SIZE" {
             if body.len() != 12 {
                 return Err("SIZE chunk has the wrong length".into());
@@ -272,6 +280,26 @@ pub(crate) fn load_vox(bytes: &[u8]) -> Result<Loaded, String> {
         skeleton,
         clips: clips.unwrap_or_default(),
         markers,
+        warnings,
+    })
+}
+
+/// The newest version of each Froxel chunk this build reads. `MVOR` is not
+/// here: without it the objects would be centred as an import and land in
+/// the wrong place, so a newer one still refuses the file.
+pub(crate) const CHUNK_VERSIONS: [(&[u8; 4], u32); 4] =
+    [(b"MVRG", 2), (b"MVAN", 3), (b"MVSC", 2), (b"MVMK", 1)];
+
+/// A warning when `id` is a Froxel chunk whose version is newer than this
+/// build reads. The version is the first four bytes of every such chunk.
+fn newer_chunk(id: &[u8; 4], body: &[u8]) -> Option<String> {
+    let (_, newest) = CHUNK_VERSIONS.iter().find(|(known, _)| *known == id)?;
+    let version = u32::from_le_bytes(body.get(..4)?.try_into().ok()?);
+    (version > *newest).then(|| {
+        format!(
+            "{} version {version} is newer than this Froxel reads ({newest}); it was left out, and saving will drop it. Update Froxel to keep it.",
+            String::from_utf8_lossy(id)
+        )
     })
 }
 

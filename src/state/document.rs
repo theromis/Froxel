@@ -182,6 +182,7 @@ impl Session {
             gesture: false,
             undo: Vec::new(),
             undo_pushed: 0,
+            load_warnings: Vec::new(),
             redo: Vec::new(),
             ui_regions: Vec::new(),
             recent: load_recent(),

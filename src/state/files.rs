@@ -98,6 +98,10 @@ impl Session {
         } else {
             format!("Loaded {n} voxels from {file}.")
         };
+        for warning in &self.load_warnings {
+            self.status.push(' ');
+            self.status.push_str(warning);
+        }
         if self
             .objects
             .iter()
@@ -168,6 +172,7 @@ impl Session {
         self.skeleton = loaded.skeleton;
         self.clips = loaded.clips;
         self.markers.clear();
+        self.load_warnings = loaded.warnings;
         if let Some(body) = loaded.markers {
             if let Err(err) = self.decode_markers(&body) {
                 self.status = format!("Markers were not loaded: {err}");

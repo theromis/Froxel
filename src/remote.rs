@@ -1813,6 +1813,7 @@ fn open_summary(session: &Session) -> Value {
         "paletteSlots": palette.as_object().map_or(0, |rows| rows.len()),
         "motionSlots": motion.as_object().map_or(0, |rows| rows.len()),
         "objectNames": names,
+        "warnings": session.load_warnings,
         "moreObjects": session.objects.len().saturating_sub(SUMMARY_OBJECT_NAMES),
     });
     state_scene_shift(session, &mut reply);

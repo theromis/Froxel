@@ -928,6 +928,9 @@ pub struct Session {
     /// Undo steps ever pushed, so a caller can tell how many one call added
     /// even when the history is at its cap.
     undo_pushed: u64,
+    /// What the last opened file left out, such as a chunk from a newer
+    /// Froxel. MCP `open` replies with it as `warnings`.
+    pub(crate) load_warnings: Vec<String>,
     redo: Vec<Snapshot>,
     /// Controls drawn last frame, in paint order. A click hits the last match.
     pub ui_regions: Vec<UiRegion>,

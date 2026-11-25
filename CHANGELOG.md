@@ -23,6 +23,12 @@
   own edges instead of every corner on its plane, so large flat terrain and
   walls export much faster, with the same triangles.
 
+- A `.vox` with an `MVRG`, `MVAN`, `MVSC`, or `MVMK` chunk newer than this
+  Froxel reads opens with that chunk left out, instead of refusing the whole
+  file. The status line and MCP `open_file` `warnings` say what was left out
+  and that a save drops it. A newer `MVOR` still refuses the file, since the
+  objects would land in the wrong place without it.
+
 ### Fixed
 
 - A damaged or hostile `.vox` no longer hangs or exhausts memory: a scene

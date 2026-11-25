@@ -2624,3 +2624,28 @@ fn a_huge_dictionary_count_reserves_only_what_the_bytes_hold() {
     body.extend_from_slice(&u32::MAX.to_le_bytes());
     assert!(parse_trn(&body).is_none());
 }
+
+#[test]
+fn a_chunk_from_a_newer_froxel_is_left_out_and_the_voxels_still_open() {
+    let mut size = Vec::new();
+    for _ in 0..3 {
+        size.extend_from_slice(&1u32.to_le_bytes());
+    }
+    let mut xyzi = Vec::new();
+    xyzi.extend_from_slice(&1u32.to_le_bytes());
+    xyzi.extend_from_slice(&[0, 0, 0, 7]);
+    let mut children = chunk(b"SIZE", &size);
+    children.extend(chunk(b"XYZI", &xyzi));
+    let mut rig = 99u32.to_le_bytes().to_vec();
+    rig.extend_from_slice(b"fields a newer Froxel adds");
+    children.extend(chunk(b"MVRG", &rig));
+    let loaded = load_vox(&wrap_vox(children)).expect("opens");
+    assert_eq!(loaded.objects.len(), 1);
+    assert_eq!(loaded.objects[0].cells.len(), 1);
+    assert_eq!(loaded.warnings.len(), 1);
+    assert!(
+        loaded.warnings[0].contains("MVRG version 99"),
+        "{:?}",
+        loaded.warnings
+    );
+}

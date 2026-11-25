@@ -37,6 +37,8 @@ pub(super) struct Loaded {
     pub(super) clips: Vec<crate::rig::Clip>,
     /// The `MVMK` body, placed once the objects are installed.
     pub(super) markers: Option<Vec<u8>>,
+    /// What was left out of the file, in words, such as a newer chunk.
+    pub(super) warnings: Vec<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
