@@ -1081,7 +1081,15 @@ fn push_anim(
 fn mark_baked(root: &mut Value, info: Value) {
     root["materials"][0]["extensions"] = json!({"KHR_materials_unlit": {}});
     root["materials"][0]["extras"] = json!({ "froxelBake": info });
-    root["extensionsUsed"] = json!(["KHR_materials_unlit"]);
+    // Added to any extensions already declared, never in place of them.
+    let mut used: Vec<Value> = root["extensionsUsed"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    if !used.iter().any(|name| name == "KHR_materials_unlit") {
+        used.push(json!("KHR_materials_unlit"));
+    }
+    root["extensionsUsed"] = Value::Array(used);
 }
 
 /// A grey `COLOR_0` with the baked occlusion on primitive 0 of `mesh`. glTF
