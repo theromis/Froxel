@@ -1,6 +1,9 @@
 # Cargo build output
 target/
 
+# Signing keys and store credentials, per platform. Never committed.
+secrets/
+
 # Local-only test corpus: sample .vox files and scratch renders. Not redistributed.
 test/
 

@@ -1585,7 +1585,10 @@ palette slot. `true` stores a linear `COLOR_0` and no image. The palette
 texture keeps the sRGB bytes. `COLOR_0` is converted with the sRGB transfer
 curve. When any palette slot has motion, every vertex also gets
 `TEXCOORD_1`: x is the sway amount and y is the bob amount, or 0 for a still
-slot. Godot imports that as UV2. A document with no motion omits
+slot. Godot imports that as UV2, which is also where its lightmap baker
+puts lightmap UVs: a mesh with motion cannot be lightmapped in Godot as it
+is, so leave motion off (or regenerate UV2 and lose the motion data) for a
+lightmapped mesh. A document with no motion omits
 `TEXCOORD_1`. `colorAtlas` defaults to false. `true` merges coplanar faces
 whatever their slot and stores each cell's colour in a per-mesh atlas
 texture (nearest filtering, one texel per cell face) that `TEXCOORD_0`
