@@ -761,15 +761,17 @@ fn tools() -> Vec<Value> {
             "b": int_prop("Blue 0..255"),
             "a": int_prop("Alpha 0..255. Defaults to 255, or the alpha of a #rrggbbaa color."),
             "motion": str_prop("none, sway, or bob. Omit to leave the slot's motion."),
-            "motion_amount": num_prop("Motion strength, 0..4. Omit to leave it. Default 1 when a kind is first set."),
-            "entries": {"type": "array", "description": "Batch of {index, color | r,g,b, a?, motion?, motion_amount?}, such as {\"index\": 3, \"color\": \"#5c6838\"}. Omit when passing index."}
+            "motionAmount": num_prop("Motion strength, 0..4. Omit to leave it. Default 1 when a kind is first set."),
+            "motion_amount": num_prop("Older name of motionAmount; still accepted."),
+            "entries": {"type": "array", "description": "Batch of {index, color | r,g,b, a?, motion?, motionAmount?}, such as {\"index\": 3, \"color\": \"#5c6838\"}. Omit when passing index."}
         }), &[]),
         tool("set_active_object", "Edit a different object from inspect_document. Later voxel tools use that object's local cells.", json!({"index": int_prop("Object index")}), &["index"]),
-        tool("add_object", "Add an empty object at a world voxel position and return its index. It becomes active unless make_active is false. size is a local capacity hint; the object still grows up to 256 per axis. One undo step.", json!({
+        tool("add_object", "Add an empty object at a world voxel position and return its index. It becomes active unless makeActive is false. size is a local capacity hint; the object still grows up to 256 per axis. One undo step.", json!({
             "name": str_prop("Object name. Omit for Object N."),
             "position": ivec3_prop("World position [x, y, z] in voxel units. Defaults to [0, 0, 0]."),
             "size": ivec3_prop("Optional SIZE box [x, y, z], each axis 1..=256. Does not cap later growth below the per-object limit."),
-            "make_active": {"type": "boolean", "description": "Select the new object. Defaults to true."}
+            "makeActive": {"type": "boolean", "description": "Select the new object. Defaults to true."},
+            "make_active": {"type": "boolean", "description": "Older name of makeActive; still accepted."}
         }), &[]),
         tool("set_object", "Rename, move, or hide an object. position is a world voxel coordinate; local cells stay put, so the voxels move with the object. One undo step.", json!({
             "index": int_prop("Object index"),

@@ -336,9 +336,9 @@ tracer. A file with no scene graph still loads its first model.
 | `vines` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Vine strands hanging from top edges, graded through `palettes` to the tip, with optional `blooms`. Optional `amount`, `length`, `bloomChance`, `noise`, `faces`, `facing`, `band`, `only`, `exclude`, `seed`. Replies with `added`, `strands`, `blooms`. One undo step |
 | `smooth` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Majority filter in an inclusive box of at most 2000000 cells that keeps colours. Optional `iterations` (1..=8), `fillAt`, `removeAt`. Replies with `filled`, `removed`, `iterations`. One undo step |
 | `get_voxels` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Non-empty **local** cells inside an inclusive box, at most 100000 |
-| `set_palette` | `index` and `color` or `r`, `g`, `b`; or `entries` | Replace one slot, or many via `entries`, as one undo step. `color` is `"#rrggbb"` or `"#rrggbbaa"` (or `[r, g, b, a?]`), as the other tools take colours. `a` defaults to 255. Optional `motion` (`none`, `sway`, `bob`) and `motion_amount` (0..4) |
+| `set_palette` | `index` and `color` or `r`, `g`, `b`; or `entries` | Replace one slot, or many via `entries`, as one undo step. `color` is `"#rrggbb"` or `"#rrggbbaa"` (or `[r, g, b, a?]`), as the other tools take colours. `a` defaults to 255. Optional `motion` (`none`, `sway`, `bob`) and `motionAmount` (0..4; the older `motion_amount` still works) |
 | `set_active_object` | `index` | Edit a different object. Later voxel tools use its local cells |
-| `add_object` | — | Empty object. Optional `name`, world `position` `[x, y, z]` (default `[0, 0, 0]`), `size` `[x, y, z]` (capacity hint, each axis 1..=256), `make_active` (default true). Returns the index. One undo step |
+| `add_object` | — | Empty object. Optional `name`, world `position` `[x, y, z]` (default `[0, 0, 0]`), `size` `[x, y, z]` (capacity hint, each axis 1..=256), `makeActive` (default true; the older `make_active` still works). Returns the index. One undo step |
 | `set_object` | `index` | Optional `name`, world `position`, `hidden`. Moving changes the scene-graph translation, so voxels move in the world. One undo step |
 | `remove_object` | `index` | Remove the object and its voxels. Its bone stays; the binding goes. Later indices decrease by one. Refuses the last object. One undo step |
 | `mirror_object` | `index`, `axis`, `name` | Copy the object mirrored across `x`, `y`, or `z` through the origin. Optional world `position` and `mirrorBones` (default false). Replies with the copy's `index`, `name`, `bones`, and world `position`. One undo step |
@@ -1403,7 +1403,7 @@ eight-digit one.
 ```json
 {"entries": [{"index": 2, "color": "#5c6838"}, {"index": 3, "color": "#685c32"}, {"index": 9, "color": "#78c8ff60"}]}
 ``` Optional `motion` is `none`, `sway`, or `bob`. Optional
-`motion_amount` is a number from 0 to 4. Omit either field to leave it.
+`motionAmount` (formerly `motion_amount`, still accepted) is a number from 0 to 4. Omit either field to leave it.
 A call that changes nothing does not push undo. Motion is stored on the
 slot's material and is one undo step together with the color.
 
@@ -1818,7 +1818,7 @@ an AnimationLibrary on the AnimationPlayer. A document with no clips omits
 the world voxel coordinate of local cell `(0, 0, 0)` and defaults to
 `[0, 0, 0]`. `size` is an optional local SIZE box, each axis `1..=256`. It
 does not stop later edits from growing the object up to the 256-per-axis
-limit. `make_active` defaults to true; `false` leaves the previous object
+limit. `makeActive` defaults to true; `false` leaves the previous object
 active, so `fill_box` still edits that one. `set_object` changes the name,
 the world position, or `hidden`. A new position replaces the translation;
 local cells are not rewritten, and the world bounds move by the same offset.

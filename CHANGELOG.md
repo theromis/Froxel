@@ -29,6 +29,11 @@
   and that a save drops it. A newer `MVOR` still refuses the file, since the
   objects would land in the wrong place without it.
 
+- MCP `add_object` `makeActive` and `set_palette` `motionAmount` (and in
+  Rhai `set_palette`) are spelt in camelCase like every other option. The
+  older `make_active` and `motion_amount` still work; passing both names is
+  an error.
+
 ### Fixed
 
 - A damaged or hostile `.vox` no longer hangs or exhausts memory: a scene

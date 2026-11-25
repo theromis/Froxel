@@ -992,7 +992,8 @@ fn apply_unguarded(session: &mut Session, method: &str, params: &Value) -> Resul
             let name = opt_str(&params, "name")?;
             let position = opt_ivec3(&params, "position")?.unwrap_or([0, 0, 0]);
             let size = opt_ivec3(&params, "size")?;
-            let make_active = opt_bool(&params, "make_active")?.unwrap_or(true);
+            let key = alias(&params, "makeActive", "make_active")?;
+            let make_active = opt_bool(&params, key)?.unwrap_or(true);
             let index = session.add_object(name.as_deref(), position, size, make_active)?;
             Ok(json!({
                 "index": index,
@@ -1674,9 +1675,9 @@ const METHODS: &[(&str, &str, &str)] = &[
     ("marker.collision", "prefix?, layer? | zBands?, minFeature?, holeSize?, only?, exclude?, maxBoxes?, object?", "Collision box markers from an object's solid cells; replaces those of the same prefix on it"),
     ("voxel.smooth", "x0, y0, z0, x1, y1, z1, iterations?, fillAt?, removeAt?", "Majority filter in a box that keeps colours"),
     ("voxel.get_box", "x0, y0, z0, x1, y1, z1", "Non-empty cells inside an inclusive box, at most 100000"),
-    ("palette.set", "index, r, g, b, a?, motion?, motion_amount? | entries", "Replace one slot, or many, as one undo step"),
+    ("palette.set", "index, r, g, b, a?, motion?, motionAmount? | entries", "Replace one slot, or many, as one undo step"),
     ("object.set_active", "index", "Edit a different object. Voxel coordinates stay local to it"),
-    ("object.add", "name?, position?, size?, make_active?", "Empty object at a world position. Active unless make_active is false"),
+    ("object.add", "name?, position?, size?, makeActive?", "Empty object at a world position. Active unless makeActive is false"),
     ("object.set", "index, name?, position?, hidden?", "Rename, move, or hide. position is world voxels; local cells stay put"),
     ("object.remove", "index", "Remove an object and its voxels. Later indices shift. The last object stays"),
     ("voxel.recolor", "from + to | map, x0..z1?, mirror?", "Replace palette slots of the active object's cells (one, or a map of several), in a box or everywhere, with no shape change. One undo step"),
@@ -2929,11 +2930,12 @@ fn one_slot(value: &Value) -> Result<crate::state::PaletteChange, String> {
             Some(crate::state::Motion::parse(text).ok_or("motion must be none, sway, or bob")?)
         }
     };
-    let amount = match opt_f64(value, "motion_amount")? {
+    let key = alias(value, "motionAmount", "motion_amount")?;
+    let amount = match opt_f64(value, key)? {
         None => None,
         Some(number) => {
             if !(0.0..=4.0).contains(&number) {
-                return Err("motion_amount is out of range".into());
+                return Err(format!("{key} is out of range"));
             }
             Some(number as f32)
         }
@@ -3025,6 +3027,16 @@ fn ivec3(value: &Value, key: &str) -> Result<[i32; 3], String> {
         out[axis] = i32::try_from(number).map_err(|_| format!("{key} is out of range"))?;
     }
     Ok(out)
+}
+
+/// The key to read for an option spelt `key`, or `old` from before it was
+/// renamed. Both names still work; passing both is an error.
+pub(crate) fn alias<'a>(value: &Value, key: &'a str, old: &'a str) -> Result<&'a str, String> {
+    match (value.get(key).is_some(), value.get(old).is_some()) {
+        (true, true) => Err(format!("pass {key} or {old} (its older name), not both")),
+        (false, true) => Ok(old),
+        _ => Ok(key),
+    }
 }
 
 fn opt_bool(value: &Value, key: &str) -> Result<Option<bool>, String> {

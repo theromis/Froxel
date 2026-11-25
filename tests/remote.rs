@@ -200,3 +200,27 @@ fn a_panic_in_a_method_is_an_error_and_the_document_is_put_back() {
     let got = apply(&mut session, "voxel.get", &json!({"x": 1, "y": 1, "z": 1})).unwrap();
     assert_eq!(got["palette"], 0);
 }
+
+#[test]
+fn renamed_options_take_the_new_and_the_old_name_but_not_both() {
+    let mut session = Session::new();
+    session.replace_empty();
+    let new = apply(&mut session, "object.add", &json!({"makeActive": false})).unwrap();
+    assert_ne!(session.selected, new["index"].as_u64().unwrap() as usize);
+    let old = apply(&mut session, "object.add", &json!({"make_active": false})).unwrap();
+    assert_ne!(session.selected, old["index"].as_u64().unwrap() as usize);
+    let err = apply(
+        &mut session,
+        "object.add",
+        &json!({"makeActive": true, "make_active": false}),
+    )
+    .unwrap_err();
+    assert!(err.contains("not both"), "{err}");
+    apply(
+        &mut session,
+        "palette.set",
+        &json!({"index": 4, "r": 1, "g": 2, "b": 3, "motion": "sway", "motionAmount": 2.5}),
+    )
+    .unwrap();
+    assert_eq!(session.materials[4].motion_amount, 2.5);
+}
