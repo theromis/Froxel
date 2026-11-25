@@ -780,17 +780,47 @@ pub(super) fn split_junctions(quads: Vec<GreedyQuad>) -> Vec<GreedyQuad> {
     let limit = (quads.len() * 4).max(8);
     let mut quads = quads;
     for _ in 0..limit {
-        let mut on_plane: BTreeMap<(usize, i32), Vec<([i32; 3], usize, u8)>> = BTreeMap::new();
+        // Corners by the line they sit on: (plane axis, plane coordinate,
+        // line axis, line coordinate) to the coordinate along the line,
+        // sorted. A quad then looks up only its own four edges, instead of
+        // every corner on its plane.
+        let mut on_line: HashMap<(usize, i32, usize, i32), Vec<(i32, usize, u8)>> = HashMap::new();
         for quad in &quads {
             for corner in quad_corners(quad.face, quad.cell, quad.w, quad.h) {
-                for axis in 0..3 {
-                    on_plane
-                        .entry((axis, corner[axis]))
-                        .or_default()
-                        .push((corner, quad.face, quad.slot));
+                for plane in 0..3 {
+                    for line in 0..3 {
+                        if line == plane {
+                            continue;
+                        }
+                        let along = 3 - plane - line;
+                        on_line
+                            .entry((plane, corner[plane], line, corner[line]))
+                            .or_default()
+                            .push((corner[along], quad.face, quad.slot));
+                    }
                 }
             }
         }
+        for corners in on_line.values_mut() {
+            corners.sort_unstable_by_key(|(along, _, _)| *along);
+        }
+        // The positions strictly inside `lo..hi` along the line `key` where
+        // a corner of another face or slot than `quad` lands.
+        let inside = |key, lo: i32, hi: i32, quad: &GreedyQuad, out: &mut Vec<i32>| {
+            let Some(corners) = on_line.get(&key) else {
+                return;
+            };
+            let start = corners.partition_point(|(along, _, _)| *along <= lo);
+            for (along, face, slot) in &corners[start..] {
+                if *along >= hi {
+                    break;
+                }
+                if *face == quad.face && *slot == quad.slot {
+                    continue;
+                }
+                out.push(*along - lo);
+            }
+        };
         let mut next = Vec::with_capacity(quads.len());
         let mut grew = false;
         for quad in &quads {
@@ -798,23 +828,12 @@ pub(super) fn split_junctions(quads: Vec<GreedyQuad>) -> Vec<GreedyQuad> {
             let origin = split_origin(quad);
             let mut u_splits = vec![0, quad.w];
             let mut v_splits = vec![0, quad.h];
-            if let Some(hits) = on_plane.get(&(normal, origin[normal])) {
-                for (at, face, slot) in hits {
-                    if *face == quad.face && *slot == quad.slot {
-                        continue;
-                    }
-                    let u = at[u_axis] - origin[u_axis];
-                    let v = at[v_axis] - origin[v_axis];
-                    if u < 0 || u > quad.w || v < 0 || v > quad.h {
-                        continue;
-                    }
-                    if (v == 0 || v == quad.h) && u > 0 && u < quad.w {
-                        u_splits.push(u);
-                    }
-                    if (u == 0 || u == quad.w) && v > 0 && v < quad.h {
-                        v_splits.push(v);
-                    }
-                }
+            let (n, u0, v0) = (origin[normal], origin[u_axis], origin[v_axis]);
+            for v in [v0, v0 + quad.h] {
+                inside((normal, n, v_axis, v), u0, u0 + quad.w, quad, &mut u_splits);
+            }
+            for u in [u0, u0 + quad.w] {
+                inside((normal, n, u_axis, u), v0, v0 + quad.h, quad, &mut v_splits);
             }
             u_splits.sort_unstable();
             u_splits.dedup();

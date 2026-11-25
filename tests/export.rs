@@ -1148,3 +1148,112 @@ fn counts_are_the_triangles_and_quads_the_glb_has() {
     };
     assert!(counts(&session, &bad).unwrap_err().contains("colorAtlas"));
 }
+
+/// The splitter before its corners were indexed by line: every corner of a
+/// plane against every quad on it. The indexed one must cut the same way.
+fn reference_split(quads: Vec<GreedyQuad>) -> Vec<GreedyQuad> {
+    let limit = (quads.len() * 4).max(8);
+    let mut quads = quads;
+    for _ in 0..limit {
+        let mut on_plane: std::collections::BTreeMap<(usize, i32), Vec<([i32; 3], usize, u8)>> =
+            std::collections::BTreeMap::new();
+        for quad in &quads {
+            for corner in quad_corners(quad.face, quad.cell, quad.w, quad.h) {
+                for axis in 0..3 {
+                    on_plane
+                        .entry((axis, corner[axis]))
+                        .or_default()
+                        .push((corner, quad.face, quad.slot));
+                }
+            }
+        }
+        let mut next = Vec::with_capacity(quads.len());
+        let mut grew = false;
+        for quad in &quads {
+            let (normal, u_axis, v_axis) = face_axes(quad.face);
+            let origin = split_origin(quad);
+            let mut u_splits = vec![0, quad.w];
+            let mut v_splits = vec![0, quad.h];
+            if let Some(hits) = on_plane.get(&(normal, origin[normal])) {
+                for (at, face, slot) in hits {
+                    if *face == quad.face && *slot == quad.slot {
+                        continue;
+                    }
+                    let u = at[u_axis] - origin[u_axis];
+                    let v = at[v_axis] - origin[v_axis];
+                    if u < 0 || u > quad.w || v < 0 || v > quad.h {
+                        continue;
+                    }
+                    if (v == 0 || v == quad.h) && u > 0 && u < quad.w {
+                        u_splits.push(u);
+                    }
+                    if (u == 0 || u == quad.w) && v > 0 && v < quad.h {
+                        v_splits.push(v);
+                    }
+                }
+            }
+            u_splits.sort_unstable();
+            u_splits.dedup();
+            v_splits.sort_unstable();
+            v_splits.dedup();
+            if u_splits.len() > 2 || v_splits.len() > 2 {
+                grew = true;
+            }
+            for pair_v in v_splits.windows(2) {
+                for pair_u in u_splits.windows(2) {
+                    let (u0, du) = (pair_u[0], pair_u[1] - pair_u[0]);
+                    let (v0, dv) = (pair_v[0], pair_v[1] - pair_v[0]);
+                    if du <= 0 || dv <= 0 {
+                        continue;
+                    }
+                    let mut cell = origin;
+                    cell[u_axis] += u0;
+                    cell[v_axis] += v0;
+                    if quad.face % 2 == 0 {
+                        cell[normal] -= 1;
+                    }
+                    next.push(GreedyQuad {
+                        face: quad.face,
+                        cell: (cell[0], cell[1], cell[2]),
+                        w: du,
+                        h: dv,
+                        slot: quad.slot,
+                        bone: quad.bone,
+                    });
+                }
+            }
+        }
+        quads = next;
+        if !grew {
+            break;
+        }
+    }
+    quads
+}
+
+#[test]
+fn indexed_junction_split_matches_the_plane_scan() {
+    let key = |quad: &GreedyQuad| (quad.face, quad.cell, quad.w, quad.h, quad.slot, quad.bone);
+    let mut seed = 12345u32;
+    let mut random = move || {
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        seed
+    };
+    for _ in 0..40 {
+        let mut cells = std::collections::HashMap::new();
+        for _ in 0..120 {
+            let cell = (
+                (random() % 9) as i32,
+                (random() % 9) as i32,
+                (random() % 5) as i32,
+            );
+            cells.insert(cell, 1 + (random() % 3) as u8);
+        }
+        let merged = merged_quads(&cells, true);
+        let fast: Vec<_> = split_junctions(merged.clone()).iter().map(key).collect();
+        let slow: Vec<_> = reference_split(merged).iter().map(key).collect();
+        assert_eq!(fast, slow);
+    }
+}
