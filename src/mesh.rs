@@ -103,7 +103,10 @@ fn mix(x: i32, y: i32, z: i32, rgb: [u8; 3]) -> u64 {
     h
 }
 
-/// Faces of `chunk` that are not covered by a neighbor in `cells`.
+/// Faces of `chunk` that are not covered by a neighbor in `cells`. The
+/// viewport builds the same faces from its per-chunk lists with
+/// [`mesh_listed`].
+#[cfg(test)]
 pub fn mesh_chunk(
     cells: &HashMap<Cell, u8>,
     chunk: (i32, i32, i32),

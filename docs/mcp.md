@@ -158,6 +158,8 @@ granted folders.
 
 Newline-delimited JSON-RPC 2.0: one message per line, 16 MiB limit,
 `initialize` first, `ping` before that, tool failures as `isError: true`.
+A `tools/call` that names no listed tool, or whose `params` or `arguments`
+are not objects, is a JSON-RPC error `-32602` instead.
 The default revision is `2025-06-18`.
 `2026-07-28`, `2025-03-26`, and `2024-11-05` are accepted and echoed back.
 The server declares `capabilities.tools.listChanged: true` and sends

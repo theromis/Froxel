@@ -3235,3 +3235,30 @@ fn the_views_tools_take_the_sheet_wide_keys_at_the_top_level() {
         assert_eq!(known_arguments(name, &sheet), Ok(()), "{name}");
     }
 }
+
+#[test]
+fn a_call_of_no_listed_tool_is_a_protocol_error() {
+    let mut state = Proto::default();
+    let mut session = Session::new();
+    dispatch(
+        &mut state,
+        &mut session,
+        None,
+        &json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
+    );
+    for params in [
+        json!({"name": "no_such_tool", "arguments": {}}),
+        json!({"arguments": {}}),
+        json!({"name": "set_voxel", "arguments": [1, 2]}),
+        json!([1]),
+    ] {
+        let reply = dispatch(
+            &mut state,
+            &mut session,
+            None,
+            &json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": params}),
+        )
+        .unwrap();
+        assert_eq!(reply["error"]["code"], -32602, "{reply}");
+    }
+}

@@ -459,7 +459,10 @@ fn dispatch(
                 Err(err) => tool_error(&err),
             }
         }
-        "tools/call" => call_tool(session, remote, &params),
+        "tools/call" => match call_tool(session, remote, &params) {
+            Ok(result) => result,
+            Err(message) => return Some(rpc_error(id, -32602, &message)),
+        },
         "resources/list" => json!({"resources": []}),
         "resources/templates/list" => json!({"resourceTemplates": []}),
         "prompts/list" => json!({"prompts": []}),
@@ -469,17 +472,38 @@ fn dispatch(
     Some(rpc_ok(id, result))
 }
 
-fn call_tool(session: &mut Session, remote: Option<&mut ControlClient>, params: &Value) -> Value {
+/// A `tools/call`. A request that is not a call of a listed tool (params
+/// that are not an object, no name, an unknown name, arguments that are not
+/// an object) is a JSON-RPC error, as MCP asks; everything the tool itself
+/// refuses or fails at is a result with `isError`.
+fn call_tool(
+    session: &mut Session,
+    remote: Option<&mut ControlClient>,
+    params: &Value,
+) -> Result<Value, String> {
     if !params.is_object() {
-        return rpc_tool_error_value(-32602, "params must be an object");
+        return Err("params must be an object".into());
     }
     let Some(name) = params.get("name").and_then(Value::as_str) else {
-        return tool_error("missing tool name");
+        return Err("missing tool name".into());
     };
     let args = params.get("arguments").cloned().unwrap_or(json!({}));
     if !args.is_object() {
-        return tool_error("arguments must be an object");
+        return Err("arguments must be an object".into());
     }
+    if !tools().iter().any(|tool| tool["name"] == name) {
+        return Err(format!("unknown tool `{name}`"));
+    }
+    Ok(call_listed(session, remote, name, &args))
+}
+
+fn call_listed(
+    session: &mut Session,
+    remote: Option<&mut ControlClient>,
+    name: &str,
+    args: &Value,
+) -> Value {
+    let args = args.clone();
     if let Err(err) = known_arguments(name, &args).and_then(|()| batch_arguments(name, &args)) {
         return tool_error(&err);
     }
@@ -689,11 +713,6 @@ fn tool_error(message: &str) -> Value {
         "content": [{"type": "text", "text": message}],
         "isError": true
     })
-}
-
-fn rpc_tool_error_value(code: i32, message: &str) -> Value {
-    let text = format!("{code}: {message}");
-    json!({"content": [{"type": "text", "text": text}], "isError": true})
 }
 
 fn rpc_ok(id: Value, result: Value) -> Value {

@@ -34,6 +34,10 @@
   older `make_active` and `motion_amount` still work; passing both names is
   an error.
 
+- MCP `tools/call` of a tool that is not listed, or with `params` or
+  `arguments` that are not objects, is a JSON-RPC error `-32602`, as MCP
+  asks, instead of a tool result with `isError`.
+
 ### Fixed
 
 - A damaged or hostile `.vox` no longer hangs or exhausts memory: a scene
