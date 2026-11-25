@@ -529,6 +529,14 @@ gh workflow run windows-repos.yml -f tag=v0.3.3                  # dry run
 gh workflow run windows-repos.yml -f tag=v0.3.3 -f dry-run=false # publish again
 ```
 
+`-f channel=chocolatey` (or `winget`, `scoop`) publishes to that channel only,
+for example to resubmit a Chocolatey package after a moderator's fix without
+opening a second winget pull request; the checks still run for every channel:
+
+```sh
+gh workflow run windows-repos.yml -f tag=v0.3.4 -f dry-run=false -f channel=chocolatey
+```
+
 `packaging/windows/channels.py <version> SHA256SUMS.txt` writes the winget,
 Scoop, and Chocolatey files from the release checksums, and
 `packaging/windows/check_manifests.py` checks the winget and Scoop ones

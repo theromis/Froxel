@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Template: packaging/windows/channels.py fills in @VERSION@ and @RELEASE_TAG@. -->
+<!-- Template: packaging/windows/channels.py fills in @VERSION@ and @RELEASE_TAG@.
+     Chocolatey refuses raw.githubusercontent.com for iconUrl: jsDelivr, pinned to the tag. -->
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>froxel</id>
@@ -13,7 +14,7 @@
     <docsUrl>https://github.com/theromis/Froxel#readme</docsUrl>
     <bugTrackerUrl>https://github.com/theromis/Froxel/issues</bugTrackerUrl>
     <releaseNotes>https://github.com/theromis/Froxel/releases/tag/@RELEASE_TAG@</releaseNotes>
-    <iconUrl>https://raw.githubusercontent.com/theromis/Froxel/main/packaging/icons/froxel.png</iconUrl>
+    <iconUrl>https://cdn.jsdelivr.net/gh/theromis/Froxel@@RELEASE_TAG@/packaging/icons/froxel.png</iconUrl>
     <licenseUrl>https://github.com/theromis/Froxel/blob/main/LICENSE</licenseUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <copyright>Copyright (c) 2026 Roman Vasilyev</copyright>
