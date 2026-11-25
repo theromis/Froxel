@@ -58,6 +58,10 @@
 
 ### Fixed
 
+- MCP `pixelate_views` lists `despeckle` in its schema. The tool read it,
+  the docs and Rhai named it, but MCP refused it as unknown. A test now
+  checks that every option a Rhai function takes is an argument of its MCP
+  tool.
 - A damaged or hostile `.vox` no longer hangs or exhausts memory: a scene
   graph that shares groups or nests deeper than 256 nodes is refused, and
   counts read from the file reserve only what its bytes can hold.

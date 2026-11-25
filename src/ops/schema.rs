@@ -747,6 +747,7 @@ fn build() -> Vec<Value> {
             "maxAccents": int_prop("Accent guard: most accents beyond colors, 0..16. Defaults to 4."),
             "coverage": num_prop("Share of a cell's footprint that must be inked, 0..1. Defaults to 0.5."),
             "thin": {"type": ["number", "boolean"], "description": "Least inked share for a cell on the midline of a part thinner than a cell (a fin, a leg), 0..1; false keeps only coverage. Defaults to 0.25."},
+            "despeckle": {"type": "integer", "description": "Passes of a majority filter over each view's grid: a cell whose colour fewer than two of its eight inked neighbours share takes their commonest colour (feature cells are kept), 0..16; 0 turns it off. Defaults to 1."},
             "features": {"type": ["boolean", "object"], "description": "Keep small salient features: true (default), false, or {minArea, maxArea (cells of area, defaults 0.15 and 6), contrast (Oklab, default 0.1), minCells (1..16, default 1)}."},
             "lines": {"type": ["boolean", "object"], "description": "Keep drawn lines thinner than a cell (an eye's ring, a mouth) as a line of cells in their colour: true (default), false, or {length (cells a stroke's midline must run through a cell, 0..4, default 0.6), contrast (Oklab from the cell's vote, default 0.08)}."},
             "outline": {"type": "boolean", "description": "With lines, keep the outline along the silhouette too, as a rim of cells in its colour. Defaults to false: the outline's pixels then vote only where nothing else does."},

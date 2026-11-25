@@ -88,3 +88,94 @@ fn the_methods_help_names_every_method_once() {
     }
     assert!(listed.contains(&"ping"));
 }
+
+/// The option lists of the Rhai functions, read from their source: each
+/// `const NAME: &[&str] = &[...]`, and the function name it is checked
+/// for, from `NAME, "function"` or `("function", _, NAME)`.
+fn rhai_option_lists() -> Vec<(String, String, Vec<String>)> {
+    let sources = [
+        ("import", include_str!("../src/script/import.rs")),
+        ("markers", include_str!("../src/script/markers.rs")),
+        ("organic", include_str!("../src/script/organic.rs")),
+        ("shapes", include_str!("../src/script/shapes.rs")),
+        ("silhouette", include_str!("../src/script/silhouette.rs")),
+        ("stone", include_str!("../src/script/stone.rs")),
+    ];
+    let quoted = |text: &str| -> Vec<String> {
+        text.split('"')
+            .skip(1)
+            .step_by(2)
+            .map(str::to_string)
+            .collect()
+    };
+    let mut out = Vec::new();
+    for (file, source) in sources {
+        let flat: String = source.split_whitespace().collect::<Vec<_>>().join(" ");
+        let mut rest = flat.as_str();
+        while let Some(at) = rest.find("const ") {
+            rest = &rest[at + 6..];
+            let Some((name, tail)) = rest.split_once(": &[&str] = &[") else {
+                continue;
+            };
+            if name.contains(' ') {
+                continue;
+            }
+            let Some((body, _)) = tail.split_once("];") else {
+                continue;
+            };
+            let keys = quoted(body);
+            let mut functions = Vec::new();
+            for (pattern, after) in [(format!("{name}, \""), true), (format!(", {name})"), false)] {
+                let mut from = flat.as_str();
+                while let Some(hit) = from.find(&pattern) {
+                    // `VIEWS_PAINT, "` is not a use of `PAINT`.
+                    let joined = after
+                        && from[..hit]
+                            .chars()
+                            .next_back()
+                            .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+                    if joined {
+                        from = &from[hit + pattern.len()..];
+                        continue;
+                    }
+                    if after {
+                        let tail = &from[hit + pattern.len()..];
+                        if let Some((function, _)) = tail.split_once('"') {
+                            functions.push(function.to_string());
+                        }
+                    } else if let Some(open) = from[..hit].rfind("(\"") {
+                        if let Some((function, _)) = from[open + 2..].split_once('"') {
+                            functions.push(function.to_string());
+                        }
+                    }
+                    from = &from[hit + pattern.len()..];
+                }
+            }
+            for function in functions {
+                out.push((format!("{file}::{name}"), function, keys.clone()));
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn every_rhai_option_is_an_argument_of_its_tool() {
+    let lists = rhai_option_lists();
+    assert!(lists.len() > 30, "found only {} option lists", lists.len());
+    let mut checked = 0;
+    for (list, function, keys) in &lists {
+        // Rhai-only functions (carve_tube, voxelize, ...) have no tool.
+        let Some(properties) = schema::properties(function) else {
+            continue;
+        };
+        checked += 1;
+        for key in keys {
+            assert!(
+                properties.contains_key(key),
+                "{list} lets Rhai `{function}` take `{key}`, which MCP `{function}` does not, so the call would be refused"
+            );
+        }
+    }
+    assert!(checked > 25, "checked only {checked} lists against a tool");
+}
