@@ -12,6 +12,8 @@ and animation clips. Every edit is one undo step.
 If the tools are missing, the server is not configured. Point the user to
 `docs/mcp.md` in the Froxel repository: `froxel mcp` runs headless, and
 `froxel mcp --connect 127.0.0.1:7979 --launch` drives the editor window.
+Without a server, `froxel run <tool> --input in.vox --out out.vox --<argument> <value>`
+runs any one tool from a shell (`froxel run --list`, `froxel run <tool> --help`).
 
 If a path fails with "Operation not permitted" and a note about Grant Folder
 Access, the server is the sandboxed Mac App Store build: it reads and writes

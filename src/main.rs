@@ -298,6 +298,9 @@ fn main(
     if args.first().is_some_and(|arg| arg == "variants") {
         std::process::exit(variants::cli(&args[1..]));
     }
+    if args.first().is_some_and(|arg| arg == "run") {
+        std::process::exit(cli::run_tool(&args[1..]));
+    }
     if args.first().is_some_and(|arg| arg == "voxrt") {
         std::process::exit(cli::voxrt(&args[1..]));
     }
@@ -754,6 +757,7 @@ usage: froxel [--control PORT] [--bridge PORT] [file.vox]
        froxel reduce-palette --input <file.vox> --out <file.vox> --colors N --despeckle N (--help for its flags)
        froxel components --input <file.vox> --out <file.vox> --op <op> (--help for its flags)
        froxel variants --input <file.vox> --variants <sets.json> --out <dir>
+       froxel run <tool> [--input <file.vox>] [--out <file.vox>] [--<argument> <value> ...] (any MCP tool; --list, <tool> --help)
        froxel voxrt --input <file.vox> [--dump]"
                 );
                 std::process::exit(0);

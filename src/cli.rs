@@ -2383,36 +2383,8 @@ fn edit_args(args: &[String], help: &str, flags: &[&str]) -> Result<Option<EditA
             "--out" | "--output" => output = Some(PathBuf::from(value)),
             "--object" => object = Some(value),
             _ if flags.contains(&flag) => {
-                let mut key = String::new();
-                let mut upper = false;
-                for c in flag.trim_start_matches("--").chars() {
-                    if c == '-' {
-                        upper = true;
-                    } else if upper {
-                        key.extend(c.to_uppercase());
-                        upper = false;
-                    } else {
-                        key.push(c);
-                    }
-                }
-                let number = |text: &str| -> Option<serde_json::Value> {
-                    let n: f64 = text.trim().parse().ok()?;
-                    Some(if n.fract() == 0.0 && n.abs() < 1e15 {
-                        json!(n as i64)
-                    } else {
-                        json!(n)
-                    })
-                };
-                params[key] = if value.contains(',') {
-                    value
-                        .split(',')
-                        .map(number)
-                        .collect::<Option<Vec<_>>>()
-                        .map(serde_json::Value::from)
-                        .ok_or_else(|| format!("{flag} must be numbers separated by commas"))?
-                } else {
-                    number(&value).unwrap_or(json!(value))
-                };
+                let (key, value) = flag_argument(flag, &value)?;
+                params[key] = value;
             }
             other => return Err(format!("unknown argument `{other}`\n\n{help}")),
         }
@@ -2421,6 +2393,222 @@ fn edit_args(args: &[String], help: &str, flags: &[&str]) -> Result<Option<EditA
     let input = input.ok_or_else(|| format!("--input is required\n\n{help}"))?;
     let output = output.ok_or_else(|| format!("--out is required\n\n{help}"))?;
     Ok(Some((input, output, object, params)))
+}
+
+/// `--some-flag value` as the MCP argument `someFlag`: a number, a list
+/// `a,b,c` of numbers, `true` or `false`, JSON (an object or a list), or
+/// else the string.
+fn flag_argument(flag: &str, value: &str) -> Result<(String, serde_json::Value), String> {
+    use serde_json::json;
+    let mut key = String::new();
+    let mut upper = false;
+    for c in flag.trim_start_matches("--").chars() {
+        if c == '-' {
+            upper = true;
+        } else if upper {
+            key.extend(c.to_uppercase());
+            upper = false;
+        } else {
+            key.push(c);
+        }
+    }
+    let number = |text: &str| -> Option<serde_json::Value> {
+        let n: f64 = text.trim().parse().ok()?;
+        Some(if n.fract() == 0.0 && n.abs() < 1e15 {
+            json!(n as i64)
+        } else {
+            json!(n)
+        })
+    };
+    let trimmed = value.trim();
+    let parsed = if trimmed.starts_with('{') || trimmed.starts_with('[') {
+        serde_json::from_str(trimmed).map_err(|err| format!("{flag} is not JSON: {err}"))?
+    } else if trimmed == "true" || trimmed == "false" {
+        json!(trimmed == "true")
+    } else if value.contains(',') {
+        value
+            .split(',')
+            .map(number)
+            .collect::<Option<Vec<_>>>()
+            .map(serde_json::Value::from)
+            .ok_or_else(|| format!("{flag} must be numbers separated by commas"))?
+    } else {
+        number(value).unwrap_or(json!(value))
+    };
+    Ok((key, parsed))
+}
+
+const RUN_HELP: &str = "\
+usage: froxel run <tool> [--input <file.vox>] [--out <file.vox>] [--object <index|name>]
+                  [--args <args.json>] [--json '<arguments>'] [--<argument> <value> ...]
+       froxel run --list
+       froxel run <tool> --help
+
+Any MCP tool on a .vox with no window: open --input (or start empty), make
+--object active, run <tool> with its arguments, print the reply as JSON,
+and save to --out when given. Arguments come from --args (a JSON file),
+--json (a JSON object), and --<argument> <value> flags, later ones winning:
+--min-feature 2 is minFeature 2, a,b,c is a list of numbers, true and false
+are booleans, and {...} or [...] is JSON. Every argument is checked
+against the tool's schema, as MCP checks it. The window's tools
+(screenshots, ui_inspect, ui_click) and reload are not run here.";
+
+/// `froxel run`: any registry tool on a `.vox`, headless.
+pub fn run_tool(args: &[String]) -> i32 {
+    use serde_json::{json, Value};
+    let Some(name) = args.first().map(String::as_str) else {
+        eprintln!("{RUN_HELP}");
+        return 2;
+    };
+    if name == "-h" || name == "--help" {
+        eprintln!("{RUN_HELP}");
+        return 0;
+    }
+    if name == "--list" {
+        for op in crate::ops::OPS {
+            let description = crate::ops::schema::tool(op.tool)
+                .and_then(|tool| tool["description"].as_str())
+                .unwrap_or("");
+            let first = description.split(". ").next().unwrap_or(description);
+            println!("{:<22} {}", op.tool, first.trim_end_matches('.'));
+        }
+        return 0;
+    }
+    let Some(op) = crate::ops::by_tool(name) else {
+        eprintln!("`{name}` is not a tool; froxel run --list names them");
+        return 2;
+    };
+    if op.method.starts_with("ui.") || op.method == "server.reload" {
+        eprintln!("`{name}` needs a running server or window; use froxel mcp");
+        return 2;
+    }
+    let tool = crate::ops::schema::tool(op.tool).expect("every op has a schema");
+    if args[1..].iter().any(|arg| arg == "-h" || arg == "--help") {
+        println!(
+            "{}\n\n{}\n",
+            op.tool,
+            tool["description"].as_str().unwrap_or("")
+        );
+        let required: Vec<&str> = tool["inputSchema"]["required"]
+            .as_array()
+            .map(|list| list.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        if let Some(properties) = tool["inputSchema"]["properties"].as_object() {
+            for (key, property) in properties {
+                let kind = match &property["type"] {
+                    Value::String(kind) => kind.clone(),
+                    Value::Array(kinds) => kinds
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .collect::<Vec<_>>()
+                        .join(" | "),
+                    _ => "any".into(),
+                };
+                let need = if required.contains(&key.as_str()) {
+                    " (required)"
+                } else {
+                    ""
+                };
+                println!(
+                    "  {key} [{kind}]{need}\n      {}",
+                    property["description"].as_str().unwrap_or("")
+                );
+            }
+        }
+        return 0;
+    }
+    let parsed =
+        (|| -> Result<(Option<PathBuf>, Option<PathBuf>, Option<String>, Value), String> {
+            let (mut input, mut output, mut object) = (None, None, None);
+            let mut params = json!({});
+            let mut index = 1;
+            while index < args.len() {
+                let flag = args[index].as_str();
+                index += 1;
+                let value = args
+                    .get(index)
+                    .cloned()
+                    .ok_or_else(|| format!("{flag} needs a value"))?;
+                index += 1;
+                match flag {
+                    "--input" => input = Some(PathBuf::from(value)),
+                    "--out" | "--output" => output = Some(PathBuf::from(value)),
+                    "--object" => object = Some(value),
+                    "--args" | "--json" => {
+                        let text = if flag == "--args" {
+                            std::fs::read_to_string(&value)
+                                .map_err(|err| format!("Could not read {value}: {err}"))?
+                        } else {
+                            value.clone()
+                        };
+                        let found: Value = serde_json::from_str(&text)
+                            .map_err(|err| format!("{flag} is not JSON: {err}"))?;
+                        let Value::Object(found) = found else {
+                            return Err(format!("{flag} must be a JSON object"));
+                        };
+                        for (key, value) in found {
+                            params[key] = value;
+                        }
+                    }
+                    _ if flag.starts_with("--") => {
+                        let (key, value) = flag_argument(flag, &value)?;
+                        params[key] = value;
+                    }
+                    other => return Err(format!("unexpected argument `{other}`\n\n{RUN_HELP}")),
+                }
+            }
+            Ok((input, output, object, params))
+        })();
+    let (input, output, object, params) = match parsed {
+        Ok(parsed) => parsed,
+        Err(err) => {
+            eprintln!("{err}");
+            return 2;
+        }
+    };
+    let mut session = Session::new();
+    let done = match &input {
+        Some(input) => session.open_vox(input),
+        None => {
+            session.replace_empty();
+            Ok(())
+        }
+    }
+    .and_then(|()| {
+        if let Some(object) = &object {
+            session.selected = crate::preview::find_object(&session, object)?;
+        }
+        crate::remote::apply(&mut session, op.method, &params)
+    })
+    .and_then(|reply| {
+        if let Some(output) = &output {
+            if let Some(parent) = output
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+            {
+                std::fs::create_dir_all(parent)
+                    .map_err(|err| format!("Could not create {}: {err}", parent.display()))?;
+            }
+            session.write_vox(output)?;
+        }
+        Ok(reply)
+    });
+    match done {
+        Ok(reply) => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&reply).unwrap_or_default()
+            );
+            if let Some(output) = &output {
+                eprintln!("wrote {}", output.display());
+            }
+            0
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            1
+        }
+    }
 }
 
 const COMPONENTS_HELP: &str = "\
@@ -2824,3 +3012,7 @@ pub fn split_parts(args: &[String]) -> i32 {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/cli.rs"]
+mod tests;

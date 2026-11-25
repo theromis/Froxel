@@ -4,6 +4,12 @@
 
 ### Added
 
+- `froxel run <tool>` runs any MCP tool on a `.vox` from the command line,
+  with `--input`, `--object`, `--out`, and its arguments from `--args`,
+  `--json`, or `--<argument> <value>` flags, checked against the tool's
+  schema. `froxel run --list` and `froxel run <tool> --help` are generated
+  from the same schemas as MCP `tools/list`.
+
 - Render panel **One frame**, on by default: Render mode traces one frame of
   the view as it was when Render was entered or **Render frame** was
   pressed, instead of starting over on every orbit and edit. A changed view

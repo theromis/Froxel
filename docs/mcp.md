@@ -168,6 +168,27 @@ The default revision is `2025-06-18`.
 The server declares `capabilities.tools.listChanged: true` and sends
 `notifications/tools/list_changed` after a reload.
 
+### Any tool from the command line
+
+`froxel run <tool>` runs one tool on a `.vox` with no server or window:
+
+```sh
+froxel run fill_box --x0 0 --y0 0 --z0 0 --x1 7 --y1 7 --z1 7 --palette 5 --out box.vox
+froxel run smooth --input box.vox --json '{"x0": 0, "y0": 0, "z0": 0, "x1": 7, "y1": 7, "z1": 7}' --out box.vox
+froxel run --list
+froxel run deform --help
+```
+
+`--input` opens a file (without it the document starts empty), `--object`
+makes an object active by index or name, and `--out` saves the result. The
+reply prints as JSON on stdout. Arguments come from `--args` (a JSON file),
+`--json` (a JSON object), and `--<argument> <value>` flags, later ones
+winning: `--min-feature 2` is `minFeature: 2`, `a,b,c` is a list of
+numbers, `true` and `false` are booleans, and `{...}` or `[...]` is JSON.
+They are checked against the tool's schema as MCP checks them. `--list` and
+`<tool> --help` come from the same schemas as `tools/list`. The window's
+tools (screenshots, `ui_inspect`, `ui_click`) and `reload` are refused.
+
 ### Reloading the server
 
 A client lists the tools once, when it starts the server, so a tool added
