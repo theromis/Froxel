@@ -30,7 +30,13 @@ edit-mode mesh. `trace/` is the CPU path tracer. `trace_gpu.rs` plus
 cell, or by `coverage` on a finer pass with `keepThin`)
 (MCP `import_mesh`, `remote/import.rs`; Rhai `voxelize`, `script/import.rs`;
 fixtures and their generator in `tests/fixtures/mesh`). `preview.rs` is the fast lit CPU raster of the viewport mesh behind MCP
-`preview` and `froxel preview` (`docs/preview.md`). `export/` writes glTF. `native_menu.rs` is the macOS menu. `skills/froxel` is the agent skill for the MCP tools. `mcp.rs`,
+`preview` and `froxel preview` (`docs/preview.md`). `export/` writes glTF. `native_menu.rs` is the macOS menu. `skills/froxel` is the agent skill for the MCP tools. `ops/` is the
+operation registry: `OPS` in `ops/mod.rs` names every MCP tool, its
+`remote::apply` method, its annotation hints, and whether it takes `batch`,
+`space`, and `mirror`; `ops/schema.rs` is each tool's argument schema. MCP
+`tools/list`, the tool-to-method map, `control.methods`, and the argument
+check at the top of `remote::apply` (for MCP, the control port, the CLI,
+Rhai, and the panels alike) all read it. `mcp.rs`,
 `remote.rs`, and `control.rs` are the MCP server and the `--control` port;
 `mcp/reload.rs` is MCP `reload` and `froxel mcp --watch` (the server
 re-executes a rebuilt binary in place, keeps the document, and sends
@@ -168,6 +174,12 @@ A capability added to MCP goes, in the same change, into:
 - everything that describes it: UI tooltips and hints, the MCP server
   instructions and tool descriptions, `froxel --help` and command help, docs
   (mcp.md, scripting.md, hand-sculpting.md), the skill, and examples.
+
+A new tool is one `op(...)` row in `src/ops/mod.rs`, its schema in
+`src/ops/schema.rs`, and its arm in `remote::apply`. `tests/ops.rs` and
+`every_tool_is_described_wherever_the_parity_rule_asks` in `tests/mcp.rs`
+fail until the registry, the schema, docs/mcp.md, and docs/scripting.md
+(or its exemption list) agree.
 
 MCP-only plumbing (screenshots, ui_inspect, ui_click, session handling) is
 exempt, and so are the tools that write files (render, model_view, preview,

@@ -12,32 +12,6 @@ use serde_json::{json, Value};
 
 use crate::state::Cell;
 
-/// The methods that take `space`.
-pub(crate) const WORLD_METHODS: &[&str] = &[
-    "voxel.get",
-    "voxel.set",
-    "voxel.set_many",
-    "voxel.get_box",
-    "voxel.fill",
-    "voxel.ellipsoid",
-    "voxel.rounded",
-    "voxel.tube",
-    "voxel.carve",
-    "voxel.smooth",
-    "voxel.recolor",
-    "voxel.surface_stroke",
-    "voxel.shell_plates",
-    "voxel.loft",
-    "voxel.blend_shapes",
-    "voxel.brush",
-    "voxel.carve_from_views",
-    "voxel.project_paint",
-    "voxel.paint_from_views",
-    "voxel.decal",
-    "voxel.radial_relief",
-    "object.split",
-];
-
 /// The schema property of `space`.
 pub(crate) fn space_prop() -> Value {
     json!({"type": "string", "enum": ["local", "world"], "description": "local (default): coordinates are the active object's local cells. world: they are world cells and the object's position is subtracted first, so the same box hits the same place whatever object it lands in; coordinates in the reply are world cells too."})
@@ -63,7 +37,7 @@ pub(crate) fn is_world(params: &Value) -> Result<bool, String> {
 /// move;
 /// everything else stays.
 pub(crate) fn to_local(method: &str, params: &Value, offset: Cell) -> Result<Value, String> {
-    if !WORLD_METHODS.contains(&method) {
+    if !crate::ops::takes_space(method) {
         return Err("space world is not taken by this tool; pass local cells".into());
     }
     let mut out = params.clone();

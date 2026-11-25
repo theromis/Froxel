@@ -37,6 +37,7 @@ mod mesh;
 mod mobile;
 #[cfg(target_os = "macos")]
 mod native_menu;
+mod ops;
 mod panels;
 mod preview;
 mod remote;

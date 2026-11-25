@@ -15,45 +15,6 @@ use crate::state::Session;
 /// Most items in one batch.
 pub(crate) const MAX_BATCH_ITEMS: usize = 4096;
 
-/// The tools a batch can run, and their methods.
-pub(crate) const BATCH_TOOLS: &[(&str, &str)] = &[
-    ("set_voxel", "voxel.set"),
-    ("set_voxels", "voxel.set_many"),
-    ("set_palette", "palette.set"),
-    ("fill_box", "voxel.fill"),
-    ("fill_ellipsoid", "voxel.ellipsoid"),
-    ("fill_rounded_box", "voxel.rounded"),
-    ("fill_tube", "voxel.tube"),
-    ("sweep", "voxel.sweep"),
-    ("loft", "voxel.loft"),
-    ("blend_shapes", "voxel.blend_shapes"),
-    ("carve", "voxel.carve"),
-    ("recolor", "voxel.recolor"),
-    ("surface_stroke", "voxel.surface_stroke"),
-    ("shell_plates", "voxel.shell_plates"),
-    ("components", "voxel.components"),
-    ("deterrace", "voxel.deterrace"),
-    ("reduce_palette", "voxel.reduce_palette"),
-    ("clear_object", "object.clear"),
-    ("trim_outline", "voxel.trim_outline"),
-    ("smooth", "voxel.smooth"),
-    ("deform", "voxel.deform"),
-    ("brush", "voxel.brush"),
-    ("break_end", "voxel.break"),
-    ("scatter", "voxel.scatter"),
-    ("column_relief", "voxel.column_relief"),
-    ("joints", "voxel.joints"),
-    ("weather", "voxel.weather"),
-    ("bark", "voxel.bark"),
-    ("planks", "voxel.planks"),
-    ("cavity_tint", "voxel.cavity_tint"),
-    ("radial_relief", "voxel.radial_relief"),
-    ("foliage", "voxel.foliage"),
-    ("moss", "voxel.moss"),
-    ("algae", "voxel.algae"),
-    ("vines", "voxel.vines"),
-];
-
 /// One checked item of a batch.
 pub(crate) struct BatchItem<'a> {
     pub tool: &'a str,
@@ -92,9 +53,8 @@ pub(crate) fn batch_items(params: &Value) -> Result<Vec<BatchItem<'_>>, String> 
                 .get("tool")
                 .and_then(Value::as_str)
                 .ok_or_else(|| format!("batch item {index} needs a tool name"))?;
-            let (tool, method) = BATCH_TOOLS
-                .iter()
-                .find(|(name, _)| *name == tool)
+            let op = crate::ops::by_tool(tool)
+                .filter(|op| op.batch())
                 .ok_or_else(|| {
                     format!(
                         "batch item {index}: `{tool}` cannot run in a batch; it takes {}",
@@ -110,7 +70,8 @@ pub(crate) fn batch_items(params: &Value) -> Result<Vec<BatchItem<'_>>, String> 
                     ))
                 }
             };
-            if *tool == "components" && arguments.get("op").and_then(Value::as_str) == Some("split")
+            let (tool, method) = (op.tool, op.method);
+            if tool == "components" && arguments.get("op").and_then(Value::as_str) == Some("split")
             {
                 return Err(format!(
                     "batch item {index}: components with op split changes the document; call it outside the batch"
@@ -127,7 +88,7 @@ pub(crate) fn batch_items(params: &Value) -> Result<Vec<BatchItem<'_>>, String> 
 
 /// The tool names a batch takes.
 pub(crate) fn batch_tool_names() -> Vec<&'static str> {
-    BATCH_TOOLS.iter().map(|(name, _)| *name).collect()
+    crate::ops::batch_tools().map(|op| op.tool).collect()
 }
 
 /// MCP handler: run the items in order as one undo step.

@@ -451,20 +451,6 @@ pub(super) fn shell_plates(session: &mut Session, params: &Value) -> Result<Valu
     Ok(reply)
 }
 
-/// The methods that take `mirror`.
-pub(crate) const MIRROR_METHODS: &[&str] = &[
-    "voxel.set_many",
-    "voxel.fill",
-    "voxel.ellipsoid",
-    "voxel.rounded",
-    "voxel.tube",
-    "voxel.blend_shapes",
-    "voxel.recolor",
-    "voxel.surface_stroke",
-    "voxel.project_paint",
-    "voxel.decal",
-];
-
 /// The schema property of `mirror`.
 pub(crate) fn mirror_prop() -> Value {
     json!({"type": ["boolean", "string", "object"], "description": "Do it on both sides of a plane in one call: true (x), an axis x, y, or z, or {axis?: x, at?: the plane's coordinate in local cells (world with space world), a multiple of 0.5; cell c spans c..c+1, so at 16 swaps cells 15 and 16}. Without at the plane is the middle of the object's bounds along the axis. The tool runs again on the object reflected across the plane and its writes are reflected back, so the far side's own surface is painted and a picture comes out mirrored (a left eye for a right one); a cell both sides write keeps the first side's slot. The reply adds mirrored, the cells only the far side wrote."})

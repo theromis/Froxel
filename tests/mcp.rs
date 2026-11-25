@@ -1277,7 +1277,7 @@ fn set_view_frames_the_model_and_hides_the_bones() {
 #[test]
 fn every_tool_declares_all_four_hints() {
     let tools = tools();
-    for tool in &tools {
+    for tool in tools {
         let name = tool["name"].as_str().unwrap();
         assert!(
             map_tool(name, &json!({})).is_ok() || name.starts_with("screenshot"),
@@ -3313,10 +3313,6 @@ fn every_tool_is_described_wherever_the_parity_rule_asks() {
         .iter()
         .map(|tool| tool["name"].as_str().unwrap())
         .collect();
-    let methods: Vec<&str> = crate::remote::METHODS
-        .iter()
-        .map(|(method, _, _)| *method)
-        .collect();
     for name in &names {
         assert!(
             named(&mcp_md, name),
@@ -3337,14 +3333,11 @@ fn every_tool_is_described_wherever_the_parity_rule_asks() {
             "NOT_IN_SCRIPTING names `{exempt}`, which is no tool"
         );
     }
-    for (tool, method) in crate::remote::BATCH_TOOLS {
-        assert!(names.contains(tool), "a batch tool `{tool}` is not listed");
-        assert_eq!(map_tool(tool, &json!({})).unwrap().0, *method, "{tool}");
-    }
-    for method in crate::remote::WORLD_METHODS {
+    for op in crate::ops::batch_tools() {
         assert!(
-            methods.contains(method),
-            "world-space `{method}` is not in remote::METHODS"
+            names.contains(&op.tool),
+            "a batch tool `{}` is not listed",
+            op.tool
         );
     }
 }

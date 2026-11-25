@@ -50,6 +50,12 @@
   `arguments` that are not objects, is a JSON-RPC error `-32602`, as MCP
   asks, instead of a tool result with `isError`.
 
+- An argument a tool's schema does not list is refused for every caller,
+  not only MCP: the `--control` port, the command line, Rhai document
+  calls, and the panels go through the same check. `control.methods` lists
+  every method with its tool, arguments, and description, taken from the
+  tool schemas instead of a separate table.
+
 ### Fixed
 
 - A damaged or hostile `.vox` no longer hangs or exhausts memory: a scene

@@ -18,14 +18,12 @@ mod organic;
 mod silhouette;
 mod space;
 mod stone;
-#[cfg(test)]
-pub(crate) use batch::BATCH_TOOLS;
 pub(crate) use batch::{batch_items, batch_tool_names, MAX_BATCH_ITEMS};
 pub(crate) use blend::blend_writes as blend_shape_writes;
 pub(crate) use collision::{collision_build, finish_reply as collision_reply};
 pub(crate) use edit::{
     components_run, components_spec, mirror_prop, plates_writes, recolor_writes, reduce_writes,
-    stroke_writes, terrace_writes, MIRROR_METHODS,
+    stroke_writes, terrace_writes,
 };
 pub(crate) use import::{
     import_plan, used_slots, DEFAULT_IMPORT_SIZE, DEFAULT_MAX_NEW_SLOTS, DEFAULT_TOLERANCE,
@@ -36,7 +34,7 @@ pub(crate) use silhouette::{
     decal_writes, fit_writes, hull_writes, optimize_writes, orient_writes, paint_writes,
     pixelate_writes, session_palette, views_paint_writes,
 };
-pub(crate) use space::{is_world, space_prop, to_local, to_world_reply, WORLD_METHODS};
+pub(crate) use space::{is_world, space_prop, to_local, to_world_reply};
 pub(crate) use stone::{cavity_writes, radial_writes, stone_writes, ShadedWrites, Stone};
 
 use crate::state::{Cell, GlassMode, Session};
@@ -857,6 +855,9 @@ fn apply_unguarded(session: &mut Session, method: &str, params: &Value) -> Resul
     if is_world(&params)? && method != "object.split_parts" {
         return apply_world(session, method, &params);
     }
+    // After the world-space hand-off, which says so itself when a method
+    // takes no space world, and which calls back here with local arguments.
+    crate::ops::check_arguments(method, &params)?;
     #[cfg(test)]
     if method == "test.panic_after_edit" {
         session.write_cells(&[(0, 0, 0, 3)])?;
@@ -1082,14 +1083,16 @@ fn apply_unguarded(session: &mut Session, method: &str, params: &Value) -> Resul
                 if pivot.is_some() {
                     return Err("give pivot or joint, not both".into());
                 }
-                let report = session.measure_joint(&name, parent.clone(), joint_options(&params)?)?;
+                let report =
+                    session.measure_joint(&name, parent.clone(), joint_options(&params)?)?;
                 pivot = Some(report.joint.pivot);
                 Some(report)
             } else {
                 None
             };
             let current = rename.clone().unwrap_or_else(|| name.clone());
-            let touches_bone = parent.is_some() || pivot.is_some() || rotation.is_some() || rename.is_some();
+            let touches_bone =
+                parent.is_some() || pivot.is_some() || rotation.is_some() || rename.is_some();
             session.transaction(|session| {
                 if touches_bone || (rest.is_none() && !rest_from_pose) {
                     session.set_bone(&name, parent, pivot, rotation, rename.as_deref())?;
@@ -1130,7 +1133,8 @@ fn apply_unguarded(session: &mut Session, method: &str, params: &Value) -> Resul
                 ),
                 Some(_) => return Err("bones must be an array of bone names".into()),
             };
-            let (placed, skipped) = session.place_joints(bones.as_deref(), joint_options(&params)?)?;
+            let (placed, skipped) =
+                session.place_joints(bones.as_deref(), joint_options(&params)?)?;
             Ok(json!({
                 "placed": placed.iter().map(|r| r.to_json()).collect::<Vec<_>>(),
                 "skipped": skipped.iter().map(|(name, reason)| json!({"name": name, "reason": reason})).collect::<Vec<_>>(),
@@ -1203,7 +1207,9 @@ fn apply_unguarded(session: &mut Session, method: &str, params: &Value) -> Resul
             let (created, bones) =
                 session.mirror_object(index as usize, axis, &name, position, mirror_bones)?;
             let at = session.objects[created].translation;
-            Ok(json!({"index": created, "name": name, "bones": bones, "position": [at.0, at.1, at.2]}))
+            Ok(
+                json!({"index": created, "name": name, "bones": bones, "position": [at.0, at.1, at.2]}),
+            )
         }
         "render" => render_scene(session, &params),
         "render.flat" => model_view(session, &params),
@@ -1284,14 +1290,7 @@ fn apply_unguarded(session: &mut Session, method: &str, params: &Value) -> Resul
         "mesh.bake_scene" => bake_scene(&params),
         "mesh.export_variants" => crate::variants::export_variants(session, &params),
         "ui.screenshot" | "ui.inspect" | "ui.click" => Err(NO_WINDOW.into()),
-        "control.methods" => Ok(Value::Array(
-            METHODS
-                .iter()
-                .map(|(method, params, description)| {
-                    json!({"method": method, "params": params, "description": description})
-                })
-                .collect(),
-        )),
+        "control.methods" => Ok(crate::ops::methods_help()),
         "ping" => Ok(json!("pong")),
         "server.version" => Ok(json!(env!("CARGO_PKG_VERSION"))),
         other => Err(format!(
@@ -1619,173 +1618,6 @@ pub(crate) fn mesh_options(params: &Value) -> Result<crate::export::MeshExport, 
         bake: crate::export::bake::Bake::parse(params.get("bake"))?,
     })
 }
-
-pub(crate) const METHODS: &[(&str, &str, &str)] = &[
-    ("document.new", "", "Empty document, default palette"),
-    (
-        "document.open",
-        "path, detail?, fullPalette?",
-        "Open a .vox, replacing the session. detail full replies like document.inspect",
-    ),
-    ("document.save", "path?", "Write every non-empty object. path overwrites the open file when omitted"),
-    (
-        "document.inspect",
-        "fullPalette?",
-        "Path, counts, bounds, objects, used palette slots, motion",
-    ),
-    ("voxel.batch", "operations", "Apply a list of {tool, arguments} editing tools in order as one undo step. Stops at the first error, names the item, and leaves the document as it was. Tools that write files are refused"),
-    ("voxel.get", "x, y, z", "Palette index of one local cell. 0 is empty"),
-    ("voxel.set", "x, y, z, palette", "Write one cell. One undo step"),
-    ("voxel.set_many", "cells, mirror?", "Write up to 200000 cells as one undo step"),
-    ("voxel.fill", "x0, y0, z0, x1, y1, z1, palette, mode?, mirror?", "Fill an inclusive box, at most 2000000 cells"),
-    ("voxel.ellipsoid", "x0, y0, z0, x1, y1, z1, palette, mode?, mirror?", "Fill an ellipsoid inside an inclusive box, at most 2000000 cells checked"),
-    ("voxel.rounded", "x0, y0, z0, x1, y1, z1, palette, radius, mode?, mirror?", "Fill a box with rounded edges. radius 0 is the full box"),
-    ("voxel.tube", "points, radius?, curve?, palette | palettes, pattern?, period?, sectors?, seed?, mode?, mirror?", "Fill a tapered tube through 2..=1024 points, at most 2000000 cells"),
-    ("voxel.carve", "shape, x0..z1 | points, radius?, curve?", "Remove the cells inside a box, ellipsoid, rounded_box, or tube (sweep with palette 0 removes a cross-section along a path; trim_outline removes everything outside a surface)"),
-    ("voxel.break", "point, normal, depth?, splinters? | density?, length?, thickness?, taper?, rimBias?, bark?, sapwood?, tips?, seed?", "Jagged fracture across a plane with splinters"),
-    ("voxel.scatter", "x0, y0, z0, x1, y1, z1, palettes, count?, kinds?, size?, seed?, floor?, clump?, exclude?", "Drop small pieces that settle into a heap"),
-    ("voxel.joints", "x0, y0, z0, x1, y1, z1, pattern, spacing?, course?, width?, depth?, dirt?, only?, exclude?, density?, seed?", "Cut joint gaps: columns, running bond courses, or cracks"),
-    ("voxel.column_relief", "x0, y0, z0, x1, y1, z1, facing, palette, width?, out?, crown?, top?, lower?, depth?, exclude?, seed?", "Columns of random width standing out of a cliff face, ending at uneven heights"),
-    ("voxel.weather", "x0, y0, z0, x1, y1, z1, chip?, chipSize?, pits?, pitDepth?, broken?, noise?, noiseDensity?, noiseScale?, only?, exclude?, seed?", "Chip edges and corners, dent pits, and add colour noise on exposed cells"),
-    ("voxel.moss", "x0, y0, z0, x1, y1, z1, palettes, style?, amount?, noise?, faces?, facing?, band?, only?, exclude?, layer?, curtains?, length?, thickness?, size?, gap?, exposure?, drapes?, seed?", "Moss caps on tops and curtains down faces with a ragged end, or (style cushions) separate cushions where the surface faces up, with drapes from overhangs"),
-    ("voxel.algae", "x0, y0, z0, x1, y1, z1, palettes, band?, amount?, noise?, faces?, facing?, only?, exclude?, layer?, seed?", "Algae band at the waterline, dense low and thinning upward in clumps"),
-    ("voxel.vines", "x0, y0, z0, x1, y1, z1, palettes, amount?, length?, blooms?, bloomChance?, noise?, faces?, facing?, band?, only?, exclude?, seed?", "Vine strands hanging from top edges, with blooms"),
-    ("voxel.bark", "x0, y0, z0, x1, y1, z1, axis | points, curve?, palettes, dirt?, width?, length?, depth?, cracks?, only?, exclude?, seed?", "Bark plates along an axis or a tube's curve, on round wood or across a flat plate, split by fissures cut 1 to 2 cells deep with dirt at the bottom"),
-    ("voxel.planks", "x0, y0, x1, y1, z, axis, palettes, dirt?, dark?, width?, length?, gap?, thickness?, ragged?, nails?, knots?, only?, exclude?, seed?", "Separate boards over a rectangle at a height: rows of varied width, end joints staggered between neighbouring rows, gaps open down to a dirt cell, a tone per board, optional ragged ends, nails, and knots"),
-    ("voxel.cavity_tint", "x0, y0, z0, x1, y1, z1, radius?, dark?, lighten?, light?, pairs?, darken?, brighten?, only?, exclude?", "Darken crevices and concave cells (and lighten ridges) by neighbour occupancy, to given or created shades"),
-    ("voxel.radial_relief", "kind, count, axis?, center?, phase?, width?, from?, to?, x0..z1?, ends?, fade?, profile?, depth?, shade?, light?, darken?, brighten?, ribs?, ribWidth?, ribHeight?, only?, exclude?, jitter?, seed?", "Regular shallow recesses repeated evenly round an axis: flutes along a column, vase, or barrel side, or gores dished between the ribs of a dome, with the slope carried by shade and light tones"),
-    ("voxel.foliage", "palettes, ellipsoids? | boxes? | from?, x0..z1?, core?, size?, gap?, flatten?, ragged?, light?, dark?, sun?, masses?, groove?, protect?, exclude?, seed?", "A clustered tree crown: separate leaf clumps over a volume, lit tops, dark undersides, and a dark core in the gaps"),
-    ("voxel.sweep", "points, profile | width + height + radius?, curve?, palette | palettes, pattern?, period?, seed?, mode?", "Fill a 2D profile along a polyline or smooth curve, with twist and scale per point; palette 0 erases it"),
-    ("voxel.trim_outline", "outline, inset?, curve?, x0..z1?, only?, skin?, thickness?", "Remove every solid cell outside a closed plan outline moved inward by an inset per height, optionally with a new skin along the cut"),
-    ("voxel.deform", "op, x0..z1?, axis?, origin?, length?, center?, angle?, direction?, start?, end?, amplitude?, scale?, octaves?, seed?, bias?, point?, factor?, radius?, falloff?, minFeature?", "Bend, taper, or twist the object or a box along an axis, displace its surface with noise, or scale a part about a point with a smooth falloff; slots kept; minFeature reports parts thinner than N cells"),
-    ("voxel.blend_shapes", "shapes, k?, palette?, grow?, colors?, seam?, seed?, x0..z1?, mode?, mirror?", "Blend spheres, ellipsoids, boxes, capsules, and tori as signed distance fields with a smooth minimum (union, subtract, intersect, k cells of fillet), so they flow into each other like clay; each union shape colours the cells nearest it"),
-    ("voxel.loft", "points, radius? | rx? + ry?, roll?, flatTop?, noise?, frequency?, curve?, caps?, palette | palettes, pattern?, period?, sectors?, seed?, mode?", "Fill a solid along a curve whose elliptical, flattened, noisy section changes per point"),
-    ("voxel.brush", "op, points, radius?, strength?, falloff?, only?, palette?, vector?, spacing?", "Sculpt brush dabs along points: inflate, deflate, smooth, flatten, or grab"),
-    ("voxel.carve_from_views", "views, path?, background?, tolerance?, alphaThreshold?, size?, origin?, cellsPerPixel?, palette? | slots?, coverage?, shell?, smooth?, mode?, downscale?", "Fill the visual hull of 2 or 3 orthographic views (front, side, top): each a PNG path or rows, with crop, cellsPerPixel or size, and a background rule"),
-    ("voxel.paint_from_views", "views | path, objects?, blend?, seam?, sharpness?, fit?, reach?, mirror?, slots? | newSlots?, accents?, minShare?, contrast?, maxAccents?, only?, x0..z1?, downscale?", "Recolour every surface cell of the active object (or objects) from a whole views sheet, each from the views that see it by the view its normal faces most, blended at seams, quantised into slots or new ones. One undo step"),
-    ("voxel.project_paint", "view | yaw + pitch, path + crop? | rows + legend?, background?, cellsPerPixel? | imageSize?, origin?, size?, palette? | slots?, coverage?, depth?, normalLimit?, only?, mirror?", "Recolour the active object's visible surface from one image projected along a view: never adds or removes cells"),
-    ("voxel.decal", "point | ray, size, path + crop? | rows + legend?, up?, background?, flip?, palette? | slots?, coverage?, depth?, reach?, normalLimit?, only?, mirror?", "Lay one picture onto the active object's curved surface around a point, keeping its size and shape: never adds or removes cells"),
-    ("voxel.orient_to_views", "views, path?, background?, tolerance?, alphaThreshold?, turns?, yawStep?, yawRange?, fineAxes?, resolution?, size? | height? | scale?, apply?", "Turn (and scale) the active object to the axis-aligned turn, plus fine yaw, whose silhouettes best match a views sheet; replies with the IoU per view before and after. One undo step"),
-    ("voxel.fit_to_views", "views, path?, background?, tolerance?, alphaThreshold?, align?, slots?, coverage?, iterations?, seed?, margin?, maskWeight?, colorWeight?, depthWeight?, smoothWeight?, shape?, recolor?, normalLimit?, keep?, sharedScale?, roundWeight?, roundness?, roundAxes?, reference?, isolate?", "Refine the active object so its orthographic views match a views sheet: clears excess rays, fills missing ones, follows a reference's depth, and recolours the visible cells from the slots. One undo step"),
-    ("voxel.optimize_to_views", "views | path, background?, tolerance?, alphaThreshold?, downscale?, fit?, mirror?, iterations?, shape?, recolor?, band?, minFeature?, connected?, smooth?, sharpness?, slots?, keep?, accents?, accentShare?, depthPath?, depthWeight?, depthTolerance?, surfaceWeight?, colorCarve?, semantic?", "Iterate a small creature's shape (within a band about its surface, connected, never thinner than minFeature) and surface colours (a facing-weighted vote of the views with a smoothness term and the accent guard) until its orthographic views match its pixel-art views; replies with each view's agreement before and after. One undo step"),
-    ("image.pixelate_views", "views | path, size, colors?, accents?, minShare?, contrast?, maxAccents?, coverage?, thin?, features?, png?, pngScale?", "Turn a views sheet into pixel art at the cell grid (a small shared Oklab palette, majority colours, small salient features and thin parts kept): rows and legend per view for carve_from_views and paint_from_views. Writes no voxels"),
-    ("image.measure_sheet", "path, crop?, background?, tolerance?, alphaThreshold?, excludeColors?, flood?, erase?, keepLargest?, gap?, minShare?, layout?, pitchRange?, parts?, checkTolerance?", "Read a views sheet: its views' crops, the 2 x 2 layout, the cube pitch per view, the agreement checks, and the parts of the top view. Writes no file"),
-    ("render.compare_silhouette", "path, concept, crop?, background?, tolerance?, alphaThreshold?, excludeColors?, excludeTolerance?, flood?, mask?, erase?, keepLargest?, flip?, align?, preset?, view?, yaw?, pitch?, orthographic?, fov?, margin?, object?, isolate?, width?, height?, lighting?, pose?", "Compare the model's preview silhouette with a concept mask: IoU, missing and excess shares, and an overlay PNG"),
-    ("mesh.import", "path, size? | scale? | voxelSize?, upAxis?, rotation?, position?, anchor?, fill?, colors?, palette? | slots?, maxNewSlots?, tolerance?, mode?, newObject?, name?, orient?, clean?, coverage?, keepThin?, minFeature?", "Voxelize a .glb, .gltf, or .obj into the active object or a new one, colours quantized into the palette. One undo step"),
-    ("marker.set", "name, kind?, point | x0..z1 | min + max, direction?, object?", "Name a point, collision box, or connector on an object; replaces one of the same name"),
-    ("marker.remove", "name | all", "Remove one marker, or all"),
-    ("marker.list", "", "Markers with local, world, and glTF coordinates"),
-    ("marker.collision", "prefix?, layer? | zBands?, minFeature?, holeSize?, only?, exclude?, maxBoxes?, object?", "Collision box markers from an object's solid cells; replaces those of the same prefix on it"),
-    ("voxel.smooth", "x0, y0, z0, x1, y1, z1, iterations?, fillAt?, removeAt?", "Majority filter in a box that keeps colours"),
-    ("voxel.get_box", "x0, y0, z0, x1, y1, z1", "Non-empty cells inside an inclusive box, at most 100000"),
-    ("palette.set", "index, r, g, b, a?, motion?, motionAmount? | entries", "Replace one slot, or many, as one undo step"),
-    ("object.set_active", "index", "Edit a different object. Voxel coordinates stay local to it"),
-    ("object.add", "name?, position?, size?, makeActive?", "Empty object at a world position. Active unless makeActive is false"),
-    ("object.set", "index, name?, position?, hidden?", "Rename, move, or hide. position is world voxels; local cells stay put"),
-    ("object.remove", "index", "Remove an object and its voxels. Later indices shift. The last object stays"),
-    ("voxel.recolor", "from + to | map, x0..z1?, mirror?", "Replace palette slots of the active object's cells (one, or a map of several), in a box or everywhere, with no shape change. One undo step"),
-    ("object.split_parts", "parts [{name, point | points | bone | marker, planes?}], object?, metric?, connectivity?, reach?, removeSource?, bind?, space?", "Cut an object into one object per rig part at world [0, 0, 0]: each cell goes to the part whose seed is nearest through the solid (geodesic), with optional cutting planes per part. One undo step"),
-    ("voxel.reduce_palette", "colors? | palette?, accents?, minShare?, contrast?, maxAccents?, despeckle?, minSame?, protect?, x0..z1?", "Reduce the active object's colours to colors clusters (k-means in Oklab, small distinct accents kept) or snap them to palette (slots or #rrggbb), then despeckle the surface with a majority filter. One undo step"),
-    ("voxel.deterrace", "mode?, size?, fill?, origin?, tolerance?, run?, jitter?, seed?, x0..z1?", "Re-quantize the active object into blocks of size cells (mode blocks), or stagger its one-cell terrace steps in teeth (mode stagger), so a voxelized smooth mesh has no long even contour bands. One undo step"),
-    ("voxel.components", "op?, connectivity?, keep?, minCells?, seed?, anchor?, reach?, radius?, offset?, index?, name? | into?, copy?, makeActive?", "List the active object's connected parts, keep the largest, remove floaters smaller than minCells, or delete, move, or split out the part holding seed, cut first from anchor at the thinnest neck. One undo step"),
-    ("voxel.shell_plates", "palettes {ring, seam, central?, band?, rim?}, layout?, rings?, central?, band?, bandCount?, rim?, center?, seamWidth?, seamDepth?, depth?, facing?, zRange?, x0..z1?, only?, jitter?, symmetric?, seed?", "Paint a turtle-shell plate pattern over the active object's dome: a central plate, rings of plates, an outer band, and a rim, split by painted or grooved seams that follow the surface. One undo step"),
-    ("voxel.surface_stroke", "points, palette, curve?, width?, depth?, reach?, only?, mirror?", "Paint (or groove with palette 0) a stroke through points that snaps to the active object's nearest surface cells, width cells wide and depth cells deep. One undo step"),
-    ("object.clear", "index?", "Empty an object (index or name; default the active one) with no box limit. Name, position, bone, and script stay. One undo step"),
-    ("object.split", "boxes? | slots?, index?, invert?, copy?, into? | name?, makeActive?", "Move or copy the cells of an object inside boxes or of some slots into a new or existing object, keeping their world positions. One undo step"),
-    ("object.mirror", "index, axis, name, position?, mirrorBones?", "Copy an object mirrored across x, y, or z. mirrorBones copies the bound subtree and swaps _l/_r"),
-    ("edit.undo", "", "Undo the last edit"),
-    ("edit.redo", "", "Redo the last undone edit"),
-    (
-        "render",
-        "path, width?, height?, samples?, bounces?, seed?, denoise?, yaw?, pitch?, distance?, zoom?, margin?, target?",
-        "Path-trace the scene to a PNG. The camera fits the framed box (target: all visible cells by default) inside the frame with margin 0.05 on each side; zoom 2 is twice as large. width and height default to 256 (1..4096, at most 4096 x 2048 pixels); give one and the other follows the model. samples defaults to 16 (1..128). bounces defaults to 4 (0..8). denoise defaults to true. yaw 30 and pitch 25 degrees frame the scene when omitted. yaw 0 sits the camera on +X looking toward -X. orthographic, views, pose, and showBones are optional.",
-    ),
-    (
-        "render.flat",
-        "path, width?, height?, view?, yaw?, pitch?, distance?, zoom?, margin?, target?, pixelsPerVoxel?, orthographic?, background?, views?, pose?, showBones?",
-        "Flat model view PNG: each pixel is the palette colour of the first cell hit, with no light and no tonemap. The camera fits the framed box like render. width and height default to 512 (1..4096); give one and the other follows the model, or pixelsPerVoxel to size both. orthographic defaults to true. view is front, back, left, right, top, or bottom. background defaults to transparent.",
-    ),
-    (
-        "render.preview",
-        "path, width?, height?, view?, yaw?, pitch?, orthographic?, fov?, margin?, object?, isolate?, background?, antialias?, pose?",
-        "Fast lit preview PNG: the viewport's mesh and light rasterised on the CPU, framed on the model or one object with margin (default 0.06 per side). width and height default to 1024 (1..4096). Perspective (fov 50 degrees, like the viewport) unless orthographic. object is an index or a name; isolate draws only it. background defaults to the viewport grey.",
-    ),
-    (
-        "view.set",
-        "view?, yaw?, pitch?, frame?, distance?, orthographic?, bones?",
-        "Move the window camera. frame (default true) centres every object; distance multiplies the framing distance. bones false hides the viewport joints.",
-    ),
-    (
-        "mesh.export",
-        "path, merge?, vertexColors?, colorAtlas?, aoStrength?, aoRadius?, aoTarget?, bake?, reply?",
-        "Write a glTF 2.0 .glb of every object. merge defaults to false. vertexColors defaults to false (palette texture). exportHidden and splitObjects default to false. aoStrength (0..1, default 0) bakes ambient occlusion into COLOR_0; aoRadius (0..8 cells, default 3) is its hemisphere reach; aoTarget is vertex, texture (colour atlas texels, needs colorAtlas) or both. bake (with colorAtlas) paints ray-traced occlusion and a sun with shadows into the atlas, to draw unshaded. A skeleton writes a rigid skin. Clips become glTF animations. The reply counts the markers by kind; reply \"full\" lists each one.",
-    ),
-    (
-        "mesh.export_batch",
-        "models, reply?",
-        "Write 1 to 16 .glb files. Each model is {path, source?, merge?, vertexColors?, exportHidden?, splitObjects?, colorAtlas?, aoStrength?, aoRadius?, aoTarget?, bake?}. source opens that .vox in a separate session, so the open document stays. The reply includes each file's node, mesh, skin and animation structure, and its markers counted by kind (reply \"full\" lists them).",
-    ),
-    (
-        "mesh.bake_scene",
-        "scene, path, bake?",
-        "Bake a placement of many .vox files together into one .glb with one colour atlas, each shaded by its neighbours and by ground. scene is {instances: [{source, translation?, yaw?, scale?, lean?: {degrees, toward}, sway?}], occluders?: [{mesh, translation?, yaw?, scale?, lean?} | {plane} | {height: {origin?, cell?, rows}}], bake?, exportHidden?} or the path of a JSON file of it. Y up, the frame of the exported glb. bake is the export_mesh option, over the scene's.",
-    ),
-    (
-        "script.set",
-        "source, object?",
-        "Store a script on an object and read its parameters. One undo step. A script that fails to run is kept, and the voxels stay as they were. The error includes the script line.",
-    ),
-    (
-        "script.get",
-        "object?",
-        "Script source, auto flag, and parameters. object defaults to the active object.",
-    ),
-    (
-        "script.params",
-        "values, object?",
-        "Set parameter values by name. One undo step. Does not run the script.",
-    ),
-    (
-        "script.params.list",
-        "object?",
-        "Parameters declared by the last successful run.",
-    ),
-    (
-        "script.regenerate",
-        "object?",
-        "Run the script and replace the objects it writes. One undo step. A limit or runtime error leaves the document as it was and includes the script line.",
-    ),
-    ("rig.add", "name, pivot, parent?, rotation?, rest?", "Add a bone. rotation and rest are [x, y, z, w]"),
-    ("rig.set", "name, parent?, pivot?, joint?, snap?, band?, rotation?, rest?, restFromPose?, rename?", "Change a bone. parent null makes a root. rest is the saved turn its parts sit at; restFromPose keeps the preview turn as the rest"),
-    ("rig.joints", "bones?, snap?, band?", "Put bone pivots at the joints between their parts and their parents' parts"),
-    ("rig.remove", "name", "Delete a bone. Objects bound to it become unbound"),
-    ("rig.bind", "index, bone", "Bind an object. bone null unbinds"),
-    ("rig.list", "", "Bones with parent, pivot, rotation, rest, and bound objects"),
-    ("pose.set", "pose", "Preview pose. Map of bone name to quaternion [x, y, z, w] or {rotation, scale}, on top of the bind pose. One undo step"),
-    ("pose.clear", "", "Clear the preview pose. One undo step"),
-    ("clip.add", "name", "Add an empty animation clip. One undo step"),
-    ("clip.keys", "name, bone, keys", "Replace one bone's keys. time, rotation, translation, scale. One undo step"),
-    ("clip.list", "", "Named clips and their bone keys"),
-    ("clip.remove", "name", "Remove a clip. One undo step"),
-    (
-        "ui.screenshot",
-        "region?, x?, y?, width?, height?, path?",
-        "PNG of the window, the viewport, or a rectangle in window points. Requires the open editor.",
-    ),
-    (
-        "ui.inspect",
-        "",
-        "Controls from the previous frame, plus tool, mode, and status. Requires the open editor.",
-    ),
-    (
-        "ui.click",
-        "x, y",
-        "Click a registered control or stamp the viewport. Requires the open editor.",
-    ),
-    ("control.methods", "", "Methods this server answers"),
-    ("ping", "", "Replies \"pong\""),
-    ("server.version", "", "The Froxel version of the window, which froxel mcp --connect compares with its own"),
-];
 
 /// Object names listed by the `document.open` summary before it gives a count.
 const SUMMARY_OBJECT_NAMES: usize = 20;
