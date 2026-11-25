@@ -129,24 +129,41 @@ fn mesh_where(
     color: impl Fn(u8) -> [u8; 3],
     motion: impl Fn(u8) -> [f32; 2],
 ) -> Mesh {
-    let base = cells.keys().map(|cell| cell.1).min().unwrap_or(0) as f32;
-    let mut listed = Vec::new();
-    for (&cell, &slot) in cells {
-        if keep(cell) {
-            listed.push((cell, slot, color(slot), motion(slot)));
-        }
-    }
+    let listed: Vec<(Cell, u8)> = cells
+        .iter()
+        .filter(|(cell, _)| keep(**cell))
+        .map(|(cell, slot)| (*cell, *slot))
+        .collect();
+    mesh_listed(cells, &listed, motion_base(cells), color, motion)
+}
+
+/// The height motion is measured from: the lowest cell of the object.
+pub fn motion_base(cells: &HashMap<Cell, u8>) -> i32 {
+    cells.keys().map(|cell| cell.1).min().unwrap_or(0)
+}
+
+/// The exposed faces of the `listed` cells, tested against every cell of
+/// `cells`. The viewport passes one chunk's cells, gathered once per sync,
+/// so a remesh costs the dirty chunks and not the whole object each.
+pub fn mesh_listed(
+    cells: &HashMap<Cell, u8>,
+    listed: &[(Cell, u8)],
+    base: i32,
+    color: impl Fn(u8) -> [u8; 3],
+    motion: impl Fn(u8) -> [f32; 2],
+) -> Mesh {
+    let base = base as f32;
     let mut mesh = Mesh::default();
-    for (cell, _slot, rgb, motion) in &listed {
+    for &(cell, slot) in listed {
+        let rgb = color(slot);
+        let motion = motion(slot);
         for face in 0..6 {
             let (dx, dy, dz) = OFFSETS[face];
             let neighbor = (cell.0 + dx, cell.1 + dy, cell.2 + dz);
             if cells.contains_key(&neighbor) {
                 continue;
             }
-            push_quad(
-                &mut mesh, *cell, face, *rgb, 0.0, motion[0], motion[1], base,
-            );
+            push_quad(&mut mesh, cell, face, rgb, 0.0, motion[0], motion[1], base);
         }
     }
     mesh

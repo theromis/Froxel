@@ -177,32 +177,44 @@ impl SceneGpu {
                 continue;
             }
             let delta = session.skin_delta(index);
-            let mut buckets: HashMap<(i32, i32, i32), Vec<(crate::state::Cell, [u8; 3])>> =
+            // One pass puts each cell in its chunk; the hashes and the
+            // remesh below read only those lists.
+            let mut buckets: HashMap<(i32, i32, i32), Vec<(crate::state::Cell, u8)>> =
                 HashMap::new();
             for (&cell, &slot) in &object.cells {
-                let rgb = session.color(slot);
                 buckets
                     .entry(mesh::chunk_key(cell))
                     .or_default()
-                    .push((cell, rgb));
+                    .push((cell, slot));
             }
+            let base = mesh::motion_base(&object.cells);
             let next: HashMap<(i32, i32, i32), u64> = buckets
                 .iter()
                 .map(|(key, listed)| {
-                    let mut hash = mesh::occupancy_hash(listed);
-                    for (cell, slot) in &object.cells {
-                        if mesh::chunk_key(*cell) != *key {
-                            continue;
-                        }
+                    let colored: Vec<(crate::state::Cell, [u8; 3])> = listed
+                        .iter()
+                        .map(|(cell, slot)| (*cell, session.color(*slot)))
+                        .collect();
+                    let mut hash = mesh::occupancy_hash(&colored);
+                    let mut moves = false;
+                    for (cell, slot) in listed {
                         let uv = session.motion_uv(*slot);
                         if uv == [0.0, 0.0] {
                             continue;
                         }
+                        moves = true;
                         hash = hash.wrapping_add(
                             (cell.0 as u64).wrapping_mul(0x9E37_79B1)
                                 ^ (uv[0].to_bits() as u64)
                                 ^ (uv[1].to_bits() as u64).wrapping_mul(0xC2B2_AE3D),
                         );
+                    }
+                    // Motion heights are measured from the object's lowest
+                    // cell, so a moving chunk changes when that does.
+                    if moves {
+                        hash = hash
+                            .wrapping_mul(0x9E37_79B1)
+                            .wrapping_add(base as u32 as u64);
                     }
                     if let Some(delta) = delta {
                         for column in delta.to_cols_array_2d() {
@@ -227,9 +239,10 @@ impl SceneGpu {
                 let full = (index, key.0, key.1, key.2);
                 match next.get(&key).copied() {
                     Some(hash) => {
-                        let mut built = mesh::mesh_chunk(
+                        let mut built = mesh::mesh_listed(
                             &object.cells,
-                            key,
+                            buckets.get(&key).map(Vec::as_slice).unwrap_or(&[]),
+                            base,
                             |slot| session.color(slot),
                             |slot| session.motion_uv(slot),
                         );

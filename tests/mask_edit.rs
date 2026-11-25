@@ -4,8 +4,15 @@ use serde_json::{json, Value};
 
 use crate::state::Session;
 
+/// A temporary path of its own for each call: tests run in parallel and
+/// several write the same picture, which must not land in one file at once.
 fn temp(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("froxel-mask-edit-{}-{name}", std::process::id()))
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "froxel-mask-edit-{}-{n}-{name}",
+        std::process::id()
+    ))
 }
 
 fn write(name: &str, w: u32, h: u32, colour: impl Fn(u32, u32) -> [u8; 4]) -> String {

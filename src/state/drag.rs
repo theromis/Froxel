@@ -61,22 +61,13 @@ impl Session {
         if delta == drag.applied {
             return;
         }
-        let axis = drag.axis;
-        let plane = drag.plane;
-        let anchor = drag.anchor;
-        let base_cells = drag.base_cells.clone();
-        let base_picked = drag.base_picked.clone();
-        let (next, picked) = translate_cells(&base_cells, &base_picked, delta);
+        // The base stays where it is: only the moved copy is built.
+        let (next, picked) = translate_cells(&drag.base_cells, &drag.base_picked, delta);
         self.active_mut().cells = next;
         self.picked = picked;
-        self.move_drag = Some(MoveDrag {
-            axis,
-            plane,
-            anchor,
-            base_cells,
-            base_picked,
-            applied: delta,
-        });
+        if let Some(drag) = self.move_drag.as_mut() {
+            drag.applied = delta;
+        }
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
         self.selection_epoch = self.selection_epoch.wrapping_add(1);
     }

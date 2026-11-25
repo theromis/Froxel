@@ -752,13 +752,21 @@ impl Session {
         edit: impl FnOnce(&mut Self) -> Result<T, String>,
     ) -> Result<T, String> {
         let outer = self.gesture;
-        if !outer {
+        // Outside a gesture the undo checkpoint is the state to go back to,
+        // so the document is copied once, not twice. Inside one the pending
+        // checkpoint is older than this edit and a copy of its own is kept.
+        let before = if outer {
+            Some(self.snapshot())
+        } else {
             self.begin_gesture();
-        }
-        let before = self.snapshot();
+            self.checkpoint();
+            None
+        };
         let result = edit(self);
         if result.is_err() {
-            self.restore(before);
+            if let Some(before) = before.or_else(|| self.pending.take()) {
+                self.restore(before);
+            }
             self.clamp_selection();
             self.clear_picked();
             self.mesh_epoch = self.mesh_epoch.wrapping_add(1);

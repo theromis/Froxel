@@ -278,7 +278,7 @@ pub fn trace_rows(image: &mut Image, session: &Session, rows: u32) -> bool {
     if image.width == 0 || image.height == 0 || rows == 0 {
         return false;
     }
-    let world = build_world(session);
+    let world = cached_world(session);
     let shade = Shade::from_session(session);
     let finished_before = image.samples;
     let mut left = rows;
@@ -300,6 +300,54 @@ pub fn trace_rows(image: &mut Image, session: &Session, rows: u32) -> bool {
     image.samples > finished_before
 }
 
+/// The world of the last [`trace_rows`] call, kept while [`scene_key`] is
+/// unchanged. The viewport traces a few rows a frame, and rebuilding the
+/// world (every posed cell, the lights, the dense grid) each time cost more
+/// than the tracing.
+fn cached_world(session: &Session) -> std::rc::Rc<World> {
+    thread_local! {
+        static WORLD: std::cell::RefCell<Option<(u64, std::rc::Rc<World>)>> =
+            const { std::cell::RefCell::new(None) };
+    }
+    let key = scene_key(session);
+    WORLD.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some((cached, world)) = cache.as_ref() {
+            if *cached == key {
+                return world.clone();
+            }
+        }
+        let world = std::rc::Rc::new(build_world(session));
+        *cache = Some((key, world.clone()));
+        world
+    })
+}
+
+/// `work` for every row `0..height`, spread over the cores, in row order.
+fn parallel_rows<T: Send>(height: u32, work: impl Fn(u32) -> T + Sync) -> Vec<T> {
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get());
+    if threads <= 1 || height <= 1 {
+        return (0..height).map(work).collect();
+    }
+    let next = std::sync::atomic::AtomicU32::new(0);
+    let done = std::sync::Mutex::new(Vec::with_capacity(height as usize));
+    std::thread::scope(|scope| {
+        for _ in 0..threads.min(height as usize) {
+            scope.spawn(|| loop {
+                let y = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                if y >= height {
+                    break;
+                }
+                let row = work(y);
+                done.lock().expect("rows").push((y, row));
+            });
+        }
+    });
+    let mut done = done.into_inner().expect("rows");
+    done.sort_by_key(|(y, _)| *y);
+    done.into_iter().map(|(_, row)| row).collect()
+}
+
 /// Path-trace a finished frame. `seed` is mixed into the sampler; `0` matches
 /// one sample of [`trace_rows`].
 pub fn render_still(session: &Session, width: u32, height: u32, samples: u32, seed: u32) -> Image {
@@ -310,11 +358,19 @@ pub fn render_still(session: &Session, width: u32, height: u32, samples: u32, se
     let world = build_world(session);
     let shade = Shade::from_session(session);
     for sample in 0..samples {
-        for y in 0..height {
-            for x in 0..width {
-                let (color, albedo, normal) =
-                    shade_pixel(&world, &shade, width, height, x, y, sample, seed);
-                store_pixel(&mut image, &shade, x, y, sample, color, albedo, normal);
+        // Rows are traced on every core; each pixel's sampler depends only
+        // on its position, the sample, and the seed, and the rows are stored
+        // in order, so the frame is the same as a single-threaded one.
+        let rows = parallel_rows(height, |y| {
+            (0..width)
+                .map(|x| shade_pixel(&world, &shade, width, height, x, y, sample, seed))
+                .collect::<Vec<_>>()
+        });
+        for (y, row) in rows.into_iter().enumerate() {
+            for (x, (color, albedo, normal)) in row.into_iter().enumerate() {
+                store_pixel(
+                    &mut image, &shade, x as u32, y as u32, sample, color, albedo, normal,
+                );
             }
         }
         image.row = 0;

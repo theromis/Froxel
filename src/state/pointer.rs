@@ -617,18 +617,24 @@ impl Session {
                 .collect();
             edits.extend(mirrored);
         }
-        let mut next = base.clone();
         let mode = if self.tool == Tool::Mutator {
             ToolMode::Add
         } else {
             self.tool_mode
         };
-        for (cell, slot) in edits {
+        // Which edited cells the base had, read before `base` becomes the
+        // result, so the base is not copied a second time.
+        let had: Vec<bool> = edits
+            .iter()
+            .map(|(cell, _)| base.contains_key(cell))
+            .collect();
+        let mut next = base;
+        for ((cell, slot), had) in edits.into_iter().zip(had) {
             match mode {
                 ToolMode::Add => {
                     if slot == 0 {
                         next.remove(&cell);
-                    } else if !base.contains_key(&cell) {
+                    } else if !had {
                         next.insert(cell, slot);
                     }
                 }
@@ -636,7 +642,7 @@ impl Session {
                     next.remove(&cell);
                 }
                 ToolMode::Paint => {
-                    if base.contains_key(&cell) && slot != 0 {
+                    if had && slot != 0 {
                         next.insert(cell, slot);
                     }
                 }

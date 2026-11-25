@@ -11,6 +11,14 @@
 - `eframe` and `winit` are pinned to the exact versions in `vendor/`, and a
   test fails if `Cargo.lock` ever takes them from crates.io, which would
   drop the iOS and App Store fixes those copies carry.
+- Editing is lighter on large models. The viewport remesh gathers each
+  chunk's cells once per edit instead of scanning the whole object for every
+  chunk; a brush stroke copies the object once per pointer move instead of
+  twice; a move drag no longer copies its base each step; and a transaction
+  copies the document once. Render mode's CPU fallback keeps its world while
+  the scene is unchanged instead of rebuilding it every frame, and
+  `froxel render`, MCP `render`, and Save Render trace rows on every core
+  (the same image as before).
 
 ### Fixed
 
