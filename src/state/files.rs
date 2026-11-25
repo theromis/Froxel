@@ -792,6 +792,28 @@ impl Session {
         }
     }
 
+    /// Whether Render mode traces this paint. Live render always does. With
+    /// One frame on, a requested frame starts from the view now, and it keeps
+    /// tracing while the view is unchanged; once it changes, the edit view is
+    /// drawn until Render frame asks for a new one.
+    pub(crate) fn render_traces(&mut self) -> bool {
+        if !self.render_one_frame {
+            return true;
+        }
+        let key = crate::trace::frame_key(self, [0, 0]);
+        if self.render_requested {
+            self.render_requested = false;
+            self.render_frame_key = key;
+            return true;
+        }
+        key == self.render_frame_key
+    }
+
+    /// Render frame: trace the view as it is now (One frame on).
+    pub(crate) fn request_render_frame(&mut self) {
+        self.render_requested = true;
+    }
+
     pub(crate) fn render_sample_cap(&self) -> u32 {
         self.max_samples.clamp(1, 8192) as u32
     }

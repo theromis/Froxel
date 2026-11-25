@@ -142,12 +142,16 @@ pub fn show(
 
     if session.render_mode != RenderMode::Render {
         session.cancel_pending_render("left Render mode");
+        // Entering Render traces a frame at once.
+        session.request_render_frame();
+    }
+    let traced = session.render_mode == RenderMode::Render && session.render_traces();
+    if session.render_mode == RenderMode::Render && !traced {
+        session.cancel_pending_render("the view changed; press Render frame");
     }
     let painter = ui.painter().with_clip_rect(rect);
-    if session.render_mode == RenderMode::Render
-        && paint_gpu(ctx, render_state, session, cache, rect, &painter)
-    {
-    } else if session.render_mode == RenderMode::Render {
+    if traced && paint_gpu(ctx, render_state, session, cache, rect, &painter) {
+    } else if traced {
         session.trace_on_gpu = false;
         advance_trace(ctx, session, rect);
         if let Some(image) = &session.render_preview {
@@ -214,6 +218,15 @@ pub fn show(
     } else {
         session.trace_on_gpu = false;
         painter.rect_filled(rect, 0.0, egui::Color32::from_rgb(22, 24, 28));
+    }
+    if session.render_mode == RenderMode::Render && !traced {
+        painter.text(
+            rect.left_bottom() + egui::vec2(12.0, -18.0),
+            egui::Align2::LEFT_BOTTOM,
+            "The view changed since the frame. Render frame traces it again.",
+            egui::FontId::proportional(13.0),
+            egui::Color32::from_rgb(244, 246, 250),
+        );
     }
 
     let show_band = pointer.button_down(egui::PointerButton::Primary)

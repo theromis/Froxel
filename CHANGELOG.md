@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- Render panel **One frame**, on by default: Render mode traces one frame of
+  the view as it was when Render was entered or **Render frame** was
+  pressed, instead of starting over on every orbit and edit. A changed view
+  shows the edit view with a note until the next Render frame. Off is the
+  live render as before.
+
 ### Changed
 
 - Debug builds optimize dependencies fully and Froxel's own code at

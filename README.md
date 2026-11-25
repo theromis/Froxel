@@ -39,7 +39,9 @@ animation clips. An AI agent can drive all of it through the built-in
   clips, saved in the `.vox` file and exported to glTF.
 - **Render mode.** A path tracer with sky, sun, metal, glass, and emission. It
   accumulates on the GPU through wgpu (Metal, Vulkan, DX12) and falls back to the
-  CPU. Denoising is built in.
+  CPU. Denoising is built in. With One frame on (the default) it traces the view once, as it
+  was when Render was entered or Render frame pressed; off, it renders live and
+  starts over on every orbit and edit.
 - **glTF export.** `.glb` with merged coplanar faces, no T-junctions, and a palette
   texture or vertex colours.
 - **Mesh import.** A `.glb`, `.gltf`, or `.obj` sculpted in Blender or made by an

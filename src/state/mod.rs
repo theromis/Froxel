@@ -937,6 +937,15 @@ pub struct Session {
     pub stochastic_gi: bool,
     pub glass_mode: GlassMode,
     pub max_samples: i32,
+    /// Render mode traces one frame, the view as it was when Render was
+    /// entered or Render frame pressed, and does not start over on every
+    /// orbit or edit; a changed view shows the edit view until the next
+    /// Render frame. Off is the live render.
+    pub render_one_frame: bool,
+    /// Trace a fresh frame at the next viewport paint (One frame on).
+    pub(crate) render_requested: bool,
+    /// The view the one frame was started from, from [`crate::trace::frame_key`].
+    pub(crate) render_frame_key: u64,
     pub aces: bool,
     pub denoise: bool,
     /// Viewport-only sway and bob. Off leaves the mesh still. Not saved.

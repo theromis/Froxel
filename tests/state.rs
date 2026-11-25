@@ -2649,3 +2649,24 @@ fn a_chunk_from_a_newer_froxel_is_left_out_and_the_voxels_still_open() {
         loaded.warnings
     );
 }
+
+#[test]
+fn one_frame_traces_the_view_it_started_from_until_asked_again() {
+    let mut session = Session::new();
+    assert!(session.render_one_frame);
+    // Entering Render asks for a frame; it keeps tracing while unchanged.
+    assert!(session.render_traces());
+    assert!(session.render_traces());
+    session.yaw += 10.0;
+    assert!(
+        !session.render_traces(),
+        "an orbit does not restart the frame"
+    );
+    session.request_render_frame();
+    assert!(session.render_traces());
+    assert!(session.render_traces());
+    // Live render traces whatever the view.
+    session.render_one_frame = false;
+    session.yaw += 10.0;
+    assert!(session.render_traces());
+}
