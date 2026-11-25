@@ -1520,6 +1520,9 @@ Every tool refuses an argument its schema does not list, naming the
 arguments it takes, so a misspelt option is an error instead of being
 ignored. The same check runs for every caller of a tool's method: the
 control port, the command line, Rhai scripts, and the editor's panels.
+An argument whose schema gives a JSON Schema `default` takes that value
+when it is left out, from every caller, and the editor's panel for the
+tool starts from it.
 
 `model_view` writes the flat model view: for each pixel, the palette colour
 of the first visible cell under the pixel centre, byte for byte, with alpha

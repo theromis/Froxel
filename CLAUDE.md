@@ -180,7 +180,10 @@ A new tool is one `op(...)` row in `src/ops/mod.rs`, its schema in
 `src/ops/schema.rs`, and its arm in `remote::apply`. `tests/ops.rs` and
 `every_tool_is_described_wherever_the_parity_rule_asks` in `tests/mcp.rs`
 fail until the registry, the schema, docs/mcp.md, and docs/scripting.md
-(or its exemption list) agree.
+(or its exemption list) agree. A plain default goes in the schema as
+`with_default(prop, json!(value))`: `remote::apply` and Rhai fill it in,
+the panel's `Default` reads it with `crate::ops::default_*`, and a test
+checks it against the "Defaults to" of its description.
 
 MCP-only plumbing (screenshots, ui_inspect, ui_click, session handling) is
 exempt, and so are the tools that write files (render, model_view, preview,

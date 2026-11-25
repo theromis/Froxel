@@ -45,15 +45,15 @@ impl Default for FoliagePanel {
             palettes: String::new(),
             core: 0,
             size: [3.0, 6.0],
-            gap: 1.0,
-            flatten: 0.7,
-            ragged: 0.4,
-            light: 1.0,
-            dark: 1.0,
-            masses: 0,
-            groove: 2,
+            gap: crate::ops::default_f32("foliage", "gap"),
+            flatten: crate::ops::default_f32("foliage", "flatten"),
+            ragged: crate::ops::default_f32("foliage", "ragged"),
+            light: crate::ops::default_f32("foliage", "light"),
+            dark: crate::ops::default_f32("foliage", "dark"),
+            masses: crate::ops::default_i32("foliage", "masses"),
+            groove: crate::ops::default_i32("foliage", "groove"),
             protect: String::new(),
-            seed: 0,
+            seed: crate::ops::default_i32("foliage", "seed"),
         }
     }
 }

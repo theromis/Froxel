@@ -28,8 +28,8 @@ impl Default for SculptBrush {
     fn default() -> Self {
         Self {
             op: BrushOp::Inflate,
-            radius: 3.0,
-            strength: 0.5,
+            radius: crate::ops::default_f32("brush", "radius"),
+            strength: crate::ops::default_f32("brush", "strength"),
             falloff: 0,
             only: String::new(),
         }
@@ -139,7 +139,7 @@ impl Default for DeformPanel {
             scale: 8.0,
             octaves: 2,
             bias: 0.0,
-            seed: 0,
+            seed: crate::ops::default_i32("deform", "seed"),
             point: [0.0; 3],
             factor: [1.5; 3],
             radius: 4.0,
@@ -227,15 +227,15 @@ impl Default for LoftPanel {
             round_caps: false,
             rx: 3.0,
             ry: 3.0,
-            roll: 0.0,
-            flat_top: 0.0,
-            noise: 0.15,
-            frequency: 5.0,
+            roll: crate::ops::default_f32("loft", "roll"),
+            flat_top: crate::ops::default_f32("loft", "flatTop"),
+            noise: crate::ops::default_f32("loft", "noise"),
+            frequency: crate::ops::default_f32("loft", "frequency"),
             palettes: String::new(),
             pattern: 0,
-            period: 2.0,
+            period: crate::ops::default_f32("loft", "period"),
             mode: 0,
-            seed: 0,
+            seed: crate::ops::default_i32("loft", "seed"),
         }
     }
 }
@@ -310,10 +310,10 @@ impl Default for BlendPanel {
     fn default() -> Self {
         Self {
             shapes: "ellipsoid 0 0 8 8 7 7\nellipsoid 0 -5 16 6 5 4\nsphere 3 -8 19 1.5 k=1\nsphere -3 -8 19 1.5 k=1".into(),
-            k: 3.0,
-            grow: 0.0,
+            k: crate::ops::default_f32("blend_shapes", "k"),
+            grow: crate::ops::default_f32("blend_shapes", "grow"),
             colors: 0,
-            seam: 0.0,
+            seam: crate::ops::default_f32("blend_shapes", "seam"),
             mode: 0,
             mirror: false,
         }

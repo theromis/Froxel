@@ -744,12 +744,12 @@ impl Default for TerracePanel {
     fn default() -> Self {
         Self {
             mode: 0,
-            size: 2,
-            fill: 0.5,
+            size: crate::ops::default_i32("deterrace", "size"),
+            fill: crate::ops::default_f32("deterrace", "fill"),
             tolerance: 2,
-            run: 2,
-            jitter: 0.3,
-            seed: 0,
+            run: crate::ops::default_i32("deterrace", "run"),
+            jitter: crate::ops::default_f32("deterrace", "jitter"),
+            seed: crate::ops::default_i32("deterrace", "seed"),
         }
     }
 }
@@ -799,8 +799,8 @@ impl Default for ReducePanel {
             colors: 8,
             palette: String::new(),
             accents: true,
-            despeckle: 1,
-            min_same: 2,
+            despeckle: crate::ops::default_i32("reduce_palette", "despeckle"),
+            min_same: crate::ops::default_i32("reduce_palette", "minSame"),
             protect: String::new(),
         }
     }
@@ -879,8 +879,8 @@ impl Default for PartsPanel {
             parts: String::new(),
             world: false,
             geodesic: true,
-            remove_source: true,
-            bind: true,
+            remove_source: crate::ops::default_bool("split_parts", "removeSource"),
+            bind: crate::ops::default_bool("split_parts", "bind"),
         }
     }
 }

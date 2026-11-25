@@ -899,6 +899,8 @@ fn apply_unguarded(session: &mut Session, method: &str, params: &Value) -> Resul
     // After the world-space hand-off, which says so itself when a method
     // takes no space world, and which calls back here with local arguments.
     crate::ops::check_arguments(method, &params)?;
+    let mut params = params;
+    crate::ops::fill_defaults(method, &mut params);
     #[cfg(test)]
     if method == "test.panic_after_edit" {
         session.write_cells(&[(0, 0, 0, 3)])?;

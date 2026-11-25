@@ -104,9 +104,9 @@ impl Default for ReliefPanel {
             crown_on: false,
             crown: 24,
             top: [-8, 4],
-            lower: true,
-            depth: 3,
-            seed: 0,
+            lower: crate::ops::default_bool("column_relief", "lower"),
+            depth: crate::ops::default_i32("column_relief", "depth"),
+            seed: crate::ops::default_i32("column_relief", "seed"),
         }
     }
 }
@@ -224,9 +224,9 @@ impl Default for BarkPanel {
             width: [3.0, 6.0],
             length: [8.0, 20.0],
             depth: [1, 2],
-            cracks: 0.25,
+            cracks: crate::ops::default_f32("bark", "cracks"),
             only: String::new(),
-            seed: 0,
+            seed: crate::ops::default_i32("bark", "seed"),
         }
     }
 }
@@ -299,12 +299,12 @@ impl Default for PlanksPanel {
             width: [3, 6],
             length: [8, 20],
             gap: [1, 1],
-            thickness: 2,
-            ragged: 0.0,
+            thickness: crate::ops::default_i32("planks", "thickness"),
+            ragged: crate::ops::default_f32("planks", "ragged"),
             nails: 0.25,
             knots: 0.15,
             only: String::new(),
-            seed: 0,
+            seed: crate::ops::default_i32("planks", "seed"),
         }
     }
 }
@@ -352,13 +352,13 @@ pub struct CavityPanel {
 impl Default for CavityPanel {
     fn default() -> Self {
         Self {
-            radius: 2,
-            dark: 0.12,
-            lighten: false,
-            light: 0.25,
+            radius: crate::ops::default_i32("cavity_tint", "radius"),
+            dark: crate::ops::default_f32("cavity_tint", "dark"),
+            lighten: crate::ops::default_bool("cavity_tint", "lighten"),
+            light: crate::ops::default_f32("cavity_tint", "light"),
             pairs: String::new(),
-            darken: 0.72,
-            brighten: 1.18,
+            darken: crate::ops::default_f32("cavity_tint", "darken"),
+            brighten: crate::ops::default_f32("cavity_tint", "brighten"),
             only: String::new(),
         }
     }
@@ -441,7 +441,7 @@ impl Default for RadialPanel {
             axis: 2,
             center_on: false,
             center: [0.0, 0.0],
-            phase: 0.0,
+            phase: crate::ops::default_f32("radial_relief", "phase"),
             width_on: false,
             width: 2.0,
             range_on: false,
@@ -450,17 +450,17 @@ impl Default for RadialPanel {
             fade_on: false,
             fade: 4.0,
             profile: 0,
-            depth: 1.0,
+            depth: crate::ops::default_f32("radial_relief", "depth"),
             shade_on: true,
             shade: 0,
             light_on: false,
             light: 0,
             ribs: 0,
-            rib_width: 2.0,
-            rib_height: 0,
+            rib_width: crate::ops::default_f32("radial_relief", "ribWidth"),
+            rib_height: crate::ops::default_i32("radial_relief", "ribHeight"),
             only: String::new(),
-            jitter: 0.0,
-            seed: 0,
+            jitter: crate::ops::default_f32("radial_relief", "jitter"),
+            seed: crate::ops::default_i32("radial_relief", "seed"),
         }
     }
 }

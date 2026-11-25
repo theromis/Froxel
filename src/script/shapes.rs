@@ -672,6 +672,8 @@ pub(super) fn options(opts: &Map, allowed: &[&str], function: &str) -> Fallible<
         }
         args.insert(key.to_string(), json(value)?);
     }
+    // A left-out option takes its MCP schema default, as from MCP.
+    crate::ops::fill_tool_defaults(function, &mut args);
     Ok(args)
 }
 

@@ -179,3 +179,68 @@ fn every_rhai_option_is_an_argument_of_its_tool() {
     }
     assert!(checked > 25, "checked only {checked} lists against a tool");
 }
+
+#[test]
+fn every_schema_default_is_the_one_its_description_states() {
+    let mut checked = 0;
+    for op in OPS {
+        let Some(properties) = schema::properties(op.tool) else {
+            continue;
+        };
+        for (key, property) in properties {
+            let Some(default) = property.get("default") else {
+                continue;
+            };
+            checked += 1;
+            let description = property["description"].as_str().unwrap_or("");
+            // "Defaults to 17", "Default 1", "0 (the default)".
+            let stated = ["Defaults to ", "Default "]
+                .iter()
+                .find_map(|lead| {
+                    let at = description.find(lead)? + lead.len();
+                    let word: String = description[at..]
+                        .chars()
+                        .take_while(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '-')
+                        .collect();
+                    Some(word.trim_end_matches('.').to_string())
+                })
+                .or_else(|| {
+                    let at = description.find(" (the default)")?;
+                    Some(description[..at].rsplit(' ').next()?.to_string())
+                });
+            let Some(stated) = stated else {
+                panic!(
+                    "{} `{key}` has default {default} but its description names none",
+                    op.tool
+                );
+            };
+            let same = match default {
+                Value::Bool(value) => stated == value.to_string(),
+                Value::Number(number) => stated
+                    .parse::<f64>()
+                    .is_ok_and(|text| (text - number.as_f64().unwrap()).abs() < 1e-9),
+                _ => stated == default.to_string(),
+            };
+            assert!(
+                same,
+                "{} `{key}`: default {default}, description says {stated}",
+                op.tool
+            );
+        }
+    }
+    assert!(checked >= 50, "only {checked} defaults");
+}
+
+#[test]
+fn a_left_out_argument_takes_the_schema_default_and_panels_start_from_it() {
+    let mut args = json!({"x0": 0});
+    fill_defaults("voxel.smooth", &mut args);
+    assert_eq!(args["fillAt"], 17);
+    assert_eq!(args["x0"], 0);
+    let session = crate::state::Session::new();
+    assert_eq!(session.smooth_fill_at, default_i32("smooth", "fillAt"));
+    assert_eq!(
+        crate::state::FoliagePanel::default().flatten,
+        default_f32("foliage", "flatten")
+    );
+}

@@ -281,6 +281,53 @@ pub(crate) fn check_arguments(method: &str, args: &Value) -> Result<(), String> 
     ))
 }
 
+/// The schema `default` of a tool's argument: the value it takes when the
+/// argument is left out, and the value its panel starts from.
+pub(crate) fn default(tool: &str, key: &str) -> &'static Value {
+    schema::properties(tool)
+        .and_then(|properties| properties.get(key))
+        .and_then(|property| property.get("default"))
+        .unwrap_or_else(|| panic!("`{tool}` argument `{key}` has no default in ops::schema"))
+}
+
+/// [`default`] as a number.
+pub(crate) fn default_f32(tool: &str, key: &str) -> f32 {
+    default(tool, key).as_f64().expect("a number default") as f32
+}
+
+/// [`default`] as a whole number.
+pub(crate) fn default_i32(tool: &str, key: &str) -> i32 {
+    default(tool, key).as_i64().expect("a whole default") as i32
+}
+
+/// [`default`] as a boolean.
+pub(crate) fn default_bool(tool: &str, key: &str) -> bool {
+    default(tool, key).as_bool().expect("a boolean default")
+}
+
+/// Add every schema `default` the caller left out, for the tool `tool`.
+pub(crate) fn fill_tool_defaults(tool: &str, args: &mut serde_json::Map<String, Value>) {
+    let Some(properties) = schema::properties(tool) else {
+        return;
+    };
+    for (key, property) in properties {
+        if let Some(default) = property.get("default") {
+            if !args.contains_key(key) {
+                args.insert(key.clone(), default.clone());
+            }
+        }
+    }
+}
+
+/// [`fill_tool_defaults`] for the tool that runs `method`, so the value a
+/// left-out argument takes is the schema's for every caller.
+pub(crate) fn fill_defaults(method: &str, args: &mut Value) {
+    let (Some(op), Some(map)) = (by_method(method).next(), args.as_object_mut()) else {
+        return;
+    };
+    fill_tool_defaults(op.tool, map);
+}
+
 /// `control.methods`: each method, its arguments (optional ones with `?`),
 /// and what it does, from the tools that run it, then the control port's
 /// own helpers.

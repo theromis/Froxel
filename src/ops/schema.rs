@@ -8,6 +8,14 @@ use serde_json::{json, Value};
 
 use crate::remote;
 
+/// `prop` with its JSON Schema `default`: the value the tool takes when the
+/// argument is left out. `remote::apply` fills it in for every caller, and
+/// the panels start from it ([`super::default`]).
+fn with_default(mut prop: Value, value: Value) -> Value {
+    prop["default"] = value;
+    prop
+}
+
 /// Every tool's `tools/list` entry, in [`super::OPS`] order.
 pub(crate) fn tools() -> &'static [Value] {
     static TOOLS: OnceLock<Vec<Value>> = OnceLock::new();
@@ -143,13 +151,13 @@ fn build() -> Vec<Value> {
         }), &[]),
         define("deterrace", "Remove the contour terraces a smooth mesh leaves when voxelized (import_mesh of an image-to-3D model): one-cell steps running in long even bands on gentle slopes, which read as stripes. mode blocks (default) re-quantizes the active object into cubes of size cells (2 to 4, default 2) on a grid through origin: a cube is solid when at least fill (default 0.5) of its cells are, and its cells take its most common slot, so every step is size cells tall and the form gets the chunky concept-cube look; a cube whose decision would move the surface more than tolerance cells (default size) stays as it is, so thin parts survive. mode stagger works on the top surface (each column's highest cell): where a column stands one cell above a face neighbour, the step's edge moves by one cell, the low side up or the high side down, in teeth run cells long (default 2) that alternate, with a seeded share jitter (default 0.3) flipped, so no step runs in a long even line; nothing moves more than one cell. An optional box x0..z1 limits it. One undo step. Replies with mode, added, removed, steps and longestRun (one-cell steps on the top surface and the longest straight run of them, before and after), kept (blocks left as they were), changed, and voxels.", json!({
             "mode": {"type": "string", "enum": ["blocks", "stagger"], "description": "blocks (default) re-quantizes into cubes; stagger breaks one-cell step edges into teeth."},
-            "size": int_prop("blocks: the cube side in cells, 2..=4. Defaults to 2."),
-            "fill": num_prop("blocks: the share of a cube's cells that makes it solid, above 0 and at most 1. Defaults to 0.5."),
+            "size": with_default(int_prop("blocks: the cube side in cells, 2..=4. Defaults to 2."), json!(2)),
+            "fill": with_default(num_prop("blocks: the share of a cube's cells that makes it solid, above 0 and at most 1. Defaults to 0.5."), json!(0.5)),
             "origin": vec3_prop("blocks: a corner of the cube grid, in local cells. Defaults to [0, 0, 0]."),
             "tolerance": int_prop("blocks: how far, in cells, a cube may move the surface, 0..=16. Defaults to size."),
-            "run": int_prop("stagger: tooth length along a step, 1..=16. Defaults to 2."),
-            "jitter": num_prop("stagger: share of teeth flipped from the alternating pattern, 0..=1. Defaults to 0.3."),
-            "seed": int_prop("stagger: which teeth flip. Defaults to 0."),
+            "run": with_default(int_prop("stagger: tooth length along a step, 1..=16. Defaults to 2."), json!(2)),
+            "jitter": with_default(num_prop("stagger: share of teeth flipped from the alternating pattern, 0..=1. Defaults to 0.3."), json!(0.3)),
+            "seed": with_default(int_prop("stagger: which teeth flip. Defaults to 0."), json!(0)),
             "x0": int_prop("Inclusive box corner"),
             "y0": int_prop("Inclusive box corner"),
             "z0": int_prop("Inclusive box corner"),
@@ -163,8 +171,8 @@ fn build() -> Vec<Value> {
             "metric": {"type": "string", "enum": ["geodesic", "euclidean"], "description": "geodesic (default): distance through the solid; euclidean: straight-line distance."},
             "connectivity": {"type": "integer", "enum": [6, 26], "description": "Geodesic neighbours: 26 (default) faces, edges, and corners; 6 faces only."},
             "reach": num_prop("Cells a seed may snap to the nearest solid cell, 0..64. Defaults to 8."),
-            "removeSource": {"type": "boolean", "description": "Remove the emptied source object. Defaults to true; a part named like the source keeps it."},
-            "bind": {"type": "boolean", "description": "Bind each part to the bone of its name when there is one. Defaults to true."},
+            "removeSource": with_default(json!({"type": "boolean", "description": "Remove the emptied source object. Defaults to true; a part named like the source keeps it."}), json!(true)),
+            "bind": with_default(json!({"type": "boolean", "description": "Bind each part to the bone of its name when there is one. Defaults to true."}), json!(true)),
             "space": remote::space_prop()
         }), &["parts"]),
         define("reduce_palette", "Clean up the colours of a voxelized mesh (import_mesh of an image-to-3D model gives a score of slots a shade apart and a per-cell ripple): first reduce, then despeckle, on the active object, with no cell added or removed. colors N clusters the object's colours into N (median cut refined by k-means in the Oklab perceptual space, over the surface cells) with an accent guard that keeps up to maxAccents (default 4) small distinct colours (eyes, a mouth, a nostril) their own slot when they hold at least minShare (default 0.002) of the surface and lie further than contrast (an Oklab distance, default 0.12) from every cluster (accents false turns it off); each cluster takes over in place the commonest of its slots that no other cell uses, or a free slot. palette snaps every colour to the nearest of a list of slots or #rrggbb colours instead (a colour not in the palette takes a free slot). despeckle (passes, 0..16, default 0; true is 1) is a majority filter on the surface: a surface cell whose slot fewer than minSame (default 2) of its 26 surface neighbours share takes the slot more than half of them hold, so lone specks and pairs go and lines and patches stay. protect lists slots both passes leave alone (the eyes). An optional box x0..z1 limits it. One undo step. Replies with slots {before, after} (distinct slots), clusters (slot, color, cells), accents, despeckled, recolored (slots that took a new colour in place), newSlots, changed, and voxels.", json!({
@@ -174,8 +182,8 @@ fn build() -> Vec<Value> {
             "minShare": num_prop("Accent guard: share of the surface an accent needs, 0..1. Defaults to 0.002."),
             "contrast": num_prop("Accent guard: Oklab distance from every cluster an accent needs. Defaults to 0.12."),
             "maxAccents": int_prop("Accent guard: most accents kept beyond colors, 0..16. Defaults to 4."),
-            "despeckle": {"type": ["integer", "boolean"], "description": "Majority filter passes over the surface, 0..16; true is 1. Defaults to 0."},
-            "minSame": int_prop("Despeckle: a cell keeps its slot when at least this many surface neighbours share it, 0..26. Defaults to 2."),
+            "despeckle": with_default(json!({"type": ["integer", "boolean"], "description": "Majority filter passes over the surface, 0..16; true is 1. Defaults to 0."}), json!(0)),
+            "minSame": with_default(int_prop("Despeckle: a cell keeps its slot when at least this many surface neighbours share it, 0..26. Defaults to 2."), json!(2)),
             "protect": {"type": "array", "items": {"type": "integer"}, "description": "Slots both passes leave alone."},
             "x0": int_prop("Inclusive box corner"),
             "y0": int_prop("Inclusive box corner"),
@@ -229,9 +237,9 @@ fn build() -> Vec<Value> {
             for key in ["x0", "y0", "z0", "x1", "y1", "z1"] {
                 p[key] = int_prop("Inclusive box corner");
             }
-            p["iterations"] = int_prop("Passes, 1..=8. Defaults to 1. Stops early when a pass changes nothing.");
-            p["fillAt"] = int_prop("Fill an empty cell with at least this many solid neighbours, 1..=27. Defaults to 17; 14 also rounds inside edges; 27 never fills.");
-            p["removeAt"] = int_prop("Remove a solid cell with at most this many solid neighbours, -1..=25. Defaults to 9; 12 also rounds outside edges; -1 never removes.");
+            p["iterations"] = with_default(int_prop("Passes, 1..=8. Defaults to 1. Stops early when a pass changes nothing."), json!(1));
+            p["fillAt"] = with_default(int_prop("Fill an empty cell with at least this many solid neighbours, 1..=27. Defaults to 17; 14 also rounds inside edges; 27 never fills."), json!(17));
+            p["removeAt"] = with_default(int_prop("Remove a solid cell with at most this many solid neighbours, -1..=25. Defaults to 9; 12 also rounds outside edges; -1 never removes."), json!(9));
             p
         }, &["x0", "y0", "z0", "x1", "y1", "z1"]),
         define("break_end", "Break the active object across a plane, for a snapped trunk, branch, plank, or post. Every cell beyond a jagged surface around the plane goes: blocks of 2 by 3 cells across the face dip up to depth into the wood, a quarter of them deep pits. The cells left facing the cut take bark on the rim of the section and sapwood inside, and tapered flat splinters grow from the new face out along the normal, longer and more common near the rim with rimBias. Splinters fill only empty cells. Deterministic for a seed. At most 512 splinters and 2000000 cells. One undo step. Replies with removed, recoloured, and splinters.", json!({
@@ -292,10 +300,10 @@ fn build() -> Vec<Value> {
             p["out"] = json!({"type": "array", "items": {"type": "integer"}, "description": "How far a column stands out of the face, [min, max] cells, 0..=16, or one number. Defaults to [1, 4]."});
             p["crown"] = int_prop("Height the column tops scatter around. Defaults to the highest solid cell in the box.");
             p["top"] = json!({"type": "array", "items": {"type": "integer"}, "description": "Column top range [min, max] relative to the crown in cells, -256..=256: negative ends short of it, positive rises above it. Defaults to [-8, 4]."});
-            p["lower"] = json!({"type": "boolean", "description": "A column ending below the crown cuts the wall above it, so the crown is uneven. false only adds cells (only rising). Defaults to true."});
-            p["depth"] = int_prop("How far a column reaches back into the face, and how deep the cut above a short column goes, 1..=16 cells. Defaults to 3.");
+            p["lower"] = with_default(json!({"type": "boolean", "description": "A column ending below the crown cuts the wall above it, so the crown is uneven. false only adds cells (only rising). Defaults to true."}), json!(true));
+            p["depth"] = with_default(int_prop("How far a column reaches back into the face, and how deep the cut above a short column goes, 1..=16 cells. Defaults to 3."), json!(3));
             p["exclude"] = exclude_prop();
-            p["seed"] = int_prop("Seed. Defaults to 0.");
+            p["seed"] = with_default(int_prop("Seed. Defaults to 0."), json!(0));
             p
         }, &["x0", "y0", "z0", "x1", "y1", "z1", "facing", "palette"]),
         define("weather", "Weather the exposed cells of an inclusive box of the active object: chip edges and corners (small irregular chunks off cells exposed on two or more sides), dent flat faces with pits (real holes, not paint), and add subtle colour noise in soft patches. The faces a chip or pit uncovers take the broken slot, usually a slightly darker stone (not dirt). exclude boxes keep walking surfaces whole. Deterministic for a seed. A box of at most 2000000 cells. One undo step. Replies with chips, pits, removed, broken, and recoloured.", {
@@ -346,10 +354,10 @@ fn build() -> Vec<Value> {
             p["width"] = json!({"type": "array", "items": {"type": "number"}, "description": "Plate width range [min, max] in cells around the wood, or across a flat plate, 1..=64, or one number. Defaults to [3, 6]."});
             p["length"] = json!({"type": "array", "items": {"type": "number"}, "description": "Plate length range [min, max] in cells along the grain, 2..=256, or one number. Defaults to [8, 20]."});
             p["depth"] = json!({"type": "array", "items": {"type": "integer"}, "description": "Fissure depth range [min, max] in cells, 1..=4, or one number. Plate ends and cracks take the minimum. Defaults to [1, 2]."});
-            p["cracks"] = num_prop("Share of plates with a crack part way across, 0..=1. Defaults to 0.25.");
+            p["cracks"] = with_default(num_prop("Share of plates with a crack part way across, 0..=1. Defaults to 0.25."), json!(0.25));
             p["only"] = json!({"type": "array", "items": {"type": "integer"}, "description": "Act only on cells of these palette indices (the wood). Omit to act on every slot."});
             p["exclude"] = exclude_prop();
-            p["seed"] = int_prop("Seed. Defaults to 0.");
+            p["seed"] = with_default(int_prop("Seed. Defaults to 0."), json!(0));
             p
         }, &["x0", "y0", "z0", "x1", "y1", "z1", "palettes"]),
         define("planks", "Lay a deck, floor, or dock of separate boards over a rectangle of the active object at height z, along an axis, instead of dozens of fill_box and carve calls or painted stripes. Rows of random width tile the rectangle across the axis; each row is split into boards of random length, with end joints kept clear of those of the neighbouring rows. Gaps (between rows and at end joints) are empty down through the boards, with a dirt cell under them. Each board takes one tone, never that of the board before it in the row and as seldom as it can that of the boards beside it, and a row with room for a joint always has one, so no layout runs as one uniform stripe. A row's first and last boards are sawn pieces, so they may be shorter than length. Optional ragged ends, and nails and knots in the dark slot. Solid or empty, every cell of the rectangle takes a board or a gap unless only limits it, so to fit a curved hull fill its deck in one slot and pass that slot as only. The same seed gives the same boards. One undo step. Replies with rows, boards, joints, added, painted, removed, dirtied, nails, knots, changed, and voxels.", {
@@ -365,13 +373,13 @@ fn build() -> Vec<Value> {
             p["width"] = json!({"type": ["array", "number"], "items": {"type": "integer"}, "description": "Board width range across the axis in cells [min, max], 1..=64. Defaults to [3, 6]."});
             p["length"] = json!({"type": ["array", "number"], "items": {"type": "integer"}, "description": "Board length range along the axis in cells [min, max], 2..=256. Defaults to [8, 20]."});
             p["gap"] = json!({"type": ["array", "number"], "items": {"type": "integer"}, "description": "Gap width between boards in cells, a number or [min, max], 1..=8. Defaults to 1."});
-            p["thickness"] = int_prop("Layers of board, the gaps run through them all, 1..=16. Defaults to 2.");
-            p["ragged"] = num_prop("Chance per cell across a board's end that it is cut back 1 or 2 cells, 0..=1, about 0.3 for old wood. Defaults to 0: square ends.");
+            p["thickness"] = with_default(int_prop("Layers of board, the gaps run through them all, 1..=16. Defaults to 2."), json!(2));
+            p["ragged"] = with_default(num_prop("Chance per cell across a board's end that it is cut back 1 or 2 cells, 0..=1, about 0.3 for old wood. Defaults to 0: square ends."), json!(0));
             p["nails"] = num_prop("Share of boards with a dark nail near each end, 0..=1, with dark. Defaults to 0.25.");
             p["knots"] = num_prop("Share of boards with a dark knot along the middle, 0..=1, with dark. Defaults to 0.15.");
             p["only"] = json!({"type": "array", "items": {"type": "integer"}, "description": "Act only on solid cells of these palette indices, such as a deck already filled to a curved outline. Omit to lay boards over the whole rectangle."});
             p["exclude"] = exclude_prop();
-            p["seed"] = int_prop("Seed. Defaults to 0.");
+            p["seed"] = with_default(int_prop("Seed. Defaults to 0."), json!(0));
             p
         }, &["x0", "y0", "x1", "y1", "z", "axis", "palettes"]),
         define("cavity_tint", "Shade depth into the exposed cells of an inclusive box of the active object without hand painting: each cell counts the solid cells in a ball of radius around it, a curvature or ambient occlusion estimate. Cells in concave spots (fissures, crevices, the crook of a root, the foot of a wall) more than dark take a darker slot; with lighten, cells on convex ridges and corners more than light take a lighter one. pairs names the slots ([slot, darker] or [slot, darker, lighter]); without pairs each slot gets shades of its own colour (darken and brighten times it, with its material) in free palette slots (from 255 down, never one a cell uses), reused on later calls. Run it after bark, joints, or weather and before moss. A box of at most 2000000 cells. One undo step with the palette. Replies with darkened, lightened, and shades (the slots it made).", {
@@ -379,13 +387,13 @@ fn build() -> Vec<Value> {
             for key in ["x0", "y0", "z0", "x1", "y1", "z1"] {
                 p[key] = int_prop("Inclusive box corner");
             }
-            p["radius"] = int_prop("Radius of the ball counted around each cell, 1..=4. Larger finds broader hollows. Defaults to 2.");
-            p["dark"] = num_prop("How concave a cell must be to darken, 0..=1: 0 a flat face, 1 a closed pocket. Defaults to 0.12.");
-            p["lighten"] = json!({"type": "boolean", "description": "Also lighten exposed ridges and corners. Defaults to false."});
-            p["light"] = num_prop("With lighten: how convex a cell must be to lighten, 0..=1: 0 a flat face, 1 a lone spike. Defaults to 0.25.");
+            p["radius"] = with_default(int_prop("Radius of the ball counted around each cell, 1..=4. Larger finds broader hollows. Defaults to 2."), json!(2));
+            p["dark"] = with_default(num_prop("How concave a cell must be to darken, 0..=1: 0 a flat face, 1 a closed pocket. Defaults to 0.12."), json!(0.12));
+            p["lighten"] = with_default(json!({"type": "boolean", "description": "Also lighten exposed ridges and corners. Defaults to false."}), json!(false));
+            p["light"] = with_default(num_prop("With lighten: how convex a cell must be to lighten, 0..=1: 0 a flat face, 1 a lone spike. Defaults to 0.25."), json!(0.25));
             p["pairs"] = json!({"type": "array", "items": {"type": "array", "items": {"type": "integer"}}, "description": "[slot, darker] or [slot, darker, lighter] per slot (0 leaves that tint out). Slots without a pair stay. Omit to make shades."});
-            p["darken"] = num_prop("Without pairs: the darker shade's colour as a factor of the slot's, 0.05..1. Defaults to 0.72.");
-            p["brighten"] = num_prop("Without pairs: the lighter shade's colour as a factor of the slot's, above 1 up to 4. Defaults to 1.18.");
+            p["darken"] = with_default(num_prop("Without pairs: the darker shade's colour as a factor of the slot's, 0.05..1. Defaults to 0.72."), json!(0.72));
+            p["brighten"] = with_default(num_prop("Without pairs: the lighter shade's colour as a factor of the slot's, above 1 up to 4. Defaults to 1.18."), json!(1.18));
             p["only"] = json!({"type": "array", "items": {"type": "integer"}, "description": "Act only on cells of these palette indices. Omit to act on every slot."});
             p["exclude"] = exclude_prop();
             p
@@ -399,25 +407,25 @@ fn build() -> Vec<Value> {
             p["count"] = int_prop("How many recesses round the axis, 1..=256.");
             p["axis"] = json!({"type": "string", "enum": ["x", "y", "z"], "description": "The axis the recesses repeat round. Defaults to z."});
             p["center"] = json!({"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2, "description": "The axis in the plane across it, [a, b] as the two other coordinates in x, y, z order (for axis z, [x, y]); cell centres are whole numbers. Defaults to the middle of the solid's extent in the box and range."});
-            p["phase"] = num_prop("Turns the pattern, in degrees: for flutes a share of the outline's length (360 a whole turn), for gores an angle from the +x (axis z), +y (axis x), or +x (axis y) side. 0 puts a ridge or rib at 0. Defaults to 0.");
+            p["phase"] = with_default(num_prop("Turns the pattern, in degrees: for flutes a share of the outline's length (360 a whole turn), for gores an angle from the +x (axis z), +y (axis x), or +x (axis y) side. 0 puts a ridge or rib at 0. Defaults to 0."), json!(0));
             p["width"] = num_prop("Flutes: cells across each flute, 0.5..=64, at most the pitch. Defaults to 0.6 of the pitch (the outline's length over count).");
             p["from"] = int_prop("First cell along the axis: the flutes' lower end, the dome's foot. Defaults to the solid's lowest cell in the box.");
             p["to"] = int_prop("Last cell along the axis: the flutes' upper end, the dome's top. Defaults to the solid's highest cell in the box.");
             p["ends"] = json!({"type": "string", "enum": ["round", "taper", "square"], "description": "How a recess ends over fade cells: round (a cupped end, the default), taper (a straight ramp), or square (full depth to the end)."});
             p["fade"] = num_prop("Cells over which a recess fades in from its ends (flutes; default the width, at least 2) or from the foot (gores; default 6), 0..=128. Gores also fade toward the crown.");
             p["profile"] = json!({"type": "string", "enum": ["u", "v", "flat"], "description": "Section across a recess: u (round-bottomed, the default), v (straight sides), or flat (a flat floor over the middle half, sloped sides)."});
-            p["depth"] = num_prop("Deepest recess depth, 0.5..=4 cells, in from the outer surface. Defaults to 1.");
+            p["depth"] = with_default(num_prop("Deepest recess depth, 0.5..=4 cells, in from the outer surface. Defaults to 1."), json!(1));
             p["shade"] = json!({"type": ["integer", "boolean"], "description": "Tone of the floor cells in the middle of each recess: a palette slot, true (the default) for a darker shade of each cell's own slot, or false for none."});
             p["light"] = json!({"type": ["integer", "boolean"], "description": "Tone of the slope cells by the ridges: a palette slot, true for a lighter shade of each cell's own slot, or false (the default) for none."});
             p["darken"] = num_prop("With shade true: the shade's colour as a factor of the slot's, 0.05..1. Defaults to 0.72.");
             p["brighten"] = num_prop("With light true: the light tone's colour as a factor of the slot's, above 1 up to 4. Defaults to 1.18.");
             p["ribs"] = int_prop("Palette slot of the lines between recesses (a dome's ribs, a column's fillets), and of raised rib cells. Omit to leave them as they are.");
-            p["ribWidth"] = num_prop("Gores: width of the rib line between two gores, 0..=16 cells. Defaults to 2, which keeps a rib whole down a steep side.");
-            p["ribHeight"] = int_prop("Raise the ribs by this many cells, 0..=4, in the ribs slot (or the slot under them). Defaults to 0.");
+            p["ribWidth"] = with_default(num_prop("Gores: width of the rib line between two gores, 0..=16 cells. Defaults to 2, which keeps a rib whole down a steep side."), json!(2));
+            p["ribHeight"] = with_default(int_prop("Raise the ribs by this many cells, 0..=4, in the ribs slot (or the slot under them). Defaults to 0."), json!(0));
             p["only"] = json!({"type": "array", "items": {"type": "integer"}, "description": "Act only on cells of these palette indices. Omit to act on every slot."});
             p["exclude"] = exclude_prop();
-            p["jitter"] = num_prop("Share of random change in each recess's depth and place, 0..=1. Defaults to 0: architecture is regular.");
-            p["seed"] = int_prop("Seed of the jitter. Defaults to 0.");
+            p["jitter"] = with_default(num_prop("Share of random change in each recess's depth and place, 0..=1. Defaults to 0: architecture is regular."), json!(0));
+            p["seed"] = with_default(int_prop("Seed of the jitter. Defaults to 0."), json!(0));
             p
         }, &["kind", "count"]),
         define("foliage", "Build a clustered broadleaf tree crown on the active object, as pixel-art trees draw one: many separate leaf clumps with sunlit tops, darker undersides, and dark gaps between them, instead of one smooth blob. The crown volume is ellipsoids and boxes, or from (the existing cells of some slots, to re-cluster a crown already sculpted; those no clump keeps are removed), or both. Clump centres are packed over the volume's surface with Poisson-like spacing (no two closer than their sizes and gap allow); each clump is a flattened ellipsoid with a ragged, leafy outline that bulges out of the surface. The volume one cell under its surface fills with the core slot, so the gaps show dark and nothing is see-through. Each clump is shaded as one piece: its height in the crown and the way the crown faces the sun there set its tone, inside it the top lightens and the underside darkens along its own curve, and a darker seam marks where two clumps meet; no colour is per-cell noise. masses groups the clumps into lobes split by deeper grooves. Only empty cells and cells of the crown's own slots (palettes, core, from) are written, never protect slots: the trunk and branches stay whole and show through the gaps; exclude boxes keep a space open (in front of the trunk). Palette slots keep their motion, so give the leaf slots and the core the same sway. Writes stay inside the box, or without one inside the shapes and from cells grown by room for the clumps. Deterministic for a seed. A box of at most 2000000 cells, at most 4096 clumps. One undo step. Replies with clumps, masses, added, recoloured, removed, and core.", merged({
@@ -431,19 +439,19 @@ fn build() -> Vec<Value> {
             p["from"] = json!({"type": "array", "items": {"type": "integer"}, "description": "Crown volume: the existing cells of these slots (in the box). Re-clusters a crown already sculpted; its cells no clump or core keeps are removed."});
             p["core"] = int_prop("Palette index of the dark core inside the crown, seen in the gaps. Defaults to the first of palettes.");
             p["size"] = json!({"type": "array", "items": {"type": "number"}, "description": "Clump radius range [min, max] in cells, 1..=32, or one number. Defaults to [3, 6]."});
-            p["gap"] = num_prop("Extra cells between neighbouring clumps, 0..=8. Larger shows more dark core between them. Defaults to 1.");
-            p["flatten"] = num_prop("Clump height over width, 0.2..=1.5; below 1 clumps are wider than tall. Defaults to 0.7.");
-            p["ragged"] = num_prop("Leafy outline noise of each clump, 0..=1. 0 is a smooth ellipsoid. Defaults to 0.4.");
+            p["gap"] = with_default(num_prop("Extra cells between neighbouring clumps, 0..=8. Larger shows more dark core between them. Defaults to 1."), json!(1));
+            p["flatten"] = with_default(num_prop("Clump height over width, 0.2..=1.5; below 1 clumps are wider than tall. Defaults to 0.7."), json!(0.7));
+            p["ragged"] = with_default(num_prop("Leafy outline noise of each clump, 0..=1. 0 is a smooth ellipsoid. Defaults to 0.4."), json!(0.4));
             p
         }, json!({
-            "light": num_prop("How strongly sunlit tops lighten toward the last palette, 0..=2. Defaults to 1."),
-            "dark": num_prop("How strongly undersides and seams darken toward the first palette, 0..=2. Defaults to 1."),
+            "light": with_default(num_prop("How strongly sunlit tops lighten toward the last palette, 0..=2. Defaults to 1."), json!(1)),
+            "dark": with_default(num_prop("How strongly undersides and seams darken toward the first palette, 0..=2. Defaults to 1."), json!(1)),
             "sun": json!({"type": "array", "items": {"type": "number"}, "description": "Direction toward the sun [x, y, z], Z up. Defaults to [-0.35, -0.45, 1], high at the front left."}),
-            "masses": int_prop("Lobes the clumps are grouped into, 0..=16, split by deeper grooves and each with its own tone. 0 (the default) is none."),
-            "groove": int_prop("With masses: how many cells deeper the grooves between lobes go, 0..=8. Defaults to 2."),
+            "masses": with_default(int_prop("Lobes the clumps are grouped into, 0..=16, split by deeper grooves and each with its own tone. 0 (the default) is none."), json!(0)),
+            "groove": with_default(int_prop("With masses: how many cells deeper the grooves between lobes go, 0..=8. Defaults to 2."), json!(2)),
             "protect": json!({"type": "array", "items": {"type": "integer"}, "description": "Slots never written, even when they are also crown slots. Any slot not in palettes, core, or from is already kept (the wood)."}),
             "exclude": exclude_prop(),
-            "seed": int_prop("Seed. Defaults to 0.")
+            "seed": with_default(int_prop("Seed. Defaults to 0."), json!(0))
         })), &["palettes"]),
         define("sweep", "Fill a 2D cross-section along a path of 2..=1024 local points, kept perpendicular to it, for curved walls, banks, ledges, and kerbs with no corners. The profile's u runs to the left of the path (seen from above, walking along it) and v up, so a wall profile stands on the path; a whole-number point is a cell centre. profile is a polygon of [u, v] points, or width (across, centred on the path), height (up from it), and radius (rounded corners) give a rounded rectangle. Each point may carry its own twist (degrees about the path) and scale, interpolated along it. curve smooth passes a Catmull-Rom curve through the points; extra slabs fill the outside of a bend. A cell is in when its centre is inside the profile at the nearest slab, so a flat top stays one flat layer. palettes lay out in bands (by height in the profile, strata), rings (along the path), or random. Writes as mode says. palette 0 erases instead: it removes the solid cells the sweep covers, for a slanted cut along a closed or curved outline (mode empty is refused with it). At most 2000000 cells. One undo step. Replies with cells and length, and removed when erasing.", json!({
             "points": {"type": "array", "items": {"type": ["array", "object"]}, "description": "Path points: [x, y, z], [x, y, z, twist], [x, y, z, twist, scale], or {x, y, z, twist?, scale?}. twist is degrees counter-clockwise looking along the path (default 0); scale multiplies the profile, 0.05..=16 (default 1)."},
@@ -493,7 +501,7 @@ fn build() -> Vec<Value> {
             "amplitude": num_prop("displace: the most the surface moves, 0.5..=32 cells. Defaults to 2."),
             "scale": num_prop("displace: bump size in cells, 1..=512. Defaults to 8."),
             "octaves": int_prop("displace: 1..=6 layers, each half the size and height. Defaults to 2."),
-            "seed": int_prop("displace: noise seed. Defaults to 0."),
+            "seed": with_default(int_prop("displace: noise seed. Defaults to 0."), json!(0)),
             "bias": num_prop("displace: -1 only dents, 0 dents and bulges (default), 1 only bulges."),
             "point": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3, "description": "scale: the centre of the part, local cells [x, y, z]."},
             "factor": {"type": ["number", "array"], "items": {"type": "number"}, "description": "scale: how much larger, 0.25..4, or [x, y, z] per axis. Defaults to 1.5."},
@@ -503,11 +511,11 @@ fn build() -> Vec<Value> {
         })), &["op"]),
         define("blend_shapes", "Fill simple shapes blended as signed distance fields with a smooth minimum, so they flow into each other like clay instead of sticking together as separate balls and bricks: statues, creatures, topiary, roots, snowmen, any organic form built from a body, a head, eyes, and limbs. shapes is a list applied in order; each is {shape: sphere (center, radius) | ellipsoid (center, radii [rx, ry, rz] or radius) | box (center, size [sx, sy, sz] in cells, round: edge radius) | capsule (from, to, radius or radii [r0, r1] for a taper, or points [[x, y, z, r], ...] for a bent limb) | torus (center, radius to the ring's middle, thickness), rotate?: [x, y, z] degrees about the centre (x, then y, then z; not a capsule), op?: union (default) | subtract | intersect, k?: this shape's smoothing in cells, palette?}. A whole-number point is the centre of that cell. union joins the shape with a smooth minimum, subtract carves it softly out of what came before (a mouth groove, eye sockets, a hollow), intersect keeps only what is inside it. k is the fillet width in cells: 0 is the hard union of fill_ellipsoid calls, 2 to 6 melts a head into a body. A cell is filled when the blended distance at its centre is at most grow. Colour: each union shape's palette (or the call's palette); colors nearest (default) gives a filled cell the slot of the shape it is deepest inside, so seams fall halfway through the fillets, last the last listed shape whose own body holds it (eyes, buttons, and spots listed after the body), and seam dithers the boundary between two slots over that many cells. A subtract or intersect shape with a palette paints the cells along its cut (a dark mouth line). Only the shapes' box grown by k is evaluated (at most 16000000 cells; pass x0..z1 to clip it), and at most 2000000 cells are filled. Writes as mode says: replace, empty, paint, or intersect (erase the solid cells outside the blend). One undo step. Replies with cells, changed, shapes, evaluated, and bounds.", json!({
             "shapes": {"type": "array", "items": {"type": "object"}, "description": "1..=256 shapes in order: {shape: sphere | ellipsoid | box | capsule | torus, center?, radius?, radii?, size?, round?, from?, to?, points?, thickness?, rotate?, op?: union | subtract | intersect, k?, palette?}. The first is a union."},
-            "k": num_prop("Default smoothing radius in cells for every shape that leaves k out, 0..=64. 0 is a hard union. Defaults to 3."),
+            "k": with_default(num_prop("Default smoothing radius in cells for every shape that leaves k out, 0..=64. 0 is a hard union. Defaults to 3."), json!(3)),
             "palette": int_prop("Default palette slot of union shapes that leave palette out, 0..255 (0 erases)."),
-            "grow": num_prop("Fill where the blended distance is at most this, -16..=16 cells: above 0 thickens the whole form, below 0 thins it. Defaults to 0."),
+            "grow": with_default(num_prop("Fill where the blended distance is at most this, -16..=16 cells: above 0 thickens the whole form, below 0 thins it. Defaults to 0."), json!(0)),
             "colors": {"type": "string", "enum": ["nearest", "last"], "description": "nearest (default): the slot of the union shape the cell is deepest inside. last: the last listed union shape whose own body holds the cell, else nearest."},
-            "seam": num_prop("With colors nearest: dither the boundary between two shapes' slots over this many cells, 0..=32. Defaults to 0, a sharp boundary."),
+            "seam": with_default(num_prop("With colors nearest: dither the boundary between two shapes' slots over this many cells, 0..=32. Defaults to 0, a sharp boundary."), json!(0)),
             "seed": int_prop("Seed of the seam dither. Defaults to 0."),
             "x0": int_prop("Optional inclusive box that clips the evaluation; pass all six corners or none."),
             "y0": int_prop("Box corner"),
@@ -522,26 +530,26 @@ fn build() -> Vec<Value> {
             "radius": num_prop("Default rx and ry of points that leave them out."),
             "rx": num_prop("Default half-width across the path."),
             "ry": num_prop("Default half-height. Defaults to rx."),
-            "roll": num_prop("Default roll of the section about the path, in degrees. Defaults to 0."),
-            "flatTop": num_prop("Default flat side, -1..=1: above 0 cuts the top at ry * (1 - flatTop), below 0 the bottom. Defaults to 0."),
-            "noise": num_prop("Default outline noise as a fraction of the radius, 0..=0.9. Defaults to 0."),
-            "frequency": num_prop("Default lumps around the outline, 0..=64. Defaults to 5.")
+            "roll": with_default(num_prop("Default roll of the section about the path, in degrees. Defaults to 0."), json!(0)),
+            "flatTop": with_default(num_prop("Default flat side, -1..=1: above 0 cuts the top at ry * (1 - flatTop), below 0 the bottom. Defaults to 0."), json!(0)),
+            "noise": with_default(num_prop("Default outline noise as a fraction of the radius, 0..=0.9. Defaults to 0."), json!(0)),
+            "frequency": with_default(num_prop("Default lumps around the outline, 0..=64. Defaults to 5."), json!(5))
         }), json!({
             "curve": str_prop("polyline (default) or smooth"),
             "caps": {"type": "string", "enum": ["flat", "round"], "description": "flat (default) or round ends."},
             "palette": int_prop("Palette index, or pass palettes"),
             "palettes": {"type": "array", "items": {"type": "integer"}, "description": "Palette indices laid out by pattern"},
             "pattern": {"type": "string", "enum": ["rings", "stripes", "random"], "description": "rings (default) along the length, stripes around it, random per cell"},
-            "period": num_prop("Ring length in cells, 0.5..=512. Defaults to 2."),
+            "period": with_default(num_prop("Ring length in cells, 0.5..=512. Defaults to 2."), json!(2)),
             "sectors": int_prop("Stripes around, 1..=256. Defaults to the number of palettes."),
-            "seed": int_prop("Seed of the outline noise and the random pattern. Defaults to 0."),
+            "seed": with_default(int_prop("Seed of the outline noise and the random pattern. Defaults to 0."), json!(0)),
             "mode": mode_prop()
         })), &["points"]),
         define("brush", "Sculpt the active object's surface with brush dabs along a path of points, like Blender's clay and grab brushes, to refine a silhouette after the rough form. op inflate pushes the surface out by up to strength x radius / 2 cells at each dab's centre; deflate (or dig) pushes it in the same way; smooth blurs solid and empty cells so bumps and pits melt (strength sets the passes); flatten cuts bumps and fills pits toward the mean plane of the surface under the dab; grab (or drag) moves the cells under each dab by vector cells times strength, with the falloff, so it pulls a branch stub out or bends a lip over. Each point is [x, y, z], [x, y, z, radius], or [x, y, z, radius, strength]; points leave out radius (default 3, 0.5..=64) and strength (0..=1, default 0.5, grab 1). Dabs are laid between points every spacing cells (default half the radius, 0 none; grab lays one per point), and each reads what the dabs before it left. falloff is smooth (default), linear, or constant. only limits the brush to cells of those slots: other cells never change and do not grow. Added cells take the nearest solid cell's slot, or palette. One undo step. Replies with dabs, added, and removed.", json!({
             "op": {"type": "string", "enum": ["inflate", "deflate", "dig", "smooth", "flatten", "grab", "drag"], "description": "The brush."},
             "points": {"type": "array", "items": {"type": ["array", "object"]}, "description": "Dab centres in local cells: [x, y, z], [x, y, z, radius], [x, y, z, radius, strength], or {x, y, z, radius?, strength?}."},
-            "radius": num_prop("Default dab radius in cells, 0.5..=64. Defaults to 3."),
-            "strength": num_prop("Default strength, 0..=1. Defaults to 0.5, or 1 for grab."),
+            "radius": with_default(num_prop("Default dab radius in cells, 0.5..=64. Defaults to 3."), json!(3)),
+            "strength": with_default(num_prop("Default strength, 0..=1. Defaults to 0.5, or 1 for grab."), json!(0.5)),
             "falloff": {"type": "string", "enum": ["smooth", "linear", "constant"], "description": "How a dab fades to its radius. Defaults to smooth."},
             "only": {"type": "array", "items": {"type": "integer"}, "description": "Palette indices the brush may change; other cells stay. Omit for all."},
             "palette": int_prop("Slot of added cells. Defaults to the nearest solid cell's."),
@@ -666,8 +674,8 @@ fn build() -> Vec<Value> {
             "tolerance": num_prop("RGB distance from the key colour that is still background, 0..442, for every view without its own. Defaults to 40."),
             "alphaThreshold": num_prop("Alpha below this is background, 1..255, for every view without its own. Defaults to 128."),
             "turns": {"type": "string", "enum": ["all", "upright"], "description": "all (default): the 24 axis-aligned turns; upright: the 4 about up, for an object already standing on its base."},
-            "yawStep": num_prop("Degrees between fine yaw steps about up around the best turn, 0..=90. Defaults to 0, none."),
-            "yawRange": num_prop("Fine steps go this many degrees each way, 0..=180. Defaults to 45."),
+            "yawStep": with_default(num_prop("Degrees between fine yaw steps about up around the best turn, 0..=90. Defaults to 0, none."), json!(0)),
+            "yawRange": with_default(num_prop("Fine steps go this many degrees each way, 0..=180. Defaults to 45."), json!(45)),
             "fineAxes": str_prop("Axes of the fine steps: z (default, yaw about up), or xyz to also tilt about x and y, for a mesh tilted off its axes."),
             "resolution": int_prop("Longest side of the projected model masks in pixels, 8..=512. Defaults to 64."),
             "size": num_prop("Cells along the longest axis after the turn, 1..=256. Instead of height or scale."),

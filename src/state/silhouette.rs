@@ -674,8 +674,8 @@ impl Default for OrientPanel {
     fn default() -> Self {
         Self {
             upright: false,
-            yaw_step: 5.0,
-            yaw_range: 45.0,
+            yaw_step: crate::ops::default_f32("orient_to_views", "yawStep"),
+            yaw_range: crate::ops::default_f32("orient_to_views", "yawRange"),
             tilt: false,
             size_mode: 0,
             size: 64,

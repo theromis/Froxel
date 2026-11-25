@@ -22,6 +22,15 @@
 
 ### Added
 
+- Tool schemas carry JSON Schema `default` values (smooth, deterrace,
+  reduce_palette, split_parts, orient_to_views, brush, deform, loft,
+  blend_shapes, column_relief, bark, planks, cavity_tint, radial_relief,
+  foliage). A left-out argument takes it from every caller (MCP, the
+  control port, `froxel run`, Rhai, the panels), and the panels start from
+  it instead of numbers of their own. Three panels start differently as a
+  result, now as MCP always did: Reduce palette's despeckle at 0 (was 1),
+  Orient's yaw step at 0 (was 5), and Loft's noise at 0 (was 0.15).
+
 - MCP `render` (and `froxel run render`) takes what `froxel render` did:
   `gpu` for the wgpu tracer, `albedoPath` and `normalPath` for the guides,
   `aces`, `stochasticGi`, and up to 8192 samples. `glassMode`,
