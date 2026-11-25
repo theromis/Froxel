@@ -150,7 +150,7 @@ impl Session {
                 let object = &self.objects[*target];
                 (object.translation, object.cells.clone())
             }
-            SplitInto::New(_) => (offset, HashMap::new()),
+            SplitInto::New(_) => (offset, Cells::default()),
         };
         let mut replaced = 0;
         for (cell, slot) in &taken {
@@ -1054,7 +1054,7 @@ impl Session {
             self.commit();
             self.checkpoint();
             let object = &mut self.objects[index];
-            object.cells = cells.clone();
+            *object.cells = cells.clone().into();
             object.translation = (0, 0, 0);
             object.box_min = (0, 0, 0);
             object.dims = (0, 0, 0);

@@ -264,7 +264,7 @@ impl Session {
                 moved.insert(at);
             }
         }
-        self.active_mut().cells = next;
+        *self.active_mut().cells = next.into();
         self.picked = moved;
         self.commit();
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);

@@ -19,6 +19,10 @@
   the scene is unchanged instead of rebuilding it every frame, and
   `froxel render`, MCP `render`, and Save Render trace rows on every core
   (the same image as before).
+- An object's cells are shared until written: undo history, transactions,
+  and stroke and drag bases no longer copy objects an edit did not touch,
+  so history on a many-object document takes a fraction of the memory, and
+  a stroke's base is no longer copied when it starts.
 - Mesh export's T-junction split looks up only the corners on each quad's
   own edges instead of every corner on its plane, so large flat terrain and
   walls export much faster, with the same triangles.

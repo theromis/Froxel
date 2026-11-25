@@ -119,7 +119,7 @@ fn object_band_selects_the_hits_and_a_click_keeps_one() {
     let mut session = Session::new();
     session.objects.push(Volume {
         name: "B".into(),
-        cells: HashMap::from([((0, 0, 0), 2)]),
+        cells: HashMap::from([((0, 0, 0), 2)]).into(),
         translation: (4, 0, 0),
         box_min: (0, 0, 0),
         dims: (0, 0, 0),
@@ -158,7 +158,7 @@ fn object_drag_moves_every_chosen_object() {
     session.active_mut().cells.insert((0, 0, 0), 1);
     session.objects.push(Volume {
         name: "B".into(),
-        cells: HashMap::from([((0, 0, 0), 2)]),
+        cells: HashMap::from([((0, 0, 0), 2)]).into(),
         translation: (5, 0, 0),
         box_min: (0, 0, 0),
         dims: (0, 0, 0),
@@ -190,7 +190,7 @@ fn rotate_object_turns_the_whole_selection() {
     session.active_mut().cells.insert((0, 0, 0), 1);
     session.objects.push(Volume {
         name: "B".into(),
-        cells: HashMap::from([((0, 0, 0), 2)]),
+        cells: HashMap::from([((0, 0, 0), 2)]).into(),
         translation: (4, 0, 0),
         box_min: (0, 0, 0),
         dims: (0, 0, 0),
@@ -483,7 +483,7 @@ fn resize_keeps_a_loaded_rotation() {
     let mut session = Session::new();
     session.objects[0] = Volume {
         name: src.name.clone(),
-        cells: src.cells.clone(),
+        cells: src.cells.clone().into(),
         translation: src.translation,
         box_min: src.box_min,
         dims: src.dims,
@@ -998,7 +998,7 @@ fn scene_save_keeps_each_object_in_place() {
     let objects = vec![
         Volume {
             name: "A".into(),
-            cells: first,
+            cells: first.into(),
             translation: (0, 0, 0),
             box_min: (0, 0, 0),
             dims: (0, 0, 0),
@@ -1012,7 +1012,7 @@ fn scene_save_keeps_each_object_in_place() {
         },
         Volume {
             name: "B".into(),
-            cells: second,
+            cells: second.into(),
             translation: (5, 0, 0),
             box_min: (0, 0, 0),
             dims: (0, 0, 0),
@@ -1048,7 +1048,7 @@ fn volume_from(object: &LoadedObject) -> Volume {
     }
     Volume {
         name: object.name.clone(),
-        cells: object.cells.clone(),
+        cells: object.cells.clone().into(),
         translation: object.translation,
         box_min: object.box_min,
         dims: object.dims,
@@ -1246,7 +1246,7 @@ fn scene_rotation_is_baked_into_the_cells() {
     let bytes = save_scene(
         &[Volume {
             name: object.name.clone(),
-            cells: object.cells.clone(),
+            cells: object.cells.clone().into(),
             translation: object.translation,
             box_min: object.box_min,
             dims: object.dims,
@@ -1426,7 +1426,7 @@ fn magicavoxel_fixture_keeps_world_cells() {
 fn bare_volume(name: &str, cells: HashMap<Cell, u8>, translation: Cell) -> Volume {
     Volume {
         name: name.into(),
-        cells,
+        cells: cells.into(),
         translation,
         box_min: (0, 0, 0),
         dims: (0, 0, 0),

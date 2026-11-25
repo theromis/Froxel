@@ -302,7 +302,7 @@ fn only_and_exclude_choose_the_slots() {
 fn boat_session() -> Session {
     let mut session = Session::new();
     session.replace_empty();
-    session.objects[0].cells = boat();
+    *session.objects[0].cells = boat().into();
     session
 }
 

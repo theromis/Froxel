@@ -288,8 +288,8 @@ fn scripts_batches_and_panels_take_the_mirror() {
 fn the_viewport_brush_writes_both_sides() {
     let mut session = ball();
     session.edit.viewport_mirror.on = true;
-    let base: HashMap<Cell, u8> = session.active().cells.clone();
-    session.write_preview(base, vec![((-1, 8, 8), 3)]);
+    let base: HashMap<Cell, u8> = session.active().cells.clone().into_map();
+    session.write_preview(base.into(), vec![((-1, 8, 8), 3)]);
     let cells = &session.active().cells;
     assert_eq!(cells.get(&(-1, 8, 8)), Some(&3));
     assert_eq!(cells.get(&(16, 8, 8)), Some(&3));

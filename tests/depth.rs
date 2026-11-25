@@ -351,7 +351,7 @@ fn a_depth_png_crop_of_a_sheet_carves_over_mcp() {
     )
     .unwrap();
     assert_eq!(reply["views"][0]["depth"]["calibrate"], "hull");
-    let cells: HashMap<Cell, u8> = session.active().cells.clone();
+    let cells: HashMap<Cell, u8> = session.active().cells.clone().into_map();
     let (wrong, worst) = mismatch(&cells, size, &sphere);
     assert!(worst <= 1.0, "{wrong} wrong cells, worst {worst}");
     std::fs::remove_dir_all(&dir).ok();

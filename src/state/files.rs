@@ -17,7 +17,7 @@ impl Session {
         self.objects.clear();
         self.objects.push(Volume {
             name: "Tree".into(),
-            cells: demo_tree(),
+            cells: demo_tree().into(),
             translation: (0, 0, 0),
             box_min: (0, 0, 0),
             dims: (0, 0, 0),
@@ -134,7 +134,7 @@ impl Session {
             }
             self.objects.push(Volume {
                 name,
-                cells: object.cells,
+                cells: object.cells.into(),
                 translation: object.translation,
                 box_min: object.box_min,
                 dims: object.dims,
@@ -150,7 +150,7 @@ impl Session {
         if self.objects.is_empty() {
             self.objects.push(Volume {
                 name: stem.to_string(),
-                cells: HashMap::new(),
+                cells: HashMap::new().into(),
                 translation: (0, 0, 0),
                 box_min: (0, 0, 0),
                 dims: (0, 0, 0),
@@ -304,7 +304,7 @@ impl Session {
         self.objects.clear();
         self.objects.push(Volume {
             name: "Object".into(),
-            cells: HashMap::new(),
+            cells: HashMap::new().into(),
             translation: (0, 0, 0),
             box_min: (0, 0, 0),
             dims: (0, 0, 0),

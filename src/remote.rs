@@ -18,7 +18,9 @@ mod organic;
 mod silhouette;
 mod space;
 mod stone;
-pub(crate) use batch::{batch_items, batch_tool_names, BATCH_TOOLS, MAX_BATCH_ITEMS};
+#[cfg(test)]
+pub(crate) use batch::BATCH_TOOLS;
+pub(crate) use batch::{batch_items, batch_tool_names, MAX_BATCH_ITEMS};
 pub(crate) use blend::blend_writes as blend_shape_writes;
 pub(crate) use collision::{collision_build, finish_reply as collision_reply};
 pub(crate) use edit::{

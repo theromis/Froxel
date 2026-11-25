@@ -1319,18 +1319,18 @@ impl Session {
             match key {
                 BuiltKey::Index(target) => {
                     if target < self.objects.len() {
-                        self.objects[target].cells = cells;
+                        *self.objects[target].cells = cells.into();
                     }
                 }
                 BuiltKey::Name(name) => {
                     if let Some(found) = self.objects.iter().position(|object| object.name == name)
                     {
-                        self.objects[found].cells = cells;
+                        *self.objects[found].cells = cells.into();
                     } else {
                         let translation = beside_host(&self.objects[index]);
                         self.objects.push(Volume {
                             name,
-                            cells,
+                            cells: cells.into(),
                             translation,
                             box_min: (0, 0, 0),
                             dims: (0, 0, 0),

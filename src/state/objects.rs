@@ -31,7 +31,7 @@ impl Session {
         self.checkpoint();
         self.objects.push(Volume {
             name,
-            cells: HashMap::new(),
+            cells: HashMap::new().into(),
             translation: (position[0], position[1], position[2]),
             box_min: (0, 0, 0),
             dims: size
@@ -181,7 +181,7 @@ impl Session {
         let translation = beside(self.active());
         self.objects.push(Volume {
             name,
-            cells: HashMap::new(),
+            cells: HashMap::new().into(),
             translation,
             box_min: (0, 0, 0),
             dims: (0, 0, 0),
@@ -541,7 +541,7 @@ impl Session {
         self.skeleton = skeleton;
         self.objects.push(Volume {
             name,
-            cells,
+            cells: cells.into(),
             translation: (origin[0], origin[1], origin[2]),
             box_min: (0, 0, 0),
             dims: (0, 0, 0),
@@ -1196,7 +1196,7 @@ impl Session {
         if self.objects.is_empty() {
             self.objects.push(Volume {
                 name: "Object".into(),
-                cells: HashMap::new(),
+                cells: HashMap::new().into(),
                 translation: (0, 0, 0),
                 box_min: (0, 0, 0),
                 dims: (0, 0, 0),

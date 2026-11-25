@@ -63,7 +63,7 @@ impl Session {
         }
         // The base stays where it is: only the moved copy is built.
         let (next, picked) = translate_cells(&drag.base_cells, &drag.base_picked, delta);
-        self.active_mut().cells = next;
+        *self.active_mut().cells = next.into();
         self.picked = picked;
         if let Some(drag) = self.move_drag.as_mut() {
             drag.applied = delta;

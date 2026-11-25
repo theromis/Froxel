@@ -421,7 +421,7 @@ impl Session {
 
     /// One Tube drag: a tube from `anchor` to `end`, or with Chain on, the
     /// chain so far plus `end`, drawn over the cells from before the chain.
-    fn preview_tube(&mut self, base: HashMap<Cell, u8>, anchor: Cell, end: Cell) {
+    fn preview_tube(&mut self, base: Cells, anchor: Cell, end: Cell) {
         let point = |cell: Cell, radius: f32| crate::tools::TubePoint {
             at: [f64::from(cell.0), f64::from(cell.1), f64::from(cell.2)],
             radius: f64::from(radius),
@@ -609,7 +609,7 @@ impl Session {
         }
     }
 
-    pub(crate) fn write_preview(&mut self, base: HashMap<Cell, u8>, mut edits: Vec<(Cell, u8)>) {
+    pub(crate) fn write_preview(&mut self, base: Cells, mut edits: Vec<(Cell, u8)>) {
         if let Some(mirror) = self.edit.viewport_mirror.plane(&base) {
             let mirrored: Vec<(Cell, u8)> = edits
                 .iter()

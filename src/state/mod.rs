@@ -320,10 +320,94 @@ impl Default for Material {
     }
 }
 
+/// An object's cells, shared until written. Cloning one (an undo snapshot,
+/// a transaction's backup, a stroke's base) costs a pointer; the first write
+/// to a shared copy copies the map, so history only pays for the objects an
+/// edit touched. It reads and writes as the `HashMap` it holds.
+#[derive(Clone, Default)]
+pub struct Cells(std::sync::Arc<HashMap<Cell, u8>>);
+
+impl std::ops::Deref for Cells {
+    type Target = HashMap<Cell, u8>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for Cells {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        std::sync::Arc::make_mut(&mut self.0)
+    }
+}
+
+impl PartialEq for Cells {
+    fn eq(&self, other: &Self) -> bool {
+        std::sync::Arc::ptr_eq(&self.0, &other.0) || self.0 == other.0
+    }
+}
+
+impl Eq for Cells {}
+
+impl PartialEq<HashMap<Cell, u8>> for Cells {
+    fn eq(&self, other: &HashMap<Cell, u8>) -> bool {
+        *self.0 == *other
+    }
+}
+
+impl From<HashMap<Cell, u8>> for Cells {
+    fn from(cells: HashMap<Cell, u8>) -> Self {
+        Self(std::sync::Arc::new(cells))
+    }
+}
+
+impl FromIterator<(Cell, u8)> for Cells {
+    fn from_iter<I: IntoIterator<Item = (Cell, u8)>>(iter: I) -> Self {
+        Self::from(iter.into_iter().collect::<HashMap<Cell, u8>>())
+    }
+}
+
+impl<'a> IntoIterator for &'a Cells {
+    type Item = (&'a Cell, &'a u8);
+    type IntoIter = std::collections::hash_map::Iter<'a, Cell, u8>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for Cells {
+    type Item = (Cell, u8);
+    type IntoIter = std::collections::hash_map::IntoIter<Cell, u8>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.into_map().into_iter()
+    }
+}
+
+impl PartialEq<Cells> for HashMap<Cell, u8> {
+    fn eq(&self, other: &Cells) -> bool {
+        *self == *other.0
+    }
+}
+
+impl std::fmt::Debug for Cells {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl Cells {
+    /// The map itself, copied only when another holder shares it.
+    pub fn into_map(self) -> HashMap<Cell, u8> {
+        std::sync::Arc::unwrap_or_clone(self.0)
+    }
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct Volume {
     pub name: String,
-    pub cells: HashMap<Cell, u8>,
+    pub cells: Cells,
     /// World offset of local cell (0, 0, 0). Copies are placed beside the
     /// source so they do not occupy the same voxels.
     pub translation: Cell,
@@ -407,7 +491,7 @@ pub struct ObjectBand {
 
 struct Stroke {
     anchor: Hit,
-    base: HashMap<Cell, u8>,
+    base: Cells,
     seeds: Vec<Cell>,
     axis: i32,
     sign: i32,
@@ -671,7 +755,7 @@ pub(super) struct MoveDrag {
     axis: i32,
     plane: f32,
     anchor: Vec3,
-    base_cells: HashMap<Cell, u8>,
+    base_cells: Cells,
     base_picked: Vec<Cell>,
     applied: Cell,
 }
@@ -754,9 +838,9 @@ pub struct Session {
     /// drag. A stroke continues the chain only when it starts from those
     /// cells, so an undo or any other edit starts a new tube.
     pub(crate) tube_points: Vec<crate::tools::TubePoint>,
-    pub(crate) tube_base: Option<HashMap<Cell, u8>>,
-    pub(crate) tube_after: Option<HashMap<Cell, u8>>,
-    pub(crate) tube_preview: Option<(Vec<crate::tools::TubePoint>, HashMap<Cell, u8>)>,
+    pub(crate) tube_base: Option<Cells>,
+    pub(crate) tube_after: Option<Cells>,
+    pub(crate) tube_preview: Option<(Vec<crate::tools::TubePoint>, Cells)>,
     pub break_panel: BreakPanel,
     pub scatter_panel: ScatterPanel,
     /// The contact sheet's reference PNG, the first tile when set.

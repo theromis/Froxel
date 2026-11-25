@@ -3,14 +3,12 @@
 //! build MCP `deform`, `loft`, and `blend_shapes` arguments and run the MCP
 //! handler, so the editor and MCP share one path.
 
-use std::collections::HashMap;
-
 use glam::Vec3;
 use serde_json::{json, Value};
 
 use super::geom::{cell_bounds, raycast};
 use super::stone::rows;
-use super::{parse_slots, Cell, Session};
+use super::{parse_slots, Cell, Cells, Session};
 use crate::remote::Organic;
 use crate::tools::BrushOp;
 
@@ -90,7 +88,7 @@ impl SculptBrush {
 /// far, and for a grab the pressed point and the view direction.
 #[derive(Clone)]
 pub(crate) struct SculptStroke {
-    base: HashMap<Cell, u8>,
+    base: Cells,
     points: Vec<[f64; 3]>,
     anchor: Vec3,
     view: Vec3,

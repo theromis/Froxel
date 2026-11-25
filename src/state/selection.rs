@@ -39,7 +39,7 @@ impl Session {
             let q = rot90(p, axis, clockwise);
             next.insert((q.0 + pivot.0, q.1 + pivot.1, q.2 + pivot.2), v);
         }
-        self.active_mut().cells = next;
+        *self.active_mut().cells = next.into();
         self.commit();
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
     }
@@ -139,7 +139,7 @@ impl Session {
         self.checkpoint();
         for (index, next) in rewritten {
             let volume = &mut self.objects[index];
-            volume.cells = next;
+            *volume.cells = next.into();
             if volume.model_dims != (0, 0, 0) {
                 let delta = [
                     volume.pivot.0 - pivot.0,
@@ -173,7 +173,7 @@ impl Session {
         for (c, v) in cells {
             next.insert(mirror(c, axis, min, max), v);
         }
-        self.active_mut().cells = next;
+        *self.active_mut().cells = next.into();
         self.commit();
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
     }

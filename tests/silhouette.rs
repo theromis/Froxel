@@ -276,7 +276,7 @@ fn a_script_carves_the_same_hull() {
         "voxel.carve_from_views",
         json!({"views": wedge_views(), "cellsPerPixel": 1, "palette": 4, "shell": 1}),
     );
-    let mcp: HashMap<Cell, u8> = session.active().cells.clone();
+    let mcp: HashMap<Cell, u8> = session.active().cells.clone().into_map();
     let source = r#"
         let views = [
             #{view: "front", rows: ["xxxx", "xxxx", "xxxx", "xxxx"]},

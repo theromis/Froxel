@@ -189,7 +189,7 @@ impl Session {
         };
         session.objects.push(Volume {
             name: "Tree".into(),
-            cells: demo_tree(),
+            cells: demo_tree().into(),
             translation: (0, 0, 0),
             box_min: (0, 0, 0),
             dims: (0, 0, 0),

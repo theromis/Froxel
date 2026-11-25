@@ -11,7 +11,7 @@ for x in 0..n {
 "#;
 
 fn cells_of(session: &Session) -> HashMap<Cell, u8> {
-    session.objects[0].cells.clone()
+    session.objects[0].cells.clone().into_map()
 }
 
 #[test]
