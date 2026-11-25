@@ -269,11 +269,25 @@ impl ControlClient {
         })?;
         stream.set_nodelay(true)?;
         stream.set_read_timeout(Some(Duration::from_secs(60)))?;
-        Ok(Self {
+        let mut client = Self {
             stream,
             token,
             next_id: 1,
-        })
+        };
+        // The schema this client checks arguments against is its own; a
+        // window of another version may run them differently, so say so.
+        let ours = env!("CARGO_PKG_VERSION");
+        match client.call("server.version", &json!({})) {
+            Ok(theirs) if theirs == ours => {}
+            Ok(theirs) => eprintln!(
+                "froxel mcp {ours} is connected to a Froxel {} window; tools may differ until both are the same version",
+                theirs.as_str().unwrap_or("of another")
+            ),
+            Err(_) => eprintln!(
+                "froxel mcp {ours} is connected to an older Froxel window; tools may differ until both are the same version"
+            ),
+        }
+        Ok(client)
     }
 
     pub fn call(&mut self, method: &str, params: &Value) -> Result<Value, String> {

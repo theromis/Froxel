@@ -58,6 +58,10 @@
   deadline rather than a per-read timeout. A wrong protocol version and a
   wrong token have their own errors, and the session directory name no
   longer contains part of the token.
+- `froxel mcp --connect` warns on stderr when the window is another Froxel
+  version, whose tools may differ from the schema it checks against.
+- On Android, an error that stops the app from starting is logged instead
+  of dropped.
 - A bridge reply too long for the clients' 64 KiB frame, such as the schema
   of very many parameters, is an error that says so instead of a frame the
   client drops and disconnects on. `describe` replies name the `server`

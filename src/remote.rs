@@ -1291,6 +1291,7 @@ fn apply_unguarded(session: &mut Session, method: &str, params: &Value) -> Resul
                 .collect(),
         )),
         "ping" => Ok(json!("pong")),
+        "server.version" => Ok(json!(env!("CARGO_PKG_VERSION"))),
         other => Err(format!(
             "unknown method `{other}`; `control.methods` lists them"
         )),
@@ -1781,6 +1782,7 @@ pub(crate) const METHODS: &[(&str, &str, &str)] = &[
     ),
     ("control.methods", "", "Methods this server answers"),
     ("ping", "", "Replies \"pong\""),
+    ("server.version", "", "The Froxel version of the window, which froxel mcp --connect compares with its own"),
 ];
 
 /// Object names listed by the `document.open` summary before it gives a count.

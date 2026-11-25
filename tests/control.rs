@@ -5,6 +5,12 @@ fn ping_round_trips_with_the_token() {
     let server = ControlServer::start(0).unwrap();
     let addr = format!("127.0.0.1:{}", server.port);
     let handle = thread::spawn(move || {
+        // The client asks the window's version as it connects.
+        let job = server.jobs.recv().unwrap();
+        assert_eq!(job.method, "server.version");
+        job.reply
+            .send(Ok(json!(env!("CARGO_PKG_VERSION"))))
+            .unwrap();
         let job = server.jobs.recv().unwrap();
         assert_eq!(job.method, "ping");
         job.reply.send(Ok(json!("pong"))).unwrap();

@@ -103,7 +103,10 @@ froxel mcp --connect 127.0.0.1:7979
 
 `--connect` requires `HOST:PORT`. Without it, or with an unknown argument, the
 process exits instead of falling back to a headless session. If nothing is
-listening, startup fails.
+listening, startup fails. The host must be a loopback address, since the
+token goes to whatever answers. On connecting, the server asks the window's
+version and warns on stderr when it differs from its own, as the tools may
+then differ.
 
 `--launch` opens this same binary with `--control PORT` when the port is
 closed, then waits up to 20 seconds. If the editor is already listening, it

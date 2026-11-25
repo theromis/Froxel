@@ -113,7 +113,9 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
     if let Ok(mut slot) = ANDROID_APP.lock() {
         *slot = Some(app.clone());
     }
-    let _ = main(app);
+    if let Err(err) = main(app) {
+        log::error!("Froxel could not start: {err}");
+    }
 }
 
 /// Hides the status and navigation bars. A swipe from the screen edge shows
