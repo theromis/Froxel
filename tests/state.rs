@@ -2581,3 +2581,46 @@ fn keep_as_rest_is_one_undo_step() {
     assert!(session.pose.contains_key("fin"));
     assert!(session.object_to_world(0).abs_diff_eq(before, 1e-5));
 }
+
+#[test]
+fn a_graph_that_shares_groups_is_refused_not_walked_exponentially() {
+    // Each group lists the next one twice, so a naive walk visits 2^40
+    // nodes. The file is about a kilobyte.
+    let mut size = Vec::new();
+    for _ in 0..3 {
+        size.extend_from_slice(&1u32.to_le_bytes());
+    }
+    let mut xyzi = Vec::new();
+    xyzi.extend_from_slice(&1u32.to_le_bytes());
+    xyzi.extend_from_slice(&[0, 0, 0, 1]);
+    let mut children = chunk(b"SIZE", &size);
+    children.extend(chunk(b"XYZI", &xyzi));
+    let depth = 40;
+    for level in 0..depth {
+        let mut group = Vec::new();
+        push_i32(&mut group, level);
+        push_dict(&mut group, &[]);
+        push_i32(&mut group, 2);
+        push_i32(&mut group, level + 1);
+        push_i32(&mut group, level + 1);
+        children.extend(chunk(b"nGRP", &group));
+    }
+    let mut shape = Vec::new();
+    push_i32(&mut shape, depth);
+    push_dict(&mut shape, &[]);
+    push_i32(&mut shape, 1);
+    push_i32(&mut shape, 0);
+    push_dict(&mut shape, &[]);
+    children.extend(chunk(b"nSHP", &shape));
+    let err = load_vox(&wrap_vox(children)).err().expect("refused");
+    assert!(err.contains("node visits"), "{err}");
+}
+
+#[test]
+fn a_huge_dictionary_count_reserves_only_what_the_bytes_hold() {
+    assert_eq!(capacity(u32::MAX as usize, &[0; 80], 8), 10);
+    let mut body = Vec::new();
+    push_i32(&mut body, 0);
+    body.extend_from_slice(&u32::MAX.to_le_bytes());
+    assert!(parse_trn(&body).is_none());
+}

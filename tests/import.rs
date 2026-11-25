@@ -520,3 +520,30 @@ fn the_finned_fish_example_keeps_its_fins_one_cell_thick() {
         .collect();
     assert_eq!(xs.len(), 1, "{xs:?}");
 }
+
+#[test]
+fn a_mesh_cannot_name_a_file_outside_by_an_absolute_path_or_scheme() {
+    let dir = std::path::Path::new("/models");
+    assert!(beside(dir, "tex/a.png").is_ok());
+    assert!(beside(dir, "../shared/a.png").is_ok());
+    for bad in [
+        "/etc/passwd",
+        "C:\\secret.txt",
+        "file:///etc/passwd",
+        "http://x/a.bin",
+    ] {
+        assert!(beside(dir, bad).is_err(), "{bad}");
+    }
+}
+
+#[test]
+fn a_gltf_accessor_with_an_enormous_count_is_refused_before_allocating() {
+    let doc = r#"{"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],
+        "nodes":[{"mesh":0}],"meshes":[{"primitives":[{"attributes":{"POSITION":0}}]}],
+        "accessors":[{"componentType":5126,"type":"VEC3","count":1000000000000}]}"#;
+    let path = std::env::temp_dir().join(format!("froxel-{}-huge.gltf", std::process::id()));
+    std::fs::write(&path, doc).unwrap();
+    let err = load(&path).err().expect("refused");
+    std::fs::remove_file(&path).ok();
+    assert!(err.contains("rows"), "{err}");
+}

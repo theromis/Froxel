@@ -14,10 +14,10 @@ pub(crate) fn load_vox(bytes: &[u8]) -> Result<Loaded, String> {
     let main_content = read_u32(bytes, &mut p)? as usize;
     let main_children = read_u32(bytes, &mut p)? as usize;
     p = p.saturating_add(main_content);
-    if p + main_children > bytes.len() {
-        return Err("truncated MAIN chunk".into());
-    }
-    let end = p + main_children;
+    let end = match p.checked_add(main_children) {
+        Some(end) if end <= bytes.len() => end,
+        _ => return Err("truncated MAIN chunk".into()),
+    };
 
     let mut models: Vec<([i32; 3], Vec<(i32, i32, i32, u8)>)> = Vec::new();
     let mut pending: Option<[i32; 3]> = None;
@@ -36,7 +36,11 @@ pub(crate) fn load_vox(bytes: &[u8]) -> Result<Loaded, String> {
         let id = read_id(bytes, &mut p)?;
         let content = read_u32(bytes, &mut p)? as usize;
         let children = read_u32(bytes, &mut p)? as usize;
-        if p + content + children > end {
+        if content
+            .checked_add(children)
+            .and_then(|size| p.checked_add(size))
+            .is_none_or(|stop| stop > end)
+        {
             return Err("chunk extends past MAIN".into());
         }
         let body = &bytes[p..p + content];
@@ -57,7 +61,10 @@ pub(crate) fn load_vox(bytes: &[u8]) -> Result<Loaded, String> {
                 return Err("truncated XYZI".into());
             }
             let n = u32::from_le_bytes(body[0..4].try_into().unwrap()) as usize;
-            if body.len() < 4 + n * 4 {
+            if n.checked_mul(4)
+                .and_then(|size| size.checked_add(4))
+                .is_none_or(|size| body.len() < size)
+            {
                 return Err("XYZI voxel data is truncated".into());
             }
             let mut voxels = Vec::with_capacity(n);
@@ -279,7 +286,7 @@ pub(crate) fn parse_trn(body: &[u8]) -> Option<VoxNode> {
     if frame_count < 0 {
         return None;
     }
-    let mut frames = Vec::with_capacity(frame_count as usize);
+    let mut frames = Vec::with_capacity(capacity(frame_count as usize, cursor, 4));
     let mut t = [0, 0, 0];
     let mut rot = 4u8;
     for index in 0..frame_count {
@@ -318,7 +325,7 @@ pub(crate) fn parse_grp(body: &[u8]) -> Option<VoxNode> {
     if count < 0 {
         return None;
     }
-    let mut children = Vec::with_capacity(count as usize);
+    let mut children = Vec::with_capacity(capacity(count as usize, cursor, 4));
     for _ in 0..count {
         children.push(take_i32(&mut cursor)?);
     }
@@ -346,7 +353,7 @@ pub(crate) fn parse_shp(body: &[u8]) -> Option<VoxNode> {
     if count < 0 {
         return None;
     }
-    let mut models = Vec::with_capacity(count as usize);
+    let mut models = Vec::with_capacity(capacity(count as usize, cursor, 8));
     for _ in 0..count {
         let model = take_i32(&mut cursor)?;
         let model_attrs = read_pairs(&mut cursor)?;
@@ -400,6 +407,7 @@ pub(crate) fn place_models(
         };
         let mut out = Vec::new();
         let mut path = HashSet::new();
+        let mut visits = 0;
         walk_nodes(
             nodes,
             root,
@@ -407,8 +415,9 @@ pub(crate) fn place_models(
             ROT_IDENTITY,
             false,
             &mut path,
+            &mut visits,
             &mut out,
-        );
+        )?;
         out
     };
     let placements = if placements.is_empty() {
@@ -655,6 +664,16 @@ pub(crate) fn display_shift<'a>(cells: impl IntoIterator<Item = &'a Cell>) -> Op
     Some((-((min.0 + max.0) / 2), -((min.1 + max.1) / 2), -min.2))
 }
 
+/// The deepest chain of scene graph nodes a file may nest.
+pub(crate) const MAX_NODE_DEPTH: usize = 256;
+/// The most node visits one scene graph may take. A node reached twice is
+/// visited twice, so a graph that shares groups could otherwise take
+/// exponential time in its depth.
+pub(crate) const MAX_NODE_VISITS: usize = 1 << 20;
+
+/// Place every shape under `id`. `path` holds the ancestors, so a cycle
+/// stops; `visits` counts every node entered, against [`MAX_NODE_VISITS`].
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn walk_nodes(
     nodes: &HashMap<i32, VoxNode>,
     id: i32,
@@ -662,17 +681,33 @@ pub(crate) fn walk_nodes(
     r: [[i32; 3]; 3],
     hidden: bool,
     path: &mut HashSet<i32>,
+    visits: &mut usize,
     out: &mut Vec<Placement>,
-) {
+) -> Result<(), String> {
+    *visits += 1;
+    if *visits > MAX_NODE_VISITS {
+        return Err(format!(
+            "the scene graph takes more than {MAX_NODE_VISITS} node visits"
+        ));
+    }
+    if path.len() >= MAX_NODE_DEPTH {
+        return Err(format!(
+            "the scene graph nests deeper than {MAX_NODE_DEPTH} nodes"
+        ));
+    }
     if !path.insert(id) {
-        return;
+        return Ok(());
     }
     if let Some(node) = nodes.get(&id).cloned() {
         match node.kind {
             VoxKind::Transform => {
                 let hidden = hidden || attr_hidden(&node.attrs);
                 let spun = rot_apply(r, node.t);
-                let ct = [t[0] + spun[0], t[1] + spun[1], t[2] + spun[2]];
+                let ct = [
+                    t[0].saturating_add(spun[0]),
+                    t[1].saturating_add(spun[1]),
+                    t[2].saturating_add(spun[2]),
+                ];
                 let cr = rot_mul(r, rot_from_byte(node.rot));
                 let child_is_shape = nodes
                     .get(&node.child)
@@ -698,13 +733,13 @@ pub(crate) fn walk_nodes(
                         }
                     }
                 } else {
-                    walk_nodes(nodes, node.child, ct, cr, hidden, path, out);
+                    walk_nodes(nodes, node.child, ct, cr, hidden, path, visits, out)?;
                 }
             }
             VoxKind::Group => {
                 let hidden = hidden || attr_hidden(&node.attrs);
                 for child in &node.children {
-                    walk_nodes(nodes, *child, t, r, hidden, path, out);
+                    walk_nodes(nodes, *child, t, r, hidden, path, visits, out)?;
                 }
             }
             VoxKind::Shape => {
@@ -724,6 +759,7 @@ pub(crate) fn walk_nodes(
         }
     }
     path.remove(&id);
+    Ok(())
 }
 
 pub(crate) fn parse_matl(body: &[u8]) -> Option<(usize, Material)> {
@@ -733,7 +769,7 @@ pub(crate) fn parse_matl(body: &[u8]) -> Option<(usize, Material)> {
         return None;
     }
     let count = take_u32(&mut cursor)? as usize;
-    let mut dict = HashMap::with_capacity(count);
+    let mut dict = HashMap::with_capacity(capacity(count, cursor, 8));
     for _ in 0..count {
         let key = take_string(&mut cursor)?;
         let value = take_string(&mut cursor)?;
@@ -748,7 +784,7 @@ pub(crate) fn take_i32(bytes: &mut &[u8]) -> Option<i32> {
 
 pub(crate) fn read_pairs(bytes: &mut &[u8]) -> Option<Vec<(String, String)>> {
     let count = take_u32(bytes)? as usize;
-    let mut pairs = Vec::with_capacity(count);
+    let mut pairs = Vec::with_capacity(capacity(count, bytes, 8));
     for _ in 0..count {
         pairs.push((take_string(bytes)?, take_string(bytes)?));
     }
@@ -776,6 +812,13 @@ pub(crate) fn upsert_pair(pairs: &mut Vec<(String, String)>, key: &str, value: O
     } else {
         pairs.retain(|(stored, _)| stored != key);
     }
+}
+
+/// A reservation for `count` entries read from `rest`, each at least
+/// `min_size` bytes: never more than the bytes left could hold, so a count
+/// from a damaged or hostile file cannot ask for an enormous allocation.
+pub(crate) fn capacity(count: usize, rest: &[u8], min_size: usize) -> usize {
+    count.min(rest.len() / min_size.max(1))
 }
 
 pub(crate) fn take_u32(bytes: &mut &[u8]) -> Option<u32> {

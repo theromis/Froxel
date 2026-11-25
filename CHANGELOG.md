@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Fixed
+
+- A damaged or hostile `.vox` no longer hangs or exhausts memory: a scene
+  graph that shares groups or nests deeper than 256 nodes is refused, and
+  counts read from the file reserve only what its bytes can hold.
+- A glTF accessor whose `count` is beyond what the importer reads is refused
+  before anything is allocated, and buffer view and stride sums are checked.
+- glTF buffers and images and OBJ `mtllib` and `map_Kd` must be paths
+  relative to the mesh; an absolute path, a drive letter, or a URI scheme is
+  refused (a warning for OBJ).
+
 ## 0.3.5 – 2026-11-21
 
 ### Changed

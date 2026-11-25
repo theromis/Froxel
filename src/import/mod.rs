@@ -26,6 +26,25 @@ use glam::{DMat3, DVec3};
 
 use crate::state::Cell;
 
+/// A file a mesh names beside itself: a relative path under `dir`. An
+/// absolute path, a drive letter, or a URI scheme (`file:`, `http:`) is
+/// refused, so a mesh cannot pull in an arbitrary file by name.
+pub(crate) fn beside(dir: &std::path::Path, name: &str) -> Result<std::path::PathBuf, String> {
+    let name = name.replace('\\', "/");
+    let bytes = name.as_bytes();
+    let drive = bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':';
+    let scheme = name.split_once(':').is_some_and(|(head, _)| {
+        head.len() > 1
+            && head
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "+.-".contains(c))
+    });
+    if name.starts_with('/') || drive || scheme || std::path::Path::new(&name).is_absolute() {
+        return Err(format!("`{name}` is not a path relative to the mesh"));
+    }
+    Ok(dir.join(name))
+}
+
 mod gltf;
 mod image;
 mod obj;

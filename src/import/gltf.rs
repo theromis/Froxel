@@ -105,7 +105,7 @@ fn uri_bytes(uri: &str, dir: &Path) -> Result<Vec<u8>, String> {
         }
         return image::base64(data);
     }
-    let file = dir.join(image::percent_decode(uri));
+    let file = super::beside(dir, &image::percent_decode(uri))?;
     std::fs::read(&file).map_err(|err| format!("Could not read {}: {err}", file.display()))
 }
 
@@ -127,8 +127,9 @@ impl Doc<'_> {
             .ok_or_else(|| format!("buffer {buffer} does not exist"))?;
         let offset = index(view, "byteOffset").unwrap_or(0);
         let length = index(view, "byteLength").unwrap_or(0);
-        let bytes = data
-            .get(offset..offset + length)
+        let bytes = offset
+            .checked_add(length)
+            .and_then(|end| data.get(offset..end))
             .ok_or_else(|| format!("a bufferView runs past buffer {buffer}"))?;
         Ok((bytes, index(view, "byteStride")))
     }
@@ -155,7 +156,7 @@ impl Doc<'_> {
             .get("normalized")
             .and_then(Value::as_bool)
             .unwrap_or(false);
-        let mut out = vec![0.0; count * width];
+        let mut out = vec![0.0; rows_len(count, width)?];
         if let Some(view) = index(accessor, "bufferView") {
             let (bytes, stride) = self.view(view)?;
             let offset = index(accessor, "byteOffset").unwrap_or(0);
@@ -168,6 +169,9 @@ impl Doc<'_> {
             let n = index(sparse, "count").unwrap_or(0);
             let indices = sparse.get("indices").ok_or("sparse has no indices")?;
             let values = sparse.get("values").ok_or("sparse has no values")?;
+            if n > count {
+                return Err(format!("accessor {at} has more sparse rows than rows"));
+            }
             let mut rows = vec![0.0; n];
             let (bytes, _) = self.view(index(indices, "bufferView").unwrap_or(0))?;
             read_rows(
@@ -180,7 +184,7 @@ impl Doc<'_> {
                 n,
                 &mut rows,
             )?;
-            let mut replaced = vec![0.0; n * width];
+            let mut replaced = vec![0.0; rows_len(n, width)?];
             let (bytes, _) = self.view(index(values, "bufferView").unwrap_or(0))?;
             read_rows(
                 bytes,
@@ -204,6 +208,21 @@ impl Doc<'_> {
     }
 }
 
+/// The most rows one accessor may hold: three corners for every triangle
+/// the importer accepts. A larger `count` is refused before anything is
+/// allocated for it.
+const MAX_ROWS: usize = super::MAX_TRIANGLES * 3;
+
+/// The length of `count` rows of `width` numbers, refused past [`MAX_ROWS`].
+fn rows_len(count: usize, width: usize) -> Result<usize, String> {
+    if count > MAX_ROWS {
+        return Err(format!(
+            "an accessor has {count} rows; the importer reads at most {MAX_ROWS}"
+        ));
+    }
+    Ok(count * width)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn read_rows(
     bytes: &[u8],
@@ -222,12 +241,23 @@ fn read_rows(
         other => return Err(format!("component type {other} is not supported")),
     };
     let stride = stride.unwrap_or(size * width);
+    let past = "an accessor runs past its bufferView";
+    // The last row's end must fit before anything is read, so a stride or
+    // offset from the file cannot overflow the sums below.
+    if count > 0 {
+        let last = (count - 1)
+            .checked_mul(stride)
+            .and_then(|start| start.checked_add(offset))
+            .and_then(|start| start.checked_add(width * size))
+            .ok_or(past)?;
+        if last > bytes.len() {
+            return Err(past.into());
+        }
+    }
     for row in 0..count {
         for c in 0..width {
             let at = offset + row * stride + c * size;
-            let b = bytes
-                .get(at..at + size)
-                .ok_or("an accessor runs past its bufferView")?;
+            let b = bytes.get(at..at + size).ok_or(past)?;
             let value = match kind {
                 5120 => {
                     let v = f64::from(b[0] as i8);

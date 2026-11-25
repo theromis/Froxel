@@ -108,9 +108,8 @@ pub(super) fn load(path: &Path) -> Result<Mesh, String> {
                     groups.insert(current);
                 }
             }
-            "mtllib" => {
-                let file = dir.join(rest.replace('\\', "/"));
-                match std::fs::read(&file) {
+            "mtllib" => match super::beside(dir, rest) {
+                Ok(file) => match std::fs::read(&file) {
                     Ok(body) => {
                         let mtl_dir = file.parent().unwrap_or(dir).to_path_buf();
                         materials(
@@ -124,8 +123,9 @@ pub(super) fn load(path: &Path) -> Result<Mesh, String> {
                     Err(err) => mesh
                         .warnings
                         .push(format!("Could not read {}: {err}", file.display())),
-                }
-            }
+                },
+                Err(err) => mesh.warnings.push(err),
+            },
             "usemtl" => {
                 current = match named.get(rest) {
                     Some(&index) => index,
@@ -186,7 +186,13 @@ fn materials(
             "d" if !numbers.is_empty() => material.color[3] = numbers[0].clamp(0.0, 1.0),
             "Tr" if !numbers.is_empty() => material.color[3] = 1.0 - numbers[0].clamp(0.0, 1.0),
             "map_Kd" => {
-                let file = dir.join(texture_name(rest).replace('\\', "/"));
+                let file = match super::beside(dir, &texture_name(rest)) {
+                    Ok(file) => file,
+                    Err(err) => {
+                        mesh.warnings.push(err);
+                        continue;
+                    }
+                };
                 let slot = match textures.get(&file) {
                     Some(slot) => *slot,
                     None => {

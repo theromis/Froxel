@@ -446,7 +446,8 @@ pub fn decode_chunk(body: &[u8]) -> Result<(Skeleton, Vec<StoredBind>), String> 
     }
     skeleton.validate()?;
     let bind_count = read_u32(body, &mut cursor)? as usize;
-    let mut binds = Vec::with_capacity(bind_count);
+    // Each bind is at least 16 bytes: never reserve more than the rest holds.
+    let mut binds = Vec::with_capacity(bind_count.min(body.len().saturating_sub(cursor) / 16));
     for _ in 0..bind_count {
         let trn = read_i32(body, &mut cursor)?;
         let index = read_u32(body, &mut cursor)?;
