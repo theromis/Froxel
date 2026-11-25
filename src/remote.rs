@@ -822,7 +822,30 @@ fn render_views_to(
     Ok(files)
 }
 
+/// Run one method on the session. A panic inside it is caught and becomes
+/// an error: the edits since the last undo step are put back, so the MCP
+/// server, the control port, and the window keep the document instead of
+/// dying with it.
 pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Value, String> {
+    let mark = session.undo_mark();
+    let run = std::panic::AssertUnwindSafe(|| apply_unguarded(session, method, params));
+    match std::panic::catch_unwind(run) {
+        Ok(result) => result,
+        Err(payload) => {
+            session.recover_from_panic(mark);
+            let detail = payload
+                .downcast_ref::<&str>()
+                .map(|text| text.to_string())
+                .or_else(|| payload.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "no message".into());
+            Err(format!(
+                "internal error in {method}: {detail}. The document is as it was before the call; please report this."
+            ))
+        }
+    }
+}
+
+fn apply_unguarded(session: &mut Session, method: &str, params: &Value) -> Result<Value, String> {
     let params = if params.is_null() {
         Value::Object(Map::new())
     } else {
@@ -831,6 +854,11 @@ pub fn apply(session: &mut Session, method: &str, params: &Value) -> Result<Valu
     // split_parts reads its own space: its points are in the source's frame.
     if is_world(&params)? && method != "object.split_parts" {
         return apply_world(session, method, &params);
+    }
+    #[cfg(test)]
+    if method == "test.panic_after_edit" {
+        session.write_cells(&[(0, 0, 0, 3)])?;
+        panic!("a test panic");
     }
     match method {
         "document.new" => {

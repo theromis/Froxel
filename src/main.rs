@@ -938,3 +938,7 @@ fn apply_theme(ctx: &egui::Context) {
     }
     ctx.set_style_of(egui::Theme::Dark, style);
 }
+
+#[cfg(test)]
+#[path = "../tests/vendor.rs"]
+mod vendor_tests;

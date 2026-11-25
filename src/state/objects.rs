@@ -1099,6 +1099,33 @@ impl Session {
         }
     }
 
+    /// A mark of the undo history, for [`Self::recover_from_panic`].
+    pub(crate) fn undo_mark(&self) -> u64 {
+        self.undo_pushed
+    }
+
+    /// Put back the document as it was at `mark` after a panic cut a call
+    /// short: the edits not yet committed, then every undo step the call
+    /// pushed, newest first. Any gesture is left, so the session is whole
+    /// again.
+    pub(crate) fn recover_from_panic(&mut self, mark: u64) {
+        if let Some(prev) = self.pending.take() {
+            self.restore(prev);
+        }
+        let pushed = self.undo_pushed.saturating_sub(mark);
+        for _ in 0..pushed {
+            let Some(prev) = self.undo.pop() else {
+                break;
+            };
+            self.restore(prev);
+            self.undo_pushed -= 1;
+        }
+        self.gesture = false;
+        self.clamp_selection();
+        self.clear_picked();
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+    }
+
     pub(super) fn checkpoint(&mut self) {
         if self.pending.is_none() {
             self.pending = Some(self.snapshot());
@@ -1120,6 +1147,7 @@ impl Session {
                 || prev.markers != self.markers
             {
                 self.undo.push(prev);
+                self.undo_pushed += 1;
                 self.redo.clear();
                 if self.undo.len() > 40 {
                     self.undo.remove(0);

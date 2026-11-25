@@ -27,19 +27,19 @@ candle-transformers = { version = "=0.11.0", optional = true }
 
 # Desktop: eframe's defaults and native file dialogs.
 [target.'cfg(not(any(target_os = "ios", target_os = "android")))'.dependencies]
-eframe = { version = "0.37", features = ["wgpu"] }
+eframe = { version = "=0.37.0", features = ["wgpu"] }
 rfd = "0.15"
 
 # Phones and tablets: no clipboard, X11, or Wayland, which do not build there.
 # accesskit on Android requires the game-activity backend; this app uses native-activity.
 [target.'cfg(target_os = "ios")'.dependencies]
 log = "0.4"
-eframe = { version = "0.37", default-features = false, features = ["wgpu", "default_fonts", "accesskit"] }
+eframe = { version = "=0.37.0", default-features = false, features = ["wgpu", "default_fonts", "accesskit"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 log = "0.4"
-eframe = { version = "0.37", default-features = false, features = ["wgpu", "default_fonts", "android-native-activity"] }
-winit = { version = "0.30.13", default-features = false }
+eframe = { version = "=0.37.0", default-features = false, features = ["wgpu", "default_fonts", "android-native-activity"] }
+winit = { version = "=0.30.13", default-features = false }
 android-activity = { version = "0.6.1", features = ["native-activity"] }
 jni = "0.22.4"
 
@@ -52,6 +52,19 @@ clip-metal = ["clip", "candle-core/metal", "candle-nn/metal"]
 # Selects the Android cdylib (`src/lib.rs`). Desktop builds leave it off so
 # `cargo build` / `cargo test --bin froxel` stay the host binary.
 android-lib = []
+
+# Dependencies are optimized even in a debug build: `cargo run` and the
+# tests spend their time in egui, wgpu, rhai, and png, and the editor's own
+# code at opt-level 1 keeps the voxel loops usable while debugging.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
 
 [lib]
 name = "froxel"
@@ -100,7 +113,10 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"
 
-# iOS surface size fix and UIScene lifecycle; see vendor/README.md.
+# iOS surface size fix and UIScene lifecycle; see vendor/README.md. The
+# versions above are exact, so a newer crates.io release can never be chosen
+# over these copies; `tests/vendor.rs` fails if Cargo.lock takes any of them
+# from the registry.
 [patch.crates-io]
 eframe = { path = "vendor/eframe" }
 egui-wgpu = { path = "vendor/egui-wgpu" }

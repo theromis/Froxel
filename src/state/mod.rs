@@ -925,6 +925,9 @@ pub struct Session {
     /// A panel drag in progress: edits gather into one undo step until it ends.
     gesture: bool,
     undo: Vec<Snapshot>,
+    /// Undo steps ever pushed, so a caller can tell how many one call added
+    /// even when the history is at its cap.
+    undo_pushed: u64,
     redo: Vec<Snapshot>,
     /// Controls drawn last frame, in paint order. A click hits the last match.
     pub ui_regions: Vec<UiRegion>,

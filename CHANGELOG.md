@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Changed
+
+- Debug builds optimize dependencies fully and Froxel's own code at
+  opt-level 1, so `cargo run` and the tests are many times faster (the unit
+  tests went from about 58 s to 5 s). Release builds use thin LTO and one
+  codegen unit.
+- `eframe` and `winit` are pinned to the exact versions in `vendor/`, and a
+  test fails if `Cargo.lock` ever takes them from crates.io, which would
+  drop the iOS and App Store fixes those copies carry.
+
 ### Fixed
 
 - A damaged or hostile `.vox` no longer hangs or exhausts memory: a scene
@@ -22,6 +32,9 @@
   deadline rather than a per-read timeout. A wrong protocol version and a
   wrong token have their own errors, and the session directory name no
   longer contains part of the token.
+- A panic inside a tool no longer kills the MCP server, the control port,
+  or the window: the call returns an internal error and the document is put
+  back as it was before the call.
 - MCP `reload` hands its state over in a new owner-only directory with a
   random name, in files it creates owner-only, not at a predictable path in
   the shared temporary folder.

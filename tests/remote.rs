@@ -180,3 +180,23 @@ fn file_writers_create_missing_folders() {
     assert!(glb.is_file());
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn a_panic_in_a_method_is_an_error_and_the_document_is_put_back() {
+    let mut session = Session::new();
+    session.replace_empty();
+    apply(
+        &mut session,
+        "voxel.set",
+        &json!({"x": 1, "y": 1, "z": 1, "palette": 4}),
+    )
+    .unwrap();
+    let before = session.objects.clone();
+    let err = apply(&mut session, "test.panic_after_edit", &json!({})).unwrap_err();
+    assert!(err.contains("internal error"), "{err}");
+    assert!(session.objects == before);
+    // The session still works, and undo still reaches the first edit.
+    apply(&mut session, "edit.undo", &json!({})).unwrap();
+    let got = apply(&mut session, "voxel.get", &json!({"x": 1, "y": 1, "z": 1})).unwrap();
+    assert_eq!(got["palette"], 0);
+}
