@@ -1,7 +1,7 @@
 // A faceted boulder: a low-poly mesh built in the script, voxelized with
 // `voxelize` (the voxelizer of MCP import_mesh), then finished with the
 // stone tools. A sculpted or generated mesh comes in the same way through
-// MCP import_mesh, File > Import Mesh…, or `froxel import`; scripts read no
+// MCP import_mesh, File > Import Mesh…, or `froxel run import_mesh`; scripts read no
 // files, so they pass the triangles inline.
 //
 // Parameters

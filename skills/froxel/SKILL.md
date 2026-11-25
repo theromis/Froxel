@@ -80,7 +80,7 @@ server is still running. A server started with `--watch` reloads by itself.
   bounds, voxels, quads, and markers counted by kind; read parameters and
   marker places from the manifest file (or pass `reply: "full"`).
   `export_mesh` and `export_models` count markers the same way; their
-  places come from `list_markers` or `reply: "full"`. `froxel variants` is the command-line form. `tests/fixtures/examples/gorge_wall.rhai`
+  places come from `list_markers` or `reply: "full"`. `froxel run export_variants` is the command-line form. `tests/fixtures/examples/gorge_wall.rhai`
   shows the stone tools and markers together.
 
 ## Coordinates and rules

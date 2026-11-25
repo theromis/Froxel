@@ -810,7 +810,7 @@ and 2000000 cells. The reply's `bounds` are the voxelized cells' `min`,
 the ones given new colours. Object creation, palette slots, and cells are
 one undo step. Scripts read no files, so `import_mesh` has no script form;
 Rhai `voxelize` runs the same voxelizer and palette mapping on a mesh the
-script builds. `froxel import` is the same import from the command line.
+script builds. `froxel run import_mesh` is the same import from the command line.
 
 #### Turning a mesh to the views
 
@@ -889,8 +889,8 @@ only its yaw is searched against the sheet (`turns` `upright`).
 {"path": "toad.glb", "size": 28, "orient": {"upright": true, "path": "views.png", "background": "#ff00ff", "yawStep": 5}}
 ```
 
-`froxel orient` runs it on a `.vox` from a JSON file like that one, and
-`froxel import --orient` (a JSON file, or `upright`) on a mesh.
+`froxel run orient_to_views` runs it on a `.vox` from a JSON file like that one, and
+`froxel run import_mesh --orient` (a JSON object, or `upright`) on a mesh.
 
 #### Terraces
 
@@ -927,7 +927,7 @@ optional box `x0`..`z1` limits the change.
 {"mode": "blocks", "size": 3, "tolerance": 2}
 ```
 
-`froxel deterrace` runs it on a `.vox`.
+`froxel run deterrace` runs it on a `.vox`.
 
 #### Cleaning up colours
 
@@ -964,8 +964,8 @@ a box `x0`..`z1` limits the call.
 `import_mesh` takes the same options as `clean` (`true` is `{"colors": 8,
 "despeckle": 1}`), run over the imported cells before they are written, in
 the same undo step; the import's new slots are then taken over in place, so
-only the cleaned colours reach the palette. `froxel reduce-palette` runs it on
-a `.vox`, and `froxel import --clean` at import.
+only the cleaned colours reach the palette. `froxel run reduce_palette` runs it on
+a `.vox`, and `froxel run import_mesh --clean true` at import.
 
 #### Cleaning up a generated mesh
 
@@ -1048,7 +1048,7 @@ then `place_joints` rigs it.
 ]}
 ```
 
-`froxel split-parts` runs it on a `.vox` from a JSON file of its arguments.
+`froxel run split_parts` runs it on a `.vox` from a JSON file of its arguments.
 `tests/fixtures/examples/split_critter.rhai` cuts a made-up critter into eight parts.
 
 `column_relief` breaks a cliff face into columns for a fractured cliff.
@@ -1211,7 +1211,7 @@ again across the plane, so one arm or one eye is drawn once (not with
   ]}}
 ```
 
-`froxel blend --args blend.json --out out.vox [--input in.vox]` runs it from
+`froxel run blend_shapes --args blend.json --out out.vox [--input in.vox]` runs it from
 the command line (a new document without `--input`).
 `tests/fixtures/examples/blob_snowman.rhai` builds a snowman from it.
 
@@ -1271,7 +1271,7 @@ recess's depth and place by that share, from `seed`.
 The reply holds `cells` (surface cells the recesses and ribs cover),
 `recesses` (those that cut or toned a cell), `removed`, `painted`, `added`
 (raised rib cells), `shades`, and a `warning` when nothing matched. One
-undo step with the palette. `froxel relief --args relief.json --input
+undo step with the palette. `froxel run radial_relief --args relief.json --input
 in.vox --out out.vox` runs it on a file. `tests/fixtures/examples/fluted_column.rhai`
 and `tests/fixtures/examples/gored_dome.rhai` use it.
 
@@ -1510,7 +1510,7 @@ a build with `--features oidn` runs Open Image Denoise on the finished
 frame, using the first-hit albedo and normal. `atmospheric`,
 `sky-intensity`, `sun-intensity`, `glass-mode` (`probabilistic` or
 `absorption`), `aperture`, and `focus` use the same names as
-`froxel render` and change the still only when present. An empty scene
+`froxel run render` and change the still only when present. An empty scene
 is an error. The call does not move the editor camera. The reply is
 `path`, `width`, `height`, `samples`, `framed` (the subject's world box,
 `min` and `max` corners), and `distance` (the camera distance used), plus
@@ -1574,7 +1574,7 @@ move. Connected, the window draws the PNG; headless, this process does.
 the CPU with no path tracer and no window, and fits the posed model, or the
 object named by `object`, inside the image less `margin`. It is the quick
 look after an edit; [preview.md](preview.md) describes the light, the
-framing, the arguments, and `froxel preview`, the same image from the
+framing, the arguments, and `froxel run preview`, the same image from the
 command line. `lighting` swaps the viewport light for a game's sun, ambient, exposure,
 and grade, so colour can be judged as the game shows it. Its
 `previewTriangles` is that unmerged mesh, not the game's: `export` gives the `triangles` and `quads` that `export_mesh`
@@ -1647,7 +1647,7 @@ it needs `colorAtlas` and is an error without it. `both` writes the two, for
 a shader that uses one of them: a material that multiplies the texture by
 `COLOR_0`, as Godot's import does, darkens twice. `auto`, the default, is
 `texture` with `colorAtlas` and `vertex` without it.
-`froxel export --ao 0.8 --ao-radius 3` is the same from the command line.
+`froxel run export_mesh --ao-strength 0.8 --ao-radius 3` is the same from the command line.
 
 #### Baked light
 
@@ -1655,7 +1655,7 @@ a shader that uses one of them: a material that multiplies the texture by
 face, for a game to draw unshaded. It needs `colorAtlas`. Absent or `false` is
 off and leaves the file byte for byte as before; `true` is every default.
 `export_mesh`, `export_models`, `export_variants`, the `export` of `preview`,
-`froxel export`, `froxel variants`, `froxel preview`, `froxel bridge`, and the
+`froxel run export_mesh`, `froxel run export_variants`, `froxel run preview`, `froxel bridge`, and the
 Export panel all take it. On the command line `--bake` takes the same object as
 JSON, or the path of a JSON file; `--bake '{}'` is occlusion alone.
 
@@ -1711,12 +1711,12 @@ ones `colorAtlas` writes without `bake`.
 **Cost.** Time is cell faces × (`rays` + `sunRays`), on every core; the 8 408
 cells of `tests/fixtures/examples/stacked_blocks.vox` take well under a second. The same input
 gives the same bytes: every face uses one fixed pattern of rays, so there is no
-seed and no noise. To look at the result, `preview` with `glb` (`froxel preview
---input file.glb`) draws the written file unlit.
+seed and no noise. To look at the result, `preview` with `glb` (`froxel run preview
+--glb file.glb --path look.png`) draws the written file unlit.
 
 #### Baking a scene
 
-`bake_scene` (`froxel bake-scene`, Export section's Bake scene…) bakes one
+`bake_scene` (`froxel run bake_scene`, Export section's Bake scene…) bakes one
 placement of many `.vox` files together, so each is shaded by its neighbours and
 by ground, into **one merged `.glb` with one colour atlas**: one mesh node, one
 draw call, the level's island as a single file. It writes that one form because
@@ -1743,8 +1743,8 @@ texels. The open document is not touched.
 
 `bake_scene` takes `scene` (that object, or the path of a JSON file of it,
 whose folder its relative paths start from), `path` (the `.glb`), and optional
-`bake`, which replaces the scene's. The command line is `froxel bake-scene
---scene scene.json --output level.glb [--bake JSON|FILE]`. A scene holds 1 to
+`bake`, which replaces the scene's. The command line is `froxel run bake_scene
+--scene scene.json --path level.glb [--bake JSON]`. A scene holds 1 to
 32768 instances; the atlas, at most 16384 texels a side, is the other bound.
 
 - **A placement** is the frame of the glb `export_mesh` writes, as a game places
@@ -2020,7 +2020,7 @@ with a decimal point, as Godot sends a `Color`: `[1, 1, 1]` is near black,
 `[1.0, 1.0, 1.0]` is white, and `[0.5, 0, 0]` is a dark red. A JSON writer that
 drops the point on a whole float (JavaScript) has to send white as `[255, 255, 255]`.
 `[r, g, b, a]` is accepted and its alpha ignored. `export_variants`, `preview`
-inputs and variants, `froxel variants`, and the bridge read colors the same way.
+inputs and variants, `froxel run export_variants`, and the bridge read colors the same way.
 A list of numbers fills a
 `floats` parameter, and a list of `[x, y]` or `[x, y, z]` arrays fills `vec2s`
 or `vec3s`. Values outside the declared range, and a list with more than
@@ -2161,7 +2161,7 @@ The pond turtle's `views-v06.png` reads as front `[40, 201, 547, 275]`, side
 `[672, 773, 541, 276]`, with cubes about 13 pixels wide and 18 tall in every
 view (so the sheet is stretched), front width = top width within 0.7% in
 cubes, side length against top length 30% apart in cubes, and six top-view
-parts. `froxel measure --sheet views.png --parts` prints the same.
+parts. `froxel run measure_sheet --path views.png --parts true` prints the same.
 
 `carve_from_views` turns a turnaround sheet into the rough form. Each of
 2 to 6 views is extruded through a box along its depth axis, and the cells
@@ -2344,8 +2344,8 @@ then reads each pixelated view whole (`fit` `crop`, `inset` 0).
  "size": [null, 20, null], "downscale": {"colors": 6}}
 ```
 
-`froxel pixelate --sheet views.png --size _,20,_ --png pixels.png` runs it
-from the command line (`--no-lines`, `--outline`, `--no-merge-lines`, `--fill-holes`).
+`froxel run pixelate_views --path views.png --size '[null, 20, null]' --png pixels.png` runs it
+from the command line (`--lines false`, `--outline true`, `--merge-lines false`, `--fill-holes true`).
 
 #### Optimizing to pixel-art views
 
@@ -2459,7 +2459,7 @@ clip-metal` (Apple Metal; `clip` runs it on the CPU) and the weights,
 `FROXEL_CLIP_MODEL`, or at `semantic.model`. The model loads once per
 process (about 0.6 s); a round of the views takes some 40 ms on Metal.
 
-`froxel optimize --args optimize.json --input blockout.vox --out fitted.vox`
+`froxel run optimize_to_views --args optimize.json --input blockout.vox --out fitted.vox`
 runs it from the command line. Unlike `fit_to_views`, which places
 full-resolution crops over a blockout of any size by a scale search and
 colours from the object's slots, it works at the pixel-art grid of a small
@@ -2527,7 +2527,7 @@ with their cell counts, `newSlots` (`slot`, `rgba`), and `accents`.
  "path": "views.png", "objects": ["body", "head"], "seam": 8, "slots": [3, 4, 5, 6, 9]}
 ```
 
-`froxel paint --tool paint_from_views` runs it on a `.vox` from a JSON file.
+`froxel run paint_from_views --args paint.json --input in.vox --out out.vox` runs it on a `.vox` from a JSON file.
 
 `decal` lays one picture onto a curved surface around a point, so an eye,
 a mouth, or a badge keeps its size and shape on a round head, where
@@ -2659,7 +2659,7 @@ with a reference, and the pixel counts. It also has `energy` before and
 after, `added`, `removed`, `recolored`, `changed`, `sweeps`, `moves`,
 `palette` (`[{slot, cells}]` of the object after), and the box's `origin`
 and `size`. The fit matches the views, not the sides none of them sees, so
-look at a `preview` and refine by hand after it. `froxel fit` runs it from a
+look at a `preview` and refine by hand after it. `froxel run fit_to_views` runs it from a
 JSON file on a copy of a `.vox`.
 
 `compare_silhouette` scores the model against one concept view from a
@@ -2682,11 +2682,11 @@ aspect. Use an orthographic named `view` for a turnaround view and
 `preset: "game"` for the hero view at the gameplay angle, with `presets` for a
 project's own camera and `placementYaw` for an asset placed turned in a level
 (see [preview.md](preview.md)). It writes a
-file, so scripts do not have it. `froxel compare` is the same from the
-command line, `froxel carve` runs `carve_from_views` from a JSON file (depth
+file, so scripts do not have it. `froxel run compare_silhouette` is the same from the
+command line, `froxel run carve_from_views` runs `carve_from_views` from a JSON file (depth
 maps included; relative `path`, `depthPath`, and `depth` paths are relative
 to it), and
-`froxel paint` runs `project_paint` (or `decal`, `shell_plates`, or
+`froxel run project_paint` runs `project_paint` (or `decal`, `shell_plates`, or
 `paint_from_views` with `--tool`) from one on a copy of a `.vox`.
 
 ### Masking a concept
@@ -2745,7 +2745,7 @@ How to make a mask:
   "preset": "game", "mask": "hero-mask.png"}}
 ```
 
-`froxel compare` takes them as `--exclude`, `--exclude-tolerance`,
+`froxel run compare_silhouette` takes them as `--exclude`, `--exclude-tolerance`,
 `--flood N`, `--mask`, `--invert-mask`, `--erase X,Y,W,H` (repeated), and
 `--keep-largest`.
 
@@ -2882,7 +2882,7 @@ active object by default) and sits in its local **mesh units**: cell
 the object removes it.
 
 The `.vox` keeps markers in an `MVMK` chunk. `export_mesh`, `export_models`,
-and `froxel export` write one glTF node per marker, named after it, at its
+and `froxel run export_mesh` write one glTF node per marker, named after it, at its
 place in glTF axes (Y up, `(x, z, -y)`), with `extras.froxel`: `kind`,
 `object`, `size`, `min`, and `max` for a box, and `direction` for a
 connector, whose node `rotation` turns -Z toward the direction (Godot's
@@ -2972,7 +2972,7 @@ record (an entry kept from an older manifest without one takes that
 manifest's top-level options). Other top-level fields of the old manifest
 are kept. `replace: true` writes a fresh manifest with only the sets of
 this call. A manifest path holding something that is not a manifest is an
-error unless `replace` is set. `froxel variants` is the same from the
+error unless `replace` is set. `froxel run export_variants` is the same from the
 command line, with `--replace`.
 
 ### In the editor
@@ -3091,6 +3091,6 @@ in that frame. Whenever world positions differ from the file's node positions,
 `open_file`, `inspect_document`, `export_mesh`, and `export_models` state it as
 `sceneShift` `[x, y, z]` (world = file + shift) with `sceneShiftNote`; an
 `export_variants` manifest entry records `sceneShift`; the editor adds it to the
-status line after opening; and `froxel export`, `froxel variants`, and `froxel bridge`
+status line after opening; and `froxel run export_mesh`, `froxel run export_variants`, and `froxel bridge`
 print it. To return to the file's frame, subtract the shift from each object's
 position.

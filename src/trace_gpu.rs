@@ -776,7 +776,7 @@ pub fn render_headless(session: &Session, size: [u32; 2], seed: u32) -> Result<G
     let limits = adapter.limits();
     frame_fits(size, &limits).map_err(|err| format!("{err}; omit --gpu to use the CPU tracer"))?;
     let (device, queue) = block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("froxel render"),
+        label: Some("froxel run render"),
         required_limits: limits,
         ..Default::default()
     }))

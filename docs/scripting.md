@@ -943,7 +943,7 @@ let report = voxelize(#{positions: positions, triangles: triangles, colors: colo
 The voxelizer and palette mapping of MCP `import_mesh` on a mesh the script
 builds. Scripts read no files, so `import_mesh` itself is not a script
 function (like the tools that write files); import a file with MCP, File >
-Import Mesh…, or `froxel import`, or pass its triangles here. The mesh is a
+Import Mesh…, or `froxel run import_mesh`, or pass its triangles here. The mesh is a
 map: `positions` is a list of `[x, y, z]`, `triangles` a list of
 `[a, b, c]` indices into it from 0, and `colors` (optional) one sRGB
 `[r, g, b]` (0..=255) per position, interpolated across each triangle. The
@@ -1343,7 +1343,7 @@ cliff wall built with the stone tools: a profile swept along a curve,
 `exclude`, `joints` columns, `weather`, `moss`, `algae` at the waterline,
 `vines` with blooms, and markers for the ledge, the top, collision boxes,
 and both ends. `tests/fixtures/examples/gorge_wall_variants.json` is a parameter set list
-for `export_variants` and `froxel variants`; exporting a subset of it
+for `export_variants` and `froxel run export_variants`; exporting a subset of it
 again updates the manifest by name and keeps the other entries.
 
 ## Markers
@@ -1565,7 +1565,7 @@ Any function that is not listed on this page is not registered.
 
 ## Variants
 
-A script describes a family; MCP `export_variants` (or `froxel variants`,
+A script describes a family; MCP `export_variants` (or `froxel run export_variants`,
 or the Export panel's **Export variants…**) bakes it once per parameter set
 and writes a `.vox`, a `.glb`, and a manifest with each set's parameters,
 markers, and bounds; its reply sums each set up and counts the markers by

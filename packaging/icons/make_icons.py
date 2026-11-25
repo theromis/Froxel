@@ -15,10 +15,10 @@ HERE = Path(__file__).resolve().parent
 FROG = HERE.parent.parent / "examples" / "frog.vox"
 tmp = tempfile.mkdtemp()
 # 1440 is the largest square the GPU tracer binds today.
-subprocess.run(["target/release/froxel", "render", "--input", str(FROG),
-                "--output", f"{tmp}/frog.png", "--aov-albedo", f"{tmp}/albedo.png",
-                "--width", "1440", "--height", "1440", "--samples", "384", "--denoise", "--gpu",
-                "--yaw", "-65", "--pitch", "18", "--distance", "0.62"], check=True)
+subprocess.run(["target/release/froxel", "run", "render", "--input", str(FROG),
+                "--path", f"{tmp}/frog.png", "--albedo-path", f"{tmp}/albedo.png",
+                "--width", "1440", "--height", "1440", "--samples", "384", "--denoise", "true",
+                "--gpu", "true", "--yaw", "-65", "--pitch", "18", "--distance", "0.62"], check=True)
 from PIL import Image, ImageDraw, ImageFilter, ImageChops
 from background import S, background
 render = Image.open(f"{tmp}/frog.png").convert("RGB")

@@ -1,4 +1,4 @@
-//! Variant export behind MCP `export_variants`, `froxel variants`, and the
+//! Variant export behind MCP `export_variants`, `froxel run export_variants`, and the
 //! Export panel's Export Variants: one scripted document, a list of
 //! parameter sets, and for each set a `.vox` and a `.glb` written with the
 //! `export_models` options, plus a manifest of the parameters, markers, and
@@ -30,10 +30,18 @@ pub fn export_variants(session: &mut Session, params: &Value) -> Result<Value, S
             .and_then(Value::as_str)
             .ok_or("dir is required: the folder the files go to")?,
     );
-    let list = params
-        .get("variants")
-        .and_then(Value::as_array)
-        .ok_or("variants must be a list of {name?, params}")?;
+    // A list of sets, or the path of a JSON file of them, as preview takes.
+    let read;
+    let list = match params.get("variants") {
+        Some(Value::String(path)) => {
+            read = read_sets(Path::new(path))?;
+            read.as_array()
+                .ok_or("variants must be a list of {name?, params}")?
+        }
+        found => found
+            .and_then(Value::as_array)
+            .ok_or("variants must be a list of {name?, params}, or a JSON file of them")?,
+    };
     if list.is_empty() || list.len() > MAX_VARIANTS {
         return Err(format!(
             "variants must hold 1 to {MAX_VARIANTS} parameter sets"
@@ -333,55 +341,6 @@ fn check_name(name: &str) -> Result<String, String> {
     Ok(name.to_string())
 }
 
-/// `froxel variants`: the same export with no window.
-pub fn cli(args: &[String]) -> i32 {
-    match cli_args(args) {
-        Ok(None) => 0,
-        Ok(Some((input, params))) => {
-            let mut session = Session::new();
-            let done = session.open_vox(&input).and_then(|()| {
-                if let Some(note) = session.scene_shift_note() {
-                    eprintln!("{note}");
-                }
-                export_variants(&mut session, &params)
-            });
-            match done {
-                Ok(reply) => {
-                    let exported: HashSet<&str> = ["added", "replaced"]
-                        .iter()
-                        .flat_map(|key| reply[*key].as_array().into_iter().flatten())
-                        .filter_map(Value::as_str)
-                        .collect();
-                    let variants = reply["variants"].as_array().into_iter().flatten();
-                    for variant in variants
-                        .filter(|variant| exported.contains(variant["name"].as_str().unwrap_or("")))
-                    {
-                        eprintln!(
-                            "wrote {} ({} quads)",
-                            variant["glb"].as_str().unwrap_or(""),
-                            variant["quads"]
-                        );
-                    }
-                    eprintln!(
-                        "wrote {}: {}",
-                        reply["manifest"].as_str().unwrap_or(""),
-                        summary(&reply)
-                    );
-                    0
-                }
-                Err(err) => {
-                    eprintln!("{err}");
-                    1
-                }
-            }
-        }
-        Err(err) => {
-            eprintln!("{err}");
-            2
-        }
-    }
-}
-
 /// "2 added, 1 replaced, 9 kept" from an export reply.
 pub fn summary(reply: &Value) -> String {
     let count = |key: &str| reply[key].as_array().map_or(0, Vec::len);
@@ -391,88 +350,6 @@ pub fn summary(reply: &Value) -> String {
         count("replaced"),
         count("kept")
     )
-}
-
-pub const USAGE: &str = "\
-usage: froxel variants --input <file.vox> --variants <sets.json> --out <dir>
-                       [--manifest <file.json>] [--replace] [--no-vox]
-                       [--merge] [--vertex-colors] [--color-atlas]
-                       [--export-hidden] [--split-objects]
-                       [--ao STRENGTH] [--ao-radius CELLS]
-                       [--ao-target vertex|texture|both] [--bake JSON|FILE]
-
-Bakes the scripted document once per parameter set and writes <name>.vox and
-<name>.glb for each into --out, then a manifest (default <out>/variants.json)
-with each set's parameters, markers, and bounds. An existing manifest is
-updated by variant name: the sets exported now replace their entries, the
-others are kept in order, and new names are appended; --replace writes a
-fresh manifest with only these sets. sets.json is a list of
-{\"name\": \"low\", \"params\": {\"height\": 12, \"wall/seed\": 3}}, or an object
-with that list under \"variants\". A colour is [r, g, b] in whole 0..255, or in
-0..1 when every channel is at most 1 and one has a decimal point: [1, 1, 1] is
-near black, [1.0, 1.0, 1.0] white. Keys and values under a manifest entry's
-\"params\" can be passed back unchanged. The mesh options are those of froxel
-export. If the input opens with a scene shift (see froxel export), it is
-printed, and each entry records it as sceneShift.";
-
-fn cli_args(args: &[String]) -> Result<Option<(PathBuf, Value)>, String> {
-    let mut input = None;
-    let mut sets = None;
-    let mut params = json!({});
-    let mut index = 0;
-    let next = |index: &mut usize, what: &str| -> Result<String, String> {
-        *index += 1;
-        args.get(*index)
-            .cloned()
-            .ok_or_else(|| format!("{what} needs a value\n{USAGE}"))
-    };
-    while index < args.len() {
-        match args[index].as_str() {
-            "-h" | "--help" => {
-                eprintln!("{USAGE}");
-                return Ok(None);
-            }
-            "--input" => input = Some(PathBuf::from(next(&mut index, "--input")?)),
-            "--variants" => sets = Some(PathBuf::from(next(&mut index, "--variants")?)),
-            "--out" => params["dir"] = json!(next(&mut index, "--out")?),
-            "--manifest" => params["manifest"] = json!(next(&mut index, "--manifest")?),
-            "--replace" => params["replace"] = json!(true),
-            "--no-vox" => params["vox"] = json!(false),
-            "--merge" => params["merge"] = json!(true),
-            "--vertex-colors" => params["vertexColors"] = json!(true),
-            "--color-atlas" => params["colorAtlas"] = json!(true),
-            "--export-hidden" => params["exportHidden"] = json!(true),
-            "--split-objects" => params["splitObjects"] = json!(true),
-            "--ao" => {
-                let value = next(&mut index, "--ao")?;
-                params["aoStrength"] =
-                    json!(crate::bridge::parse_ao_strength(Some(value.as_str()))?);
-            }
-            "--ao-radius" => {
-                let value = next(&mut index, "--ao-radius")?;
-                params["aoRadius"] = json!(crate::bridge::parse_ao_radius(Some(value.as_str()))?);
-            }
-            "--ao-target" => {
-                let value = next(&mut index, "--ao-target")?;
-                params["aoTarget"] =
-                    json!(crate::bridge::parse_ao_target(Some(value.as_str()))?.name());
-            }
-            "--bake" => {
-                let value = next(&mut index, "--bake")?;
-                params["bake"] = crate::bridge::parse_bake(Some(value.as_str()))?;
-            }
-            other => return Err(format!("unknown argument `{other}`\n{USAGE}")),
-        }
-        index += 1;
-    }
-    let (Some(input), Some(sets)) = (input, sets) else {
-        return Err(USAGE.into());
-    };
-    if params.get("dir").is_none() {
-        return Err(USAGE.into());
-    }
-    params["variants"] = read_sets(&sets)?;
-    Ok(Some((input, params)))
 }
 
 /// A variants file: a list of sets, or an object with one under `variants`.

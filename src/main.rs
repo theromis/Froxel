@@ -13,7 +13,7 @@
 // that was started with `--control`, which is where screenshots come from.
 // `--launch` opens that editor. `froxel bridge` and `--bridge` speak the
 // Godot/Blender bridge. Render mode path-traces on the GPU through wgpu.
-// MCP `render` and `froxel render` path-trace a PNG with no window.
+// MCP `render` and `froxel run render` path-trace a PNG with no window.
 // `froxel voxrt` checks a `.vox` round trip.
 //
 // On macOS the File and Edit commands live on the application menu bar.
@@ -235,68 +235,12 @@ fn main(
     if args.first().is_some_and(|arg| arg == "mcp") {
         std::process::exit(mcp::run(&args[1..]));
     }
-    if args.first().is_some_and(|arg| arg == "render") {
-        std::process::exit(cli::render(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "preview") {
-        std::process::exit(cli::preview(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "carve") {
-        std::process::exit(cli::carve(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "paint") {
-        std::process::exit(cli::paint(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "fit") {
-        std::process::exit(cli::fit(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "optimize") {
-        std::process::exit(cli::optimize(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "measure") {
-        std::process::exit(cli::measure(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "pixelate") {
-        std::process::exit(cli::pixelate(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "compare") {
-        std::process::exit(cli::compare(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "export") {
-        std::process::exit(cli::export(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "bake-scene") {
-        std::process::exit(cli::bake_scene(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "orient") {
-        std::process::exit(cli::orient(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "deform") {
-        std::process::exit(cli::deform(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "blend") {
-        std::process::exit(cli::blend(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "relief") {
-        std::process::exit(cli::relief(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "split-parts") {
-        std::process::exit(cli::split_parts(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "reduce-palette") {
-        std::process::exit(cli::reduce_palette(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "deterrace") {
-        std::process::exit(cli::deterrace(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "components") {
-        std::process::exit(cli::components(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "import") {
-        std::process::exit(cli::import(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "variants") {
-        std::process::exit(variants::cli(&args[1..]));
+    if let Some(tool) = args.first().and_then(|arg| cli::replaced_by(arg)) {
+        eprintln!(
+            "froxel {} was replaced by froxel run {tool}, which takes the tool's MCP arguments as flags (--path, not --out or --output, for the file it writes; --input and --out for the .vox). See froxel run {tool} --help.",
+            args[0]
+        );
+        std::process::exit(2);
     }
     if args.first().is_some_and(|arg| arg == "run") {
         std::process::exit(cli::run_tool(&args[1..]));
@@ -736,29 +680,21 @@ fn parse_gui(args: &[String]) -> Result<GuiArgs, String> {
 usage: froxel [--control PORT] [--bridge PORT] [file.vox]
        froxel bridge --input <file.vox> [--port PORT]
        froxel mcp [--connect HOST:PORT] [--launch] [--watch]
-       froxel render --input <file.vox> --output <file.png>
-       froxel preview --input <file.vox> --out <file.png> (--help for its flags)
-       froxel export --input <file.vox> --output <file.glb>
-       froxel bake-scene --scene <scene.json> --output <file.glb> (--help for its format)
-       froxel carve --views <views.json> --out <file.vox> (--help for its flags)
-       froxel paint --args <paint.json> --input <base.vox> --out <file.vox> [--tool project_paint|decal|shell_plates|paint_from_views] (--help for its flags)
-       froxel fit --args <fit.json> --input <base.vox> --out <file.vox> (--help for its flags)
-       froxel optimize --args <optimize.json> --input <base.vox> --out <file.vox> (--help for its flags)
-       froxel compare --input <file.vox> --concept <concept.png> --out <overlay.png> (--help for its flags)
-       froxel measure --sheet <views.png> [--parts] (--help for its flags)
-       froxel pixelate --args <views.json> --size X,Y,Z [--out views.json] [--png sheet.png] (--help for its flags)
-       froxel import --mesh <file.glb|.obj> --output <file.vox> (--help for its flags)
-       froxel orient --args <orient.json> --input <file.vox> --out <file.vox> (--help for its flags)
-       froxel deterrace --input <file.vox> --out <file.vox> --mode blocks|stagger (--help for its flags)
-       froxel deform --args <deform.json> --input <file.vox> --out <file.vox> (--help for its flags)
-       froxel blend --args <blend.json> --out <file.vox> [--input <file.vox>] (--help for its flags)
-       froxel relief --args <relief.json> --input <file.vox> --out <file.vox> (--help for its flags)
-       froxel split-parts --args <parts.json> --input <file.vox> --out <file.vox> (--help for its flags)
-       froxel reduce-palette --input <file.vox> --out <file.vox> --colors N --despeckle N (--help for its flags)
-       froxel components --input <file.vox> --out <file.vox> --op <op> (--help for its flags)
-       froxel variants --input <file.vox> --variants <sets.json> --out <dir>
-       froxel run <tool> [--input <file.vox>] [--out <file.vox>] [--<argument> <value> ...] (any MCP tool; --list, <tool> --help)
-       froxel voxrt --input <file.vox> [--dump]"
+       froxel run <tool> [--input <file.vox>] [--object <index|name>] [--out <file.vox>]
+                  [--args <args.json>] [--json '<arguments>'] [--<argument> <value> ...]
+       froxel run --list
+       froxel run <tool> --help
+       froxel voxrt --input <file.vox> [--dump]
+
+froxel run runs any MCP tool with no window: render, preview, export_mesh,
+bake_scene, carve_from_views, fit_to_views, import_mesh, and the rest
+(froxel run --list). A tool that writes a file takes it as --path:
+
+       froxel run render --input frog.vox --path frog.png --samples 64 --gpu true
+       froxel run preview --input model.vox --path model.png --preset game
+       froxel run export_mesh --input model.vox --path model.glb --color-atlas true
+       froxel run bake_scene --scene scene.json --path level.glb
+       froxel run deform --input in.vox --args deform.json --out out.vox"
                 );
                 std::process::exit(0);
             }

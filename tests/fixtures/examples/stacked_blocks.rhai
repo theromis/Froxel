@@ -1,9 +1,9 @@
 // Three rough blocks stacked off-centre, to look at baked light: crevices
 // between them, overhangs, and a lit and a shaded side.
 //
-//   froxel export --input examples/stacked_blocks.vox --output blocks.glb \
-//     --color-atlas --bake '{"preset": "old_pond", "distance": 12}'
-//   froxel preview --input blocks.glb --out blocks.png
+//   froxel run export_mesh --input examples/stacked_blocks.vox --path blocks.glb \
+//     --color-atlas true --bake '{"preset": "old_pond", "distance": 12}'
+//   froxel run preview --glb blocks.glb --path blocks.png
 //
 // Parameters
 //   seed     the chips and the colour noise

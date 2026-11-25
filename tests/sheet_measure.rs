@@ -240,7 +240,7 @@ fn the_turtle_sheet_measures_as_its_hand_crops() {
 }
 
 #[test]
-fn the_panel_measures_and_fills_the_carve_rows_and_the_command_line_parses() {
+fn the_panel_measures_and_fills_the_carve_rows() {
     let path = sheet(&[10, 28]).write("panel.png");
     let mut session = Session::new();
     session.replace_empty();
@@ -269,20 +269,4 @@ fn the_panel_measures_and_fills_the_carve_rows_and_the_command_line_parses() {
         ]
     );
     assert!(rows.iter().all(|r| r.on && r.path == path));
-    let args: Vec<String> = [
-        "--sheet",
-        "s.png",
-        "--parts",
-        "top",
-        "--pitch-range",
-        "4,40",
-        "--json",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect();
-    let (params, as_json) = crate::cli::measure_args(&args).unwrap().unwrap();
-    assert!(as_json);
-    assert_eq!(params["parts"], json!({"view": "top"}));
-    assert_eq!(params["pitchRange"], json!([4.0, 40.0]));
 }

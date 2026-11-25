@@ -105,20 +105,20 @@ temporary folder and were not kept.
   checkout), writes `sdf_<res>.npy` and `hy_<res>.vox`, optionally a mesh.
 - `sdf_vox.py`: SDF grid to `.vox` (glTF Y-up to Froxel's Z-up, facing −Y).
 - `sdf_fit.py`: resample the SDF so the model is a given number of cells tall.
-- `hull_and.py`: stretch the SDF onto a `froxel carve` box and intersect.
-- `views_json.py`: tight alpha crops and a box size for `froxel carve` and
-  `froxel paint --tool paint_from_views`.
+- `hull_and.py`: stretch the SDF onto a `froxel run carve_from_views` box and intersect.
+- `views_json.py`: tight alpha crops and a box size for `froxel run carve_from_views` and
+  `froxel run paint_from_views`.
 
 The slide run, for reference:
 
 ```sh
 HY3D_REPO=../Hunyuan3D-2 python hy_mv.py out front=front.png left=left.png back=back.png \
   --subfolder hunyuan3d-dit-v2-mv-turbo --steps 5 --res 96
-froxel carve --views carve.json --out carve.vox
+froxel run carve_from_views --args carve.json --out carve.vox
 python hull_and.py out/sdf_96.npy carve.vox mix
-froxel fit --args fit.json --input mix_and.vox --out mix_and_fit.vox
-froxel paint --tool paint_from_views --args paint.json --input mix_and_fit.vox --out painted.vox
-froxel components --input painted.vox --out best.vox --op keep_largest --connectivity 6
+froxel run fit_to_views --args fit.json --input mix_and.vox --out mix_and_fit.vox
+froxel run paint_from_views --args paint.json --input mix_and_fit.vox --out painted.vox
+froxel run components --input painted.vox --out best.vox --op keep_largest --connectivity 6
 ```
 
 `fit.json` held the four views with `recolor: false`; `paint.json` the same

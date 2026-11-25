@@ -1,4 +1,4 @@
-//! Shared still-frame settings for `froxel render` and MCP `render`.
+//! Shared still-frame settings for `froxel run render` and MCP `render`.
 
 use crate::state::{GlassMode, Session};
 

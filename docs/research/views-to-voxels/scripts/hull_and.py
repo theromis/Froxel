@@ -6,7 +6,7 @@ The SDF's occupied bounds are stretched onto the hull's box (axis by axis),
 then three files are written: OUT_PREFIX_box.vox (Hunyuan alone in the box),
 OUT_PREFIX_and.vox (hull AND Hunyuan), and OUT_PREFIX_and_d1.vox (hull AND
 Hunyuan grown by one cell). The hull is read from the first SIZE and XYZI
-chunks, so it should be a single-object file such as `froxel carve` writes.
+chunks, so it should be a single-object file such as `froxel run carve_from_views` writes.
 """
 
 import os

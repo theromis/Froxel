@@ -925,20 +925,29 @@ fn build() -> Vec<Value> {
             } else {
                 "Edge-aware filter before writing. Default true. Build with --features oidn for Open Image Denoise."
             };
-            json!({
+            merged(json!({
             "path": str_prop("PNG file to write. Its folder is created."),
             "width": int_prop("Pixels, 1..4096, at most 4096 x 2048 in all. Default 256, or from height and the model's shape."),
             "height": int_prop("Pixels, 1..4096. Default 256, or from width and the model's shape."),
-            "samples": int_prop("Path-trace samples, 1..128. Default 16."),
+            "samples": int_prop("Path-trace samples, 1..8192. Default 16. The CPU tracer takes about a second per 16 samples at 256 x 256; gpu is far faster."),
             "bounces": int_prop("Max bounces, 0..8. Default 4."),
             "seed": int_prop("Sampling seed. Default 1."),
             "denoise": {"type": "boolean", "description": denoise},
             "atmospheric": {"type": "boolean", "description": "Nishita sky. Omit to keep the document setting."},
-            "sky-intensity": num_prop("Sky intensity. Omit to keep the document setting."),
-            "sun-intensity": num_prop("Sun intensity. Omit to keep the document setting."),
-            "glass-mode": str_prop("probabilistic or absorption. Omit to keep the document setting."),
+            "skyIntensity": num_prop("Sky intensity. Omit to keep the document setting."),
+            "sunIntensity": num_prop("Sun intensity. Omit to keep the document setting."),
+            "glassMode": str_prop("probabilistic or absorption. Omit to keep the document setting."),
+            "sky-intensity": num_prop("Older name of skyIntensity; still accepted."),
+            "sun-intensity": num_prop("Older name of sunIntensity; still accepted."),
+            "glass-mode": str_prop("Older name of glassMode; still accepted."),
+            "aces": {"type": "boolean", "description": "ACES filmic tonemap. Default true."},
+            "stochasticGi": {"type": "boolean", "description": "Stochastic area lights for the indirect bounces. Omit to keep the document setting."},
+            "gpu": {"type": "boolean", "description": "Trace on the GPU (wgpu) instead of the CPU; an error when no adapter is available. Default false."},
+            "albedoPath": str_prop("Also write the first-hit albedo of the main view as a PNG here."),
+            "normalPath": str_prop("Also write the first-hit normal of the main view as a PNG here."),
             "aperture": num_prop("Lens aperture. Omit to keep the document setting."),
             "focus": num_prop("Focus distance. Omit to keep the document setting."),
+            }), json!({
             "yaw": num_prop("Orbit yaw in degrees. 0 puts the camera on +X, looking toward -X. A model facing -Y is face-on at yaw -90. Omit to keep the framing angle (30)."),
             "pitch": num_prop("Orbit pitch in degrees, -90..90. 90 looks straight down. Omit to keep the framing angle (25)."),
             "distance": num_prop("Multiple of the fitted distance, greater than 0 and at most 100. Below 1 is closer. Default 1."),
@@ -950,7 +959,7 @@ fn build() -> Vec<Value> {
             "showBones": {"type": "boolean", "description": "Draw joint points and parent links on the PNG. Default false."},
             "view": view_prop(),
             "views": {"type": "array", "description": "Extra PNGs. The required path is still written with the top-level yaw and pitch. Each item is {yaw, pitch, path} or {view, path}.", "items": {"type": "object"}}
-            })
+            }))
         }, &["path"]),
         define("model_view", "Flat model view to a PNG, like the editor's model view without shading: each pixel is the palette colour of the first visible cell under its centre, with no light, no tonemap, and no denoise, so it compares directly with a turnaround sheet. No path tracer. The camera fits the framed box like render; every view of the call shares one centre and one scale. Orthographic replies pixelsPerVoxel.", json!({
             "path": str_prop("PNG file to write. Its folder is created."),
@@ -1063,7 +1072,7 @@ fn build() -> Vec<Value> {
             "reply": reply_prop()
         }), &["path"]),
         define("export_variants", "Bake a scripted document once per parameter set and write <name>.vox and <name>.glb for each into dir, with the export_mesh mesh options, then a manifest JSON (default dir/variants.json) with each set's requested and resolved parameters, markers (local, world, glTF), bounds (voxel and glTF), quads, voxels, and mesh options. An existing manifest is updated by variant name: the sets exported now replace their entries in place, the other entries are kept in order, and new names are appended, so a subset can be redone; replace: true writes a fresh manifest with only these sets. The top-level options are present while every entry shares them. An entry records sceneShift when the document opened with one (see open_file). Parameters are keyed by name, or object/name when two objects share one, and take the values set_params does (a colour is whole 0..255, or 0..1 with a decimal point), so a manifest entry's params can be passed back unchanged. Every script runs per set, as regenerate does. The open document and its undo history are left as they were. One failing set stops the call with its name, before the manifest is written. Replies with the manifest path, the names it added, replaced, and kept, the shared options, and per set exported now its name, glb and vox paths, bounds, voxels, quads, sceneShift, and markers counted by kind ({\"box\": 230}); parameters and marker detail are in the manifest file. reply: \"full\" returns the whole manifest instead.", json!({
-            "variants": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"type": "object"}, "description": "1 to 64 sets: {name?, params}. name is a file stem of letters, digits, _, -, . (default variant_1, ...); params maps parameter names to values, as set_params takes them."},
+            "variants": {"type": ["array", "string"], "minItems": 1, "maxItems": 64, "items": {"type": "object"}, "description": "1 to 64 sets: {name?, params}, or the path of a JSON file of them. name is a file stem of letters, digits, _, -, . (default variant_1, ...); params maps parameter names to values, as set_params takes them."},
             "dir": str_prop("Folder for the .vox, .glb, and manifest files. It is created."),
             "manifest": str_prop("Manifest path. Defaults to dir/variants.json. Its folder is created."),
             "replace": {"type": "boolean", "description": "Write a fresh manifest with only these sets instead of merging into the existing one by name. Defaults to false."},

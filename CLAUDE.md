@@ -30,7 +30,7 @@ edit-mode mesh. `trace/` is the CPU path tracer. `trace_gpu.rs` plus
 cell, or by `coverage` on a finer pass with `keepThin`)
 (MCP `import_mesh`, `remote/import.rs`; Rhai `voxelize`, `script/import.rs`;
 fixtures and their generator in `tests/fixtures/mesh`). `preview.rs` is the fast lit CPU raster of the viewport mesh behind MCP
-`preview` and `froxel preview` (`docs/preview.md`). `export/` writes glTF. `native_menu.rs` is the macOS menu. `skills/froxel` is the agent skill for the MCP tools. `ops/` is the
+`preview` and `froxel run preview` (`docs/preview.md`). `export/` writes glTF. `native_menu.rs` is the macOS menu. `skills/froxel` is the agent skill for the MCP tools. `ops/` is the
 operation registry: `OPS` in `ops/mod.rs` names every MCP tool, its
 `remote::apply` method, its annotation hints, and whether it takes `batch`,
 `space`, and `mirror`; `ops/schema.rs` is each tool's argument schema. MCP
@@ -83,12 +83,12 @@ shade is a function of the lattice point and the face only, and greedy merge
 keeps apart faces whose corner shades differ. `aoTarget` `texture` (the
 default with `colorAtlas`) darkens each cell's atlas texel instead (mean of
 the corners), so the atlas merge and triangle count stay as without it;
-`vertex` and `both` are the other choices. `froxel export` is the same
+`vertex` and `both` are the other choices. `froxel run export_mesh` is the same
 export from the command line. `bake` (`export/bake.rs`, with `colorAtlas`)
 paints occlusion from real rays and a sun with shadows into the atlas texels,
 for a game to draw unshaded: the material is `KHR_materials_unlit`, every face
 uses one fixed ray pattern so there is no noise, and off leaves the file byte
-for byte. `export/scene.rs` is MCP `bake_scene` and `froxel bake-scene`: placed
+for byte. `export/scene.rs` is MCP `bake_scene` and `froxel run bake_scene`: placed
 `.vox` files, in the frame of the glb they export to, plus occluders, into one
 merged mesh and atlas; rays enter a placement through its inverse transform, over
 one grid per source and a BVH. Clips are glTF
@@ -115,8 +115,8 @@ frame cancels it. Denoise is the edge-aware filter unless the crate is built
 with `--features oidn`, which links Open Image Denoise and applies it to the
 finished frame from the albedo and normal guides. That feature needs the
 Open Image Denoise library on the build machine (`pkg-config`); the default
-build does not. The Render panel names the denoiser that is linked. Yaw 0 places the camera on +X looking toward −X; a model facing −Y is face-on at yaw −90. `froxel render` is the same still with no window:
-CPU by default, `--gpu` for the wgpu tracer. `froxel voxrt` checks a `.vox`
+build does not. The Render panel names the denoiser that is linked. Yaw 0 places the camera on +X looking toward −X; a model facing −Y is face-on at yaw −90. `froxel run render` is the same still with no window:
+CPU by default, `gpu` (`--gpu true`) for the wgpu tracer. `froxel voxrt` checks a `.vox`
 round trip, the save fixpoint, and the rotation codec. MCP `model_view` is the flat model
 view: each pixel is the palette colour of the first cell hit, with no light
 or tonemap. MCP `set_view` moves the window camera; its `orthographic` also

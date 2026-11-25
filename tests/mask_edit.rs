@@ -235,7 +235,7 @@ fn a_carve_view_takes_the_same_edits() {
 }
 
 #[test]
-fn the_compare_panel_and_the_command_line_pass_the_edits() {
+fn the_compare_panel_passes_the_edits() {
     let mut session = front_box();
     let mut panel = session.silhouette.compare.clone();
     panel.path = hero();
@@ -252,38 +252,6 @@ fn the_compare_panel_and_the_command_line_pass_the_edits() {
     session.compare_from_panel();
     let overlay = session.silhouette.overlay.as_ref().expect("an overlay");
     assert!(overlay.iou > 0.95, "{}", session.status);
-    let args: Vec<String> = [
-        "--input",
-        "x.vox",
-        "--concept",
-        "c.png",
-        "--out",
-        "o.png",
-        "--flood",
-        "30",
-        "--exclude",
-        "#ffffff,#000000",
-        "--erase",
-        "1,2,3,4",
-        "--erase",
-        "5,6,7,8",
-        "--mask",
-        "m.png",
-        "--invert-mask",
-        "--keep-largest",
-        "--exclude-tolerance",
-        "12",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect();
-    let (_, params, _) = crate::cli::compare_args(&args).unwrap().unwrap();
-    assert_eq!(params["flood"], 30.0);
-    assert_eq!(params["excludeColors"], json!(["#ffffff", "#000000"]));
-    assert_eq!(params["excludeTolerance"], 12.0);
-    assert_eq!(params["erase"], json!([[1, 2, 3, 4], [5, 6, 7, 8]]));
-    assert_eq!(params["mask"], json!({"path": "m.png", "invert": true}));
-    assert_eq!(params["keepLargest"], true);
 }
 
 #[test]

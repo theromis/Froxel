@@ -186,21 +186,29 @@ fn render_scene(session: &mut Session, params: &Value) -> Result<Value, String> 
     if path.is_empty() {
         return Err("path is empty".into());
     }
-    let samples = opt_i32_range(params, "samples", 16, 1, 128)?;
+    let samples = opt_i32_range(params, "samples", 16, 1, 8192)?;
     let bounces = opt_i32_range(params, "bounces", 4, 0, 8)?;
     let seed = opt_i32_range(params, "seed", 1, 0, i32::MAX)?;
     let denoise = opt_bool(params, "denoise")?.unwrap_or(true);
+    let aces = opt_bool(params, "aces")?.unwrap_or(true);
+    let stochastic_gi = opt_bool(params, "stochasticGi")?;
+    let gpu = opt_bool(params, "gpu")?.unwrap_or(false);
+    let albedo_path = opt_str(params, "albedoPath")?;
+    let normal_path = opt_str(params, "normalPath")?;
     let atmospheric = opt_bool(params, "atmospheric")?;
-    let sky_intensity = opt_f64(params, "sky-intensity")?;
-    let sun_intensity = opt_f64(params, "sun-intensity")?;
+    let sky_intensity = opt_f64(params, alias(params, "skyIntensity", "sky-intensity")?)?;
+    let sun_intensity = opt_f64(params, alias(params, "sunIntensity", "sun-intensity")?)?;
     let aperture = opt_f64(params, "aperture")?;
     let focus = opt_f64(params, "focus")?;
-    let glass = match opt_str(params, "glass-mode")? {
+    let glass_key = alias(params, "glassMode", "glass-mode")?;
+    let glass = match opt_str(params, glass_key)? {
         None => None,
         Some(text) if text == "probabilistic" => Some(GlassMode::Probabilistic),
         Some(text) if text == "absorption" => Some(GlassMode::Absorption),
         Some(_) => {
-            return Err("glass-mode must be 'probabilistic' or 'absorption'".into());
+            return Err(format!(
+                "{glass_key} must be 'probabilistic' or 'absorption'"
+            ));
         }
     };
     let (yaw, pitch) = view_angles(params)?;
@@ -244,7 +252,7 @@ fn render_scene(session: &mut Session, params: &Value) -> Result<Value, String> 
         samples: samples as u32,
         bounces,
         seed: seed as u32,
-        aces: true,
+        aces,
         denoise,
         atmospheric,
         sky_intensity: sky_intensity.map(|value| value as f32),
@@ -252,7 +260,7 @@ fn render_scene(session: &mut Session, params: &Value) -> Result<Value, String> 
         aperture: aperture.map(|value| value as f32),
         focus: focus.map(|value| value as f32),
         glass,
-        stochastic_gi: None,
+        stochastic_gi,
         yaw,
         pitch,
         distance: framing.scale,
@@ -271,15 +279,16 @@ fn render_scene(session: &mut Session, params: &Value) -> Result<Value, String> 
     crate::still::fit_all(session, &still, &angles);
     session.show_bones = show_bones;
     let distance = session.distance;
-    let written = render_views_to(
-        session,
+    let job = RenderTo {
         width,
         height,
-        samples as u32,
-        seed as u32,
-        &path,
-        &views,
-    );
+        samples: samples as u32,
+        seed: still.seed,
+        gpu,
+        albedo: albedo_path.as_deref(),
+        normal: normal_path.as_deref(),
+    };
+    let written = render_views_to(session, &job, &path, &views);
     session.pose = saved_pose;
     session.show_bones = saved_bones;
     crate::still::finish(session, saved);
@@ -796,25 +805,57 @@ fn set_view(session: &mut Session, params: &Value) -> Result<Value, String> {
     }))
 }
 
-fn render_views_to(
-    session: &mut Session,
+/// How `render` traces its frames, and where the main view's albedo and
+/// normal guides go.
+struct RenderTo<'a> {
     width: u32,
     height: u32,
     samples: u32,
     seed: u32,
+    gpu: bool,
+    albedo: Option<&'a str>,
+    normal: Option<&'a str>,
+}
+
+/// One frame to `path`, on the CPU or the GPU, with the guides when asked.
+fn render_frame(session: &Session, job: &RenderTo, path: &str, guides: bool) -> Result<(), String> {
+    let guide = |file: Option<&str>, rgba: Vec<u8>| -> Result<(), String> {
+        match file.filter(|_| guides) {
+            Some(file) => {
+                crate::trace::write_rgba_png(Path::new(file), job.width, job.height, &rgba)
+            }
+            None => Ok(()),
+        }
+    };
+    if job.gpu {
+        let frame = crate::trace_gpu::render_headless(session, [job.width, job.height], job.seed)?;
+        crate::trace::write_rgba_png(Path::new(path), frame.width, frame.height, &frame.rgba)?;
+        guide(job.albedo, crate::trace::albedo_rgba(&frame.albedo))?;
+        guide(job.normal, crate::trace::normal_rgba(&frame.normal))?;
+    } else {
+        let image =
+            crate::trace::render_still(session, job.width, job.height, job.samples, job.seed);
+        crate::trace::write_png(Path::new(path), &image, session)?;
+        guide(job.albedo, crate::trace::albedo_rgba(image.albedo()))?;
+        guide(job.normal, crate::trace::normal_rgba(image.normal()))?;
+    }
+    Ok(())
+}
+
+fn render_views_to(
+    session: &mut Session,
+    job: &RenderTo,
     path: &str,
     views: &[(f32, f32, String)],
 ) -> Result<Vec<Value>, String> {
-    let image = crate::trace::render_still(session, width, height, samples, seed);
-    crate::trace::write_png(Path::new(path), &image, session)?;
+    render_frame(session, job, path, true)?;
     let mut files = Vec::new();
     let yaw = session.yaw;
     let pitch = session.pitch;
     for (view_yaw, view_pitch, view_path) in views {
         session.yaw = view_yaw.to_radians();
         session.pitch = view_pitch.to_radians();
-        let image = crate::trace::render_still(session, width, height, samples, seed);
-        crate::trace::write_png(Path::new(view_path), &image, session)?;
+        render_frame(session, job, view_path, false)?;
         files.push(json!({"path": view_path, "yaw": view_yaw, "pitch": view_pitch}));
     }
     session.yaw = yaw;

@@ -1,6 +1,6 @@
 # Fast preview
 
-`preview` (MCP) and `froxel preview` (command line) draw a model the way the
+`preview` (MCP) and `froxel run preview` (command line) draw a model the way the
 edit viewport shows it, without the path tracer and without a window. The
 implementation is `src/preview.rs`; both entry points call it.
 
@@ -193,7 +193,7 @@ frog-world presets file adds it:
 ```
 
 ```sh
-froxel preview --input gorge_crest.vox --out crest_pond.png --preset game \
+froxel run preview --input gorge_crest.vox --path crest_pond.png --preset game \
   --lighting old_pond_graded --lighting-presets froxel/lighting.json
 ```
 
@@ -305,9 +305,9 @@ has them.
 
 ![The gorge wall example's three variants at the game preset, with markers](images/preview-contact-sheet.png)
 
-`froxel preview --input tests/fixtures/examples/gorge_wall.vox --variants
+`froxel run preview --input tests/fixtures/examples/gorge_wall.vox --variants
 tests/fixtures/examples/gorge_wall_variants.json --preset game --overlay all --width 480
---height 340 --columns 3` draws the sheet above.
+--height 340 --columns 3 --path gorge_sheet.png` draws the sheet above.
 
 The Render section's Sheet of files… and Sheet of variants… buttons make
 the same sheet from the window's camera angle; Reference… sets the PNG for
@@ -315,42 +315,44 @@ the first tile.
 
 ## Command line
 
+`froxel run preview` is the same tool with no window, its arguments as flags:
+
 ```sh
-froxel preview --input model.vox --out preview.png --yaw -35 --pitch 30 --width 1600 --height 800
+froxel run preview --input model.vox --path preview.png --yaw -35 --pitch 30 --width 1600 --height 800
 ```
 
-An `--input` ending in `.glb` (MCP `glb`) draws that written file instead of a
+`--glb file.glb` (MCP `glb`) draws that written file instead of a
 document, as an unlit material does: nearest texel times `COLOR_0`, no light,
 with glTF Y-up turned back so the camera means the same. That is how a baked
 export or `bake_scene` file looks unshaded in a game. It takes the camera, size, background, and
 antialias arguments only.
 
-The flags mirror the MCP arguments: `--width`, `--height`, `--yaw`,
-`--pitch`, `--view`, `--ortho`, `--fov`, `--margin`, `--object NAME|INDEX`,
-`--isolate`, `--background`, `--no-antialias`, `--preset`, `--presets
-FILE`, `--placement-yaw DEG`, `--lighting NAME`, and `--lighting-presets FILE`. `--output` is an alias of `--out`, which must end in `.png`. It
-prints the time taken and both triangle counts on stderr. The export
-counts take the `froxel export` flags: `--merge`, `--color-atlas`,
-`--vertex-colors`, `--export-hidden`, `--split-objects`, `--ao`,
-`--ao-radius`, `--ao-target`, and `--bake`; `--counts-label` writes them on the
-image and `--no-export-counts` skips them. `froxel preview --help` lists
-them.
+Every MCP argument is a flag: `--width`, `--height`, `--yaw`, `--pitch`,
+`--view`, `--orthographic true`, `--fov`, `--margin`, `--object NAME|INDEX`,
+`--isolate true`, `--background`, `--antialias false`, `--preset`,
+`--presets FILE`, `--placement-yaw DEG`, `--lighting NAME`, and
+`--lighting-presets FILE`. The reply, printed as JSON, has both triangle
+counts. The export counts take the `export_mesh` options as `--export`
+(`'{"merge": true, "colorAtlas": true}'`; `false` skips them), and
+`--counts-label true` writes them on the image. `froxel run preview --help`
+lists every argument.
 
 ```sh
-froxel preview --input gorge_crest.vox --out crest.png --preset game --color-atlas
-# preview: 256412 triangles (the unmerged viewport mesh it draws)
-# export: 32236 triangles, 16118 quads (merge false, colorAtlas true, as froxel export writes it)
+froxel run preview --input gorge_crest.vox --path crest.png --preset game --export '{"colorAtlas": true}'
+# "previewTriangles": 256412 (the unmerged viewport mesh it draws)
+# "export": {"triangles": 32236, "quads": 16118, "merge": false, "colorAtlas": true, ...}
 ```
 
-Several `--input` files make a contact sheet, as do `--variants
-sets.json` (baked from the one `--input`) and `--reference concept.png`
-(with `--reference-label`); `--columns N` and `--no-labels` lay it out.
-`--overlay KIND` (repeatable) and `--no-overlay-labels` draw the markers.
+`--inputs '["a.vox", "b.vox"]'` makes a contact sheet of several files, as
+do `--variants sets.json` (baked from the one `--input`) and `--reference
+'{"path": "concept.png", "label": "concept"}'`; `--columns N` and `--labels
+false` lay it out. `--overlay all` (or a list such as `'["boxes",
+"points"]'`) and `--overlay-labels false` draw the markers.
 
 ```sh
-froxel preview --input tests/fixtures/examples/gorge_wall.vox --variants tests/fixtures/examples/gorge_wall_variants.json \
-  --reference concept.png --reference-label concept --preset game \
-  --width 420 --height 300 --out gorge_sheet.png
+froxel run preview --input tests/fixtures/examples/gorge_wall.vox --variants tests/fixtures/examples/gorge_wall_variants.json \
+  --reference '{"path": "concept.png", "label": "concept"}' --preset game \
+  --width 420 --height 300 --path gorge_sheet.png
 ```
 
 ## Which picture to use

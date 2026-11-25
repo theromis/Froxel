@@ -2,7 +2,33 @@
 
 ## Unreleased
 
+### Removed
+
+- The tool-shaped subcommands are gone; `froxel run <tool>` does each with
+  the tool's own arguments: `render` (`froxel run render`), `preview`,
+  `export` (`export_mesh`), `bake-scene` (`bake_scene`), `carve`
+  (`carve_from_views`), `paint` (`project_paint`, `decal`, `shell_plates`,
+  `paint_from_views`), `fit` (`fit_to_views`), `optimize`
+  (`optimize_to_views`), `compare` (`compare_silhouette`), `measure`
+  (`measure_sheet`), `pixelate` (`pixelate_views`), `import`
+  (`import_mesh`), `orient` (`orient_to_views`), `deterrace`, `deform`,
+  `blend` (`blend_shapes`), `relief` (`radial_relief`), `split-parts`
+  (`split_parts`), `reduce-palette` (`reduce_palette`), `components`, and
+  `variants` (`export_variants`). The file a tool writes is `--path` (not
+  `--out` or `--output`), flags are the MCP arguments (`--color-atlas true`,
+  `--ao-strength 0.8`, `--glb file.glb`), and the reply prints as JSON. An
+  old name exits with the command that replaces it. `froxel voxrt`,
+  `froxel mcp`, and `froxel bridge` stay.
+
 ### Added
+
+- MCP `render` (and `froxel run render`) takes what `froxel render` did:
+  `gpu` for the wgpu tracer, `albedoPath` and `normalPath` for the guides,
+  `aces`, `stochasticGi`, and up to 8192 samples. `glassMode`,
+  `skyIntensity`, and `sunIntensity` are its camelCase names; the hyphenated
+  ones still work. `export_variants` takes `variants` as the path of a JSON
+  file too, as `preview` does. In an `--args` file, `froxel run` reads paths
+  relative to the file.
 
 - `froxel run <tool>` runs any MCP tool on a `.vox` from the command line,
   with `--input`, `--object`, `--out`, and its arguments from `--args`,

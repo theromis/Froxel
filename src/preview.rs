@@ -1,6 +1,6 @@
 //! Fast lit preview: the viewport's exposed-face mesh and its sun-plus-ambient
 //! shading, rasterised on the CPU with a depth buffer. No path tracer, no
-//! window, no GPU. MCP `preview` and `froxel preview` both call [`render`].
+//! window, no GPU. MCP `preview` and `froxel run preview` both call [`render`].
 //! An overlay draws the document's markers over the model: collision boxes
 //! as outlines, points as dots, connectors as arrows, with their names.
 //! The export counts are the triangles and quads the glb would have, apart

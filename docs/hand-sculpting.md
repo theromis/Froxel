@@ -88,8 +88,8 @@ A unique asset with an approved turnaround sheet (a hero view plus front,
 side, and top views) starts from its silhouettes, not from cells copied
 off the flat views.
 
-0. **Read the sheet.** `measure_sheet` (or `froxel measure --sheet
-   views.png --parts`) returns each view's crop, the cube pitch in pixels,
+0. **Read the sheet.** `measure_sheet` (or `froxel run measure_sheet --path
+   views.png --parts true`) returns each view's crop, the cube pitch in pixels,
    the size in cubes, whether the front, side, and top agree in size, and
    how many parts stick out of the top view's body. Fix or regenerate a
    sheet whose checks are off or whose top view has six flippers before
@@ -264,7 +264,7 @@ sealed at their rims, so a shell open underneath comes out solid; check
 WebP). `fill` `shell` keeps only the surface, for a hollow log to carve
 into. `mode` `paint`
 projects a textured mesh's colours onto a form already in the object.
-`docs/mcp.md` describes the options; `froxel import` does the same from
+`docs/mcp.md` describes the options; `froxel run import_mesh` does the same from
 the command line.
 
 ## Organic shapes

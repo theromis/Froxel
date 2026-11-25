@@ -53,7 +53,7 @@ animation clips. An AI agent can drive all of it through the built-in
   live, then bake a standalone scene. See [docs/bridges.md](docs/bridges.md).
 - **Automation.** An MCP server for agents and a command line for batch renders.
 
-<p align="center"><img src="docs/images/turntable.gif" width="320" alt="The frog turning on a turntable, rendered frame by frame with froxel render"></p>
+<p align="center"><img src="docs/images/turntable.gif" width="320" alt="The frog turning on a turntable, rendered frame by frame with froxel run render"></p>
 
 ## Install
 
@@ -237,98 +237,97 @@ Setup, the variant baker, and the protocol are in [docs/bridges.md](docs/bridges
 
 ## Command line
 
-`froxel render` path-traces a `.vox` file to a PNG with no window. The CPU tracer is
-the default, so a given seed always writes the same image. `--gpu` uses the wgpu
-tracer.
+`froxel run <tool>` runs any MCP tool on a `.vox` with no window. `--input`
+opens a file, `--object` makes an object active, `--out` saves the
+document, and the tool's own arguments are flags (`--min-feature 2` is
+`minFeature: 2`; `a,b,c` is a list, `true` and `false` are booleans, `{...}`
+is JSON), a JSON object (`--json`), or a JSON file (`--args`, whose paths
+are relative to it). A tool that writes a file takes it as `--path`. The
+reply prints as JSON. `froxel run --list` names the tools and
+`froxel run <tool> --help` lists a tool's arguments, from the same schemas
+as MCP `tools/list`.
+
+`froxel run render` path-traces a `.vox` file to a PNG. The CPU tracer is
+the default, so a given seed always writes the same image. `--gpu true` uses
+the wgpu tracer.
 
 ```sh
-froxel render --input examples/frog.vox --output frog.png \
-  --width 1440 --height 810 --samples 256 --denoise --gpu \
+froxel run render --input examples/frog.vox --path frog.png \
+  --width 1440 --height 810 --samples 256 --denoise true --gpu true \
   --yaw -62 --pitch 16 --distance 0.72
 ```
 
 ![The frog, path-traced in Froxel](docs/images/hero.jpg)
 
-That command made this picture. `--help` lists every option: camera,
-depth of field, sky, sun, glass mode, and albedo and normal passes. The turntable
-above is 48 such renders, one every 7.5° of `--yaw`.
+That command made this picture. `froxel run render --help` lists every
+option: camera, depth of field, sky, sun, glass mode, and the albedo and
+normal passes (`--albedo-path`, `--normal-path`). The turntable above is 48
+such renders, one every 7.5° of `--yaw`.
 
-![Lily pad, lotus bank, reeds and a letter, rendered with froxel render](docs/images/gallery.jpg)
+![Lily pad, lotus bank, reeds and a letter, rendered with froxel run render](docs/images/gallery.jpg)
 
-`froxel preview` draws the same `.vox` as the edit viewport lights it,
+`froxel run preview` draws the same `.vox` as the edit viewport lights it,
 rasterised on the CPU in a fraction of a second, fitted to the model (or
 `--object`) with a margin. [docs/preview.md](docs/preview.md) has the
-flags; MCP `preview` is the same image. `--preset game` is the gameplay
+options; MCP `preview` is the same image. `--preset game` is the gameplay
 camera (orthographic, yaw −135, pitch 32; `--presets` redefines it for a
-project, `--placement-yaw` sees an asset placed turned), and several `--input` files,
-`--variants`, or a `--reference` concept make a labelled contact sheet.
-`--lighting old_pond` (or a preset of your own) lights it with a game's
-sun, ambient, and grade instead of the viewport light. It prints two
-triangle counts: the unmerged mesh it draws, and what
-`froxel export` writes with the export flags given (`--merge`,
-`--color-atlas`).
+project). Its reply counts the triangles the preview draws and the ones
+`export_mesh` writes with the `--export` options given.
 
 ```sh
-froxel preview --input model.vox --out preview.png --yaw -35 --pitch 30 --width 1600 --height 800
+froxel run preview --input model.vox --path preview.png --yaw -35 --pitch 30 --width 1600 --height 800
 ```
 
-`froxel compare --input model.vox --concept sheet.png --crop 40,60,520,300
---view front --ortho --out vs.png` scores the model's silhouette against a
-concept view: it prints IoU, the share of the concept missing, and the
-share of the model in excess, and writes an overlay with the concept's
-outline and both in colour. `froxel carve --views views.json --out
-model.vox` fills the visual hull of a turnaround sheet's front, side, and
-top views, and `froxel paint --args paint.json --input model.vox --out
-painted.vox` recolours the surface one view sees from a single image (a
-shell's plates from the top). `froxel fit --args fit.json --input
-blockout.vox --out fitted.vox` refines a blockout so its orthographic views
-match the sheet's, with colours from its palette slots, and prints each
-view's IoU and colour error before and after. `froxel optimize --args
-optimize.json --input blockout.vox --out fitted.vox` iterates a small
-creature (20 to 60 cells) until its views match its pixel-art views, shape
-and colours together, and prints each view's agreement before and after;
+`froxel run compare_silhouette` scores the model's silhouette against a
+concept view: IoU, the share of the concept missing, and the share of the
+model in excess, with an overlay of the concept's outline and both in
+colour. `froxel run carve_from_views` fills the visual hull of a turnaround
+sheet's front, side, and top views, `froxel run project_paint` recolours
+the surface one view sees from a single image (a shell's plates from the
+top), `froxel run fit_to_views` refines a blockout so its orthographic
+views match the sheet's, with colours from its palette slots, and
+`froxel run optimize_to_views` iterates a small creature (20 to 60 cells)
+until its views match its pixel-art views, shape and colours together;
 built with `--features clip-metal`, its `semantic` option adds a CLIP
 patch-similarity term on Apple Metal (weights downloaded separately; see
-[docs/mcp.md](docs/mcp.md#optimizing-to-pixel-art-views)).
-MCP `compare_silhouette`, `carve_from_views`, `project_paint`,
-`fit_to_views`, and `optimize_to_views` are the same; see
+[docs/mcp.md](docs/mcp.md#optimizing-to-pixel-art-views)). See
 [docs/mcp.md](docs/mcp.md#silhouettes).
 
 ```sh
-froxel compare --input log.vox --concept log-sheet.png --crop 40,60,520,300 --view front --ortho --out log-vs-front.png
+froxel run compare_silhouette --input log.vox --concept log-sheet.png --crop 40,60,520,300 \
+  --view front --orthographic true --path log-vs-front.png
+froxel run fit_to_views --input blockout.vox --args fit.json --out fitted.vox
 ```
 
-`froxel export --input model.vox --output model.glb` writes the glTF with
-the `export_mesh` options as flags: `--merge`, `--vertex-colors`,
-`--color-atlas`, `--export-hidden`, `--split-objects`, and `--ao STRENGTH`
-with `--ao-radius CELLS` and `--ao-target vertex|texture|both` for baked
-ambient occlusion in `COLOR_0` or the colour atlas. `--bake JSON|FILE` with
-`--color-atlas` paints ray-traced occlusion and a sun with shadows into the
-atlas, for a game to draw unshaded; `froxel preview --input model.glb` looks at
-the written file. `froxel bake-scene --scene scene.json --output level.glb` bakes
-a placement of many `.vox` files together, each shaded by its neighbours and by
-ground, into one mesh with one atlas (`tests/fixtures/examples/stacked_blocks_scene.json`).
+`froxel run export_mesh` writes the glTF with the `export_mesh` options:
+`--merge`, `--vertex-colors`, `--color-atlas`, `--export-hidden`,
+`--split-objects`, and `--ao-strength` with `--ao-radius` and `--ao-target
+vertex|texture|both` for baked ambient occlusion in `COLOR_0` or the colour
+atlas. `--bake` with `--color-atlas` paints ray-traced occlusion and a sun
+with shadows into the atlas, for a game to draw unshaded;
+`froxel run preview --glb model.glb` looks at the written file.
+`froxel run bake_scene --scene scene.json --path level.glb` bakes a
+placement of many `.vox` files together, each shaded by its neighbours and
+by ground, into one mesh with one atlas
+(`tests/fixtures/examples/stacked_blocks_scene.json`).
 
 ```sh
-froxel export --input ruins.vox --output ruins.glb --merge --ao 0.8 --ao-radius 3
-froxel export --input ruins.vox --output lit.glb --color-atlas --bake '{"preset": "old_pond", "distance": 12}'
+froxel run export_mesh --input ruins.vox --path ruins.glb --merge true --ao-strength 0.8 --ao-radius 3
+froxel run export_mesh --input ruins.vox --path lit.glb --color-atlas true --bake '{"preset": "old_pond", "distance": 12}'
 ```
 
-`froxel import --mesh tree.glb --output tree.vox --voxel-size 0.08` voxelizes
-a mesh with the MCP `import_mesh` options as flags (`--size`, `--scale`,
-`--z-up`, `--rotation`, `--position`, `--anchor`, `--shell`, `--slots`,
-`--max-new-slots`, `--tolerance`, `--input` for a document to add to,
-`--new-object`) and prints the report: cells, slots, and bounds.
+`froxel run import_mesh --path tree.glb --voxel-size 0.08 --out tree.vox`
+voxelizes a mesh with the `import_mesh` options and prints the report:
+cells, slots, and bounds.
 
-`froxel variants --input wall.vox --variants sets.json --out variants/`
+`froxel run export_variants --input wall.vox --variants sets.json --dir variants/`
 bakes a scripted document once per parameter set in `sets.json` (a list of
 `{"name": "low", "params": {"height": 12}}`) and writes `low.vox`,
 `low.glb`, and a `variants.json` manifest of each set's parameters,
-markers, and bounds; it takes the `froxel export` mesh flags and
-`--no-vox`. Exporting again into the same folder updates the manifest by
-variant name, so a subset can be redone without dropping the others;
-`--replace` writes it fresh. MCP `export_variants` and the Export panel's **Export
-variants…** do the same.
+markers, and bounds; it takes the `export_mesh` options and `--vox false`.
+Exporting again into the same folder updates the manifest by variant name,
+so a subset can be redone without dropping the others; `--replace true`
+writes it fresh. The Export panel's **Export variants…** does the same.
 
 `froxel voxrt --input model.vox` loads a file, saves it, loads the save, and
 checks that nothing changed: objects, palette, materials, scene graph, bones,

@@ -1,5 +1,5 @@
 //! Contact sheets behind MCP `preview` with `inputs` or `variants` and
-//! `froxel preview` with several inputs: one fast lit preview per tile, laid
+//! `froxel run preview` with several inputs: one fast lit preview per tile, laid
 //! out in a grid with labels, with an optional reference image (a concept)
 //! as the first tile. Also the named camera presets (`game`) and the small
 //! bitmap text the sheet labels and the preview overlays draw with.

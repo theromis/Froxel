@@ -66,7 +66,7 @@ fn glb(session: &Session, options: &MeshExport, name: &str) -> Vec<u8> {
 }
 
 /// The hashes are of files written by the binary from before baking existed
-/// (`froxel export` at 367814e), so these pin the whole file, not one branch.
+/// (`froxel run export_mesh` at 367814e), so these pin the whole file, not one branch.
 #[test]
 fn without_a_bake_the_file_is_byte_for_byte_what_it_was() {
     let mut session = Session::new();

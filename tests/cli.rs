@@ -65,3 +65,57 @@ fn run_fills_saves_and_refuses_what_it_cannot_run() {
     assert_eq!(run_tool(&strings(&["ui_click"])), 2);
     assert_eq!(run_tool(&strings(&["set_voxel", "--colour", "3"])), 1);
 }
+
+#[test]
+fn an_args_file_names_its_files_relative_to_itself() {
+    let mut args = serde_json::json!({
+        "path": "sheet.png",
+        "views": [{"view": "front", "path": "front.png", "depth": {"path": "d.png"}}],
+        "inputs": ["a.vox", "/abs/b.vox"],
+        "depthPath": "depth.png",
+        "preset": "game",
+        "palette": 4
+    });
+    args_relative(&mut args, Path::new("/work/sheets"));
+    assert_eq!(args["path"], "/work/sheets/sheet.png");
+    assert_eq!(args["views"][0]["path"], "/work/sheets/front.png");
+    assert_eq!(args["views"][0]["depth"]["path"], "/work/sheets/d.png");
+    assert_eq!(
+        args["inputs"],
+        serde_json::json!(["/work/sheets/a.vox", "/abs/b.vox"])
+    );
+    assert_eq!(args["depthPath"], "/work/sheets/depth.png");
+    assert_eq!(args["preset"], "game");
+    assert_eq!(args["palette"], 4);
+}
+
+#[test]
+fn every_old_subcommand_names_a_tool_that_replaces_it() {
+    for old in [
+        "render",
+        "preview",
+        "export",
+        "bake-scene",
+        "carve",
+        "fit",
+        "optimize",
+        "compare",
+        "measure",
+        "pixelate",
+        "import",
+        "orient",
+        "deterrace",
+        "deform",
+        "blend",
+        "relief",
+        "split-parts",
+        "reduce-palette",
+        "components",
+        "variants",
+    ] {
+        let tool = replaced_by(old).unwrap_or_else(|| panic!("{old}"));
+        assert!(crate::ops::by_tool(tool).is_some(), "{old} -> {tool}");
+    }
+    assert!(replaced_by("paint").is_some());
+    assert!(replaced_by("voxrt").is_none());
+}

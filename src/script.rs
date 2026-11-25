@@ -1390,7 +1390,7 @@ impl Session {
 }
 
 /// A colour parameter's value, the one reading every caller shares (`set_params`,
-/// `export_variants`, `preview`, `froxel variants`, bridge `evaluate`):
+/// `export_variants`, `preview`, `froxel run export_variants`, bridge `evaluate`):
 /// `[r, g, b]` or `[r, g, b, a]`, alpha ignored. Channels are whole 0..255, as
 /// `param_color`, `list_params`, and a manifest write them. They are 0..1 only
 /// when every one is at most 1 and at least one is written with a decimal point,

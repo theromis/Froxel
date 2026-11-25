@@ -477,7 +477,7 @@ fn the_example_scene_bakes_through_the_tool_with_paths_from_its_folder() {
 }
 
 #[test]
-fn the_command_lines_take_the_bake() {
+fn froxel_run_takes_the_bake() {
     let args = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
     let vox = concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -487,36 +487,37 @@ fn the_command_lines_take_the_bake() {
         env!("CARGO_MANIFEST_DIR"),
         "/tests/fixtures/examples/stacked_blocks_scene.json"
     );
-    let file = temp("bake.json");
-    std::fs::write(&file, r#"{"rays": 4, "distance": 3}"#).unwrap();
-    let file = file.to_str().unwrap();
     let asset = temp("cli-asset.glb");
-    let code = crate::cli::export(&args(&[
+    let code = crate::cli::run_tool(&args(&[
+        "export_mesh",
         "--input",
         vox,
-        "--output",
+        "--path",
         asset.to_str().unwrap(),
         "--color-atlas",
+        "true",
         "--bake",
-        file,
+        r#"{"rays": 4, "distance": 3}"#,
     ]));
     assert_eq!(code, 0);
     let root = glb_json(&asset);
     assert_eq!(root["materials"][0]["extras"]["froxelBake"]["rays"], 4);
-    let no_atlas = crate::cli::export(&args(&[
+    let no_atlas = crate::cli::run_tool(&args(&[
+        "export_mesh",
         "--input",
         vox,
-        "--output",
+        "--path",
         temp("cli-no.glb").to_str().unwrap(),
         "--bake",
         "{}",
     ]));
     assert_eq!(no_atlas, 1);
     let group = temp("cli-group.glb");
-    let code = crate::cli::bake_scene(&args(&[
+    let code = crate::cli::run_tool(&args(&[
+        "bake_scene",
         "--scene",
         scene,
-        "--output",
+        "--path",
         group.to_str().unwrap(),
         "--bake",
         r#"{"rays": 4}"#,
@@ -524,7 +525,10 @@ fn the_command_lines_take_the_bake() {
     assert_eq!(code, 0);
     let root = glb_json(&group);
     assert_eq!(root["materials"][0]["extras"]["froxelBake"]["rays"], 4);
-    assert_eq!(crate::cli::bake_scene(&args(&["--scene", scene])), 2);
+    assert_eq!(
+        crate::cli::run_tool(&args(&["bake_scene", "--scene", scene])),
+        1
+    );
     assert!(crate::bridge::parse_bake(Some("{nope")).is_err());
     assert!(crate::bridge::parse_bake(Some("no-such-file.json")).is_err());
 }
