@@ -3262,3 +3262,89 @@ fn a_call_of_no_listed_tool_is_a_protocol_error() {
         assert_eq!(reply["error"]["code"], -32602, "{reply}");
     }
 }
+
+/// Tools that need no Rhai counterpart in docs/scripting.md: CLAUDE.md
+/// exempts MCP-only plumbing (session, screenshots, the UI) and the tools
+/// that write files, and the rest work on the open document, which a script
+/// reaches through its own cell calls. A new tool belongs here only for one
+/// of those reasons.
+const NOT_IN_SCRIPTING: &[&str] = &[
+    "new_document",
+    "open_file",
+    "save_file",
+    "inspect_document",
+    "get_voxel",
+    "set_voxel",
+    "set_active_object",
+    "add_object",
+    "remove_marker",
+    "list_markers",
+    "undo",
+    "redo",
+    "render",
+    "model_view",
+    "reload",
+    "set_view",
+    "screenshot",
+    "screenshot_viewport",
+    "screenshot_region",
+    "ui_inspect",
+    "ui_click",
+    "set_script",
+    "get_script",
+    "list_params",
+    "export_mesh",
+    "export_models",
+    "bake_scene",
+];
+
+#[test]
+fn every_tool_is_described_wherever_the_parity_rule_asks() {
+    let docs = |path: &str| {
+        std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(path))
+            .unwrap()
+    };
+    let (mcp_md, scripting) = (docs("docs/mcp.md"), docs("docs/scripting.md"));
+    let named = |text: &str, name: &str| {
+        text.contains(&format!("`{name}`")) || text.contains(&format!("{name}("))
+    };
+    let tools = tools();
+    let names: Vec<&str> = tools
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap())
+        .collect();
+    let methods: Vec<&str> = crate::remote::METHODS
+        .iter()
+        .map(|(method, _, _)| *method)
+        .collect();
+    for name in &names {
+        assert!(
+            named(&mcp_md, name),
+            "docs/mcp.md does not describe `{name}`"
+        );
+        assert!(
+            named(&scripting, name) || NOT_IN_SCRIPTING.contains(name),
+            "docs/scripting.md does not name `{name}`; add its Rhai form, or the reason to NOT_IN_SCRIPTING"
+        );
+        assert!(
+            !named(&scripting, name) || !NOT_IN_SCRIPTING.contains(name),
+            "`{name}` is in docs/scripting.md; take it out of NOT_IN_SCRIPTING"
+        );
+    }
+    for exempt in NOT_IN_SCRIPTING {
+        assert!(
+            names.contains(exempt),
+            "NOT_IN_SCRIPTING names `{exempt}`, which is no tool"
+        );
+    }
+    for (tool, method) in crate::remote::BATCH_TOOLS {
+        assert!(names.contains(tool), "a batch tool `{tool}` is not listed");
+        assert_eq!(map_tool(tool, &json!({})).unwrap().0, *method, "{tool}");
+    }
+    for method in crate::remote::WORLD_METHODS {
+        assert!(
+            methods.contains(method),
+            "world-space `{method}` is not in remote::METHODS"
+        );
+    }
+}

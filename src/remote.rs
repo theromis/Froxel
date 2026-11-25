@@ -18,7 +18,7 @@ mod organic;
 mod silhouette;
 mod space;
 mod stone;
-pub(crate) use batch::{batch_items, batch_tool_names, MAX_BATCH_ITEMS};
+pub(crate) use batch::{batch_items, batch_tool_names, BATCH_TOOLS, MAX_BATCH_ITEMS};
 pub(crate) use blend::blend_writes as blend_shape_writes;
 pub(crate) use collision::{collision_build, finish_reply as collision_reply};
 pub(crate) use edit::{
@@ -1617,7 +1617,7 @@ pub(crate) fn mesh_options(params: &Value) -> Result<crate::export::MeshExport, 
     })
 }
 
-const METHODS: &[(&str, &str, &str)] = &[
+pub(crate) const METHODS: &[(&str, &str, &str)] = &[
     ("document.new", "", "Empty document, default palette"),
     (
         "document.open",
