@@ -384,6 +384,9 @@ pub fn dispatch(session: &mut Session, root: &Path, id: i64, op: &Op) -> Result<
         Op::Describe => Ok(json!({
             "op": "schema",
             "parameters": parameters(session),
+            // Which Froxel answered, for a client to tell a version skew
+            // from a bug; the protocol itself is still `v` 1.
+            "server": env!("CARGO_PKG_VERSION"),
         })),
         Op::Evaluate(values) => evaluate(session, root, id, values),
     }
@@ -902,7 +905,18 @@ fn error_body(id: i64, message: &str) -> Value {
 }
 
 fn write_json(write: &mut TcpStream, body: &Value) -> io::Result<()> {
-    let text = serde_json::to_string(body).map_err(|err| io::Error::other(err.to_string()))?;
+    let mut text = serde_json::to_string(body).map_err(|err| io::Error::other(err.to_string()))?;
+    // The clients drop a frame past MAX_FRAME and close without a word, so
+    // a reply too long for them is answered with an error that fits.
+    if text.len() > MAX_FRAME {
+        let id = body.get("id").and_then(Value::as_i64).unwrap_or(-1);
+        let message = format!(
+            "the reply is {} bytes, past the {MAX_FRAME}-byte frame limit; use fewer script parameters",
+            text.len()
+        );
+        text = serde_json::to_string(&error_body(id, &message))
+            .map_err(|err| io::Error::other(err.to_string()))?;
+    }
     write.write_all(text.as_bytes())?;
     write.write_all(b"\n")?;
     write.flush()

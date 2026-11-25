@@ -226,7 +226,7 @@ connection open.
 
 Replies echo `v` and `id`:
 
-- `schema`: `parameters`, each `{id, name, object, objectName, type, value, min?, max?, maxLen?}`
+- `schema`: `parameters`, each `{id, name, object, objectName, type, value, min?, max?, maxLen?}`, and `server`, the Froxel version that answered
 - `result`: absolute `path` of a glb inside the session directory
 - `error`: `message`
 
@@ -246,7 +246,13 @@ Types:
 | `vec3s` | `[[x, y, z], …]` | each coordinate in `min` / `max`; at most `maxLen` points |
 
 A frame is at most 65536 bytes, so keep the lists of one `evaluate` below
-about 4000 numbers in all.
+about 4000 numbers in all. A reply that would be longer, such as the schema
+of very many parameters, is an `error` that says so.
+
+Up to eight clients can be connected at once, each on its own connection,
+so Godot and Blender can share one bridge. A wrong `v` and a wrong token
+have their own `error` messages, and a connection has 5 seconds in all to
+send its first valid request.
 
 The scripts of one `evaluate` share a 300-second limit. A run past it
 returns `error` with `bake timed out after 300 s`. The server answers every

@@ -58,6 +58,10 @@
   deadline rather than a per-read timeout. A wrong protocol version and a
   wrong token have their own errors, and the session directory name no
   longer contains part of the token.
+- A bridge reply too long for the clients' 64 KiB frame, such as the schema
+  of very many parameters, is an error that says so instead of a frame the
+  client drops and disconnects on. `describe` replies name the `server`
+  version.
 - A panic inside a tool no longer kills the MCP server, the control port,
   or the window: the call returns an internal error and the document is put
   back as it was before the call.
