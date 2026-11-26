@@ -34,7 +34,9 @@ It is how agents should model living things through MCP.
    cell as one cell instead of losing it. Otherwise build the large
    forms with `fill_box`,
    `fill_rounded_box`, and `fill_ellipsoid`. Grow limbs, roots, branches,
-   tails, and twigs with `fill_tube` (`caps: "flat"` for pipes and discs). Cut hollows, tunnels, and pits with
+   tails, and twigs with `fill_tube` (`caps: "flat"` for pipes and discs).
+   `generate` fills a cylinder, cone, pyramid, torus, or helix fitted to a
+   box in one call (the window's Generator). Cut hollows, tunnels, and pits with
    `carve`. Get the proportions and the silhouette right before any detail.
 2. **Render and compare.** `render` the document and put the PNG beside the
    reference (concept art, a photo of the real animal). Look at the
@@ -614,7 +616,7 @@ document stays as it was. Render and export outside it: tools that write
 files are refused.
 
 **A fill with a palette fills empty cells too.** `fill_box`,
-`fill_rounded_box`, `fill_ellipsoid`, and `fill_tube` write every cell
+`fill_rounded_box`, `fill_ellipsoid`, `fill_tube`, and `generate` write every cell
 inside the shape, whether or not it was solid. Pass `mode` `empty` to add
 around existing detail without overwriting it, and `mode` `paint` to
 recolour only cells that already exist. Palette `0` erases, in `sweep` too;

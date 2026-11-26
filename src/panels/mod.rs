@@ -543,32 +543,36 @@ fn slider_label(ui: &mut Ui, label: &str, column: bool) {
 
 pub(super) fn slider_value(session: &Session, target: SliderTarget) -> f32 {
     match target {
+        SliderTarget::TubePeriod
+        | SliderTarget::TubeSectors
+        | SliderTarget::TubeAspect
+        | SliderTarget::TubeRoll
+        | SliderTarget::RoundRadius
+        | SliderTarget::TorusTube
+        | SliderTarget::NoiseScale
+        | SliderTarget::NoiseThreshold
+        | SliderTarget::NoiseOctaves
+        | SliderTarget::NoiseSeed
+        | SliderTarget::PerlinLo
+        | SliderTarget::PerlinHi
+        | SliderTarget::TreeDepth
+        | SliderTarget::TreeWildness
+        | SliderTarget::TreeTrunk
+        | SliderTarget::TreeLeaf
+        | SliderTarget::TreeSeed
+        | SliderTarget::HelixTurns
+        | SliderTarget::HelixRadius
+        | SliderTarget::HelixTube
+        | SliderTarget::ConiferTiers
+        | SliderTarget::ConiferRagged
+        | SliderTarget::ConiferClump
+        | SliderTarget::ConiferTrunk
+        | SliderTarget::ConiferCrown
+        | SliderTarget::ConiferNeedle
+        | SliderTarget::ConiferSeed => session.op_slider_value(target),
         SliderTarget::BrushSize => session.brush_size as f32,
         SliderTarget::FoliageSeed => session.foliage_seed as f32,
         SliderTarget::FoliageDensity => session.foliage_density,
-        SliderTarget::TorusTube => session.torus_tube,
-        SliderTarget::RoundRadius => session.round_radius,
-        SliderTarget::NoiseScale => session.noise_scale,
-        SliderTarget::NoiseThreshold => session.noise_threshold,
-        SliderTarget::NoiseOctaves => session.noise_octaves as f32,
-        SliderTarget::NoiseSeed => session.noise_seed as f32,
-        SliderTarget::PerlinLo => session.perlin_lo as f32,
-        SliderTarget::PerlinHi => session.perlin_hi as f32,
-        SliderTarget::TreeDepth => session.tree_depth as f32,
-        SliderTarget::TreeWildness => session.tree_wildness,
-        SliderTarget::TreeTrunk => session.tree_trunk,
-        SliderTarget::TreeLeaf => session.tree_leaf as f32,
-        SliderTarget::TreeSeed => session.tree_seed as f32,
-        SliderTarget::HelixTurns => session.helix_turns,
-        SliderTarget::HelixRadius => session.helix_radius,
-        SliderTarget::HelixTube => session.helix_tube,
-        SliderTarget::ConiferTiers => session.conifer_tiers as f32,
-        SliderTarget::ConiferRagged => session.conifer_ragged,
-        SliderTarget::ConiferClump => session.conifer_clump,
-        SliderTarget::ConiferTrunk => session.conifer_trunk,
-        SliderTarget::ConiferCrown => session.conifer_crown,
-        SliderTarget::ConiferNeedle => session.conifer_needle as f32,
-        SliderTarget::ConiferSeed => session.conifer_seed as f32,
         SliderTarget::MaxSamples => session.max_samples as f32,
         SliderTarget::Aperture => session.aperture,
         SliderTarget::FocusDistance => session.focus_distance,
@@ -592,10 +596,6 @@ pub(super) fn slider_value(session: &Session, target: SliderTarget) -> f32 {
         SliderTarget::TubeStart => session.tube_start,
         SliderTarget::TubeEnd => session.tube_end,
         SliderTarget::TubeSecond => session.tube_second as f32,
-        SliderTarget::TubePeriod
-        | SliderTarget::TubeSectors
-        | SliderTarget::TubeAspect
-        | SliderTarget::TubeRoll => session.op_slider_value(target),
         SliderTarget::SmoothIterations => session.smooth_iterations as f32,
         SliderTarget::SmoothFillAt => session.smooth_fill_at as f32,
         SliderTarget::SmoothRemoveAt => session.smooth_remove_at as f32,
@@ -727,6 +727,6 @@ mod stone;
 mod tools;
 
 use props::{
-    choice_label, op_choice, op_slider, op_slider_as, op_toggle, prop_action_checkbox, prop_check,
-    prop_drag, prop_label, prop_slider,
+    choice_label, op_choice, op_combo, op_slider, op_slider_as, op_toggle, prop_action_checkbox,
+    prop_check, prop_drag, prop_label, prop_slider,
 };

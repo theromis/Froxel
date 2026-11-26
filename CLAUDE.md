@@ -11,7 +11,8 @@ and undo), `joints` (MCP `place_joints`, pivots at the joints between rig
 parts), `pointer`,
 `selection`, `drag`, `pick`, `geom`, and `vox/` (`.vox` read, write, the
 `MVRG` rig chunk, and the `MVAN` clip chunk). `viewport.rs` is orbit and pointer input. `panels/` is the side
-UI. `tools/` is brush shapes, generators, and the MCP sculpt shapes
+UI. `tools/` is brush shapes, generators (`generate.rs`: MCP `generate`,
+the Generator tool), and the MCP sculpt shapes
 (`sculpt.rs`: `fill_tube`, `carve`, `smooth`; `loft.rs`, `deform.rs`, and
 `brush.rs`: `loft`, `deform` (with `scale`, a part grown about a point), and the sculpt `brush`;
 `blend.rs`: MCP `blend_shapes`, signed distance fields of simple shapes joined by a smooth minimum;

@@ -117,6 +117,7 @@ pub(crate) const OPS: &[Op] = &[
         BATCH | SPACE | MIRROR,
     ),
     op("fill_tube", "voxel.tube", Write, BATCH | SPACE | MIRROR),
+    op("generate", "voxel.generate", Write, BATCH | SPACE | MIRROR),
     op("recolor", "voxel.recolor", Write, BATCH | SPACE | MIRROR),
     op("deterrace", "voxel.deterrace", Write, BATCH),
     op("split_parts", "object.split_parts", Replace, 0),
@@ -262,7 +263,7 @@ pub(crate) fn check_arguments(method: &str, args: &Value) -> Result<(), String> 
         .filter(|key| !known.contains(key))
         .collect();
     if unknown.is_empty() {
-        return Ok(());
+        return check_ranges(method, args);
     }
     known.sort_unstable();
     known.dedup();
@@ -280,6 +281,46 @@ pub(crate) fn check_arguments(method: &str, args: &Value) -> Result<(), String> 
             known.join(", ")
         }
     ))
+}
+
+/// A number argument outside its schema `minimum` and `maximum` (the
+/// `hard` range, Blender's `min` and `max`) is refused, naming the argument.
+fn check_ranges(method: &str, args: &serde_json::Map<String, Value>) -> Result<(), String> {
+    ranges_of(args, |key| {
+        by_method(method)
+            .filter_map(|op| schema::properties(op.tool)?.get(key))
+            .next()
+    })
+}
+
+/// [`check_ranges`] for the arguments of `tool` (a Rhai call's).
+pub(crate) fn check_tool_ranges(
+    tool: &str,
+    args: &serde_json::Map<String, Value>,
+) -> Result<(), String> {
+    ranges_of(args, |key| schema::properties(tool)?.get(key))
+}
+
+fn ranges_of(
+    args: &serde_json::Map<String, Value>,
+    property: impl Fn(&str) -> Option<&'static Value>,
+) -> Result<(), String> {
+    for (key, value) in args {
+        let (Some(number), Some(property)) = (value.as_f64(), property(key)) else {
+            continue;
+        };
+        let min = property["minimum"].as_f64();
+        let max = property["maximum"].as_f64();
+        if min.is_some_and(|min| number < min) || max.is_some_and(|max| number > max) {
+            let show = |bound: Option<f64>| bound.map_or(String::new(), |bound| bound.to_string());
+            return Err(format!(
+                "{key} must be {}..={}, not {value}",
+                show(min),
+                show(max)
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// The schema `default` of a tool's argument: the value it takes when the

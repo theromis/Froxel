@@ -41,7 +41,7 @@ server is still running. A server started with `--watch` reloads by itself.
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `carve_*`, `recolor`, `surface_stroke`, `shell_plates`, `components`, `deterrace`, `reduce_palette`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `radial_relief`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `blend_shapes`, `deform`, `brush`, `carve_from_views` and `optimize_to_views` with views as rows and a legend, `project_paint` and `decal` with the image as rows and a legend, `paint_from_views` with views as rows and a legend, `pixelate_views` (views as rows; returns pixel art rows), `fit_to_views` and `orient_to_views` with views as rows and a legend, and `marker`,
+  (`fill_tube`, `generate`, `carve_*`, `recolor`, `surface_stroke`, `shell_plates`, `components`, `deterrace`, `reduce_palette`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `radial_relief`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `blend_shapes`, `deform`, `brush`, `carve_from_views` and `optimize_to_views` with views as rows and a legend, `project_paint` and `decal` with the image as rows and a legend, `paint_from_views` with views as rows and a legend, `pixelate_views` (views as rows; returns pixel art rows), `fit_to_views` and `orient_to_views` with views as rows and a legend, and `marker`,
   `collision_box`, `connector`, `collision_from_voxels`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `split_object`, `split_parts`, `clear_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -97,9 +97,14 @@ server is still running. A server started with `--watch` reloads by itself.
   "#rrggbb"` (or `"#rrggbbaa"`) or `r`, `g`, `b`, so a concept's hex codes
   go in as they are.
 - An object is at most 256 cells per axis. A cell lies in `[-1024, 1024)`.
-- `fill_box`, `fill_rounded_box`, `fill_ellipsoid`, and `fill_tube` write
-  **every** cell in the shape, empty ones too. `mode: "empty"` adds without
+- `fill_box`, `fill_rounded_box`, `fill_ellipsoid`, `fill_tube`, and
+  `generate` write **every** cell in the shape, empty ones too. `mode: "empty"` adds without
   overwriting; `mode: "paint"` recolours only existing cells.
+- `generate` is the window's Generator in one call: `kind` `cylinder`,
+  `cone`, `pyramid`, `torus`, `helix`, `perlin` (noise rock or terrain),
+  `tree`, or `conifer` (a quick stand-in tree) fitted to the box, with
+  `axis`, `seed`, and each kind's options. For a unique tree or crown use
+  `fill_tube`, `bark`, and `foliage` instead.
 - `set_voxels` takes `[x, y, z, palette]` rows, up to 200000 per call. Batch
   detail into few calls.
 - Seams between shell plates, markings on a curved body, and grooves:

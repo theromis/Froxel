@@ -2,14 +2,12 @@
 
 ## Unreleased
 
-### Added
-
-- Every tool has a key: **C** circle, **Q** square, **N** generator,
-  **P** tube, **K** box select, and **W** flood select join **V** **L** **B**
-  **F** **S** **U** **M**, and each tool strip tooltip names its key.
-
 ### Fixed
 
+- A number argument outside the range its tool's schema states
+  (`minimum`/`maximum`) is refused by the argument check of MCP, the control
+  port, `froxel run`, the panels, and Rhai, naming the argument; before,
+  only tools whose handler checked it refused it, and the others clamped it.
 - With **One frame** on, Render mode traces a new frame once an orbit, a
   slider drag, or an edit has held still for a moment; before, it stayed on
   the edit view until **Render frame** was pressed.
@@ -20,6 +18,16 @@
 
 ### Added
 
+- Every tool has a key: **C** circle, **Q** square, **N** generator,
+  **P** tube, **K** box select, and **W** flood select join **V** **L** **B**
+  **F** **S** **U** **M**, and each tool strip tooltip names its key.
+- MCP `generate` (also Rhai `generate(x0, y0, z0, x1, y1, z1, kind, #{...})`
+  and `froxel run generate`) is the Generator tool: an ellipsoid, rounded
+  box, cylinder, cone, pyramid, torus, Perlin noise block, tree, helix, or
+  conifer fitted to an inclusive box, with each kind's options (axis, apex,
+  seed, depth, leaf, tiers, needle, ...), `mode`, `space`, `mirror`, and
+  `batch`. The Generator panel draws those options from the tool's schema and
+  a drag runs through the same argument check and generator.
 - `export_mesh`, `export_models`, `export_variants`, and `preview`'s `export`
   take `gameView` `{yaw, pitch, spread?, occlusion?, solid?}`: the faces a
   game's fixed camera never sees are left out of the mesh and the colour

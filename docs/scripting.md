@@ -187,6 +187,8 @@ fill_ellipsoid(x0, y0, z0, x1, y1, z1, slot);            // options: mode
 fill_rounded_box(x0, y0, z0, x1, y1, z1, radius, slot);  // options: mode
 fill_tube(points, slot_or_slots);
 fill_tube(points, slot_or_slots, #{radius: 1.5, curve: "smooth"});
+generate(x0, y0, z0, x1, y1, z1, kind);
+generate(x0, y0, z0, x1, y1, z1, kind, #{palette: 5, axis: "z", seed: 3});
 ```
 
 Each returns the number of cells that changed. `mode` is `"replace"` (the
@@ -205,6 +207,18 @@ options, no return value, and no cell cap.
 `fill_ellipsoid` fills the ellipsoid inscribed in the inclusive box.
 `fill_rounded_box` bevels the box edges by `radius` (clamped to half the
 shortest side; `0` is the plain box).
+
+`generate` is the Generator tool and MCP `generate`: the shape of `kind`
+(`"ellipsoid"`, `"rounded_box"`, `"cylinder"`, `"cone"`, `"pyramid"`,
+`"torus"`, `"perlin"`, `"tree"`, `"helix"`, or `"conifer"`) fitted to the
+box. Every other `generate` argument is an option (`palette`, `mode`,
+`axis`, `apex`, and each kind's own, such as `depth`, `leaf`, `tiers`, and
+`needle`; docs/mcp.md lists them with their defaults):
+
+```rhai
+generate(0, 0, 0, 23, 23, 40, "conifer", #{axis: "z", palette: 5, needle: 9, seed: 7});
+generate(30, 0, 0, 45, 15, 30, "tree", #{axis: "z", palette: 4, leaf: 8, depth: 4});
+```
 
 `fill_tube` fills a tube through `points`, each `[x, y, z]` or
 `[x, y, z, radius]`; a whole number is the centre of that cell, and a

@@ -1,5 +1,5 @@
 //! The MCP shape tools in Rhai: `fill_ellipsoid`, `fill_rounded_box`,
-//! `fill_tube`, `fill_box` with a mode, `carve_*`, `recolor`,
+//! `fill_tube`, `fill_box` with a mode, `generate`, `carve_*`, `recolor`,
 //! `surface_stroke`, `deterrace`, `reduce_palette`, `smooth`,
 //! `break_end`, and `scatter`.
 //!
@@ -51,6 +51,7 @@ pub(super) const BINDINGS: &[Binding] = &[
         "fill_tube",
         &[List("points"), Slots("palette", "palettes")],
     ),
+    Binding::new("generate", "generate", &[Corners, Str("kind")]),
     Binding::new("recolor", "recolor", &[Int("from"), Int("to")]).excluded(&["map"]),
     Binding::new("recolor", "recolor", &[List("map")]).excluded(&["from", "to"]),
     Binding::new("reduce_palette", "reduce_palette", &[]).with_options_only(),
@@ -91,6 +92,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
                 "fill_ellipsoid" => int(state.fill(args, Sculpt::Ellipsoid)),
                 "fill_rounded_box" => int(state.fill(args, Sculpt::RoundedBox)),
                 "fill_tube" => int(state.fill(args, Sculpt::Tube)),
+                "generate" => int(state.fill(args, Sculpt::Generate)),
                 "recolor" => map(state.recolor(args)),
                 "reduce_palette" => map(state.reduce_colors(args)),
                 "deterrace" => map(state.deterrace(args)),
@@ -116,6 +118,7 @@ impl Scratch {
             Sculpt::Ellipsoid => "voxel.ellipsoid",
             Sculpt::RoundedBox => "voxel.rounded",
             Sculpt::Tube => "voxel.tube",
+            Sculpt::Generate => "voxel.generate",
         };
         let (args, _) = self.localize(method, args)?;
         let (writes, _) = remote::fill_writes_mirrored(self.cells(), &args, sculpt)?;

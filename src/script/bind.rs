@@ -220,6 +220,9 @@ impl Binding {
         for (key, value) in self.fixed {
             args.insert((*key).into(), Value::String((*value).into()));
         }
+        // The schema's hard ranges, as remote::apply checks them.
+        crate::ops::check_tool_ranges(self.tool, &args)
+            .map_err(|error| runtime(format!("{}: {error}", self.name)))?;
         Ok(args)
     }
 }

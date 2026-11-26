@@ -93,6 +93,59 @@ pub(super) fn op_choice(
     }
 }
 
+/// A drop-down of an enum argument in [`Session::op_args`], each item
+/// shown as `name` gives it (the Generator tool's kinds). While the menu is
+/// open, each item is noted for `ui_inspect` and `ui_click` as
+/// `op.<tool>.<key>.<item>` at its own place; a click on the closed box is
+/// a pointer click that opens it.
+pub(super) fn op_combo(
+    ui: &mut Ui,
+    session: &mut Session,
+    tool: &str,
+    key: &str,
+    name: impl Fn(&'static str) -> &'static str,
+) {
+    let prop = prop_ui(tool, key);
+    let current = session.op_arg(prop.tool, key);
+    let shown = prop
+        .items
+        .iter()
+        .copied()
+        .find(|item| current == *item)
+        .map_or("", &name);
+    let mut picked = None;
+    let mut notes = Vec::new();
+    egui::ComboBox::from_id_salt(format!("op.{}.{}", prop.tool, prop.key))
+        .selected_text(shown)
+        // Every item shows, with no scrolling, so each has a place to click.
+        .height(f32::INFINITY)
+        .show_ui(ui, |ui| {
+            for item in prop.items.iter().copied() {
+                let response = ui.selectable_label(current == item, name(item));
+                // An item scrolled out of the menu has no place to click.
+                if ui.clip_rect().intersects(response.rect) {
+                    notes.push((item, response.rect));
+                }
+                if response.clicked() {
+                    picked = Some(item);
+                }
+            }
+        })
+        .response
+        .on_hover_text(prop.tooltip());
+    for (item, rect) in notes {
+        session.note_popup_ui(
+            &format!("op.{}.{}.{}", prop.tool, prop.key, item),
+            name(item),
+            rect,
+            UiAction::OpChoice(prop.tool, prop.key, Some(item)),
+        );
+    }
+    if let Some(item) = picked {
+        session.set_op_arg(prop.tool, key, Some(item.into()));
+    }
+}
+
 /// `stripes` as a button label: `Stripes`.
 fn title_case(item: &str) -> String {
     let mut chars = item.chars();

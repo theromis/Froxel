@@ -1250,6 +1250,16 @@ impl Session {
     }
 
     pub fn note_ui(&mut self, id: &str, label: &str, rect: egui::Rect, action: UiAction) {
+        self.push_ui(id, label, rect, action, false);
+    }
+
+    /// [`Self::note_ui`] for a control in a popup, which a click reaches
+    /// before anything noted under it.
+    pub fn note_popup_ui(&mut self, id: &str, label: &str, rect: egui::Rect, action: UiAction) {
+        self.push_ui(id, label, rect, action, true);
+    }
+
+    fn push_ui(&mut self, id: &str, label: &str, rect: egui::Rect, action: UiAction, popup: bool) {
         self.ui_regions.push(UiRegion {
             id: id.to_string(),
             label: label.to_string(),
@@ -1258,19 +1268,22 @@ impl Session {
             w: rect.width(),
             h: rect.height(),
             action,
+            popup,
         });
     }
 
-    /// Topmost registered control under a window point. `None` actions,
+    /// Topmost registered control under a window point, a popup's first.
+    /// `None` actions,
     /// such as the window rectangle, are not click targets. Phone controls
     /// with a `mobile.` id stay clickable: undo and the sheets have no
     /// session action.
     pub fn ui_target(&self, x: f32, y: f32) -> Option<UiRegion> {
-        self.ui_regions
-            .iter()
-            .rev()
-            .find(|region| listed_control(region) && region.contains(x, y))
-            .cloned()
+        let hit = |popup: bool| {
+            self.ui_regions.iter().rev().find(|region| {
+                region.popup == popup && listed_control(region) && region.contains(x, y)
+            })
+        };
+        hit(true).or_else(|| hit(false)).cloned()
     }
 
     pub fn activate_ui(&mut self, region: &UiRegion, at: Option<(f32, f32)>) -> Result<(), String> {
@@ -1352,40 +1365,44 @@ impl Session {
     }
 
     pub(crate) fn write_slider(&mut self, target: SliderTarget, value: f32) {
-        // A schema-drawn slider's range is the registry's (ops::panel); a
-        // tool argument in op_args is kept in f64 by write_op_slider.
+        // A tool argument in op_args is kept in f64 by write_op_slider;
+        // another schema-drawn slider's range is the registry's.
         let value = match target.op_arg() {
             Some(_) => value,
             None => target.registry_clamp(value),
         };
         let whole = value.round() as i32;
         match target {
+            SliderTarget::TubePeriod
+            | SliderTarget::TubeSectors
+            | SliderTarget::TubeAspect
+            | SliderTarget::TubeRoll
+            | SliderTarget::RoundRadius
+            | SliderTarget::TorusTube
+            | SliderTarget::NoiseScale
+            | SliderTarget::NoiseThreshold
+            | SliderTarget::NoiseOctaves
+            | SliderTarget::NoiseSeed
+            | SliderTarget::PerlinLo
+            | SliderTarget::PerlinHi
+            | SliderTarget::TreeDepth
+            | SliderTarget::TreeWildness
+            | SliderTarget::TreeTrunk
+            | SliderTarget::TreeLeaf
+            | SliderTarget::TreeSeed
+            | SliderTarget::HelixTurns
+            | SliderTarget::HelixRadius
+            | SliderTarget::HelixTube
+            | SliderTarget::ConiferTiers
+            | SliderTarget::ConiferRagged
+            | SliderTarget::ConiferClump
+            | SliderTarget::ConiferTrunk
+            | SliderTarget::ConiferCrown
+            | SliderTarget::ConiferNeedle
+            | SliderTarget::ConiferSeed => self.write_op_slider(target, value),
             SliderTarget::BrushSize => self.brush_size = whole.clamp(1, 63),
             SliderTarget::FoliageSeed => self.foliage_seed = whole.clamp(1, 255),
             SliderTarget::FoliageDensity => self.foliage_density = value.clamp(0.0, 1.0),
-            SliderTarget::TorusTube => self.torus_tube = value.clamp(0.05, 1.0),
-            SliderTarget::RoundRadius => self.round_radius = value.clamp(0.0, 32.0),
-            SliderTarget::NoiseScale => self.noise_scale = value.clamp(1.0, 64.0),
-            SliderTarget::NoiseThreshold => self.noise_threshold = value.clamp(0.0, 1.0),
-            SliderTarget::NoiseOctaves => self.noise_octaves = whole.clamp(1, 6),
-            SliderTarget::NoiseSeed => self.noise_seed = whole.clamp(0, 9999),
-            SliderTarget::PerlinLo => self.perlin_lo = whole.clamp(1, 255),
-            SliderTarget::PerlinHi => self.perlin_hi = whole.clamp(1, 255),
-            SliderTarget::TreeDepth => self.tree_depth = whole.clamp(1, 5),
-            SliderTarget::TreeWildness => self.tree_wildness = value.clamp(0.0, 1.0),
-            SliderTarget::TreeTrunk => self.tree_trunk = value.clamp(0.20, 1.50),
-            SliderTarget::TreeLeaf => self.tree_leaf = whole.clamp(1, 255),
-            SliderTarget::TreeSeed => self.tree_seed = whole.clamp(0, 9999),
-            SliderTarget::HelixTurns => self.helix_turns = value.clamp(0.25, 12.0),
-            SliderTarget::HelixRadius => self.helix_radius = value.clamp(0.0, 1.0),
-            SliderTarget::HelixTube => self.helix_tube = value.clamp(0.02, 0.90),
-            SliderTarget::ConiferTiers => self.conifer_tiers = whole.clamp(2, 5),
-            SliderTarget::ConiferRagged => self.conifer_ragged = value.clamp(0.0, 1.0),
-            SliderTarget::ConiferClump => self.conifer_clump = value.clamp(2.0, 24.0),
-            SliderTarget::ConiferTrunk => self.conifer_trunk = value.clamp(0.20, 1.50),
-            SliderTarget::ConiferCrown => self.conifer_crown = value.clamp(0.0, 1.0),
-            SliderTarget::ConiferNeedle => self.conifer_needle = whole.clamp(1, 255),
-            SliderTarget::ConiferSeed => self.conifer_seed = whole.clamp(0, 9999),
             SliderTarget::MaxSamples => self.max_samples = whole,
             SliderTarget::Aperture => self.aperture = value,
             SliderTarget::FocusDistance => self.focus_distance = value,
@@ -1418,10 +1435,6 @@ impl Session {
             SliderTarget::TubeStart => self.tube_start = value,
             SliderTarget::TubeEnd => self.tube_end = value,
             SliderTarget::TubeSecond => self.tube_second = whole.clamp(1, 255),
-            SliderTarget::TubePeriod
-            | SliderTarget::TubeSectors
-            | SliderTarget::TubeAspect
-            | SliderTarget::TubeRoll => self.write_op_slider(target, value),
             SliderTarget::SmoothIterations => self.smooth_iterations = whole,
             SliderTarget::SmoothFillAt => self.smooth_fill_at = whole,
             SliderTarget::SmoothRemoveAt => self.smooth_remove_at = whole,

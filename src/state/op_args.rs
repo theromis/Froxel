@@ -14,12 +14,18 @@ pub type OpArgs = Map<String, Value>;
 impl Session {
     /// The panel options a new session starts from: the schema defaults,
     /// plus the few a panel starts from otherwise (the Tube tool draws
-    /// smooth curves, and stripes in six sectors).
+    /// smooth curves, and stripes in six sectors; the Generator tool's kind).
     pub(super) fn panel_op_args() -> std::collections::BTreeMap<&'static str, OpArgs> {
         let mut tube = OpArgs::new();
         tube.insert("curve".into(), json!("smooth"));
         tube.insert("sectors".into(), json!(6));
-        [("fill_tube", tube)].into_iter().collect()
+        // The Generator tool starts on the ellipsoid; `kind` has no default
+        // since an MCP call names it.
+        let mut generate = OpArgs::new();
+        generate.insert("kind".into(), json!("ellipsoid"));
+        [("fill_tube", tube), ("generate", generate)]
+            .into_iter()
+            .collect()
     }
 
     /// A panel option: the value set, else the schema default, else null.
@@ -174,6 +180,29 @@ impl SliderTarget {
             SliderTarget::TubeRoll => ("fill_tube", "roll"),
             SliderTarget::TubePeriod => ("fill_tube", "period"),
             SliderTarget::TubeSectors => ("fill_tube", "sectors"),
+            SliderTarget::RoundRadius => ("generate", "radius"),
+            SliderTarget::TorusTube => ("generate", "torusTube"),
+            SliderTarget::NoiseScale => ("generate", "scale"),
+            SliderTarget::NoiseThreshold => ("generate", "threshold"),
+            SliderTarget::NoiseOctaves => ("generate", "octaves"),
+            SliderTarget::NoiseSeed => ("generate", "seed"),
+            SliderTarget::PerlinLo => ("generate", "paletteLow"),
+            SliderTarget::PerlinHi => ("generate", "paletteHigh"),
+            SliderTarget::TreeDepth => ("generate", "depth"),
+            SliderTarget::TreeWildness => ("generate", "wildness"),
+            SliderTarget::TreeTrunk => ("generate", "treeTrunk"),
+            SliderTarget::TreeLeaf => ("generate", "leaf"),
+            SliderTarget::TreeSeed => ("generate", "seed"),
+            SliderTarget::HelixTurns => ("generate", "turns"),
+            SliderTarget::HelixRadius => ("generate", "helixRadius"),
+            SliderTarget::HelixTube => ("generate", "helixTube"),
+            SliderTarget::ConiferTiers => ("generate", "tiers"),
+            SliderTarget::ConiferRagged => ("generate", "raggedness"),
+            SliderTarget::ConiferClump => ("generate", "clump"),
+            SliderTarget::ConiferTrunk => ("generate", "coniferTrunk"),
+            SliderTarget::ConiferCrown => ("generate", "crown"),
+            SliderTarget::ConiferNeedle => ("generate", "needle"),
+            SliderTarget::ConiferSeed => ("generate", "seed"),
             _ => return None,
         })
     }

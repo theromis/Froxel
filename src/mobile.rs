@@ -736,29 +736,18 @@ fn face_options(ui: &mut Ui, session: &mut Session) {
 }
 
 fn generator_options(ui: &mut Ui, session: &mut Session) {
-    let kinds = [
-        GeneratorKind::Ellipsoid,
-        GeneratorKind::RoundedBox,
-        GeneratorKind::Cylinder,
-        GeneratorKind::Cone,
-        GeneratorKind::Pyramid,
-        GeneratorKind::Torus,
-        GeneratorKind::Perlin,
-        GeneratorKind::Tree,
-        GeneratorKind::Helix,
-        GeneratorKind::Conifer,
-    ];
+    let current = session.op_arg("generate", "kind");
     let each = (ui.available_width() - GAP) / 2.0;
     egui::Grid::new("mobile_generator")
         .spacing(Vec2::splat(GAP))
         .show(ui, |ui| {
-            for (index, kind) in kinds.iter().enumerate() {
-                let on = session.generator == *kind;
+            for (index, kind) in GeneratorKind::ALL.iter().enumerate() {
+                let on = current == kind.key();
                 if ui
                     .add_sized([each, TOUCH], egui::Button::new(kind.name()).selected(on))
                     .clicked()
                 {
-                    session.generator = *kind;
+                    session.set_op_arg("generate", "kind", Some(kind.key().into()));
                 }
                 if index % 2 == 1 {
                     ui.end_row();

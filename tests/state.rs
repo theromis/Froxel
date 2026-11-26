@@ -2800,6 +2800,29 @@ fn schema_drawn_sliders_take_their_range_from_the_registry() {
         MaxBounces,
         SkyIntensity,
         SunIntensity,
+        RoundRadius,
+        TorusTube,
+        NoiseScale,
+        NoiseThreshold,
+        NoiseOctaves,
+        NoiseSeed,
+        PerlinLo,
+        PerlinHi,
+        TreeDepth,
+        TreeWildness,
+        TreeTrunk,
+        TreeLeaf,
+        TreeSeed,
+        HelixTurns,
+        HelixRadius,
+        HelixTube,
+        ConiferTiers,
+        ConiferRagged,
+        ConiferClump,
+        ConiferTrunk,
+        ConiferCrown,
+        ConiferNeedle,
+        ConiferSeed,
     ];
     let names = [
         "TubeStart",
@@ -2825,6 +2848,29 @@ fn schema_drawn_sliders_take_their_range_from_the_registry() {
         "MaxBounces",
         "SkyIntensity",
         "SunIntensity",
+        "RoundRadius",
+        "TorusTube",
+        "NoiseScale",
+        "NoiseThreshold",
+        "NoiseOctaves",
+        "NoiseSeed",
+        "PerlinLo",
+        "PerlinHi",
+        "TreeDepth",
+        "TreeWildness",
+        "TreeTrunk",
+        "TreeLeaf",
+        "TreeSeed",
+        "HelixTurns",
+        "HelixRadius",
+        "HelixTube",
+        "ConiferTiers",
+        "ConiferRagged",
+        "ConiferClump",
+        "ConiferTrunk",
+        "ConiferCrown",
+        "ConiferNeedle",
+        "ConiferSeed",
     ];
     for target in targets {
         let prop = target.prop().unwrap_or_else(|| panic!("{}", target.id()));
@@ -2852,6 +2898,22 @@ fn schema_drawn_sliders_take_their_range_from_the_registry() {
             }
         }
     }
+    // And every slider the Generator panel lists for a kind.
+    let tools = include_str!("../src/panels/tools.rs");
+    let body = &tools[tools
+        .find("pub(super) fn generator(")
+        .expect("the generator panel")..];
+    let body = &body[..body.find("\n}\n").unwrap_or(body.len())];
+    for (at, _) in body.match_indices("SliderTarget::") {
+        let name: String = body[at + 14..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric())
+            .collect();
+        assert!(
+            names.contains(&name.as_str()),
+            "the Generator panel's {name} has no schema_prop"
+        );
+    }
     let mut session = Session::new();
     session.write_slider(MaxSamples, 99_999.0);
     assert_eq!(session.max_samples, 8192);
@@ -2859,4 +2921,53 @@ fn schema_drawn_sliders_take_their_range_from_the_registry() {
     assert_eq!(session.smooth_remove_at, -1);
     session.write_slider(TubeStart, 0.1);
     assert_eq!(session.tube_start, 0.5);
+}
+
+#[test]
+fn the_generator_panel_runs_the_generate_tool_with_its_old_defaults() {
+    use serde_json::json;
+    let session = Session::new();
+    for kind in GeneratorKind::ALL {
+        let mut extra = serde_json::Map::new();
+        for (key, value) in ["x0", "y0", "z0", "x1", "y1", "z1"]
+            .into_iter()
+            .zip([0, 0, 0, 13, 17, 11])
+        {
+            extra.insert(key.into(), json!(value));
+        }
+        extra.insert("kind".into(), json!(kind.key()));
+        let args = session.op_call("generate", extra).unwrap();
+        let mut panel = crate::remote::generate_cells(&args).unwrap();
+        let mut old = crate::tools::generate(
+            (0, 0, 0),
+            (13, 17, 11),
+            &crate::tools::Gen {
+                kind,
+                ..Default::default()
+            },
+        );
+        panel.sort();
+        old.sort();
+        assert!(!old.is_empty(), "{} fills nothing", kind.key());
+        assert_eq!(panel, old, "{} differs from its old defaults", kind.key());
+    }
+    // A slider writes the tool argument, kept in its registry range.
+    let mut session = Session::new();
+    session.write_slider(SliderTarget::TreeDepth, 9.0);
+    assert_eq!(session.op_arg("generate", "depth"), json!(5));
+    session.write_slider(SliderTarget::ConiferSeed, 42.0);
+    assert_eq!(session.op_arg("generate", "seed"), json!(42));
+    // ui_click on an item of the open kind menu picks it, though the
+    // viewport under the menu is noted after it.
+    let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(40.0, 14.0));
+    session.note_popup_ui(
+        "op.generate.kind.torus",
+        "Torus",
+        rect,
+        UiAction::OpChoice("generate", "kind", Some("torus")),
+    );
+    session.note_ui("viewport", "Viewport", rect, UiAction::Viewport);
+    let hit = session.ui_target(2.0, 2.0).unwrap();
+    session.activate_ui(&hit, None).unwrap();
+    assert_eq!(session.op_arg("generate", "kind"), json!("torus"));
 }

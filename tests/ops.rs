@@ -148,6 +148,7 @@ fn every_schema_default_is_the_one_its_description_states() {
                 Value::Number(number) => stated
                     .parse::<f64>()
                     .is_ok_and(|text| (text - number.as_f64().unwrap()).abs() < 1e-9),
+                Value::String(text) => stated == *text,
                 _ => stated == default.to_string(),
             };
             assert!(
@@ -461,4 +462,33 @@ fn every_panel_field_is_named_in_its_argument() {
         let prop = field_ui(field.tool, field.path);
         assert!(!prop.label.is_empty() && !prop.hint.is_empty());
     }
+}
+
+#[test]
+fn every_frontend_refuses_a_value_outside_its_hard_range() {
+    let mut session = crate::state::Session::new();
+    session.replace_empty();
+    let corners = json!({"x0": 0, "y0": 0, "z0": 0, "x1": 7, "y1": 7, "z1": 7});
+    let with = |key: &str, value: Value| {
+        let mut args = corners.clone();
+        args["kind"] = json!("tree");
+        args[key] = value;
+        args
+    };
+    for (key, value) in [
+        ("depth", json!(6)),
+        ("depth", json!(0)),
+        ("wildness", json!(1.5)),
+        ("leaf", json!(0)),
+    ] {
+        let error = crate::remote::apply(&mut session, "voxel.generate", &with(key, value.clone()))
+            .unwrap_err();
+        assert!(error.contains(key), "{key} {value}: {error}");
+    }
+    assert!(crate::remote::apply(&mut session, "voxel.generate", &with("depth", json!(5))).is_ok());
+    // The panel's call goes through the same check.
+    let mut extra = corners.as_object().unwrap().clone();
+    extra.insert("kind".into(), json!("tree"));
+    extra.insert("depth".into(), json!(6));
+    assert!(session.op_call("generate", extra).is_err());
 }

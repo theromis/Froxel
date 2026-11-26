@@ -260,7 +260,7 @@ back in world cells, with `space` and `position` stated. So the same box
 lands on the same place whichever part it is sent to, and stays right after
 a save and reopen has moved the objects. `get_voxel`, `set_voxel`,
 `set_voxels`, `get_voxels`, `fill_box`, `fill_ellipsoid`,
-`fill_rounded_box`, `fill_tube`, `carve`, `smooth`, `loft`, `blend_shapes`, `brush`,
+`fill_rounded_box`, `fill_tube`, `generate`, `carve`, `smooth`, `loft`, `blend_shapes`, `brush`,
 `carve_from_views`, `project_paint`, `paint_from_views`, `decal`, `radial_relief`, and `split_object` take it;
 it moves corners `x0`..`z1`, cells `x`, `y`, `z`, `points`, `cells`,
 `origin`, `boxes`, `exclude`, a decal's `point` and `ray` origin,
@@ -270,7 +270,7 @@ it moves corners `x0`..`z1`, cells `x`, `y`, `z`, `points`, `cells`,
 `world`. In a `batch` each item takes its own `space`.
 
 `mirror` paints or edits both sides of a plane in one call. `set_voxels`,
-`fill_box`, `fill_ellipsoid`, `fill_rounded_box`, `fill_tube`, `blend_shapes` (any `mode`
+`fill_box`, `fill_ellipsoid`, `fill_rounded_box`, `fill_tube`, `generate`, `blend_shapes` (any `mode`
 but `intersect`), `recolor`, `surface_stroke`, `project_paint`, and `decal`
 take it:
 `true` (across x), an axis `"x"`, `"y"`, or `"z"`, or `{"axis": "x", "at":
@@ -331,6 +331,7 @@ tracer. A file with no scene graph still loads its first model.
 | `fill_ellipsoid` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palette` | Fill the ellipsoid inscribed in that box. The box volume is checked first, even when the solid is smaller. One undo step |
 | `fill_rounded_box` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palette`, `radius` | Same box, with an edge bevel of `radius` voxels. `radius` 0 is the full box. The radius is clamped to half the shortest side |
 | `fill_tube` | `points`, `palette` or `palettes` | Fill a tube through 2..=1024 **local** points, each with its own radius. Optional `radius`, `curve` (`polyline`, `smooth`), `caps` (`round`, `flat`), `aspect`, `roll`, `profile` (`round`, `blade`), `pattern` (`rings`, `stripes`, `random`), `period`, `sectors`, `seed`, `mode`. At most 2000000 cells, one undo step |
+| `generate` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `kind` | Fill the editor's Generator shape fitted to the box: `ellipsoid`, `rounded_box`, `cylinder`, `cone`, `pyramid`, `torus`, `perlin`, `tree`, `helix`, or `conifer`, with that kind's options (below). Optional `palette` (default 1), `mode`, `axis`, `apex`. At most 2000000 cells, one undo step |
 | `sweep` | `points`, `profile` or `width` and `height`, `palette` or `palettes` | Fill a 2D cross-section along 2..=1024 **local** points, kept perpendicular to the path, for curved walls, banks, and ledges. Each point may carry `twist` and `scale`. Optional `radius`, `curve` (`polyline`, `smooth`), `pattern` (`bands`, `rings`, `random`), `period`, `seed`, `mode`. `palette` `0` erases the solid cells it covers instead, for a slanted cut along a closed or curved outline (`mode` `empty` is refused with it). Replies with `cells` and `length`, and `removed` when erasing. At most 2000000 cells, one undo step |
 | `trim_outline` | `outline` | Remove every solid cell outside a surface: a closed plan outline of `[x, y]` points moved inward by `inset`, one number or `[z, inset]` pairs per height. Optional `curve` (`polyline`, `smooth`), a box `x0`..`z1`, `only`, `skin` (a slot), `thickness`. Replies with `removed`, `painted`, `added`, and a `warning` when nothing was outside. One undo step |
 | `blend_shapes` | `shapes` | Fill simple shapes blended as signed distance fields with a smooth minimum, so they flow into each other like clay: statues, creatures, topiary, roots. Each shape is `{shape: sphere | ellipsoid | box | capsule | torus, ...}` with `op` (`union`, `subtract`, `intersect`), `k`, `palette`, and `rotate`. Optional `k` (fillet in cells, default 3), `palette`, `grow`, `colors` (`nearest`, `last`), `seam`, `seed`, box `x0`..`z1`, `mode` (`replace`, `empty`, `paint`, `intersect`), `mirror`, `space`. Replies with `cells`, `changed`, `shapes`, `evaluated`, `bounds`. One undo step. See [Blended shapes](#blended-shapes) |
@@ -423,7 +424,7 @@ that already hold the requested index are not an undo step.
 `fill_box` corners may arrive in either order. The box is inclusive.
 By default every fill writes every cell inside its shape, empty ones
 included. `mode` changes that on `fill_box`, `fill_ellipsoid`,
-`fill_rounded_box`, and `fill_tube`: `replace` (the default) writes every
+`fill_rounded_box`, `fill_tube`, and `generate`: `replace` (the default) writes every
 cell, `empty` writes only empty cells so existing detail stays, `paint`
 recolours only cells that are already solid, and `intersect` keeps only the
 object's solid cells inside the shape, as they are, and erases every other
@@ -439,6 +440,31 @@ is solid when its centre lies inside the shape. The ellipsoid is centred on
 the box and touches the middle of each face. `fill_rounded_box` measures
 the distance from the cell centre to the box inset by `radius`. Both refuse
 a box larger than 2000000 cells before writing, and both are one undo step.
+
+`generate` is the window's Generator tool: one call fills the shape of
+`kind` fitted to the inclusive box, so its size is the box's. `axis` (`x`, `y`
+(the default), or `z`) is the long axis of every kind but
+`ellipsoid`, `rounded_box`, and `perlin`, and `apex` `min` puts a cone's or
+pyramid's point, or a tree's crown, at the low end. Each kind reads only its
+own options; the others are ignored.
+
+| `kind` | Options (defaults) |
+|---|---|
+| `ellipsoid` | none: the inscribed ellipsoid, as `fill_ellipsoid` |
+| `rounded_box` | `radius` (2), as `fill_rounded_box` |
+| `cylinder`, `cone`, `pyramid` | `axis` (`y`), and `apex` (`max`) for the point |
+| `torus` | `axis`, `torusTube` (0.3, the tube's share of the radius) |
+| `perlin` | `scale` (8 cells), `threshold` (0.5), `octaves` (4), `seed` (1), `paletteLow` (1) to `paletteHigh` (8) by noise height; `palette` is not used |
+| `tree` | `axis`, `apex`, `depth` (3), `wildness` (0.35), `treeTrunk` (0.45), `leaf` (1, the leaves' slot), `seed`; the wood is `palette` |
+| `helix` | `axis`, `turns` (2), `helixRadius` (0.75), `helixTube` (0.16), `clockwise` (false) |
+| `conifer` | `axis`, `tiers` (3), `raggedness` (0.25), `clump` (6), `coniferTrunk` (0.4), `crown` (0.5), `needle` (1, the needles' slot), `seed`; the trunk is `palette` |
+
+```json
+{"x0": 0, "y0": 0, "z0": 0, "x1": 23, "y1": 23, "z1": 40, "kind": "conifer", "axis": "z", "palette": 5, "needle": 9, "seed": 7}
+```
+
+Noise and branching follow the cells and the seed, so the same arguments
+give the same shape. The reply is `changed` and `voxels` (and `mirrored`).
 
 `surface_stroke` draws on the surface instead of through space, so a seam or
 a marking on a curved body needs no tube radius guessed to reach it. The
@@ -3039,6 +3065,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `set_voxel`, `set_voxels` | Brush, Line, Circle, Square, Face, Mutator |
 | `fill_box` | Box tool with Fill |
 | `fill_ellipsoid`, `fill_rounded_box` | Generator: Ellipsoid, Rounded box |
+| `generate` | Generator: every kind (Ellipsoid, Rounded box, Cylinder, Cone, Pyramid, Torus, Perlin, Tree, Helix, Conifer) and its options, drawn from the tool's schema; a drag is the box, the active slot is `palette`, and Add, Remove, and Paint apply the cells |
 | `fill_tube` | Tube tool: drag from the start radius to the end radius; Chain adds a point per drag and Smooth curves through them until Finish; Flatten, Roll, and Blade shape it; Flat ends cuts it square (`caps` `flat`); Solid, Rings, Stripes, or Random with a second slot |
 | `sweep` | Sweep section: Points (one per line, Point at selection adds the selection's centre), Smooth, Rectangle (Width, Height, Radius) or Polygon, Palettes, Bands, Rings, or Random, Period, Mode, Seed |
 | `trim_outline` | Trim section: Outline (one point per line, Point at selection adds the selection's centre), Smooth, Inset, Only, New skin, Slot, Thickness; Trim inside the selection's box or on the whole object |

@@ -217,6 +217,41 @@ pub enum GeneratorKind {
 }
 
 impl GeneratorKind {
+    /// Every generator, in the panel's order.
+    pub const ALL: [GeneratorKind; 10] = [
+        GeneratorKind::Ellipsoid,
+        GeneratorKind::RoundedBox,
+        GeneratorKind::Cylinder,
+        GeneratorKind::Cone,
+        GeneratorKind::Pyramid,
+        GeneratorKind::Torus,
+        GeneratorKind::Perlin,
+        GeneratorKind::Tree,
+        GeneratorKind::Helix,
+        GeneratorKind::Conifer,
+    ];
+
+    /// The MCP `generate` `kind` of this generator.
+    pub fn key(self) -> &'static str {
+        match self {
+            GeneratorKind::Ellipsoid => "ellipsoid",
+            GeneratorKind::RoundedBox => "rounded_box",
+            GeneratorKind::Cylinder => "cylinder",
+            GeneratorKind::Cone => "cone",
+            GeneratorKind::Pyramid => "pyramid",
+            GeneratorKind::Torus => "torus",
+            GeneratorKind::Perlin => "perlin",
+            GeneratorKind::Tree => "tree",
+            GeneratorKind::Helix => "helix",
+            GeneratorKind::Conifer => "conifer",
+        }
+    }
+
+    /// The generator of an MCP `kind`.
+    pub fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| kind.key() == key)
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             GeneratorKind::Ellipsoid => "Ellipsoid",
@@ -737,6 +772,9 @@ pub struct UiRegion {
     pub w: f32,
     pub h: f32,
     pub action: UiAction,
+    /// Drawn in a popup (an open drop-down's items), above every panel and
+    /// the viewport, so a click there reaches it first.
+    pub popup: bool,
 }
 
 impl UiRegion {
@@ -821,34 +859,6 @@ pub struct Session {
     pub face_extrude: FaceExtrude,
     pub face_with: FaceWith,
     pub face_eight: bool,
-    pub generator: GeneratorKind,
-    pub gen_axis: Axis,
-    pub apex_at_max: bool,
-    pub torus_tube: f32,
-    /// Edge bevel of the Rounded box generator, in voxels.
-    pub round_radius: f32,
-    pub tree_depth: i32,
-    pub tree_wildness: f32,
-    pub tree_trunk: f32,
-    pub tree_leaf: i32,
-    pub tree_seed: i32,
-    pub conifer_tiers: i32,
-    pub conifer_ragged: f32,
-    pub conifer_clump: f32,
-    pub conifer_trunk: f32,
-    pub conifer_crown: f32,
-    pub conifer_needle: i32,
-    pub conifer_seed: i32,
-    pub helix_turns: f32,
-    pub helix_radius: f32,
-    pub helix_tube: f32,
-    pub helix_cw: bool,
-    pub noise_scale: f32,
-    pub noise_threshold: f32,
-    pub noise_octaves: i32,
-    pub noise_seed: i32,
-    pub perlin_lo: i32,
-    pub perlin_hi: i32,
     pub foliage_seed: i32,
     pub foliage_density: f32,
     /// Tube tool: the radius at the start and at the end of a drag.

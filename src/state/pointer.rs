@@ -358,18 +358,25 @@ impl Session {
                 anchor.1.max(end.1),
                 anchor.2.max(end.2),
             );
+            // The panel's options as MCP generate arguments, through the
+            // same check and generator as the tool.
+            let mut extra = super::op_args::OpArgs::new();
+            for (key, value) in ["x0", "y0", "z0", "x1", "y1", "z1"]
+                .into_iter()
+                .zip([min.0, min.1, min.2, max.0, max.1, max.2])
             {
-                let gen = self.gen_params();
-                let filled = crate::tools::generate(min, max, &gen);
-                if filled.is_empty()
-                    && (max.0 - min.0 + 1) as i64
-                        * (max.1 - min.1 + 1) as i64
-                        * (max.2 - min.2 + 1) as i64
-                        > crate::tools::MAX_GENERATOR_CELLS
-                {
-                    self.status = "That box is too large to fill.".into();
+                extra.insert(key.into(), value.into());
+            }
+            extra.insert("palette".into(), self.active_slot.into());
+            match self
+                .op_call("generate", extra)
+                .and_then(|args| crate::remote::generate_cells(&args))
+            {
+                Ok(filled) => filled,
+                Err(error) => {
+                    self.status = format!("Generator: {error}.");
+                    Vec::new()
                 }
-                filled
             }
         } else if self.tool == Tool::Mutator {
             let seed = self.foliage_seed.clamp(1, 255) as u8;
@@ -652,39 +659,6 @@ impl Session {
         }
     }
 
-    pub(super) fn gen_params(&self) -> crate::tools::Gen {
-        crate::tools::Gen {
-            kind: self.generator,
-            axis: self.gen_axis,
-            apex_at_max: self.apex_at_max,
-            palette: self.active_slot,
-            torus_tube: self.torus_tube,
-            round_radius: self.round_radius,
-            helix_turns: self.helix_turns,
-            helix_radius: self.helix_radius,
-            helix_tube: self.helix_tube,
-            helix_cw: self.helix_cw,
-            noise_scale: self.noise_scale,
-            noise_threshold: self.noise_threshold,
-            noise_octaves: self.noise_octaves,
-            noise_seed: self.noise_seed as u32,
-            perlin_lo: self.perlin_lo,
-            perlin_hi: self.perlin_hi,
-            tree_depth: self.tree_depth,
-            tree_wildness: self.tree_wildness,
-            tree_trunk: self.tree_trunk,
-            tree_leaf: self.tree_leaf,
-            tree_seed: self.tree_seed as u32,
-            conifer_tiers: self.conifer_tiers,
-            conifer_ragged: self.conifer_ragged,
-            conifer_clump: self.conifer_clump,
-            conifer_trunk: self.conifer_trunk,
-            conifer_crown: self.conifer_crown,
-            conifer_needle: self.conifer_needle,
-            conifer_seed: self.conifer_seed as u32,
-        }
-    }
-
     pub(super) fn drag_stamp(&self) -> u64 {
         let mode = match self.tool_mode {
             ToolMode::Add => 1u64,
@@ -722,15 +696,6 @@ impl Session {
         h = h
             .wrapping_mul(16777619)
             .wrapping_add(self.foliage_seed as u64);
-        h = h
-            .wrapping_mul(16777619)
-            .wrapping_add(self.generator.name().len() as u64);
-        h = h
-            .wrapping_mul(16777619)
-            .wrapping_add(self.tree_depth as u64);
-        h = h
-            .wrapping_mul(16777619)
-            .wrapping_add(self.noise_seed as u64);
         h
     }
 

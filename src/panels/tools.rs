@@ -187,24 +187,9 @@ pub(super) fn options(ui: &mut Ui, session: &mut Session) {
             session.face_eight = eight;
         }
         Tool::Generator => {
-            egui::ComboBox::from_id_salt("generator")
-                .selected_text(session.generator.name())
-                .show_ui(ui, |ui| {
-                    for kind in [
-                        GeneratorKind::Ellipsoid,
-                        GeneratorKind::RoundedBox,
-                        GeneratorKind::Cylinder,
-                        GeneratorKind::Cone,
-                        GeneratorKind::Pyramid,
-                        GeneratorKind::Torus,
-                        GeneratorKind::Perlin,
-                        GeneratorKind::Tree,
-                        GeneratorKind::Helix,
-                        GeneratorKind::Conifer,
-                    ] {
-                        ui.selectable_value(&mut session.generator, kind, kind.name());
-                    }
-                });
+            op_combo(ui, session, "generate", "kind", |kind| {
+                GeneratorKind::from_key(kind).map_or(kind, GeneratorKind::name)
+            });
             generator(ui, session);
         }
         Tool::Tube => tube(ui, session),
@@ -356,13 +341,19 @@ fn sculpt(ui: &mut Ui, session: &mut Session) {
     });
 }
 
-pub(super) fn axis_row(ui: &mut Ui, axis: &mut Axis) {
-    ui.label(RichText::new("Axis").small().color(DIM));
-    segment(ui, axis, &[("X", Axis::X), ("Y", Axis::Y), ("Z", Axis::Z)]);
-}
-
+/// The Generator tool's options for its kind: MCP `generate` arguments in
+/// `op_args`, drawn from the schema.
 pub(super) fn generator(ui: &mut Ui, session: &mut Session) {
-    match session.generator {
+    let kind = session.op_arg("generate", "kind");
+    let kind = kind
+        .as_str()
+        .and_then(GeneratorKind::from_key)
+        .unwrap_or(GeneratorKind::Ellipsoid);
+    let axis = |ui: &mut Ui, session: &mut Session| {
+        prop_label(ui, "generate", "axis");
+        op_choice(ui, session, "generate", "axis", None);
+    };
+    match kind {
         GeneratorKind::Ellipsoid => {
             ui.label(
                 RichText::new("(shape derives from bounds)")
@@ -370,147 +361,65 @@ pub(super) fn generator(ui: &mut Ui, session: &mut Session) {
                     .color(DIM),
             );
         }
-        GeneratorKind::RoundedBox => {
-            slider_f32(
-                ui,
-                session,
-                "Radius",
-                SliderTarget::RoundRadius,
-                0.0..=32.0,
-                1,
-            );
-        }
-        GeneratorKind::Cylinder => axis_row(ui, &mut session.gen_axis),
+        GeneratorKind::RoundedBox => op_slider(ui, session, SliderTarget::RoundRadius),
+        GeneratorKind::Cylinder => axis(ui, session),
         GeneratorKind::Cone | GeneratorKind::Pyramid => {
-            axis_row(ui, &mut session.gen_axis);
-            ui.label(RichText::new("Apex at").small().color(DIM));
-            let mut max = session.apex_at_max;
-            row(ui, |ui| {
-                if ui.selectable_label(!max, "Min").clicked() {
-                    max = false;
-                }
-                if ui.selectable_label(max, "Max").clicked() {
-                    max = true;
-                }
-            });
-            session.apex_at_max = max;
+            axis(ui, session);
+            prop_label(ui, "generate", "apex");
+            op_choice(ui, session, "generate", "apex", None);
         }
         GeneratorKind::Torus => {
-            axis_row(ui, &mut session.gen_axis);
-            slider_f32(ui, session, "Tube", SliderTarget::TorusTube, 0.05..=1.0, 2);
+            axis(ui, session);
+            op_slider(ui, session, SliderTarget::TorusTube);
         }
         GeneratorKind::Perlin => {
-            slider_f32(
-                ui,
-                session,
-                "Scale",
+            for target in [
                 SliderTarget::NoiseScale,
-                1.0..=64.0,
-                1,
-            );
-            slider_f32(
-                ui,
-                session,
-                "Threshold",
                 SliderTarget::NoiseThreshold,
-                0.0..=1.0,
-                2,
-            );
-            slider_i32(ui, session, "Octaves", SliderTarget::NoiseOctaves, 1..=6);
-            slider_i32(ui, session, "Seed", SliderTarget::NoiseSeed, 0..=9999);
-            slider_i32(ui, session, "Palette lo", SliderTarget::PerlinLo, 1..=255);
-            slider_i32(ui, session, "Palette hi", SliderTarget::PerlinHi, 1..=255);
+                SliderTarget::NoiseOctaves,
+                SliderTarget::NoiseSeed,
+                SliderTarget::PerlinLo,
+                SliderTarget::PerlinHi,
+            ] {
+                op_slider(ui, session, target);
+            }
         }
         GeneratorKind::Tree => {
-            axis_row(ui, &mut session.gen_axis);
-            slider_i32(ui, session, "Depth", SliderTarget::TreeDepth, 1..=5);
-            slider_f32(
-                ui,
-                session,
-                "Wildness",
+            axis(ui, session);
+            for target in [
+                SliderTarget::TreeDepth,
                 SliderTarget::TreeWildness,
-                0.0..=1.0,
-                2,
-            );
-            slider_f32(
-                ui,
-                session,
-                "Trunk",
                 SliderTarget::TreeTrunk,
-                0.20..=1.50,
-                2,
-            );
-            slider_i32(ui, session, "Leaf color", SliderTarget::TreeLeaf, 1..=255);
-            slider_i32(ui, session, "Seed", SliderTarget::TreeSeed, 0..=9999);
+                SliderTarget::TreeLeaf,
+                SliderTarget::TreeSeed,
+            ] {
+                op_slider(ui, session, target);
+            }
         }
         GeneratorKind::Helix => {
-            axis_row(ui, &mut session.gen_axis);
-            slider_f32(
-                ui,
-                session,
-                "Turns",
+            axis(ui, session);
+            for target in [
                 SliderTarget::HelixTurns,
-                0.25..=12.0,
-                2,
-            );
-            slider_f32(
-                ui,
-                session,
-                "Radius",
                 SliderTarget::HelixRadius,
-                0.0..=1.0,
-                2,
-            );
-            slider_f32(ui, session, "Tube", SliderTarget::HelixTube, 0.02..=0.90, 2);
-            ui.label(RichText::new("Winding").small().color(DIM));
-            let mut cw = session.helix_cw;
-            row(ui, |ui| {
-                if ui.selectable_label(!cw, "CCW").clicked() {
-                    cw = false;
-                }
-                if ui.selectable_label(cw, "CW").clicked() {
-                    cw = true;
-                }
-            });
-            session.helix_cw = cw;
+                SliderTarget::HelixTube,
+            ] {
+                op_slider(ui, session, target);
+            }
+            op_toggle(ui, session, "generate", "clockwise");
         }
         GeneratorKind::Conifer => {
-            axis_row(ui, &mut session.gen_axis);
-            slider_i32(ui, session, "Tiers", SliderTarget::ConiferTiers, 2..=5);
-            slider_f32(
-                ui,
-                session,
-                "Raggedness",
+            axis(ui, session);
+            for target in [
+                SliderTarget::ConiferTiers,
                 SliderTarget::ConiferRagged,
-                0.0..=1.0,
-                2,
-            );
-            slider_f32(
-                ui,
-                session,
-                "Clump",
                 SliderTarget::ConiferClump,
-                2.0..=24.0,
-                1,
-            );
-            slider_f32(
-                ui,
-                session,
-                "Trunk",
                 SliderTarget::ConiferTrunk,
-                0.20..=1.50,
-                2,
-            );
-            slider_f32(
-                ui,
-                session,
-                "Crown",
                 SliderTarget::ConiferCrown,
-                0.0..=1.0,
-                2,
-            );
-            slider_i32(ui, session, "Needle", SliderTarget::ConiferNeedle, 1..=255);
-            slider_i32(ui, session, "Seed", SliderTarget::ConiferSeed, 0..=9999);
+                SliderTarget::ConiferNeedle,
+                SliderTarget::ConiferSeed,
+            ] {
+                op_slider(ui, session, target);
+            }
         }
     }
 }

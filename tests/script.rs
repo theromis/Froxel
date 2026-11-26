@@ -1701,3 +1701,47 @@ fn set_palette_refuses_a_misspelt_key_when_the_script_runs() {
     let err = run_cells("set_palette(#{index: 2, colour: \"#ff0000\"});").unwrap_err();
     assert!(err.contains("set_palette has no option `colour`"), "{err}");
 }
+
+#[test]
+fn generate_builds_what_the_mcp_tool_builds() {
+    use serde_json::json;
+    let script = run_cells(
+        r#"
+        generate(0, 0, 0, 15, 15, 27, "conifer", #{axis: "z", palette: 5, needle: 9, seed: 7});
+        generate(20, 0, 0, 35, 15, 23, "tree", #{axis: "z", palette: 4, leaf: 8, depth: 4});
+        generate(0, 20, 0, 15, 35, 7, "perlin", #{scale: 5, paletteLow: 2, paletteHigh: 6, mode: "empty"});
+        generate(20, 20, 0, 31, 31, 15, "helix", #{clockwise: true, turns: 3});
+        "#,
+    )
+    .unwrap();
+    let mcp = mcp_cells(&[
+        (
+            "voxel.generate",
+            json!({"x0": 0, "y0": 0, "z0": 0, "x1": 15, "y1": 15, "z1": 27, "kind": "conifer", "axis": "z", "palette": 5, "needle": 9, "seed": 7}),
+        ),
+        (
+            "voxel.generate",
+            json!({"x0": 20, "y0": 0, "z0": 0, "x1": 35, "y1": 15, "z1": 23, "kind": "tree", "axis": "z", "palette": 4, "leaf": 8, "depth": 4}),
+        ),
+        (
+            "voxel.generate",
+            json!({"x0": 0, "y0": 20, "z0": 0, "x1": 15, "y1": 35, "z1": 7, "kind": "perlin", "scale": 5, "paletteLow": 2, "paletteHigh": 6, "mode": "empty"}),
+        ),
+        (
+            "voxel.generate",
+            json!({"x0": 20, "y0": 20, "z0": 0, "x1": 31, "y1": 31, "z1": 15, "kind": "helix", "clockwise": true, "turns": 3}),
+        ),
+    ]);
+    assert!(script.len() > 500, "only {} cells", script.len());
+    assert_eq!(script, mcp);
+    // A misspelt option is refused, naming the function.
+    let error = run_cells(r#"generate(0, 0, 0, 3, 3, 3, "tree", #{depht: 2});"#).unwrap_err();
+    assert!(error.contains("depht"), "{error}");
+}
+
+#[test]
+fn a_rhai_option_outside_its_hard_range_is_refused() {
+    let error = run_cells(r#"generate(0, 0, 0, 7, 7, 7, "tree", #{depth: 6});"#).unwrap_err();
+    assert!(error.contains("depth must be 1..=5"), "{error}");
+    assert!(run_cells(r#"generate(0, 0, 0, 7, 7, 7, "tree", #{depth: 5});"#).is_ok());
+}

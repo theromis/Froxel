@@ -33,7 +33,7 @@ builders next to the property:
 | type, `enum` | JSON Schema | property type, `items` | MCP, argument check, widget choice |
 | `description` | JSON Schema | `description` | MCP, `froxel run --help` |
 | `default` | `with_default` | `default` | `remote::apply`, Rhai, panel start values |
-| `minimum`, `maximum` | `hard(prop, lo, hi)` | `min`, `max` | MCP clients, the tests (refused just outside) |
+| `minimum`, `maximum` | `hard(prop, lo, hi)` | `min`, `max` | MCP clients; the argument check refuses a number outside it for MCP, the CLI, the panels (`ops::check_arguments`), and Rhai (`ops::check_tool_ranges`) |
 | `title` | `ui(prop, label, hint)` | `name` | panel label, MCP (standard JSON Schema) |
 | `x-ui.hint` | `ui(...)` | short `description` | panel tooltip, `froxel run <tool> --help` short line |
 | `x-ui.soft`, `x-ui.digits` | `soft(prop, lo, hi, digits)` | `soft_min`, `soft_max`, `precision` | slider track and shown digits |
@@ -109,7 +109,9 @@ field.
   out.
 - `op_choice(ui, session, tool, key, none)`: one button per enum item, plus
   an optional first button that leaves the key out (the Tube tool's Solid).
-- Both note their buttons for `ui_inspect` and `ui_click` (ids
+- `op_combo(ui, session, tool, key, name)`: a drop-down of the enum items,
+  each shown as `name` gives it (the Generator tool's kinds).
+- They note their buttons for `ui_inspect` and `ui_click` (ids
   `op.<tool>.<key>` and `op.<tool>.<key>.<item>`, actions
   `UiAction::OpToggle` and `UiAction::OpChoice`), so MCP can press them.
 - `op_slider(ui, session, target)` and `op_slider_as(ui, session, label,
@@ -165,11 +167,16 @@ pointer press and release, so every widget can be driven by MCP.
   the second of `palettes`) and stay session fields. Rhai `fill_tube` and
   `carve_tube` options are derived.
 
+- `generate`, the Generator tool: the kind (a drop-down, `op_combo`), axis,
+  apex, Clockwise, and every kind's sliders are `op_args["generate"]`, drawn
+  from the schema; a drag adds the box and the active slot as `palette` and
+  runs `remote::generate_cells`, which MCP `generate` and Rhai `generate`
+  run too. The seeds of Perlin, Tree, and Conifer are one `seed`.
+
 ## Still hand-written
 
 - Window-only settings with no tool argument: One frame, NEE, RIS samples,
-  clamp, temporal smoothing, horizon, the sun's direction and disc, and the
-  generator form. (The fields inside `export_mesh` `bake` are
-  `ops::panel::FIELDS` rows, checked against the argument's description and
+  clamp, temporal smoothing, horizon, and the sun's direction and disc.
+  (The fields inside `export_mesh` `bake` are `ops::panel::FIELDS` rows, checked against the argument's description and
   drawn by `op_slider`.)
 - The Rhai readers named under Rhai.

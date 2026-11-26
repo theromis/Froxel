@@ -969,6 +969,7 @@ fn apply_unguarded(session: &mut Session, method: &str, params: &Value) -> Resul
         "voxel.ellipsoid" => sculpt_fill(session, &params, Sculpt::Ellipsoid),
         "voxel.rounded" => sculpt_fill(session, &params, Sculpt::RoundedBox),
         "voxel.tube" => sculpt_fill(session, &params, Sculpt::Tube),
+        "voxel.generate" => sculpt_fill(session, &params, Sculpt::Generate),
         "voxel.carve" => carve(session, &params),
         "voxel.recolor" => edit::recolor(session, &params),
         "voxel.surface_stroke" => edit::surface_stroke(session, &params),
@@ -1986,6 +1987,8 @@ pub(crate) enum Sculpt {
     Ellipsoid,
     RoundedBox,
     Tube,
+    /// MCP `generate`: the editor's Generator tool.
+    Generate,
 }
 
 fn sculpt_fill(session: &mut Session, params: &Value, sculpt: Sculpt) -> Result<Value, String> {
@@ -2033,6 +2036,11 @@ pub(crate) fn fill_writes(
     }
     let mut writes: Vec<(i32, i32, i32, i32)> = if sculpt == Sculpt::Tube {
         tube_writes(params)?
+    } else if sculpt == Sculpt::Generate {
+        generate_cells(params)?
+            .into_iter()
+            .map(|((x, y, z), slot)| (x, y, z, i32::from(slot)))
+            .collect()
     } else {
         let palette = req_i32(params, "palette")?;
         sculpt_cells(params, sculpt)?
@@ -2069,7 +2077,102 @@ fn sculpt_cells(params: &Value, sculpt: Sculpt) -> Result<Vec<Cell>, String> {
             .into_iter()
             .map(|cell| cell.cell)
             .collect()),
+        Sculpt::Generate => Ok(generate_cells(params)?
+            .into_iter()
+            .map(|(cell, _)| cell)
+            .collect()),
     }
+}
+
+/// The cells and slots MCP `generate` fills, from its arguments (filled in
+/// with the schema defaults): the editor's Generator tool over the box.
+/// The panel's drag calls this with its options too.
+pub(crate) fn generate_cells(params: &Value) -> Result<Vec<(Cell, u8)>, String> {
+    let (x0, y0, z0, x1, y1, z1) = box_corners(params)?;
+    let count = (i64::from(x1 - x0) + 1) * (i64::from(y1 - y0) + 1) * (i64::from(z1 - z0) + 1);
+    if count > crate::tools::MAX_GENERATOR_CELLS {
+        return Err(format!(
+            "box is larger than {} cells",
+            crate::tools::MAX_GENERATOR_CELLS
+        ));
+    }
+    let gen = generator(params)?;
+    Ok(crate::tools::generate((x0, y0, z0), (x1, y1, z1), &gen))
+}
+
+/// [`crate::tools::Gen`] from `generate`'s arguments.
+fn generator(params: &Value) -> Result<crate::tools::Gen, String> {
+    use crate::state::{Axis, GeneratorKind};
+    let kind = params.get("kind").and_then(Value::as_str).unwrap_or("");
+    let kind = GeneratorKind::from_key(kind).ok_or_else(|| {
+        format!("kind must be one of ellipsoid, rounded_box, cylinder, cone, pyramid, torus, perlin, tree, helix, conifer, not `{kind}`")
+    })?;
+    // A key left out takes its schema default, as remote::apply fills it.
+    let number = |key: &str| -> Result<f32, String> {
+        Ok(
+            opt_f64(params, key)?.unwrap_or_else(|| crate::ops::default_f32("generate", key).into())
+                as f32,
+        )
+    };
+    let int = |key: &str| -> Result<i64, String> {
+        match params.get(key) {
+            None | Some(Value::Null) => Ok(crate::ops::default("generate", key)
+                .as_i64()
+                .expect("a whole default")),
+            Some(found) => found
+                .as_i64()
+                .ok_or_else(|| format!("{key} must be a whole number")),
+        }
+    };
+    let palette = int("palette")?;
+    if !(0..=255).contains(&palette) {
+        return Err(format!("palette must be 0..255, not {palette}"));
+    }
+    let axis = match params.get("axis").and_then(Value::as_str).unwrap_or("y") {
+        "x" => Axis::X,
+        "y" => Axis::Y,
+        "z" => Axis::Z,
+        other => return Err(format!("axis must be x, y, or z, not `{other}`")),
+    };
+    let apex_at_max = match params.get("apex").and_then(Value::as_str).unwrap_or("max") {
+        "max" => true,
+        "min" => false,
+        other => return Err(format!("apex must be min or max, not `{other}`")),
+    };
+    let seed = int("seed")? as u32;
+    Ok(crate::tools::Gen {
+        kind,
+        axis,
+        apex_at_max,
+        palette: palette as u8,
+        torus_tube: number("torusTube")?,
+        round_radius: number("radius")?,
+        helix_turns: number("turns")?,
+        helix_radius: number("helixRadius")?,
+        helix_tube: number("helixTube")?,
+        helix_cw: params
+            .get("clockwise")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        noise_scale: number("scale")?,
+        noise_threshold: number("threshold")?,
+        noise_octaves: int("octaves")? as i32,
+        noise_seed: seed,
+        perlin_lo: int("paletteLow")? as i32,
+        perlin_hi: int("paletteHigh")? as i32,
+        tree_depth: int("depth")? as i32,
+        tree_wildness: number("wildness")?,
+        tree_trunk: number("treeTrunk")?,
+        tree_leaf: int("leaf")? as i32,
+        tree_seed: seed,
+        conifer_tiers: int("tiers")? as i32,
+        conifer_ragged: number("raggedness")?,
+        conifer_clump: number("clump")?,
+        conifer_trunk: number("coniferTrunk")?,
+        conifer_crown: number("crown")?,
+        conifer_needle: int("needle")? as i32,
+        conifer_seed: seed,
+    })
 }
 
 /// Cells whose centre lies inside the ellipsoid or rounded box of the
