@@ -63,6 +63,8 @@ pub(super) enum Forms {
     Both,
     /// Only with it (`fill_box`, whose mode is usually given).
     WithOptions,
+    /// Only without it: every argument is positional (`add_clip`).
+    WithoutOptions,
 }
 
 /// A Rhai function that runs MCP `tool`.
@@ -107,6 +109,11 @@ impl Binding {
 
     pub(super) const fn with_options_only(mut self) -> Self {
         self.forms = Forms::WithOptions;
+        self
+    }
+
+    pub(super) const fn without_options(mut self) -> Self {
+        self.forms = Forms::WithoutOptions;
         self
     }
 
@@ -217,6 +224,7 @@ pub(super) fn bind_in_context(
     let forms: &[bool] = match binding.forms {
         Forms::Both => &[false, true],
         Forms::WithOptions => &[true],
+        Forms::WithoutOptions => &[false],
     };
     for &with_options in forms {
         let mut types = types.clone();

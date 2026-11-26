@@ -321,14 +321,8 @@ pub(super) fn box_args(corners: [INT; 6]) -> Fallible<Args> {
 /// The options map of a Rhai function that runs MCP `tool`: every argument
 /// of its schema but `excluded` (the ones the function takes positionally,
 /// and the few a script does not take), so a new schema argument is a new
-/// Rhai option with no edit here. `tests/ops.rs` checks every `excluded`
-/// key is an argument of `tool`.
-pub(super) fn tool_options(opts: &Map, tool: &str, excluded: &[&str]) -> Fallible<Args> {
-    tool_options_as(opts, tool, excluded, tool)
-}
-
-/// [`tool_options`] for a Rhai function named otherwise (`carve_tube` runs
-/// `carve`): errors name `function`, and its defaults are filled.
+/// Rhai option with no edit here. Errors name `function` (`carve_tube` runs
+/// `carve`), and its schema defaults are filled.
 pub(super) fn tool_options_as(
     opts: &Map,
     tool: &str,

@@ -51,10 +51,10 @@ an undeclared option.
 ## Rhai
 
 Every Rhai function that runs an MCP tool takes its options map through
-`tool_options(opts, tool, excluded)` (`src/script/shapes.rs`), which allows
-every schema argument of `tool` but `excluded` (`ops::rhai_options`). A new
-schema argument is a new Rhai option with no edit in `src/script`. `excluded`
-is what the function takes positionally (corners, points, the slot) plus the
+`tool_options_as(opts, tool, excluded, function)` (`src/script/shapes.rs`),
+which allows every schema argument of `tool` but `excluded`
+(`ops::rhai_options`). A new
+schema argument is a new Rhai option with no edit in `src/script`. `excluded` is what the function takes positionally (corners, points, the slot) plus the
 few a script does not take: `collision_from_voxels` `object` (a script edits
 its own object), `vines` `layer` (vines always grow), and the views tools'
 single-image keys (`path`, `background`, `crop`, ...) and `png`/`pngScale`
@@ -76,12 +76,16 @@ context for the document operations a run records (`add_bone`,
 `place_joints`). `tests/script.rs` checks every binding against its tool's
 schema.
 
-Still hand-written: the document functions that take an object by name or
-index (`set_object`, `remove_object`, `clear_object`, `components`,
-`split_parts`, `split_object`, `mirror_object`), which resolve it first; the
-Rhai-only `marker`, `connector`, and `collision_box`; `set_palette`, which
-takes a colour in several forms; and `voxelize`, whose first argument is a
-mesh, not a tool argument. They still take options through `tool_options`.
+The document operations a run records are bindings too: an object
+argument (`index`, `split_parts` `object`) is checked by `check_object` in
+`src/script/document.rs` before it is recorded, so a run cannot remove or
+clear the object it writes.
+
+Still hand-written: the Rhai-only `marker`, `connector`, `collision_box`, and
+`clear_object()` (the run's own object); `set_palette`, which takes a colour
+in several forms; `voxelize`, whose first argument is a mesh, not a tool
+argument (it takes `import_mesh`'s options through `tool_options_as`); and
+the readers (`list_bones`, `has_bone`, ...), which run no tool.
 
 ## Panels
 

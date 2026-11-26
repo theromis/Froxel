@@ -15,7 +15,7 @@ use rhai::{Array, Dynamic, Engine, EvalAltResult, Map, NativeCallContext, INT};
 use serde_json::{json, Value};
 
 use super::bind::{bind_in_context, Binding, Pos::*};
-use super::shapes::{json, tool_options, Args};
+use super::shapes::{json, Args};
 use super::{runtime, BuiltKey, Scratch};
 use crate::remote;
 use crate::state::Session;
@@ -106,7 +106,100 @@ pub(super) const BINDINGS: &[Binding] = &[
     Binding::new("add_bone", "add_bone", &[Str("name"), List("pivot")]),
     Binding::new("set_bone", "set_bone", &[Str("name")]).with_options_only(),
     Binding::new("place_joints", "place_joints", &[]),
+    Binding::new("set_object", "set_object", &[Any("index")]).with_options_only(),
+    Binding::new("remove_object", "remove_object", &[Any("index")]).without_options(),
+    Binding::new("clear_object", "clear_object", &[Any("index")]).without_options(),
+    // `makeActive` is the window's; a run keeps writing its own object.
+    Binding::new("components", "components", &[Str("op")]).excluded(&["index", "makeActive"]),
+    Binding::new(
+        "split_parts",
+        "split_parts",
+        &[Any("object"), List("parts")],
+    ),
+    Binding::new("split_object", "split_object", &[Any("index")])
+        .excluded(&["makeActive"])
+        .with_options_only(),
+    Binding::new(
+        "mirror_object",
+        "mirror_object",
+        &[Any("index"), Str("axis"), Str("name")],
+    ),
+    Binding::new("remove_bone", "remove_bone", &[Str("name")]).without_options(),
+    Binding::new("bind_object", "bind_object", &[Any("index"), Any("bone")]).without_options(),
+    Binding::new("set_pose", "set_pose", &[Any("pose")]).without_options(),
+    Binding::new("clear_pose", "clear_pose", &[]).without_options(),
+    Binding::new("add_clip", "add_clip", &[Str("name")]).without_options(),
+    Binding::new(
+        "set_clip_keys",
+        "set_clip_keys",
+        &[Str("name"), Str("bone"), List("keys")],
+    )
+    .without_options(),
+    Binding::new("remove_clip", "remove_clip", &[Str("name")]).without_options(),
 ];
+
+/// Why a script cannot remove or clear the object it writes.
+const REMOVE_HOST: &str = "a script cannot remove its own object";
+const CLEAR_HOST: &str =
+    "clear_object() empties the object being written; clear_object(object) is for another one";
+
+/// An object argument: an index or a name. `host` is the error when it is
+/// the object the run writes, for an operation that would undo the run.
+fn check_object(state: &Rc<RefCell<Scratch>>, object: &Value, host: Option<&str>) -> Fallible<()> {
+    let scratch = state.borrow();
+    let BuiltKey::Index(index) = scratch.built[0].key else {
+        unreachable!("the host is the first object a run writes");
+    };
+    let is_host = match object {
+        Value::Number(number) => match number.as_i64() {
+            Some(found) if found >= 0 => found as usize == index,
+            _ => return Err(runtime(format!("object index {number} is out of range"))),
+        },
+        Value::String(name) => scratch.names.get(index) == Some(name),
+        _ => return Err(runtime("an object is an index or a name")),
+    };
+    match host {
+        Some(error) if is_host => Err(runtime(error)),
+        _ => Ok(()),
+    }
+}
+
+/// `components`: `split` changes the document, so it is recorded and runs
+/// after the voxels are written, on the object being written; the other ops
+/// edit that object now.
+fn components(
+    state: &Rc<RefCell<Scratch>>,
+    ctx: &NativeCallContext,
+    mut args: Args,
+) -> Fallible<Dynamic> {
+    if args["op"] == "split" {
+        let index = {
+            let scratch = state.borrow();
+            match &scratch.built[scratch.current].key {
+                BuiltKey::Index(index) => json!(index),
+                BuiltKey::Name(name) => json!(name),
+            }
+        };
+        args.insert("index".into(), index);
+        remote::components_spec(&Value::Object(args.clone())).map_err(runtime)?;
+        record(
+            state,
+            ctx,
+            "components",
+            "voxel.components",
+            Value::Object(args),
+        )?;
+        return Ok(Dynamic::from_map(Map::new()));
+    }
+    let mut scratch = state.borrow_mut();
+    scratch.keep_going().map_err(runtime)?;
+    let (found, reply) =
+        remote::components_run(scratch.cells(), &Value::Object(args)).map_err(runtime)?;
+    let changed = scratch.apply(&found.writes).map_err(runtime)?;
+    let mut out = dynamic(&reply).try_cast::<Map>().unwrap_or_default();
+    out.insert("changed".into(), Dynamic::from_int(changed));
+    Ok(Dynamic::from_map(out))
+}
 
 /// `get_voxels`: the box's solid cells as `[x, y, z, slot]`, in the cells
 /// the call gave (world cells with `space: "world"`).
@@ -150,16 +243,27 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
         bind_in_context(engine, *binding, move |ctx, args| match name {
             "get_voxels" => get_voxels(&state, args),
             "set_voxels" => set_voxels(&state, args),
-            "add_bone" => {
-                record(&state, ctx, name, "rig.add", Value::Object(args)).map(|()| Dynamic::UNIT)
+            "components" => components(&state, ctx, args),
+            _ => {
+                // An object operation the run records and applies afterwards.
+                match name {
+                    "remove_object" => check_object(&state, &args["index"], Some(REMOVE_HOST))?,
+                    "clear_object" => check_object(&state, &args["index"], Some(CLEAR_HOST))?,
+                    "split_parts" => check_object(&state, &args["object"], None)?,
+                    "set_object" | "split_object" | "mirror_object" => {
+                        check_object(&state, &args["index"], None)?
+                    }
+                    "bind_object" => {
+                        check_object(&state, &args["index"], None)?;
+                        if !matches!(args["bone"], Value::String(_) | Value::Null) {
+                            return Err(runtime("bind_object bone must be a name or ()"));
+                        }
+                    }
+                    _ => {}
+                }
+                let method = crate::ops::by_tool(name).expect("a bound tool").method;
+                record(&state, ctx, name, method, Value::Object(args)).map(|()| Dynamic::UNIT)
             }
-            "set_bone" => {
-                record(&state, ctx, name, "rig.set", Value::Object(args)).map(|()| Dynamic::UNIT)
-            }
-            "place_joints" => {
-                record(&state, ctx, name, "rig.joints", Value::Object(args)).map(|()| Dynamic::UNIT)
-            }
-            other => unreachable!("no runner for `{other}`"),
         });
     }
 
@@ -181,48 +285,6 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     );
 
     let state = scratch.clone();
-    engine.register_fn(
-        "set_object",
-        move |ctx: NativeCallContext, object: Dynamic, opts: Map| -> Fallible<()> {
-            let mut args = tool_options(&opts, "set_object", &["index"])?;
-            args.insert("index".into(), object_ref(&state, &object, false)?);
-            record(
-                &state,
-                &ctx,
-                "set_object",
-                "object.set",
-                Value::Object(args),
-            )
-        },
-    );
-    let state = scratch.clone();
-    engine.register_fn(
-        "remove_object",
-        move |ctx: NativeCallContext, object: Dynamic| -> Fallible<()> {
-            let params = json!({"index": object_ref(&state, &object, true)?});
-            record(&state, &ctx, "remove_object", "object.remove", params)
-        },
-    );
-    let state = scratch.clone();
-    engine.register_fn(
-        "clear_object",
-        move |ctx: NativeCallContext, object: Dynamic| -> Fallible<()> {
-            let index = object_ref(&state, &object, false)?;
-            if object_ref(&state, &object, true).is_err() {
-                return Err(runtime(
-                    "clear_object() empties the object being written; clear_object(object) is for another one",
-                ));
-            }
-            record(
-                &state,
-                &ctx,
-                "clear_object",
-                "object.clear",
-                json!({"index": index}),
-            )
-        },
-    );
-    let state = scratch.clone();
     engine.register_fn("clear_object", move || -> INT {
         let mut scratch = state.borrow_mut();
         let cells = scratch.cells_mut();
@@ -230,171 +292,6 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
         cells.clear();
         removed
     });
-    for with_opts in [false, true] {
-        let state = scratch.clone();
-        let run = move |ctx: &NativeCallContext, op: &str, opts: &Map| -> Fallible<Map> {
-            let mut args = tool_options(opts, "components", &["index", "makeActive", "op"])?;
-            args.insert("op".into(), op.into());
-            if op == "split" {
-                // A split changes the document: it runs after the voxels
-                // are written, on the object being written.
-                let index = {
-                    let scratch = state.borrow();
-                    match &scratch.built[scratch.current].key {
-                        BuiltKey::Index(index) => json!(index),
-                        BuiltKey::Name(name) => json!(name),
-                    }
-                };
-                args.insert("index".into(), index);
-                remote::components_spec(&Value::Object(args.clone())).map_err(runtime)?;
-                record(
-                    &state,
-                    ctx,
-                    "components",
-                    "voxel.components",
-                    Value::Object(args),
-                )?;
-                return Ok(Map::new());
-            }
-            let mut scratch = state.borrow_mut();
-            scratch.keep_going().map_err(runtime)?;
-            let (found, reply) =
-                remote::components_run(scratch.cells(), &Value::Object(args)).map_err(runtime)?;
-            let changed = scratch.apply(&found.writes).map_err(runtime)?;
-            let mut out = match dynamic(&reply).try_cast::<Map>() {
-                Some(map) => map,
-                None => Map::new(),
-            };
-            out.insert("changed".into(), Dynamic::from_int(changed));
-            Ok(out)
-        };
-        if with_opts {
-            engine.register_fn(
-                "components",
-                move |ctx: NativeCallContext, op: &str, opts: Map| run(&ctx, op, &opts),
-            );
-        } else {
-            engine.register_fn("components", move |ctx: NativeCallContext, op: &str| {
-                run(&ctx, op, &Map::new())
-            });
-        }
-    }
-    for with_opts in [false, true] {
-        let state = scratch.clone();
-        let run = move |ctx: &NativeCallContext,
-                        object: Dynamic,
-                        parts: Array,
-                        opts: &Map|
-              -> Fallible<()> {
-            let mut args = tool_options(opts, "split_parts", &["object", "parts"])?;
-            args.insert("object".into(), object_ref(&state, &object, false)?);
-            args.insert(
-                "parts".into(),
-                super::shapes::json(&Dynamic::from_array(parts))?,
-            );
-            record(
-                &state,
-                ctx,
-                "split_parts",
-                "object.split_parts",
-                Value::Object(args),
-            )
-        };
-        if with_opts {
-            engine.register_fn(
-                "split_parts",
-                move |ctx: NativeCallContext, object: Dynamic, parts: Array, opts: Map| {
-                    run(&ctx, object, parts, &opts)
-                },
-            );
-        } else {
-            engine.register_fn(
-                "split_parts",
-                move |ctx: NativeCallContext, object: Dynamic, parts: Array| {
-                    run(&ctx, object, parts, &Map::new())
-                },
-            );
-        }
-    }
-    let state = scratch.clone();
-    engine.register_fn(
-        "split_object",
-        move |ctx: NativeCallContext, object: Dynamic, opts: Map| -> Fallible<()> {
-            let mut args = tool_options(&opts, "split_object", &["index", "makeActive"])?;
-            args.insert("index".into(), object_ref(&state, &object, false)?);
-            record(
-                &state,
-                &ctx,
-                "split_object",
-                "object.split",
-                Value::Object(args),
-            )
-        },
-    );
-    for with_opts in [false, true] {
-        let state = scratch.clone();
-        let run = move |ctx: &NativeCallContext,
-                        object: Dynamic,
-                        axis: &str,
-                        name: &str,
-                        opts: &Map|
-              -> Fallible<()> {
-            let mut args = tool_options(opts, "mirror_object", &["axis", "index", "name"])?;
-            args.insert("index".into(), object_ref(&state, &object, false)?);
-            args.insert("axis".into(), axis.into());
-            args.insert("name".into(), name.into());
-            record(
-                &state,
-                ctx,
-                "mirror_object",
-                "object.mirror",
-                Value::Object(args),
-            )
-        };
-        if with_opts {
-            engine.register_fn(
-                "mirror_object",
-                move |ctx: NativeCallContext,
-                      object: Dynamic,
-                      axis: &str,
-                      name: &str,
-                      opts: Map| { run(&ctx, object, axis, name, &opts) },
-            );
-        } else {
-            engine.register_fn(
-                "mirror_object",
-                move |ctx: NativeCallContext, object: Dynamic, axis: &str, name: &str| {
-                    run(&ctx, object, axis, name, &Map::new())
-                },
-            );
-        }
-    }
-
-    let state = scratch.clone();
-    engine.register_fn(
-        "remove_bone",
-        move |ctx: NativeCallContext, name: &str| -> Fallible<()> {
-            record(
-                &state,
-                &ctx,
-                "remove_bone",
-                "rig.remove",
-                json!({"name": name}),
-            )
-        },
-    );
-    let state = scratch.clone();
-    engine.register_fn(
-        "bind_object",
-        move |ctx: NativeCallContext, object: Dynamic, bone: Dynamic| -> Fallible<()> {
-            if !bone.is_string() && !bone.is_unit() {
-                return Err(runtime("bind_object bone must be a name or ()"));
-            }
-            let params =
-                json!({"index": object_ref(&state, &object, false)?, "bone": json(&bone)?});
-            record(&state, &ctx, "bind_object", "rig.bind", params)
-        },
-    );
     let state = scratch.clone();
     engine.register_fn("list_bones", move || -> Array {
         list(&state.borrow().view.bones, "bones")
@@ -413,58 +310,11 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     engine.register_fn("has_object", move |name: &str| {
         state.borrow().view.names.iter().any(|found| found == name)
     });
-    let state = scratch.clone();
-    engine.register_fn(
-        "set_pose",
-        move |ctx: NativeCallContext, pose: Map| -> Fallible<()> {
-            let params = json!({"pose": json(&Dynamic::from_map(pose))?});
-            record(&state, &ctx, "set_pose", "pose.set", params)
-        },
-    );
-    let state = scratch.clone();
-    engine.register_fn(
-        "clear_pose",
-        move |ctx: NativeCallContext| -> Fallible<()> {
-            record(&state, &ctx, "clear_pose", "pose.clear", json!({}))
-        },
-    );
 
-    let state = scratch.clone();
-    engine.register_fn(
-        "add_clip",
-        move |ctx: NativeCallContext, name: &str| -> Fallible<()> {
-            record(&state, &ctx, "add_clip", "clip.add", json!({"name": name}))
-        },
-    );
-    let state = scratch.clone();
-    engine.register_fn(
-        "set_clip_keys",
-        move |ctx: NativeCallContext, name: &str, bone: &str, keys: Array| -> Fallible<()> {
-            let params = json!({
-                "name": name,
-                "bone": bone,
-                "keys": json(&Dynamic::from_array(keys))?,
-            });
-            record(&state, &ctx, "set_clip_keys", "clip.keys", params)
-        },
-    );
     let state = scratch.clone();
     engine.register_fn("list_clips", move || -> Array {
         list(&state.borrow().view.clips, "clips")
     });
-    let state = scratch.clone();
-    engine.register_fn(
-        "remove_clip",
-        move |ctx: NativeCallContext, name: &str| -> Fallible<()> {
-            record(
-                &state,
-                &ctx,
-                "remove_clip",
-                "clip.remove",
-                json!({"name": name}),
-            )
-        },
-    );
 }
 
 fn record(
@@ -488,30 +338,6 @@ fn record(
         params,
     });
     Ok(())
-}
-
-/// An object by index or name, as the `index` argument. `remove` refuses
-/// the host object, since the run writes its voxels.
-fn object_ref(state: &Rc<RefCell<Scratch>>, object: &Dynamic, remove: bool) -> Fallible<Value> {
-    let scratch = state.borrow();
-    let BuiltKey::Index(host) = scratch.built[0].key else {
-        unreachable!("the host is the first object a run writes");
-    };
-    let is_host = if let Ok(index) = object.as_int() {
-        if index < 0 {
-            return Err(runtime(format!("object index {index} is out of range")));
-        }
-        index as usize == host
-    } else if object.is_string() {
-        let name = object.clone().into_string().map_err(runtime)?;
-        scratch.names.get(host) == Some(&name)
-    } else {
-        return Err(runtime("an object is an index or a name"));
-    };
-    if remove && is_host {
-        return Err(runtime("a script cannot remove its own object"));
-    }
-    json(object)
 }
 
 /// The list under `key` of a `list_bones` or `list_clips` reply.

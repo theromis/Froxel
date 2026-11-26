@@ -91,7 +91,7 @@ fn the_methods_help_names_every_method_once() {
 
 #[test]
 fn no_rhai_function_keeps_a_hand_written_option_list() {
-    // Rhai option lists come from the schema (tool_options); a plain
+    // Rhai option lists come from the schema (script/bind.rs); a plain
     // `options(opts, &[...], ...)` call would drift from it.
     for (file, source) in [
         ("document", include_str!("../src/script/document.rs")),
