@@ -279,7 +279,13 @@ first.
 The App Store descriptions live only in App Store Connect. They name no
 non-Apple platform: iOS 0.3.3 (build 30399) was rejected on 2026-11-26 under
 guideline 2.3.10 for "also runs on macOS, Windows, Linux, and FreeBSD", and
-that line was removed (Froxel for Mac may still be named). The macOS
+that line was removed (Froxel for Mac may still be named). The same version,
+renamed 0.4.0 with build 40099 (the `store-0.4.0-ios` ipa of the release run,
+uploaded by hand with `altool`), went back for review that day. The old
+submission, in `UNRESOLVED_ISSUES` with the rejected item, refused the new
+build with a 409 "Version is not ready to be submitted yet" however long it
+waited; cancelling it (`canceled: true`) and running `asc_release.py` again
+made a fresh submission that went through. The macOS
 description, then waiting for review as 0.3.5, still listed Windows, Linux,
 FreeBSD, and Android.
 
