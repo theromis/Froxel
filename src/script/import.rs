@@ -15,38 +15,22 @@ use rhai::{Array, Dynamic, Engine, Map};
 use serde_json::Value;
 
 use super::document::dynamic;
-use super::shapes::{options, Args, Fallible};
+use super::shapes::{tool_options_as, Args, Fallible};
 use super::{number, runtime, Scratch};
 use crate::import::{Mesh, Up};
 use crate::remote;
-
-const VOXELIZE: &[&str] = &[
-    "size",
-    "scale",
-    "voxelSize",
-    "upAxis",
-    "rotation",
-    "position",
-    "anchor",
-    "fill",
-    "colors",
-    "palette",
-    "slots",
-    "maxNewSlots",
-    "tolerance",
-    "mode",
-    "orient",
-    "clean",
-    "coverage",
-    "keepThin",
-    "minFeature",
-];
 
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |mesh: &Map, opts: &Map| -> Fallible<Map> {
-            let args = options(opts, VOXELIZE, "voxelize")?;
+            // import_mesh's options; the mesh is the first argument, not a path.
+            let args = tool_options_as(
+                opts,
+                "import_mesh",
+                &["name", "newObject", "path"],
+                "voxelize",
+            )?;
             let mesh = mesh_of(mesh).map_err(runtime)?;
             state.borrow_mut().voxelize(&mesh, args).map_err(runtime)
         };

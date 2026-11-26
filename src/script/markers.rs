@@ -13,20 +13,9 @@ use rhai::{Array, Dynamic, Engine, Map, INT};
 use serde_json::{json, Value};
 
 use super::document::dynamic;
-use super::shapes::{json, options, Fallible};
+use super::shapes::{json, tool_options, Fallible};
 use super::{runtime, BuiltKey, Scratch};
 use crate::state::{check_marker_name, replace_collision_markers, Marker, MAX_MARKERS};
-
-const COLLISION: &[&str] = &[
-    "prefix",
-    "layer",
-    "zBands",
-    "minFeature",
-    "holeSize",
-    "only",
-    "exclude",
-    "maxBoxes",
-];
 
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     let state = scratch.clone();
@@ -54,7 +43,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     );
     let state = scratch.clone();
     let run = move |opts: &Map| -> Fallible<Dynamic> {
-        let args = options(opts, COLLISION, "collision_from_voxels")?;
+        let args = tool_options(opts, "collision_from_voxels", &["object"])?;
         let reply = state
             .borrow_mut()
             .collision_from_voxels(Value::Object(args))

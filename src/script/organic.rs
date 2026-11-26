@@ -10,64 +10,17 @@ use std::rc::Rc;
 
 use rhai::{Array, Dynamic, Engine, Map, INT};
 
-use super::shapes::{box_args, json, options, Args, Fallible};
+use super::shapes::{box_args, json, tool_options, Args, Fallible};
 use super::stone::reply;
 use super::{runtime, Scratch};
 use crate::remote::{self, Organic};
-
-const DEFORM: &[&str] = &[
-    "axis",
-    "origin",
-    "length",
-    "center",
-    "angle",
-    "direction",
-    "start",
-    "end",
-    "amplitude",
-    "scale",
-    "octaves",
-    "seed",
-    "bias",
-    "point",
-    "factor",
-    "radius",
-    "falloff",
-    "minFeature",
-];
-
-const LOFT: &[&str] = &[
-    "radius",
-    "rx",
-    "ry",
-    "roll",
-    "flatTop",
-    "noise",
-    "frequency",
-    "curve",
-    "caps",
-    "pattern",
-    "period",
-    "sectors",
-    "seed",
-    "mode",
-    "space",
-];
-
-const BLEND: &[&str] = &[
-    "k", "palette", "grow", "colors", "seam", "seed", "x0", "y0", "z0", "x1", "y1", "z1", "mode",
-    "mirror", "space",
-];
-
-const BRUSH: &[&str] = &[
-    "radius", "strength", "falloff", "only", "palette", "vector", "spacing", "space",
-];
 
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |corners: Option<[INT; 6]>, op: &str, opts: &Map| -> Fallible<Map> {
-            let mut args = options(opts, DEFORM, "deform")?;
+            let mut args =
+                tool_options(opts, "deform", &["op", "x0", "x1", "y0", "y1", "z0", "z1"])?;
             if let Some(corners) = corners {
                 args.extend(box_args(corners)?);
             }
@@ -99,7 +52,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |points: Array, palette: Dynamic, opts: &Map| -> Fallible<Map> {
-            let mut args = options(opts, LOFT, "loft")?;
+            let mut args = tool_options(opts, "loft", &["palette", "palettes", "points"])?;
             args.insert("points".into(), json(&Dynamic::from_array(points))?);
             if palette.is_array() {
                 args.insert("palettes".into(), json(&palette)?);
@@ -128,7 +81,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |shapes: Array, opts: &Map| -> Fallible<Map> {
-            let mut args = options(opts, BLEND, "blend_shapes")?;
+            let mut args = tool_options(opts, "blend_shapes", &["shapes"])?;
             args.insert("shapes".into(), json(&Dynamic::from_array(shapes))?);
             state.borrow_mut().blend(args).map_err(runtime)
         };
@@ -145,7 +98,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |op: &str, points: Array, opts: &Map| -> Fallible<Map> {
-            let mut args = options(opts, BRUSH, "brush")?;
+            let mut args = tool_options(opts, "brush", &["op", "points"])?;
             args.insert("op".into(), op.into());
             args.insert("points".into(), json(&Dynamic::from_array(points))?);
             state

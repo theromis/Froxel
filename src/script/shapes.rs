@@ -18,88 +18,19 @@ use serde_json::Value;
 use super::{axis, coord, runtime, slot_index, Scratch};
 use crate::remote::{self, Sculpt};
 
-const FILL: &[&str] = &["mode", "space", "mirror"];
-const CARVE: &[&str] = &["space"];
-const TERRACE: &[&str] = &[
-    "mode",
-    "size",
-    "fill",
-    "origin",
-    "tolerance",
-    "run",
-    "jitter",
-    "seed",
-    "x0",
-    "y0",
-    "z0",
-    "x1",
-    "y1",
-    "z1",
+/// The arguments a box fill takes positionally: the corners and the slot.
+const BOX_SLOT: &[&str] = &["x0", "y0", "z0", "x1", "y1", "z1", "palette"];
+/// The same for `fill_rounded_box`, which also takes its radius.
+const ROUNDED_SLOT: &[&str] = &["x0", "y0", "z0", "x1", "y1", "z1", "palette", "radius"];
+/// `carve` keys a Rhai `carve_box`, `carve_ellipsoid`, and
+/// `carve_rounded_box` do not take as options: the shape, its corners and
+/// radius (positional), and the tube's.
+const CARVE_BOX: &[&str] = &[
+    "shape", "x0", "y0", "z0", "x1", "y1", "z1", "radius", "points", "curve", "caps", "aspect",
+    "roll", "profile",
 ];
-const REDUCE: &[&str] = &[
-    "colors",
-    "palette",
-    "accents",
-    "minShare",
-    "contrast",
-    "maxAccents",
-    "despeckle",
-    "minSame",
-    "protect",
-    "x0",
-    "y0",
-    "z0",
-    "x1",
-    "y1",
-    "z1",
-];
-const STROKE: &[&str] = &[
-    "curve", "width", "depth", "reach", "only", "space", "mirror",
-];
-const PLATES: &[&str] = &[
-    "palettes",
-    "layout",
-    "rings",
-    "central",
-    "band",
-    "bandCount",
-    "rim",
-    "center",
-    "seamWidth",
-    "seamDepth",
-    "depth",
-    "facing",
-    "zRange",
-    "x0",
-    "y0",
-    "z0",
-    "x1",
-    "y1",
-    "z1",
-    "only",
-    "jitter",
-    "symmetric",
-    "seed",
-    "space",
-];
-const RECOLOR: &[&str] = &["x0", "y0", "z0", "x1", "y1", "z1", "space", "mirror"];
-const SMOOTH: &[&str] = &["iterations", "fillAt", "removeAt", "space"];
-const BREAK: &[&str] = &[
-    "depth",
-    "splinters",
-    "density",
-    "length",
-    "thickness",
-    "taper",
-    "rimBias",
-    "bark",
-    "sapwood",
-    "tips",
-    "seed",
-];
-const SCATTER: &[&str] = &[
-    "count", "kinds", "size", "seed", "floor", "clump", "exclude",
-];
+/// `carve` keys `carve_tube` does not take as options.
+const CARVE_TUBE: &[&str] = &["shape", "x0", "y0", "z0", "x1", "y1", "z1", "points"];
 
 pub(super) type Fallible<T> = Result<T, Box<EvalAltResult>>;
 pub(super) type Args = serde_json::Map<String, Value>;
@@ -109,7 +40,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     engine.register_fn(
         "fill_box",
         move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT, slot: INT, opts: Map| {
-            let args = corners([x0, y0, z0, x1, y1, z1], slot, &opts, FILL, "fill_box")?;
+            let args = corners([x0, y0, z0, x1, y1, z1], slot, &opts, BOX_SLOT, "fill_box")?;
             state.borrow_mut().fill(args, Sculpt::Box).map_err(runtime)
         },
     );
@@ -117,7 +48,13 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     engine.register_fn(
         "fill_ellipsoid",
         move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT, slot: INT| {
-            let args = corners([x0, y0, z0, x1, y1, z1], slot, &Map::new(), FILL, "")?;
+            let args = corners(
+                [x0, y0, z0, x1, y1, z1],
+                slot,
+                &Map::new(),
+                BOX_SLOT,
+                "fill_ellipsoid",
+            )?;
             state
                 .borrow_mut()
                 .fill(args, Sculpt::Ellipsoid)
@@ -132,7 +69,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
                 [x0, y0, z0, x1, y1, z1],
                 slot,
                 &opts,
-                FILL,
+                BOX_SLOT,
                 "fill_ellipsoid",
             )?;
             state
@@ -149,7 +86,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
                 [x0, y0, z0, x1, y1, z1],
                 slot,
                 &Map::new(),
-                FILL,
+                ROUNDED_SLOT,
                 "fill_rounded_box",
             )?;
             args.insert("radius".into(), number(&radius, "radius")?);
@@ -175,7 +112,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
                 [x0, y0, z0, x1, y1, z1],
                 slot,
                 &opts,
-                FILL,
+                ROUNDED_SLOT,
                 "fill_rounded_box",
             )?;
             args.insert("radius".into(), number(&radius, "radius")?);
@@ -187,10 +124,8 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     );
     for with_opts in [false, true] {
         let state = scratch.clone();
-        // Every fill_tube argument but the positional ones, from the schema.
-        let allowed = crate::ops::rhai_options("fill_tube", &["points", "palette", "palettes"]);
         let run = move |points: Array, palette: Dynamic, opts: &Map| -> Fallible<INT> {
-            let mut args = options(opts, &allowed, "fill_tube")?;
+            let mut args = tool_options(opts, "fill_tube", &["points", "palette", "palettes"])?;
             args.insert("points".into(), json(&Dynamic::from_array(points))?);
             if palette.is_array() {
                 args.insert("palettes".into(), json(&palette)?);
@@ -218,7 +153,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |from: INT, to: INT, opts: &Map| -> Fallible<Map> {
-            let mut args = options(opts, RECOLOR, "recolor")?;
+            let mut args = tool_options(opts, "recolor", &["from", "map", "to"])?;
             args.insert("from".into(), from.into());
             args.insert("to".into(), to.into());
             state.borrow_mut().recolor(args).map_err(runtime)
@@ -234,7 +169,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
         }
         let state = scratch.clone();
         let run = move |pairs: Array, opts: &Map| -> Fallible<Map> {
-            let mut args = options(opts, RECOLOR, "recolor")?;
+            let mut args = tool_options(opts, "recolor", &["from", "map", "to"])?;
             args.insert("map".into(), json(&Dynamic::from_array(pairs))?);
             state.borrow_mut().recolor(args).map_err(runtime)
         };
@@ -247,14 +182,14 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     {
         let state = scratch.clone();
         engine.register_fn("reduce_palette", move |opts: Map| -> Fallible<Map> {
-            let args = options(&opts, REDUCE, "reduce_palette")?;
+            let args = tool_options(&opts, "reduce_palette", &[])?;
             state.borrow_mut().reduce_colors(args).map_err(runtime)
         });
     }
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |opts: &Map| -> Fallible<Map> {
-            let args = options(opts, TERRACE, "deterrace")?;
+            let args = tool_options(opts, "deterrace", &[])?;
             state.borrow_mut().deterrace(args).map_err(runtime)
         };
         if with_opts {
@@ -266,7 +201,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |points: Array, slot: INT, opts: &Map| -> Fallible<Map> {
-            let mut args = options(opts, STROKE, "surface_stroke")?;
+            let mut args = tool_options(opts, "surface_stroke", &["palette", "points"])?;
             args.insert("points".into(), json(&Dynamic::from_array(points))?);
             args.insert("palette".into(), slot.into());
             state.borrow_mut().stroke(args).map_err(runtime)
@@ -285,7 +220,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     {
         let state = scratch.clone();
         engine.register_fn("shell_plates", move |opts: Map| -> Fallible<Map> {
-            let args = options(&opts, PLATES, "shell_plates")?;
+            let args = tool_options(&opts, "shell_plates", &[])?;
             state.borrow_mut().plates(args).map_err(runtime)
         });
     }
@@ -303,7 +238,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
         engine.register_fn(
             name,
             move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT, opts: Map| {
-                let mut args = options(&opts, CARVE, name)?;
+                let mut args = tool_options_as(&opts, "carve", CARVE_BOX, name)?;
                 args.extend(box_args([x0, y0, z0, x1, y1, z1])?);
                 args.insert("shape".into(), shape.into());
                 state.borrow_mut().carve(args).map_err(runtime)
@@ -313,7 +248,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |corners: [INT; 6], radius: Dynamic, opts: &Map| -> Fallible<INT> {
-            let mut args = options(opts, CARVE, "carve_rounded_box")?;
+            let mut args = tool_options_as(opts, "carve", CARVE_BOX, "carve_rounded_box")?;
             args.extend(box_args(corners)?);
             args.insert("shape".into(), "rounded_box".into());
             args.insert("radius".into(), number(&radius, "radius")?);
@@ -342,13 +277,8 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     }
     for with_opts in [false, true] {
         let state = scratch.clone();
-        // carve with shape tube: its radius, space, and the tube shape keys.
-        let allowed: Vec<&str> = ["radius", "space"]
-            .into_iter()
-            .chain(crate::ops::schema::TUBE_SHAPE_KEYS)
-            .collect();
         let run = move |points: Array, opts: &Map| -> Fallible<INT> {
-            let mut args = options(opts, &allowed, "carve_tube")?;
+            let mut args = tool_options_as(opts, "carve", CARVE_TUBE, "carve_tube")?;
             args.insert("shape".into(), "tube".into());
             args.insert("points".into(), json(&Dynamic::from_array(points))?);
             state.borrow_mut().carve(args).map_err(runtime)
@@ -365,7 +295,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |corners: [INT; 6], opts: &Map| -> Fallible<Map> {
-            let mut args = options(opts, SMOOTH, "smooth")?;
+            let mut args = tool_options(opts, "smooth", &["x0", "x1", "y0", "y1", "z0", "z1"])?;
             args.extend(box_args(corners)?);
             state.borrow_mut().smooth(args).map_err(runtime)
         };
@@ -389,7 +319,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |point: Array, normal: Array, opts: &Map| -> Fallible<Map> {
-            let mut args = options(opts, BREAK, "break_end")?;
+            let mut args = tool_options(opts, "break_end", &["normal", "point"])?;
             args.insert("point".into(), json(&Dynamic::from_array(point))?);
             args.insert("normal".into(), json(&Dynamic::from_array(normal))?);
             state.borrow_mut().break_end(args).map_err(runtime)
@@ -409,7 +339,11 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |corners: [INT; 6], palettes: Dynamic, opts: &Map| -> Fallible<Map> {
-            let mut args = options(opts, SCATTER, "scatter")?;
+            let mut args = tool_options(
+                opts,
+                "scatter",
+                &["palettes", "x0", "x1", "y0", "y1", "z0", "z1"],
+            )?;
             args.extend(box_args(corners)?);
             args.insert("palettes".into(), json(&palettes)?);
             state.borrow_mut().scatter(args).map_err(runtime)
@@ -647,18 +581,39 @@ pub(super) fn box_args(corners: [INT; 6]) -> Fallible<Args> {
     Ok(args)
 }
 
-/// A fill's arguments: its options, the corners, and `palette`.
+/// A fill's arguments: its options (every argument of `tool` but
+/// `positional`), the corners, and `palette`.
 fn corners(
     corners: [INT; 6],
     slot: INT,
     opts: &Map,
-    allowed: &[&str],
-    function: &str,
+    positional: &[&str],
+    tool: &str,
 ) -> Fallible<Args> {
-    let mut args = options(opts, allowed, function)?;
+    let mut args = tool_options(opts, tool, positional)?;
     args.extend(box_args(corners)?);
     args.insert("palette".into(), slot.into());
     Ok(args)
+}
+
+/// The options map of a Rhai function that runs MCP `tool`: every argument
+/// of its schema but `excluded` (the ones the function takes positionally,
+/// and the few a script does not take), so a new schema argument is a new
+/// Rhai option with no edit here. `tests/ops.rs` checks every `excluded`
+/// key is an argument of `tool`.
+pub(super) fn tool_options(opts: &Map, tool: &str, excluded: &[&str]) -> Fallible<Args> {
+    tool_options_as(opts, tool, excluded, tool)
+}
+
+/// [`tool_options`] for a Rhai function named otherwise (`carve_tube` runs
+/// `carve`): errors name `function`, and its defaults are filled.
+pub(super) fn tool_options_as(
+    opts: &Map,
+    tool: &str,
+    excluded: &[&str],
+    function: &str,
+) -> Fallible<Args> {
+    options(opts, &crate::ops::rhai_options(tool, excluded), function)
 }
 
 /// An options map as MCP arguments. A key the function does not take is an

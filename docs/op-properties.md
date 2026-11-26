@@ -50,13 +50,18 @@ an undeclared option.
 
 ## Rhai
 
-`ops::rhai_options(tool, positional)` is the option list of a Rhai function
-that maps to an MCP tool: every schema property except the ones the function
-takes positionally. A new schema property is a new Rhai option with no edit in
-`src/script`. Where a Rhai-only function shares part of a tool (`carve_tube`
-is `carve` `shape: "tube"`), the shared keys are one const in the schema
-(`schema::TUBE_SHAPE_KEYS`) that builds both tools' properties and the Rhai
-list. `tests/ops.rs` keeps checking the remaining hand-written lists.
+Every Rhai function that runs an MCP tool takes its options map through
+`tool_options(opts, tool, excluded)` (`src/script/shapes.rs`), which allows
+every schema argument of `tool` but `excluded` (`ops::rhai_options`). A new
+schema argument is a new Rhai option with no edit in `src/script`. `excluded`
+is what the function takes positionally (corners, points, the slot) plus the
+few a script does not take: `collision_from_voxels` `object` (a script edits
+its own object), `vines` `layer` (vines always grow), and the views tools'
+single-image keys (`path`, `background`, `crop`, ...) and `png`/`pngScale`
+(scripts never write files). `tool_options_as` serves a function named
+otherwise (`carve_tube`, `carve_box`, and `voxelize` run `carve` and
+`import_mesh`). `tests/ops.rs` checks every excluded key is an argument of its
+tool and that no `src/script` file calls `options` with a hand-written list.
 
 Positional bindings are not derived yet. Most `register_fn` closures build a
 map from a few positional values plus the options map, but the positional
@@ -109,20 +114,8 @@ The helpers go through `row`, so `tests/panels.rs` holds.
 
 ## Still to migrate
 
-Rhai option lists (`const ...: &[&str]` in `src/script`) to `rhai_options`,
-and panels to `op_toggle`/`op_slider`, tool by tool:
+Rhai option lists are all derived. Panels, tool by tool:
 
-- `src/script/shapes.rs`: `FILL`/`CARVE` (fill_box, fill_ellipsoid,
-  fill_rounded_box, carve_*), `TERRACE` (deterrace), `REDUCE`
-  (reduce_palette), `STROKE` (surface_stroke), `PLATES` (shell_plates),
-  `RECOLOR`, `SMOOTH`, `BREAK` (break_end), `SCATTER`.
-- `src/script/organic.rs`: loft, deform, brush, blend_shapes, sweep, foliage.
-- `src/script/stone.rs`: column_relief, weather, moss, algae, vines, bark,
-  planks, cavity_tint, radial_relief, trim_outline, joints.
-- `src/script/silhouette.rs`: carve_from_views, paint_from_views,
-  project_paint, decal, orient/fit/optimize_to_views, compare_silhouette.
-- `src/script/markers.rs`, `src/script/import.rs`: set_marker,
-  collision_from_voxels, import_mesh.
 - Panels: Smooth (`SliderTarget::Smooth*`), Sculpt brush
   (`panels/tools.rs`, plain `egui::Slider`s with their own hints), Foliage,
   Organic (loft/deform/blend), Stone, Silhouette (views tools), Import,

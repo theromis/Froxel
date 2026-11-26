@@ -14,7 +14,7 @@ use std::rc::Rc;
 use rhai::{Array, Dynamic, Engine, EvalAltResult, Map, NativeCallContext, INT};
 use serde_json::{json, Value};
 
-use super::shapes::{box_args, json, options};
+use super::shapes::{box_args, json, tool_options};
 use super::{runtime, BuiltKey, Scratch};
 use crate::remote;
 use crate::state::Session;
@@ -100,7 +100,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |corners: [INT; 6], opts: &Map| -> Fallible<Array> {
-            let mut args = options(opts, &["space"], "get_voxels")?;
+            let mut args = tool_options(opts, "get_voxels", &["x0", "x1", "y0", "y1", "z0", "z1"])?;
             args.extend(box_args(corners)?);
             let scratch = state.borrow();
             let (args, offset) = scratch.localize("voxel.get_box", args).map_err(runtime)?;
@@ -138,7 +138,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |cells: Array, opts: &Map| -> Fallible<INT> {
-            let mut args = options(opts, &["space", "mirror"], "set_voxels")?;
+            let mut args = tool_options(opts, "set_voxels", &["cells"])?;
             args.insert("cells".into(), json(&Dynamic::from_array(cells))?);
             let mut scratch = state.borrow_mut();
             scratch.keep_going().map_err(runtime)?;
@@ -176,7 +176,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     engine.register_fn(
         "set_object",
         move |ctx: NativeCallContext, object: Dynamic, opts: Map| -> Fallible<()> {
-            let mut args = options(&opts, &["name", "position", "hidden"], "set_object")?;
+            let mut args = tool_options(&opts, "set_object", &["index"])?;
             args.insert("index".into(), object_ref(&state, &object, false)?);
             record(
                 &state,
@@ -225,23 +225,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |ctx: &NativeCallContext, op: &str, opts: &Map| -> Fallible<Map> {
-            let mut args = options(
-                opts,
-                &[
-                    "connectivity",
-                    "keep",
-                    "minCells",
-                    "seed",
-                    "anchor",
-                    "reach",
-                    "radius",
-                    "offset",
-                    "name",
-                    "into",
-                    "copy",
-                ],
-                "components",
-            )?;
+            let mut args = tool_options(opts, "components", &["index", "makeActive", "op"])?;
             args.insert("op".into(), op.into());
             if op == "split" {
                 // A split changes the document: it runs after the voxels
@@ -294,18 +278,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
                         parts: Array,
                         opts: &Map|
               -> Fallible<()> {
-            let mut args = options(
-                opts,
-                &[
-                    "metric",
-                    "connectivity",
-                    "reach",
-                    "removeSource",
-                    "bind",
-                    "space",
-                ],
-                "split_parts",
-            )?;
+            let mut args = tool_options(opts, "split_parts", &["object", "parts"])?;
             args.insert("object".into(), object_ref(&state, &object, false)?);
             args.insert(
                 "parts".into(),
@@ -339,11 +312,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     engine.register_fn(
         "split_object",
         move |ctx: NativeCallContext, object: Dynamic, opts: Map| -> Fallible<()> {
-            let mut args = options(
-                &opts,
-                &["boxes", "slots", "invert", "copy", "into", "name", "space"],
-                "split_object",
-            )?;
+            let mut args = tool_options(&opts, "split_object", &["index", "makeActive"])?;
             args.insert("index".into(), object_ref(&state, &object, false)?);
             record(
                 &state,
@@ -362,7 +331,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
                         name: &str,
                         opts: &Map|
               -> Fallible<()> {
-            let mut args = options(opts, &["position", "mirrorBones"], "mirror_object")?;
+            let mut args = tool_options(opts, "mirror_object", &["axis", "index", "name"])?;
             args.insert("index".into(), object_ref(&state, &object, false)?);
             args.insert("axis".into(), axis.into());
             args.insert("name".into(), name.into());
@@ -397,7 +366,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
         let state = scratch.clone();
         let run =
             move |ctx: &NativeCallContext, name: &str, pivot: Array, opts: &Map| -> Fallible<()> {
-                let mut args = options(opts, &["parent", "rotation", "rest"], "add_bone")?;
+                let mut args = tool_options(opts, "add_bone", &["name", "pivot"])?;
                 args.insert("name".into(), name.into());
                 args.insert("pivot".into(), json(&Dynamic::from_array(pivot))?);
                 record(&state, ctx, "add_bone", "rig.add", Value::Object(args))
@@ -422,21 +391,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     engine.register_fn(
         "set_bone",
         move |ctx: NativeCallContext, name: &str, opts: Map| -> Fallible<()> {
-            let mut args = options(
-                &opts,
-                &[
-                    "parent",
-                    "pivot",
-                    "joint",
-                    "snap",
-                    "band",
-                    "rotation",
-                    "rest",
-                    "restFromPose",
-                    "rename",
-                ],
-                "set_bone",
-            )?;
+            let mut args = tool_options(&opts, "set_bone", &["name"])?;
             args.insert("name".into(), name.into());
             record(&state, &ctx, "set_bone", "rig.set", Value::Object(args))
         },
@@ -444,7 +399,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |ctx: &NativeCallContext, opts: &Map| -> Fallible<()> {
-            let args = options(opts, &["bones", "snap", "band"], "place_joints")?;
+            let args = tool_options(opts, "place_joints", &[])?;
             record(
                 &state,
                 ctx,

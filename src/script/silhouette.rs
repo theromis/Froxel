@@ -34,178 +34,16 @@ use std::rc::Rc;
 use rhai::{Array, Dynamic, Engine, Map};
 use serde_json::Value;
 
-use super::shapes::{json, options, Args, Fallible};
+use super::shapes::{json, tool_options, Args, Fallible};
 use super::{runtime, Scratch};
 use crate::remote;
-
-const ORIENT: &[&str] = &[
-    "turns",
-    "yawStep",
-    "yawRange",
-    "fineAxes",
-    "resolution",
-    "size",
-    "height",
-    "scale",
-    "apply",
-];
-const VIEWS_PAINT: &[&str] = &[
-    "blend",
-    "seam",
-    "sharpness",
-    "fit",
-    "reach",
-    "inset",
-    "mirror",
-    "slots",
-    "newSlots",
-    "accents",
-    "minShare",
-    "contrast",
-    "maxAccents",
-    "only",
-    "downscale",
-    "x0",
-    "y0",
-    "z0",
-    "x1",
-    "y1",
-    "z1",
-    "space",
-];
-const PIXELATE: &[&str] = &[
-    "size",
-    "colors",
-    "accents",
-    "minShare",
-    "contrast",
-    "maxAccents",
-    "coverage",
-    "thin",
-    "despeckle",
-    "features",
-    "lines",
-    "outline",
-    "mergeLines",
-];
-const CARVE: &[&str] = &[
-    "downscale",
-    "size",
-    "origin",
-    "cellsPerPixel",
-    "palette",
-    "slots",
-    "coverage",
-    "shell",
-    "smooth",
-    "mode",
-    "space",
-    "depthTolerance",
-    "excludeColors",
-    "excludeTolerance",
-    "keepLargest",
-];
-
-const OPTIMIZE: &[&str] = &[
-    "downscale",
-    "fit",
-    "mirror",
-    "iterations",
-    "shape",
-    "recolor",
-    "band",
-    "minFeature",
-    "connected",
-    "smooth",
-    "sharpness",
-    "slots",
-    "keep",
-    "accents",
-    "accentShare",
-    "depthWeight",
-    "depthTolerance",
-    "surfaceWeight",
-    "colorCarve",
-    "semantic",
-];
-
-const FIT: &[&str] = &[
-    "align",
-    "slots",
-    "coverage",
-    "iterations",
-    "seed",
-    "margin",
-    "maskWeight",
-    "colorWeight",
-    "depthWeight",
-    "smoothWeight",
-    "shape",
-    "recolor",
-    "normalLimit",
-    "keep",
-    "sharedScale",
-    "roundWeight",
-    "roundness",
-    "roundAxes",
-    "reference",
-    "depthTolerance",
-    "excludeColors",
-    "excludeTolerance",
-    "keepLargest",
-];
-
-const PAINT: &[&str] = &[
-    "view",
-    "yaw",
-    "pitch",
-    "legend",
-    "background",
-    "tolerance",
-    "flip",
-    "origin",
-    "size",
-    "cellsPerPixel",
-    "imageSize",
-    "palette",
-    "slots",
-    "coverage",
-    "depth",
-    "normalLimit",
-    "only",
-    "space",
-    "mirror",
-    "excludeColors",
-    "excludeTolerance",
-    "erase",
-    "keepLargest",
-];
-
-const DECAL: &[&str] = &[
-    "point",
-    "ray",
-    "size",
-    "up",
-    "legend",
-    "background",
-    "tolerance",
-    "flip",
-    "palette",
-    "slots",
-    "coverage",
-    "depth",
-    "reach",
-    "normalLimit",
-    "only",
-    "space",
-    "mirror",
-];
 
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     {
         let state = scratch.clone();
         engine.register_fn("decal", move |rows: Array, opts: Map| -> Fallible<Map> {
-            let mut args = options(&opts, DECAL, "decal")?;
+            let mut args =
+                tool_options(&opts, "decal", &["alphaThreshold", "crop", "path", "rows"])?;
             args.insert("rows".into(), json(&Dynamic::from_array(rows))?);
             state.borrow_mut().decal_view(args).map_err(runtime)
         });
@@ -213,7 +51,19 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     let paint = {
         let state = scratch.clone();
         move |view: Option<&str>, rows: Array, opts: &Map| -> Fallible<Map> {
-            let mut args = options(opts, PAINT, "project_paint")?;
+            let mut args = tool_options(
+                opts,
+                "project_paint",
+                &[
+                    "alphaThreshold",
+                    "crop",
+                    "fillHoles",
+                    "flood",
+                    "mask",
+                    "path",
+                    "rows",
+                ],
+            )?;
             if let Some(view) = view {
                 if args.contains_key("view") {
                     return Err(super::runtime(
@@ -245,7 +95,23 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |views: Array, opts: &Map| -> Fallible<Map> {
-            let mut args = options(opts, VIEWS_PAINT, "paint_from_views")?;
+            let mut args = tool_options(
+                opts,
+                "paint_from_views",
+                &[
+                    "alphaThreshold",
+                    "background",
+                    "excludeColors",
+                    "excludeTolerance",
+                    "fillHoles",
+                    "flood",
+                    "keepLargest",
+                    "objects",
+                    "path",
+                    "tolerance",
+                    "views",
+                ],
+            )?;
             args.insert("views".into(), json(&Dynamic::from_array(views))?);
             state.borrow_mut().paint_views(args).map_err(runtime)
         };
@@ -262,7 +128,21 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |views: Array, opts: &Map| -> Fallible<Map> {
-            let mut args = options(opts, FIT, "fit_to_views")?;
+            let mut args = tool_options(
+                opts,
+                "fit_to_views",
+                &[
+                    "alphaThreshold",
+                    "background",
+                    "depthPath",
+                    "fillHoles",
+                    "flood",
+                    "isolate",
+                    "path",
+                    "tolerance",
+                    "views",
+                ],
+            )?;
             args.insert("views".into(), json(&Dynamic::from_array(views))?);
             state.borrow_mut().fit_views(args).map_err(runtime)
         };
@@ -277,7 +157,23 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |views: Array, opts: &Map| -> Fallible<Map> {
-            let mut args = options(opts, OPTIMIZE, "optimize_to_views")?;
+            let mut args = tool_options(
+                opts,
+                "optimize_to_views",
+                &[
+                    "alphaThreshold",
+                    "background",
+                    "depthPath",
+                    "excludeColors",
+                    "excludeTolerance",
+                    "fillHoles",
+                    "flood",
+                    "keepLargest",
+                    "path",
+                    "tolerance",
+                    "views",
+                ],
+            )?;
             args.insert("views".into(), json(&Dynamic::from_array(views))?);
             state.borrow_mut().optimize_views(args).map_err(runtime)
         };
@@ -294,7 +190,11 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |views: Array, opts: &Map| -> Fallible<Map> {
-            let mut args = options(opts, ORIENT, "orient_to_views")?;
+            let mut args = tool_options(
+                opts,
+                "orient_to_views",
+                &["alphaThreshold", "background", "path", "tolerance", "views"],
+            )?;
             args.insert("views".into(), json(&Dynamic::from_array(views))?);
             let mut scratch = state.borrow_mut();
             scratch.keep_going().map_err(runtime)?;
@@ -321,7 +221,20 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |views: Array, opts: &Map| -> Fallible<Map> {
-            let mut args = options(opts, CARVE, "carve_from_views")?;
+            let mut args = tool_options(
+                opts,
+                "carve_from_views",
+                &[
+                    "alphaThreshold",
+                    "background",
+                    "depthPath",
+                    "fillHoles",
+                    "flood",
+                    "path",
+                    "tolerance",
+                    "views",
+                ],
+            )?;
             args.insert("views".into(), json(&Dynamic::from_array(views))?);
             state.borrow_mut().carve_views(args).map_err(runtime)
         };
@@ -339,7 +252,24 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     engine.register_fn(
         "pixelate_views",
         move |views: Array, opts: Map| -> Fallible<Map> {
-            let mut args = options(&opts, PIXELATE, "pixelate_views")?;
+            let mut args = tool_options(
+                &opts,
+                "pixelate_views",
+                &[
+                    "alphaThreshold",
+                    "background",
+                    "excludeColors",
+                    "excludeTolerance",
+                    "fillHoles",
+                    "flood",
+                    "keepLargest",
+                    "path",
+                    "png",
+                    "pngScale",
+                    "tolerance",
+                    "views",
+                ],
+            )?;
             args.insert("views".into(), json(&Dynamic::from_array(views))?);
             let palette = state.borrow().run_palette();
             let (_, reply) =

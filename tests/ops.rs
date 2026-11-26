@@ -89,11 +89,14 @@ fn the_methods_help_names_every_method_once() {
     assert!(listed.contains(&"ping"));
 }
 
-/// The option lists of the Rhai functions, read from their source: each
-/// `const NAME: &[&str] = &[...]`, and the function name it is checked
-/// for, from `NAME, "function"` or `("function", _, NAME)`.
-fn rhai_option_lists() -> Vec<(String, String, Vec<String>)> {
+/// The Rhai option lists, read from the source of `src/script`: each
+/// `tool_options(opts, "tool", excluded)` or `tool_options_as(opts, "tool",
+/// excluded, ...)`, and the `("moss", Stone::Moss, &[...])` rows of the
+/// growth tools, with `excluded` inline or a `const` of the same file.
+/// Returns the file, the tool, and the excluded keys.
+fn rhai_exclusions() -> Vec<(String, String, Vec<String>)> {
     let sources = [
+        ("document", include_str!("../src/script/document.rs")),
         ("import", include_str!("../src/script/import.rs")),
         ("markers", include_str!("../src/script/markers.rs")),
         ("organic", include_str!("../src/script/organic.rs")),
@@ -111,73 +114,138 @@ fn rhai_option_lists() -> Vec<(String, String, Vec<String>)> {
     let mut out = Vec::new();
     for (file, source) in sources {
         let flat: String = source.split_whitespace().collect::<Vec<_>>().join(" ");
+        // The file's `const NAME: &[&str] = &[...];` lists.
+        let mut consts = Vec::new();
         let mut rest = flat.as_str();
         while let Some(at) = rest.find("const ") {
             rest = &rest[at + 6..];
-            let Some((name, tail)) = rest.split_once(": &[&str] = &[") else {
-                continue;
-            };
-            if name.contains(' ') {
-                continue;
-            }
-            let Some((body, _)) = tail.split_once("];") else {
-                continue;
-            };
-            let keys = quoted(body);
-            let mut functions = Vec::new();
-            for (pattern, after) in [(format!("{name}, \""), true), (format!(", {name})"), false)] {
-                let mut from = flat.as_str();
-                while let Some(hit) = from.find(&pattern) {
-                    // `VIEWS_PAINT, "` is not a use of `PAINT`.
-                    let joined = after
-                        && from[..hit]
-                            .chars()
-                            .next_back()
-                            .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
-                    if joined {
-                        from = &from[hit + pattern.len()..];
-                        continue;
+            if let Some((name, tail)) = rest.split_once(": &[&str] = &[") {
+                if let Some((body, _)) = tail.split_once("];") {
+                    if !name.contains(' ') {
+                        consts.push((name.to_string(), quoted(body)));
                     }
-                    if after {
-                        let tail = &from[hit + pattern.len()..];
-                        if let Some((function, _)) = tail.split_once('"') {
-                            functions.push(function.to_string());
-                        }
-                    } else if let Some(open) = from[..hit].rfind("(\"") {
-                        if let Some((function, _)) = from[open + 2..].split_once('"') {
-                            functions.push(function.to_string());
-                        }
-                    }
-                    from = &from[hit + pattern.len()..];
                 }
             }
-            for function in functions {
-                out.push((format!("{file}::{name}"), function, keys.clone()));
+        }
+        let list = |text: &str| -> Option<Vec<String>> {
+            let text = text.trim_start();
+            if let Some(body) = text.strip_prefix("&[") {
+                return Some(quoted(body.split_once(']')?.0));
             }
+            let name: String = text
+                .chars()
+                .take_while(|c| c.is_ascii_uppercase() || *c == '_')
+                .collect();
+            consts
+                .iter()
+                .find(|(found, _)| *found == name)
+                .map(|(_, keys)| keys.clone())
+        };
+        for call in ["tool_options(", "tool_options_as("] {
+            let mut from = flat.as_str();
+            while let Some(hit) = from.find(call) {
+                from = &from[hit + call.len()..];
+                // The definitions in shapes.rs take parameters, not a tool.
+                let Some((_, after)) = from.split_once(", \"") else {
+                    continue;
+                };
+                let Some((tool, tail)) = after.split_once('"') else {
+                    continue;
+                };
+                if tool.contains(' ') {
+                    continue;
+                }
+                let Some(tail) = tail.strip_prefix(",") else {
+                    continue;
+                };
+                if let Some(keys) = list(tail) {
+                    out.push((file.to_string(), tool.to_string(), keys));
+                }
+            }
+        }
+        // `corners(.., BOX_SLOT, "fill_box")`: a const, then the tool.
+        for (name, keys) in &consts {
+            let pattern = format!("{name}, \"");
+            let mut from = flat.as_str();
+            while let Some(hit) = from.find(&pattern) {
+                from = &from[hit + pattern.len()..];
+                // `tool_options_as(.., CARVE_BOX, "carve_box")` names the
+                // Rhai function there, not the tool.
+                if let Some((tool, _)) = from.split_once('"') {
+                    if schema::properties(tool).is_some() {
+                        out.push((file.to_string(), tool.to_string(), keys.clone()));
+                    }
+                }
+            }
+        }
+        let mut from = flat.as_str();
+        while let Some(hit) = from.find(", Stone::") {
+            let tool = from[..hit]
+                .strip_suffix('"')
+                .and_then(|head| head.rsplit('"').next())
+                .unwrap_or("");
+            let tail = &from[hit..];
+            if let Some((_, tail)) = tail.split_once(", ") {
+                if let Some((_, tail)) = tail.split_once(", ") {
+                    if let Some(keys) = list(tail) {
+                        out.push((file.to_string(), tool.to_string(), keys));
+                    }
+                }
+            }
+            from = &from[hit + 9..];
         }
     }
     out
 }
 
 #[test]
-fn every_rhai_option_is_an_argument_of_its_tool() {
-    let lists = rhai_option_lists();
-    assert!(lists.len() > 30, "found only {} option lists", lists.len());
-    let mut checked = 0;
-    for (list, function, keys) in &lists {
-        // Rhai-only functions (carve_tube, voxelize, ...) have no tool.
-        let Some(properties) = schema::properties(function) else {
-            continue;
-        };
-        checked += 1;
+fn every_rhai_exclusion_is_an_argument_of_its_tool() {
+    let lists = rhai_exclusions();
+    assert!(lists.len() > 45, "found only {} option lists", lists.len());
+    for (file, tool, keys) in &lists {
+        let properties = schema::properties(tool).unwrap_or_else(|| {
+            panic!("src/script/{file}.rs derives options from `{tool}`, which is not a tool")
+        });
         for key in keys {
             assert!(
                 properties.contains_key(key),
-                "{list} lets Rhai `{function}` take `{key}`, which MCP `{function}` does not, so the call would be refused"
+                "src/script/{file}.rs leaves `{key}` out of `{tool}`, which has no such argument"
             );
         }
+        // The list it derives is what Rhai takes.
+        let _ = rhai_options(tool, &keys.iter().map(String::as_str).collect::<Vec<_>>());
     }
-    assert!(checked > 25, "checked only {checked} lists against a tool");
+    for tool in [
+        "moss",
+        "algae",
+        "vines",
+        "bark",
+        "fill_box",
+        "carve",
+        "import_mesh",
+    ] {
+        assert!(lists.iter().any(|(_, found, _)| found == tool), "{tool}");
+    }
+}
+
+#[test]
+fn no_rhai_function_keeps_a_hand_written_option_list() {
+    // Rhai option lists come from the schema (tool_options); a plain
+    // `options(opts, &[...], ...)` call would drift from it.
+    for (file, source) in [
+        ("document", include_str!("../src/script/document.rs")),
+        ("import", include_str!("../src/script/import.rs")),
+        ("markers", include_str!("../src/script/markers.rs")),
+        ("organic", include_str!("../src/script/organic.rs")),
+        ("silhouette", include_str!("../src/script/silhouette.rs")),
+        ("stone", include_str!("../src/script/stone.rs")),
+    ] {
+        let flat: String = source.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(
+            !flat.contains(" options(") && !flat.contains("(options("),
+            "src/script/{file}.rs calls options() with a hand-written list"
+        );
+    }
 }
 
 #[test]

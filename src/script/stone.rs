@@ -12,152 +12,22 @@ use std::rc::Rc;
 use rhai::{Array, Dynamic, Engine, Map, INT};
 use serde_json::Value;
 
-use super::shapes::{box_args, json, options, Args, Fallible};
+use super::shapes::{box_args, json, tool_options, Args, Fallible};
 use super::{runtime, Scratch};
 use crate::remote::{self, Stone};
-
-const JOINTS: &[&str] = &[
-    "spacing", "course", "width", "depth", "dirt", "only", "density", "exclude", "seed",
-];
-
-const RELIEF: &[&str] = &[
-    "width", "out", "crown", "top", "lower", "depth", "exclude", "seed",
-];
-
-const WEATHER: &[&str] = &[
-    "chip",
-    "chipSize",
-    "pits",
-    "pitDepth",
-    "broken",
-    "noise",
-    "noiseDensity",
-    "noiseScale",
-    "only",
-    "exclude",
-    "seed",
-];
-
-const MOSS: &[&str] = &[
-    "amount",
-    "noise",
-    "faces",
-    "facing",
-    "band",
-    "only",
-    "exclude",
-    "layer",
-    "curtains",
-    "length",
-    "thickness",
-    "style",
-    "size",
-    "gap",
-    "exposure",
-    "drapes",
-    "seed",
-];
-const ALGAE: &[&str] = &[
-    "amount", "noise", "faces", "facing", "band", "only", "exclude", "layer", "seed",
-];
-const VINES: &[&str] = &[
-    "amount",
-    "noise",
-    "faces",
-    "facing",
-    "band",
-    "only",
-    "exclude",
-    "length",
-    "blooms",
-    "bloomChance",
-    "seed",
-];
-
-const SWEEP: &[&str] = &["curve", "pattern", "period", "seed", "mode"];
-
-const TRIM: &[&str] = &["curve", "only", "skin", "thickness"];
-
-const BARK: &[&str] = &[
-    "axis", "points", "curve", "dirt", "width", "length", "depth", "cracks", "only", "exclude",
-    "seed",
-];
-
-const PLANKS: &[&str] = &[
-    "dirt",
-    "dark",
-    "width",
-    "length",
-    "gap",
-    "thickness",
-    "ragged",
-    "nails",
-    "knots",
-    "only",
-    "exclude",
-    "seed",
-];
-
-const FOLIAGE: &[&str] = &[
-    "ellipsoids",
-    "boxes",
-    "from",
-    "core",
-    "size",
-    "gap",
-    "flatten",
-    "ragged",
-    "light",
-    "dark",
-    "sun",
-    "masses",
-    "groove",
-    "protect",
-    "exclude",
-    "seed",
-];
-
-const CAVITY: &[&str] = &[
-    "radius", "dark", "lighten", "light", "pairs", "darken", "brighten", "only", "exclude",
-];
-
-const RADIAL: &[&str] = &[
-    "x0",
-    "y0",
-    "z0",
-    "x1",
-    "y1",
-    "z1",
-    "axis",
-    "center",
-    "phase",
-    "width",
-    "from",
-    "to",
-    "ends",
-    "fade",
-    "profile",
-    "depth",
-    "shade",
-    "light",
-    "darken",
-    "brighten",
-    "ribs",
-    "ribWidth",
-    "ribHeight",
-    "only",
-    "exclude",
-    "jitter",
-    "seed",
-    "space",
-];
 
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run =
             move |points: Array, profile: Dynamic, palette: Dynamic, opts: &Map| -> Fallible<Map> {
-                let mut args = options(opts, SWEEP, "sweep")?;
+                let mut args = tool_options(
+                    opts,
+                    "sweep",
+                    &[
+                        "height", "palette", "palettes", "points", "profile", "radius", "width",
+                    ],
+                )?;
                 args.insert("points".into(), json(&Dynamic::from_array(points))?);
                 if profile.is_array() {
                     args.insert("profile".into(), json(&profile)?);
@@ -217,7 +87,11 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
                         inset: Dynamic,
                         opts: &Map|
               -> Fallible<Map> {
-            let mut args = options(opts, TRIM, "trim_outline")?;
+            let mut args = tool_options(
+                opts,
+                "trim_outline",
+                &["inset", "outline", "x0", "x1", "y0", "y1", "z0", "z1"],
+            )?;
             if let Some(corners) = corners {
                 args.extend(box_args(corners)?);
             }
@@ -264,16 +138,33 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
             );
         }
     }
-    for (name, tool, allowed) in [
-        ("moss", Stone::Moss, MOSS),
-        ("algae", Stone::Algae, ALGAE),
-        ("vines", Stone::Vines, VINES),
-        ("bark", Stone::Bark, BARK),
+    for (name, tool, excluded) in [
+        (
+            "moss",
+            Stone::Moss,
+            &["palettes", "x0", "y0", "z0", "x1", "y1", "z1"][..],
+        ),
+        (
+            "algae",
+            Stone::Algae,
+            &["palettes", "x0", "y0", "z0", "x1", "y1", "z1"],
+        ),
+        // vines always grow, so they take no layer.
+        (
+            "vines",
+            Stone::Vines,
+            &["layer", "palettes", "x0", "y0", "z0", "x1", "y1", "z1"],
+        ),
+        (
+            "bark",
+            Stone::Bark,
+            &["palettes", "x0", "y0", "z0", "x1", "y1", "z1"],
+        ),
     ] {
         for with_opts in [false, true] {
             let state = scratch.clone();
             let run = move |corners: [INT; 6], palettes: Dynamic, opts: &Map| -> Fallible<Map> {
-                let mut args = options(opts, allowed, name)?;
+                let mut args = tool_options(opts, name, excluded)?;
                 args.extend(box_args(corners)?);
                 args.insert("palettes".into(), json(&palettes)?);
                 state.borrow_mut().stone(args, tool).map_err(runtime)
@@ -312,7 +203,11 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
         let state = scratch.clone();
         let run =
             move |corners: [INT; 6], facing: Dynamic, palette: INT, opts: &Map| -> Fallible<Map> {
-                let mut args = options(opts, RELIEF, "column_relief")?;
+                let mut args = tool_options(
+                    opts,
+                    "column_relief",
+                    &["facing", "palette", "x0", "x1", "y0", "y1", "z0", "z1"],
+                )?;
                 args.extend(box_args(corners)?);
                 args.insert("facing".into(), json(&facing)?);
                 args.insert("palette".into(), palette.into());
@@ -362,7 +257,11 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
                         palettes: Dynamic,
                         opts: &Map|
               -> Fallible<Map> {
-            let mut args = options(opts, PLANKS, "planks")?;
+            let mut args = tool_options(
+                opts,
+                "planks",
+                &["axis", "palettes", "x0", "x1", "y0", "y1", "z"],
+            )?;
             for (key, value) in ["x0", "y0", "x1", "y1"].into_iter().zip(corners) {
                 args.insert(key.into(), value.into());
             }
@@ -402,7 +301,11 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     // options name the volume, so there is no form without them.
     let state = scratch.clone();
     let run = move |corners: Option<[INT; 6]>, palettes: Dynamic, opts: &Map| -> Fallible<Map> {
-        let mut args = options(opts, FOLIAGE, "foliage")?;
+        let mut args = tool_options(
+            opts,
+            "foliage",
+            &["palettes", "x0", "x1", "y0", "y1", "z0", "z1"],
+        )?;
         if let Some(corners) = corners {
             args.extend(box_args(corners)?);
         }
@@ -430,7 +333,8 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |corners: [INT; 6], opts: &Map| -> Fallible<Map> {
-            let mut args = options(opts, CAVITY, "cavity_tint")?;
+            let mut args =
+                tool_options(opts, "cavity_tint", &["x0", "x1", "y0", "y1", "z0", "z1"])?;
             args.extend(box_args(corners)?);
             state.borrow_mut().cavity(args).map_err(runtime)
         };
@@ -453,7 +357,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     let state = scratch.clone();
     let radial =
         move |corners: Option<[INT; 6]>, kind: &str, count: INT, opts: &Map| -> Fallible<Map> {
-            let mut args = options(opts, RADIAL, "radial_relief")?;
+            let mut args = tool_options(opts, "radial_relief", &["count", "kind"])?;
             if let Some(corners) = corners {
                 args.extend(box_args(corners)?);
             }
@@ -483,7 +387,7 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |corners: [INT; 6], opts: &Map| -> Fallible<Map> {
-            let mut args = options(opts, WEATHER, "weather")?;
+            let mut args = tool_options(opts, "weather", &["x0", "x1", "y0", "y1", "z0", "z1"])?;
             args.extend(box_args(corners)?);
             state
                 .borrow_mut()
@@ -509,7 +413,11 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     for with_opts in [false, true] {
         let state = scratch.clone();
         let run = move |corners: [INT; 6], pattern: &str, opts: &Map| -> Fallible<Map> {
-            let mut args = options(opts, JOINTS, "joints")?;
+            let mut args = tool_options(
+                opts,
+                "joints",
+                &["pattern", "x0", "x1", "y0", "y1", "z0", "z1"],
+            )?;
             args.extend(box_args(corners)?);
             args.insert("pattern".into(), pattern.into());
             state
