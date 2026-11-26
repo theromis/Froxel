@@ -81,11 +81,13 @@ argument (`index`, `split_parts` `object`) is checked by `check_object` in
 `src/script/document.rs` before it is recorded, so a run cannot remove or
 clear the object it writes.
 
-Still hand-written: the Rhai-only `marker`, `connector`, `collision_box`, and
-`clear_object()` (the run's own object); `set_palette`, which takes a colour
-in several forms; `voxelize`, whose first argument is a mesh, not a tool
-argument (it takes `import_mesh`'s options through `tool_options_as`); and
-the readers (`list_bones`, `has_bone`, ...), which run no tool.
+The script's markers are bindings over `set_marker` with a fixed kind
+(`marker` takes its point as three numbers, `Pos::Triple`; an unnamed
+`collision_box` is `collision_<n>`), `clear_object()` is the `clear_object`
+binding without an index, `set_palette(#{...})` is all options, and
+`voxelize` hands its mesh to the runner as `Pos::Own`. Only the readers
+(`list_bones`, `list_clips`, `has_bone`, `has_clip`, `has_object`) are
+written by hand: they read the run's view and run no tool.
 
 ## Panels
 
@@ -140,9 +142,15 @@ and the panel draws:
 The rows were generated from the panels as they were, so labels, tooltips,
 and ranges are the same (tooltips now end with the MCP argument). A panel may
 start a soft range at 0 below a positive minimum where 0 leaves the argument
-out (Markers' max boxes). Rows whose field is not one argument (a parsed slot
-list, an enum index, an `_on` flag for an optional value, a pair of numbers
-for one argument) keep their hand-written label.
+out (Markers' max boxes). A row that chooses between arguments or tools
+(Foliage Volume, Import Fit, Sweep Profile, Growth Plant, the views tools'
+Colour and Depth) is a `PanelChoice` in `ops/panel.rs` (`CHOICES`): label,
+hint, and the arguments it sets, drawn by `choice_label`. A row whose wording
+follows the tool it runs (Growth's palettes, amount, and length) takes it from
+that tool's property. No panel row writes its own label text.
+
+`ui_click` presses what `ui_inspect` lists and, anywhere else, sends a real
+pointer press and release, so every widget can be driven by MCP.
 
 ## Migrated
 
@@ -156,15 +164,7 @@ for one argument) keep their hand-written label.
 
 ## Still hand-written
 
-Rhai option lists and the panel metadata of every tool panel are derived.
-What is left:
-
-- Panel rows that are not one argument (see Panel structs): parsed slot
-  lists, enum segments over panel indices, optional values behind an `_on`
-  flag, pairs. `op_choice` can draw an enum once its panel stores the item.
-- Rows whose label or tooltip differ between two panels for the same argument
-  (Growth and Moss `thickness`, the two Deform `angle` rows): the first panel's
-  wording is in the table, the second stays hand-written.
-- The Render, Export, and Bake sliders (`panels/render.rs`), which set render
-  and export settings, not tool arguments, and the generator form.
-- The Rhai functions listed under Rhai as still hand-written.
+- Window-only settings with no tool argument: One frame, NEE, RIS samples,
+  clamp, temporal smoothing, horizon, the sun's direction and disc, the
+  fields inside `bake`, and the generator form.
+- The Rhai readers named under Rhai.
