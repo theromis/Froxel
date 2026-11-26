@@ -4,6 +4,13 @@
 
 ### Fixed
 
+- The MCP server's `initialize` instructions were about 15,000 characters,
+  and Claude Code keeps only the first 4096, so agents never saw most of
+  them. They are now a short summary (under 1,900 characters); the rest is
+  `docs/agent-guide.md`, served as the MCP resource `froxel://guide`
+  (`docs/hand-sculpting.md` is `froxel://hand-sculpting`).
+- `carve_from_views`' tool description was over the same 4096-character
+  limit; its depth-map options are now described under `views`.
 - A control-port request the window does not take within 5 seconds, because
   it draws no frames (hidden, minimised, or covered), is withdrawn with
   `state` `not-run` instead of waiting a minute and running whenever the

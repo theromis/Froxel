@@ -894,6 +894,54 @@ fn the_instructions_point_to_hand_sculpting() {
     .unwrap();
     let instructions = reply["result"]["instructions"].as_str().unwrap();
     assert!(instructions.contains("docs/hand-sculpting.md"));
+    assert!(instructions.contains("froxel://guide"));
+}
+
+/// Claude Code cuts server instructions past 4096 characters; leave room for
+/// the App Sandbox note and its granted folders.
+#[test]
+fn the_instructions_fit_a_client_limit() {
+    assert!(
+        INSTRUCTIONS.len() <= 2400,
+        "instructions are {} characters; move detail to docs/agent-guide.md",
+        INSTRUCTIONS.len()
+    );
+}
+
+#[test]
+fn the_guide_is_a_resource() {
+    let mut head = Headless::new();
+    let list = dispatch(
+        &mut head.proto,
+        &mut head.session,
+        None,
+        &json!({"jsonrpc": "2.0", "id": 1, "method": "resources/list"}),
+    )
+    .unwrap();
+    let uris: Vec<&str> = list["result"]["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["uri"].as_str().unwrap())
+        .collect();
+    assert_eq!(uris, ["froxel://guide", "froxel://hand-sculpting"]);
+    let read = dispatch(
+        &mut head.proto,
+        &mut head.session,
+        None,
+        &json!({"jsonrpc": "2.0", "id": 2, "method": "resources/read", "params": {"uri": "froxel://guide"}}),
+    )
+    .unwrap();
+    let text = read["result"]["contents"][0]["text"].as_str().unwrap();
+    assert!(text.contains("measure_sheet"));
+    let missing = dispatch(
+        &mut head.proto,
+        &mut head.session,
+        None,
+        &json!({"jsonrpc": "2.0", "id": 3, "method": "resources/read", "params": {"uri": "froxel://nope"}}),
+    )
+    .unwrap();
+    assert_eq!(missing["error"]["code"], -32602);
 }
 
 /// A 3x3x3 block of slot 1 with a different slot at the centre of each face.

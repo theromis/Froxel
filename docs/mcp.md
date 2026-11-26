@@ -168,6 +168,15 @@ The default revision is `2025-06-18`.
 The server declares `capabilities.tools.listChanged: true` and sends
 `notifications/tools/list_changed` after a reload.
 
+The `initialize` instructions are short (under 2400 characters, so a client
+that cuts long instructions, as Claude Code does past 4096, gets them whole,
+the sandbox note included): the active object and `space`, `batch`, `preview`
+for every check, and where the rest lives. The rest is
+[agent-guide.md](agent-guide.md), which tool for which job, served as the
+resource `froxel://guide`; [hand-sculpting.md](hand-sculpting.md) is
+`froxel://hand-sculpting`. `resources/list` names both and `resources/read`
+returns either as Markdown; an unknown uri is error `-32602`.
+
 ### Any tool from the command line
 
 `froxel run <tool>` runs one tool on a `.vox` with no server or window:

@@ -23,6 +23,11 @@ only its container and folders the user granted. Ask the user to choose
 The Mac App Store build also cannot use a port: `--connect`, `--launch`, and
 the Godot/Blender bridge need the Froxel from the dmg or Homebrew.
 
+The server's instructions are a short summary. Before a new kind of asset,
+read the MCP resource `froxel://guide` (`docs/agent-guide.md`: which tool for
+which job, workflow by workflow); `froxel://hand-sculpting` is
+`docs/hand-sculpting.md`.
+
 If a tool that Froxel's docs or a recent commit mention is missing, the
 server is older than the binary: call `reload` (the server re-executes the
 rebuilt binary in place, keeps the open document, and sends
