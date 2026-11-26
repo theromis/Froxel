@@ -8,21 +8,21 @@ use super::*;
 pub(super) const STRIP_ICON: f32 = 32.0;
 const STRIP_GAP: f32 = 4.0;
 
-/// The strip's tools: the tool, its name, and its key.
-pub(super) const TOOLS: [(Tool, &str, &str); 13] = [
-    (Tool::Brush, "Brush", "V"),
-    (Tool::Line, "Line", "L"),
-    (Tool::Circle, "Circle", ""),
-    (Tool::Square, "Square", ""),
-    (Tool::Box, "Box", "B"),
-    (Tool::Face, "Face", "F"),
-    (Tool::Generator, "Generator", ""),
-    (Tool::Tube, "Tube", ""),
-    (Tool::Sculpt, "Sculpt", "S"),
-    (Tool::Mutator, "Mutator", "U"),
-    (Tool::Marquee, "Marquee", "M"),
-    (Tool::BoxSelect, "Box Select", ""),
-    (Tool::FloodSelect, "Flood", ""),
+/// The strip's tools and their names; the key is [`Tool::key`].
+pub(super) const TOOLS: [(Tool, &str); 13] = [
+    (Tool::Brush, "Brush"),
+    (Tool::Line, "Line"),
+    (Tool::Circle, "Circle"),
+    (Tool::Square, "Square"),
+    (Tool::Box, "Box"),
+    (Tool::Face, "Face"),
+    (Tool::Generator, "Generator"),
+    (Tool::Tube, "Tube"),
+    (Tool::Sculpt, "Sculpt"),
+    (Tool::Mutator, "Mutator"),
+    (Tool::Marquee, "Marquee"),
+    (Tool::BoxSelect, "Box Select"),
+    (Tool::FloodSelect, "Flood"),
 ];
 
 /// The tool strip: one column of tool icons, then the Add, Remove, and
@@ -30,12 +30,8 @@ pub(super) const TOOLS: [(Tool, &str, &str); 13] = [
 pub(super) fn strip(ui: &mut Ui, session: &mut Session) {
     let size = STRIP_ICON;
     ui.spacing_mut().item_spacing = egui::vec2(STRIP_GAP, STRIP_GAP);
-    for (tool, label, key) in TOOLS {
-        let tip = if key.is_empty() {
-            label.to_string()
-        } else {
-            format!("{label} ({key})")
-        };
+    for (tool, label) in TOOLS {
+        let tip = format!("{label} ({})", tool.key().name());
         let on = session.tool == tool;
         let resp = ui
             .add_sized(

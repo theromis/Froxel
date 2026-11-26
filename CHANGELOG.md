@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- Every tool has a key: **C** circle, **Q** square, **N** generator,
+  **P** tube, **K** box select, and **W** flood select join **V** **L** **B**
+  **F** **S** **U** **M**, and each tool strip tooltip names its key.
+
 ### Fixed
 
 - With **One frame** on, Render mode traces a new frame once an orbit, a

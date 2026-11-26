@@ -132,8 +132,10 @@ view: each pixel is the palette colour of the first cell hit, with no light
 or tonemap. MCP `set_view` moves the window camera; its `orthographic` also
 switches the edit viewport.
 
-**V** **L** **B** **F** **S** **U** **M** select brush, line, box, face, sculpt,
-mutator, and marquee. **T** **R** **G** select Add, Remove, and Paint, in Model mode only.
+Every tool has a key (`Tool::key`, also its strip tooltip): **V** **L** **C**
+**Q** **B** **F** **N** **P** **S** **U** **M** **K** **W** select brush, line,
+circle, square, box, face, generator, tube, sculpt, mutator, marquee, box
+select, and flood select. **T** **R** **G** select Add, Remove, and Paint, in Model mode only.
 **Tab** switches Model and Object mode. In Object mode **X** **Y** **Z** rotate
 and Shift flips.
 

@@ -30,6 +30,43 @@ pub enum Tool {
 }
 
 impl Tool {
+    /// Every tool, in tool strip order.
+    pub const ALL: [Tool; 13] = [
+        Tool::Brush,
+        Tool::Line,
+        Tool::Circle,
+        Tool::Square,
+        Tool::Box,
+        Tool::Face,
+        Tool::Generator,
+        Tool::Tube,
+        Tool::Sculpt,
+        Tool::Mutator,
+        Tool::Marquee,
+        Tool::BoxSelect,
+        Tool::FloodSelect,
+    ];
+
+    /// The key that selects the tool (without Cmd or Ctrl).
+    pub fn key(self) -> egui::Key {
+        use egui::Key;
+        match self {
+            Tool::Brush => Key::V,
+            Tool::Line => Key::L,
+            Tool::Circle => Key::C,
+            Tool::Square => Key::Q,
+            Tool::Box => Key::B,
+            Tool::Face => Key::F,
+            Tool::Generator => Key::N,
+            Tool::Tube => Key::P,
+            Tool::Sculpt => Key::S,
+            Tool::Mutator => Key::U,
+            Tool::Marquee => Key::M,
+            Tool::BoxSelect => Key::K,
+            Tool::FloodSelect => Key::W,
+        }
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Tool::Brush => "Brush",

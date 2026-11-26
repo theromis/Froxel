@@ -41,20 +41,11 @@ impl Session {
                 cmd = Some(Cmd::Menu(action));
             } else if i.key_pressed(egui::Key::Tab) {
                 cmd = Some(Cmd::Tab);
-            } else if i.key_pressed(egui::Key::V) && !command {
-                cmd = Some(Cmd::Tool(Tool::Brush));
-            } else if i.key_pressed(egui::Key::L) && !command {
-                cmd = Some(Cmd::Tool(Tool::Line));
-            } else if i.key_pressed(egui::Key::B) && !command {
-                cmd = Some(Cmd::Tool(Tool::Box));
-            } else if i.key_pressed(egui::Key::F) && !command {
-                cmd = Some(Cmd::Tool(Tool::Face));
-            } else if i.key_pressed(egui::Key::S) && !command {
-                cmd = Some(Cmd::Tool(Tool::Sculpt));
-            } else if i.key_pressed(egui::Key::U) && !command {
-                cmd = Some(Cmd::Tool(Tool::Mutator));
-            } else if i.key_pressed(egui::Key::M) && !command {
-                cmd = Some(Cmd::Tool(Tool::Marquee));
+            } else if let Some(tool) = Tool::ALL
+                .into_iter()
+                .find(|tool| !command && i.key_pressed(tool.key()))
+            {
+                cmd = Some(Cmd::Tool(tool));
             } else if !object_mode && !command && i.key_pressed(egui::Key::T) {
                 cmd = Some(Cmd::Mode(ToolMode::Add));
             } else if !object_mode && !command && i.key_pressed(egui::Key::R) {

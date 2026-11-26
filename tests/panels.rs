@@ -148,7 +148,7 @@ fn docks_tile_the_window() {
 
 #[test]
 fn every_tool_option_row_fits_a_small_window() {
-    for (tool, label, _) in tools::TOOLS {
+    for (tool, label) in tools::TOOLS {
         let mut session = Session::new();
         session.tool = tool;
         let (width, height) = SMALL;
@@ -159,4 +159,25 @@ fn every_tool_option_row_fits_a_small_window() {
             &mut session,
         );
     }
+}
+
+#[test]
+fn every_tool_has_its_own_key() {
+    // The mode keys (T R G) and the Object mode turns (X Y Z).
+    let reserved = [
+        egui::Key::T,
+        egui::Key::R,
+        egui::Key::G,
+        egui::Key::X,
+        egui::Key::Y,
+        egui::Key::Z,
+    ];
+    let mut seen = Vec::new();
+    for tool in Tool::ALL {
+        let key = tool.key();
+        assert!(!reserved.contains(&key), "{} takes {key:?}", tool.name());
+        assert!(!seen.contains(&key), "{} repeats {key:?}", tool.name());
+        seen.push(key);
+    }
+    assert_eq!(tools::TOOLS.len(), Tool::ALL.len());
 }

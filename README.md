@@ -103,7 +103,9 @@ left instead of the strip.
 
 - **Right-drag** orbits. **Scroll** zooms. **Space-drag** or middle-drag pans.
 - **Left-drag** uses the active tool.
-- **V** brush, **L** line, **B** box, **F** face, **U** mutator, **M** marquee.
+- **V** brush, **L** line, **C** circle, **Q** square, **B** box, **F** face,
+  **N** generator, **P** tube, **S** sculpt, **U** mutator, **M** marquee,
+  **K** box select, **W** flood select. Each tool's tooltip names its key.
 - **T** add, **R** remove, **G** paint. These three apply in Model mode.
 - **Tab** switches Model and Object mode.
 - In Object mode, **X / Y / Z** rotates the active object. **Shift** flips it.
