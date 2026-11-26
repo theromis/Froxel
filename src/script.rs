@@ -19,6 +19,7 @@ use rhai::{Array, Dynamic, Engine, EvalAltResult, OptimizationLevel, Position, I
 
 use crate::state::{Cell, Motion, Session, Volume};
 
+mod bind;
 mod document;
 mod import;
 mod markers;

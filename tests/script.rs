@@ -1628,3 +1628,56 @@ fn every_range_loop_runs_at_the_top_level_and_inside_a_function() {
         .unwrap_err();
     assert!(err.contains("range step must not be 0"), "{err}");
 }
+
+/// Every declared binding names a tool, takes positionally and leaves out
+/// only arguments that tool has, and registers a function the engine runs:
+/// a binding cannot drift from the schema.
+#[test]
+fn every_binding_is_declared_against_its_tool_schema() {
+    let all: Vec<super::bind::Binding> = [
+        super::shapes::BINDINGS,
+        super::stone::BINDINGS,
+        super::organic::BINDINGS,
+        super::silhouette::BINDINGS,
+        super::document::BINDINGS,
+    ]
+    .concat();
+    assert!(all.len() >= 45, "only {} bindings", all.len());
+    for binding in &all {
+        let properties = crate::ops::schema::properties(binding.tool).unwrap_or_else(|| {
+            panic!(
+                "`{}` runs `{}`, which is not a tool",
+                binding.name, binding.tool
+            )
+        });
+        for key in binding.not_options() {
+            assert!(
+                properties.contains_key(key),
+                "`{}` takes or leaves out `{key}`, which `{}` does not have",
+                binding.name,
+                binding.tool
+            );
+        }
+        // The options it takes are the rest, which ops::rhai_options checks.
+        let options = crate::ops::rhai_options(binding.tool, &binding.not_options());
+        assert!(
+            options.len() + binding.not_options().len() == properties.len(),
+            "{}",
+            binding.name
+        );
+    }
+}
+
+#[test]
+fn a_declared_binding_refuses_an_option_its_tool_does_not_take() {
+    let err = run_cells("fill_ellipsoid(0, 0, 0, 2, 2, 2, 3, #{colour: 1});").unwrap_err();
+    assert!(
+        err.contains("fill_ellipsoid has no option `colour`"),
+        "{err}"
+    );
+    let err = run_cells("fill_tube([[0, 0, 0], [0, 4, 0]], \"red\");").unwrap_err();
+    assert!(
+        err.contains("fill_tube palette must be an index or a list of indices"),
+        "{err}"
+    );
+}

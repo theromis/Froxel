@@ -63,13 +63,25 @@ otherwise (`carve_tube`, `carve_box`, and `voxelize` run `carve` and
 `import_mesh`). `tests/ops.rs` checks every excluded key is an argument of its
 tool and that no `src/script` file calls `options` with a hand-written list.
 
-Positional bindings are not derived yet. Most `register_fn` closures build a
-map from a few positional values plus the options map, but the positional
-part is irregular (`fill_tube` takes `palette` or `palettes` by the value's
-type; the fills take six corners then a slot). A later step can declare the
-positional keys once next to the `op(...)` row and generate the two
-`register_fn` overloads (with and without the options map) from them; the
-irregular ones keep a hand closure.
+Positional arguments are declared too. `src/script/bind.rs` has
+`Binding::new(name, tool, &[Corners, Int("palette"), ...])`: the Rhai name,
+the tool, and the positional arguments in call order (`Corners`, `Int`,
+`Number`, `Str`, `List`, `Any`, and `Slots(one, many)` for a slot or a list of
+slots), plus `fixed` arguments (`carve_tube` sets `shape: "tube"`),
+`excluded` keys, and `with_options_only` for a function that has no form
+without the map. `bind` registers the overloads with `register_raw_fn` and
+builds the arguments; each file's `BINDINGS` table and one runner per file
+replace the hand-written closures. `bind_in_context` passes the call's
+context for the document operations a run records (`add_bone`,
+`place_joints`). `tests/script.rs` checks every binding against its tool's
+schema.
+
+Still hand-written: the document functions that take an object by name or
+index (`set_object`, `remove_object`, `clear_object`, `components`,
+`split_parts`, `split_object`, `mirror_object`), which resolve it first; the
+Rhai-only `marker`, `connector`, and `collision_box`; `set_palette`, which
+takes a colour in several forms; and `voxelize`, whose first argument is a
+mesh, not a tool argument. They still take options through `tool_options`.
 
 ## Panels
 
@@ -151,4 +163,4 @@ What is left:
   wording is in the table, the second stays hand-written.
 - The Render, Export, and Bake sliders (`panels/render.rs`), which set render
   and export settings, not tool arguments, and the generator form.
-- Positional Rhai bindings, written by hand around `tool_options`.
+- The Rhai functions listed under Rhai as still hand-written.

@@ -14,7 +14,8 @@ use std::rc::Rc;
 use rhai::{Array, Dynamic, Engine, EvalAltResult, Map, NativeCallContext, INT};
 use serde_json::{json, Value};
 
-use super::shapes::{box_args, json, tool_options};
+use super::bind::{bind_in_context, Binding, Pos::*};
+use super::shapes::{json, tool_options, Args};
 use super::{runtime, BuiltKey, Scratch};
 use crate::remote;
 use crate::state::Session;
@@ -96,63 +97,70 @@ impl DocOp {
     }
 }
 
+/// The document functions declared from their tool ([`super::bind`]).
+/// The ones that take an object by name or index (`set_object`,
+/// `split_parts`, ...) resolve it first and stay hand-written below.
+pub(super) const BINDINGS: &[Binding] = &[
+    Binding::new("get_voxels", "get_voxels", &[Corners]),
+    Binding::new("set_voxels", "set_voxels", &[List("cells")]),
+    Binding::new("add_bone", "add_bone", &[Str("name"), List("pivot")]),
+    Binding::new("set_bone", "set_bone", &[Str("name")]).with_options_only(),
+    Binding::new("place_joints", "place_joints", &[]),
+];
+
+/// `get_voxels`: the box's solid cells as `[x, y, z, slot]`, in the cells
+/// the call gave (world cells with `space: "world"`).
+fn get_voxels(state: &Rc<RefCell<Scratch>>, args: Args) -> Fallible<Dynamic> {
+    let scratch = state.borrow();
+    let (args, offset) = scratch.localize("voxel.get_box", args).map_err(runtime)?;
+    let by = offset.unwrap_or((0, 0, 0));
+    let cells = remote::box_cells(scratch.cells(), &args).map_err(runtime)?;
+    Ok(Dynamic::from_array(
+        cells
+            .into_iter()
+            .map(|(x, y, z, slot)| {
+                let cell = [
+                    (x + by.0).into(),
+                    (y + by.1).into(),
+                    (z + by.2).into(),
+                    slot.into(),
+                ];
+                Dynamic::from_array(cell.into_iter().map(Dynamic::from_int).collect())
+            })
+            .collect(),
+    ))
+}
+
+/// `set_voxels` on the object being written; replies with the cells changed.
+fn set_voxels(state: &Rc<RefCell<Scratch>>, args: Args) -> Fallible<Dynamic> {
+    let mut scratch = state.borrow_mut();
+    scratch.keep_going().map_err(runtime)?;
+    let (args, _) = scratch.localize("voxel.set_many", args).map_err(runtime)?;
+    let (writes, _) = remote::set_many_writes(scratch.cells(), &args).map_err(runtime)?;
+    scratch
+        .apply(&writes)
+        .map(Dynamic::from_int)
+        .map_err(runtime)
+}
+
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
-    for with_opts in [false, true] {
+    for binding in BINDINGS {
         let state = scratch.clone();
-        let run = move |corners: [INT; 6], opts: &Map| -> Fallible<Array> {
-            let mut args = tool_options(opts, "get_voxels", &["x0", "x1", "y0", "y1", "z0", "z1"])?;
-            args.extend(box_args(corners)?);
-            let scratch = state.borrow();
-            let (args, offset) = scratch.localize("voxel.get_box", args).map_err(runtime)?;
-            let by = offset.unwrap_or((0, 0, 0));
-            let cells = remote::box_cells(scratch.cells(), &args).map_err(runtime)?;
-            Ok(cells
-                .into_iter()
-                .map(|(x, y, z, slot)| {
-                    let cell = [
-                        (x + by.0).into(),
-                        (y + by.1).into(),
-                        (z + by.2).into(),
-                        slot.into(),
-                    ];
-                    Dynamic::from_array(cell.into_iter().map(Dynamic::from_int).collect())
-                })
-                .collect())
-        };
-        if with_opts {
-            engine.register_fn(
-                "get_voxels",
-                move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT, opts: Map| {
-                    run([x0, y0, z0, x1, y1, z1], &opts)
-                },
-            );
-        } else {
-            engine.register_fn(
-                "get_voxels",
-                move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT| {
-                    run([x0, y0, z0, x1, y1, z1], &Map::new())
-                },
-            );
-        }
-    }
-    for with_opts in [false, true] {
-        let state = scratch.clone();
-        let run = move |cells: Array, opts: &Map| -> Fallible<INT> {
-            let mut args = tool_options(opts, "set_voxels", &["cells"])?;
-            args.insert("cells".into(), json(&Dynamic::from_array(cells))?);
-            let mut scratch = state.borrow_mut();
-            scratch.keep_going().map_err(runtime)?;
-            let (args, _) = scratch.localize("voxel.set_many", args).map_err(runtime)?;
-            let (writes, _) = remote::set_many_writes(scratch.cells(), &args).map_err(runtime)?;
-            scratch.apply(&writes).map_err(runtime)
-        };
-        if with_opts {
-            engine.register_fn("set_voxels", move |cells: Array, opts: Map| {
-                run(cells, &opts)
-            });
-        } else {
-            engine.register_fn("set_voxels", move |cells: Array| run(cells, &Map::new()));
-        }
+        let name = binding.name;
+        bind_in_context(engine, *binding, move |ctx, args| match name {
+            "get_voxels" => get_voxels(&state, args),
+            "set_voxels" => set_voxels(&state, args),
+            "add_bone" => {
+                record(&state, ctx, name, "rig.add", Value::Object(args)).map(|()| Dynamic::UNIT)
+            }
+            "set_bone" => {
+                record(&state, ctx, name, "rig.set", Value::Object(args)).map(|()| Dynamic::UNIT)
+            }
+            "place_joints" => {
+                record(&state, ctx, name, "rig.joints", Value::Object(args)).map(|()| Dynamic::UNIT)
+            }
+            other => unreachable!("no runner for `{other}`"),
+        });
     }
 
     let state = scratch.clone();
@@ -362,62 +370,6 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
         }
     }
 
-    for with_opts in [false, true] {
-        let state = scratch.clone();
-        let run =
-            move |ctx: &NativeCallContext, name: &str, pivot: Array, opts: &Map| -> Fallible<()> {
-                let mut args = tool_options(opts, "add_bone", &["name", "pivot"])?;
-                args.insert("name".into(), name.into());
-                args.insert("pivot".into(), json(&Dynamic::from_array(pivot))?);
-                record(&state, ctx, "add_bone", "rig.add", Value::Object(args))
-            };
-        if with_opts {
-            engine.register_fn(
-                "add_bone",
-                move |ctx: NativeCallContext, name: &str, pivot: Array, opts: Map| {
-                    run(&ctx, name, pivot, &opts)
-                },
-            );
-        } else {
-            engine.register_fn(
-                "add_bone",
-                move |ctx: NativeCallContext, name: &str, pivot: Array| {
-                    run(&ctx, name, pivot, &Map::new())
-                },
-            );
-        }
-    }
-    let state = scratch.clone();
-    engine.register_fn(
-        "set_bone",
-        move |ctx: NativeCallContext, name: &str, opts: Map| -> Fallible<()> {
-            let mut args = tool_options(&opts, "set_bone", &["name"])?;
-            args.insert("name".into(), name.into());
-            record(&state, &ctx, "set_bone", "rig.set", Value::Object(args))
-        },
-    );
-    for with_opts in [false, true] {
-        let state = scratch.clone();
-        let run = move |ctx: &NativeCallContext, opts: &Map| -> Fallible<()> {
-            let args = tool_options(opts, "place_joints", &[])?;
-            record(
-                &state,
-                ctx,
-                "place_joints",
-                "rig.joints",
-                Value::Object(args),
-            )
-        };
-        if with_opts {
-            engine.register_fn("place_joints", move |ctx: NativeCallContext, opts: Map| {
-                run(&ctx, &opts)
-            });
-        } else {
-            engine.register_fn("place_joints", move |ctx: NativeCallContext| {
-                run(&ctx, &Map::new())
-            });
-        }
-    }
     let state = scratch.clone();
     engine.register_fn(
         "remove_bone",

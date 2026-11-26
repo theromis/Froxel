@@ -9,443 +9,136 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use rhai::{Array, Dynamic, Engine, Map, INT};
+use rhai::{Dynamic, Engine, Map, INT};
 use serde_json::Value;
 
-use super::shapes::{box_args, json, tool_options, Args, Fallible};
-use super::{runtime, Scratch};
+use super::bind::{bind, Binding, Pos::*};
+use super::shapes::Args;
+use super::Scratch;
 use crate::remote::{self, Stone};
 
-pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
-    for with_opts in [false, true] {
-        let state = scratch.clone();
-        let run =
-            move |points: Array, profile: Dynamic, palette: Dynamic, opts: &Map| -> Fallible<Map> {
-                let mut args = tool_options(
-                    opts,
-                    "sweep",
-                    &[
-                        "height", "palette", "palettes", "points", "profile", "radius", "width",
-                    ],
-                )?;
-                args.insert("points".into(), json(&Dynamic::from_array(points))?);
-                if profile.is_array() {
-                    args.insert("profile".into(), json(&profile)?);
-                } else if profile.is_map() {
-                    let Value::Object(rect) = json(&profile)? else {
-                        unreachable!("a map is an object");
-                    };
-                    for (key, value) in rect {
-                        if !["width", "height", "radius"].contains(&key.as_str()) {
-                            return Err(runtime(format!(
-                                "sweep profile map takes width, height, and radius, not `{key}`"
-                            )));
-                        }
-                        args.insert(key, value);
-                    }
-                } else {
-                    return Err(runtime(
-                        "sweep profile must be a list of [u, v] points or #{width, height, radius}",
-                    ));
-                }
-                if palette.is_array() {
-                    args.insert("palettes".into(), json(&palette)?);
-                } else if palette.is_int() {
-                    args.insert("palette".into(), json(&palette)?);
-                } else {
-                    return Err(runtime(
-                        "sweep palette must be an index or a list of indices",
-                    ));
-                }
-                state
-                    .borrow_mut()
-                    .stone(args, Stone::Sweep)
-                    .map_err(runtime)
-            };
-        if with_opts {
-            engine.register_fn(
-                "sweep",
-                move |points: Array, profile: Dynamic, palette: Dynamic, opts: Map| {
-                    run(points, profile, palette, &opts)
-                },
-            );
-        } else {
-            engine.register_fn(
-                "sweep",
-                move |points: Array, profile: Dynamic, palette: Dynamic| {
-                    run(points, profile, palette, &Map::new())
-                },
-            );
-        }
-    }
-    // `trim_outline(outline, inset, opts)` tests the whole object;
-    // `trim_outline(x0, y0, z0, x1, y1, z1, outline, inset, opts)` keeps to a box.
-    for with_opts in [false, true] {
-        let state = scratch.clone();
-        let run = move |corners: Option<[INT; 6]>,
-                        outline: Array,
-                        inset: Dynamic,
-                        opts: &Map|
-              -> Fallible<Map> {
-            let mut args = tool_options(
-                opts,
-                "trim_outline",
-                &["inset", "outline", "x0", "x1", "y0", "y1", "z0", "z1"],
-            )?;
-            if let Some(corners) = corners {
-                args.extend(box_args(corners)?);
-            }
-            args.insert("outline".into(), json(&Dynamic::from_array(outline))?);
-            args.insert("inset".into(), json(&inset)?);
-            state.borrow_mut().stone(args, Stone::Trim).map_err(runtime)
-        };
-        let boxed = run.clone();
-        if with_opts {
-            engine.register_fn(
-                "trim_outline",
-                move |outline: Array, inset: Dynamic, opts: Map| run(None, outline, inset, &opts),
-            );
-            engine.register_fn(
-                "trim_outline",
-                move |x0: INT,
-                      y0: INT,
-                      z0: INT,
-                      x1: INT,
-                      y1: INT,
-                      z1: INT,
-                      outline: Array,
-                      inset: Dynamic,
-                      opts: Map| {
-                    boxed(Some([x0, y0, z0, x1, y1, z1]), outline, inset, &opts)
-                },
-            );
-        } else {
-            engine.register_fn("trim_outline", move |outline: Array, inset: Dynamic| {
-                run(None, outline, inset, &Map::new())
-            });
-            engine.register_fn(
-                "trim_outline",
-                move |x0: INT,
-                      y0: INT,
-                      z0: INT,
-                      x1: INT,
-                      y1: INT,
-                      z1: INT,
-                      outline: Array,
-                      inset: Dynamic| {
-                    boxed(Some([x0, y0, z0, x1, y1, z1]), outline, inset, &Map::new())
-                },
-            );
-        }
-    }
-    for (name, tool, excluded) in [
-        (
-            "moss",
-            Stone::Moss,
-            &["palettes", "x0", "y0", "z0", "x1", "y1", "z1"][..],
-        ),
-        (
-            "algae",
-            Stone::Algae,
-            &["palettes", "x0", "y0", "z0", "x1", "y1", "z1"],
-        ),
-        // vines always grow, so they take no layer.
-        (
-            "vines",
-            Stone::Vines,
-            &["layer", "palettes", "x0", "y0", "z0", "x1", "y1", "z1"],
-        ),
-        (
-            "bark",
-            Stone::Bark,
-            &["palettes", "x0", "y0", "z0", "x1", "y1", "z1"],
-        ),
-    ] {
-        for with_opts in [false, true] {
-            let state = scratch.clone();
-            let run = move |corners: [INT; 6], palettes: Dynamic, opts: &Map| -> Fallible<Map> {
-                let mut args = tool_options(opts, name, excluded)?;
-                args.extend(box_args(corners)?);
-                args.insert("palettes".into(), json(&palettes)?);
-                state.borrow_mut().stone(args, tool).map_err(runtime)
-            };
-            if with_opts {
-                engine.register_fn(
-                    name,
-                    move |x0: INT,
-                          y0: INT,
-                          z0: INT,
-                          x1: INT,
-                          y1: INT,
-                          z1: INT,
-                          palettes: Dynamic,
-                          opts: Map| {
-                        run([x0, y0, z0, x1, y1, z1], palettes, &opts)
-                    },
-                );
-            } else {
-                engine.register_fn(
-                    name,
-                    move |x0: INT,
-                          y0: INT,
-                          z0: INT,
-                          x1: INT,
-                          y1: INT,
-                          z1: INT,
-                          palettes: Dynamic| {
-                        run([x0, y0, z0, x1, y1, z1], palettes, &Map::new())
-                    },
-                );
-            }
-        }
-    }
-    for with_opts in [false, true] {
-        let state = scratch.clone();
-        let run =
-            move |corners: [INT; 6], facing: Dynamic, palette: INT, opts: &Map| -> Fallible<Map> {
-                let mut args = tool_options(
-                    opts,
-                    "column_relief",
-                    &["facing", "palette", "x0", "x1", "y0", "y1", "z0", "z1"],
-                )?;
-                args.extend(box_args(corners)?);
-                args.insert("facing".into(), json(&facing)?);
-                args.insert("palette".into(), palette.into());
-                state
-                    .borrow_mut()
-                    .stone(args, Stone::Relief)
-                    .map_err(runtime)
-            };
-        if with_opts {
-            engine.register_fn(
-                "column_relief",
-                move |x0: INT,
-                      y0: INT,
-                      z0: INT,
-                      x1: INT,
-                      y1: INT,
-                      z1: INT,
-                      facing: Dynamic,
-                      palette: INT,
-                      opts: Map| {
-                    run([x0, y0, z0, x1, y1, z1], facing, palette, &opts)
-                },
-            );
-        } else {
-            engine.register_fn(
-                "column_relief",
-                move |x0: INT,
-                      y0: INT,
-                      z0: INT,
-                      x1: INT,
-                      y1: INT,
-                      z1: INT,
-                      facing: Dynamic,
-                      palette: INT| {
-                    run([x0, y0, z0, x1, y1, z1], facing, palette, &Map::new())
-                },
-            );
-        }
-    }
-    // `planks(x0, y0, x1, y1, z, axis, palettes, opts)`: a rectangle at a
-    // height, not a box.
-    for with_opts in [false, true] {
-        let state = scratch.clone();
-        let run = move |corners: [INT; 4],
-                        z: INT,
-                        axis: &str,
-                        palettes: Dynamic,
-                        opts: &Map|
-              -> Fallible<Map> {
-            let mut args = tool_options(
-                opts,
-                "planks",
-                &["axis", "palettes", "x0", "x1", "y0", "y1", "z"],
-            )?;
-            for (key, value) in ["x0", "y0", "x1", "y1"].into_iter().zip(corners) {
-                args.insert(key.into(), value.into());
-            }
-            args.insert("z".into(), z.into());
-            args.insert("axis".into(), axis.into());
-            args.insert("palettes".into(), json(&palettes)?);
-            state
-                .borrow_mut()
-                .stone(args, Stone::Planks)
-                .map_err(runtime)
-        };
-        if with_opts {
-            engine.register_fn(
-                "planks",
-                move |x0: INT,
-                      y0: INT,
-                      x1: INT,
-                      y1: INT,
-                      z: INT,
-                      axis: &str,
-                      palettes: Dynamic,
-                      opts: Map| {
-                    run([x0, y0, x1, y1], z, axis, palettes, &opts)
-                },
-            );
-        } else {
-            engine.register_fn(
-                "planks",
-                move |x0: INT, y0: INT, x1: INT, y1: INT, z: INT, axis: &str, palettes: Dynamic| {
-                    run([x0, y0, x1, y1], z, axis, palettes, &Map::new())
-                },
-            );
-        }
-    }
-    // `foliage(palettes, opts)` bounds itself by its volume;
-    // `foliage(x0, y0, z0, x1, y1, z1, palettes, opts)` keeps to a box. The
-    // options name the volume, so there is no form without them.
-    let state = scratch.clone();
-    let run = move |corners: Option<[INT; 6]>, palettes: Dynamic, opts: &Map| -> Fallible<Map> {
-        let mut args = tool_options(
-            opts,
-            "foliage",
-            &["palettes", "x0", "x1", "y0", "y1", "z0", "z1"],
-        )?;
-        if let Some(corners) = corners {
-            args.extend(box_args(corners)?);
-        }
-        args.insert("palettes".into(), json(&palettes)?);
-        state
-            .borrow_mut()
-            .stone(args, Stone::Foliage)
-            .map_err(runtime)
-    };
-    let boxed = run.clone();
-    engine.register_fn("foliage", move |palettes: Dynamic, opts: Map| {
-        run(None, palettes, &opts)
-    });
-    engine.register_fn(
-        "foliage",
-        move |x0: INT,
-              y0: INT,
-              z0: INT,
-              x1: INT,
-              y1: INT,
-              z1: INT,
-              palettes: Dynamic,
-              opts: Map| { boxed(Some([x0, y0, z0, x1, y1, z1]), palettes, &opts) },
-    );
-    for with_opts in [false, true] {
-        let state = scratch.clone();
-        let run = move |corners: [INT; 6], opts: &Map| -> Fallible<Map> {
-            let mut args =
-                tool_options(opts, "cavity_tint", &["x0", "x1", "y0", "y1", "z0", "z1"])?;
-            args.extend(box_args(corners)?);
-            state.borrow_mut().cavity(args).map_err(runtime)
-        };
-        if with_opts {
-            engine.register_fn(
-                "cavity_tint",
-                move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT, opts: Map| {
-                    run([x0, y0, z0, x1, y1, z1], &opts)
-                },
-            );
-        } else {
-            engine.register_fn(
-                "cavity_tint",
-                move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT| {
-                    run([x0, y0, z0, x1, y1, z1], &Map::new())
-                },
-            );
-        }
-    }
-    let state = scratch.clone();
-    let radial =
-        move |corners: Option<[INT; 6]>, kind: &str, count: INT, opts: &Map| -> Fallible<Map> {
-            let mut args = tool_options(opts, "radial_relief", &["count", "kind"])?;
-            if let Some(corners) = corners {
-                args.extend(box_args(corners)?);
-            }
-            args.insert("kind".into(), kind.into());
-            args.insert("count".into(), count.into());
-            state.borrow_mut().radial(args).map_err(runtime)
-        };
-    let (bare, with_opts, boxed) = (radial.clone(), radial.clone(), radial);
-    engine.register_fn("radial_relief", move |kind: &str, count: INT| {
-        bare(None, kind, count, &Map::new())
-    });
-    engine.register_fn("radial_relief", move |kind: &str, count: INT, opts: Map| {
-        with_opts(None, kind, count, &opts)
-    });
-    engine.register_fn(
+const BOX: &[&str] = &["x0", "y0", "z0", "x1", "y1", "z1"];
+
+/// The stone tools' bindings ([`super::bind`]). `trim_outline`,
+/// `foliage`, and `radial_relief` also have a form over a box; `planks` takes
+/// a rectangle at a height.
+pub(super) const BINDINGS: &[Binding] = &[
+    // The profile is a list of [u, v] points or #{width, height, radius},
+    // which `run` spreads into those arguments.
+    Binding::new(
+        "sweep",
+        "sweep",
+        &[List("points"), Any("profile"), Slots("palette", "palettes")],
+    )
+    .excluded(&["width", "height", "radius"]),
+    Binding::new(
+        "trim_outline",
+        "trim_outline",
+        &[List("outline"), Any("inset")],
+    )
+    .excluded(BOX),
+    Binding::new(
+        "trim_outline",
+        "trim_outline",
+        &[Corners, List("outline"), Any("inset")],
+    ),
+    Binding::new("moss", "moss", &[Corners, Any("palettes")]),
+    Binding::new("algae", "algae", &[Corners, Any("palettes")]),
+    // Vines always grow, so they take no layer.
+    Binding::new("vines", "vines", &[Corners, Any("palettes")]).excluded(&["layer"]),
+    Binding::new("bark", "bark", &[Corners, Any("palettes")]),
+    Binding::new(
+        "column_relief",
+        "column_relief",
+        &[Corners, Any("facing"), Int("palette")],
+    ),
+    Binding::new(
+        "planks",
+        "planks",
+        &[
+            Int("x0"),
+            Int("y0"),
+            Int("x1"),
+            Int("y1"),
+            Int("z"),
+            Str("axis"),
+            Any("palettes"),
+        ],
+    ),
+    // The options name the volume, so there is no form without them.
+    Binding::new("foliage", "foliage", &[Any("palettes")])
+        .excluded(BOX)
+        .with_options_only(),
+    Binding::new("foliage", "foliage", &[Corners, Any("palettes")]).with_options_only(),
+    Binding::new("cavity_tint", "cavity_tint", &[Corners]),
+    Binding::new(
         "radial_relief",
-        move |x0: INT,
-              y0: INT,
-              z0: INT,
-              x1: INT,
-              y1: INT,
-              z1: INT,
-              kind: &str,
-              count: INT,
-              opts: Map| { boxed(Some([x0, y0, z0, x1, y1, z1]), kind, count, &opts) },
-    );
-    for with_opts in [false, true] {
+        "radial_relief",
+        &[Str("kind"), Int("count")],
+    ),
+    Binding::new(
+        "radial_relief",
+        "radial_relief",
+        &[Corners, Str("kind"), Int("count")],
+    )
+    .with_options_only(),
+    Binding::new("weather", "weather", &[Corners]),
+    Binding::new("joints", "joints", &[Corners, Str("pattern")]),
+];
+
+pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
+    for binding in BINDINGS {
         let state = scratch.clone();
-        let run = move |corners: [INT; 6], opts: &Map| -> Fallible<Map> {
-            let mut args = tool_options(opts, "weather", &["x0", "x1", "y0", "y1", "z0", "z1"])?;
-            args.extend(box_args(corners)?);
-            state
-                .borrow_mut()
-                .stone(args, Stone::Weather)
-                .map_err(runtime)
-        };
-        if with_opts {
-            engine.register_fn(
-                "weather",
-                move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT, opts: Map| {
-                    run([x0, y0, z0, x1, y1, z1], &opts)
-                },
-            );
-        } else {
-            engine.register_fn(
-                "weather",
-                move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT| {
-                    run([x0, y0, z0, x1, y1, z1], &Map::new())
-                },
-            );
+        let name = binding.name;
+        bind(engine, *binding, move |mut args| {
+            let mut state = state.borrow_mut();
+            let tool = match name {
+                "sweep" => {
+                    spread_profile(&mut args)?;
+                    Stone::Sweep
+                }
+                "trim_outline" => Stone::Trim,
+                "moss" => Stone::Moss,
+                "algae" => Stone::Algae,
+                "vines" => Stone::Vines,
+                "bark" => Stone::Bark,
+                "column_relief" => Stone::Relief,
+                "planks" => Stone::Planks,
+                "foliage" => Stone::Foliage,
+                "weather" => Stone::Weather,
+                "joints" => Stone::Joints,
+                "cavity_tint" => return state.cavity(args).map(Dynamic::from_map),
+                "radial_relief" => return state.radial(args).map(Dynamic::from_map),
+                other => unreachable!("no runner for `{other}`"),
+            };
+            state.stone(args, tool).map(Dynamic::from_map)
+        });
+    }
+}
+
+/// `sweep`'s profile as a map: its width, height, and radius as arguments.
+fn spread_profile(args: &mut Args) -> Result<(), String> {
+    match args.remove("profile") {
+        Some(Value::Array(points)) => {
+            args.insert("profile".into(), Value::Array(points));
+        }
+        Some(Value::Object(rect)) => {
+            for (key, value) in rect {
+                if !["width", "height", "radius"].contains(&key.as_str()) {
+                    return Err(format!(
+                        "sweep profile map takes width, height, and radius, not `{key}`"
+                    ));
+                }
+                args.insert(key, value);
+            }
+        }
+        _ => {
+            return Err(
+                "sweep profile must be a list of [u, v] points or #{width, height, radius}".into(),
+            )
         }
     }
-    for with_opts in [false, true] {
-        let state = scratch.clone();
-        let run = move |corners: [INT; 6], pattern: &str, opts: &Map| -> Fallible<Map> {
-            let mut args = tool_options(
-                opts,
-                "joints",
-                &["pattern", "x0", "x1", "y0", "y1", "z0", "z1"],
-            )?;
-            args.extend(box_args(corners)?);
-            args.insert("pattern".into(), pattern.into());
-            state
-                .borrow_mut()
-                .stone(args, Stone::Joints)
-                .map_err(runtime)
-        };
-        if with_opts {
-            engine.register_fn(
-                "joints",
-                move |x0: INT,
-                      y0: INT,
-                      z0: INT,
-                      x1: INT,
-                      y1: INT,
-                      z1: INT,
-                      pattern: &str,
-                      opts: Map| { run([x0, y0, z0, x1, y1, z1], pattern, &opts) },
-            );
-        } else {
-            engine.register_fn(
-                "joints",
-                move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT, pattern: &str| {
-                    run([x0, y0, z0, x1, y1, z1], pattern, &Map::new())
-                },
-            );
-        }
-    }
+    Ok(())
 }
 
 impl Scratch {

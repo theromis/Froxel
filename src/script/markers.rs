@@ -9,11 +9,12 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use rhai::{Array, Dynamic, Engine, Map, INT};
+use rhai::{Array, Dynamic, Engine, INT};
 use serde_json::{json, Value};
 
+use super::bind::{bind, Binding};
 use super::document::dynamic;
-use super::shapes::{json, tool_options, Fallible};
+use super::shapes::{json, Fallible};
 use super::{runtime, BuiltKey, Scratch};
 use crate::state::{check_marker_name, replace_collision_markers, Marker, MAX_MARKERS};
 
@@ -42,18 +43,14 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
         },
     );
     let state = scratch.clone();
-    let run = move |opts: &Map| -> Fallible<Dynamic> {
-        let args = tool_options(opts, "collision_from_voxels", &["object"])?;
+    // A script edits its own object, so it takes no object.
+    let collision =
+        Binding::new("collision_from_voxels", "collision_from_voxels", &[]).excluded(&["object"]);
+    bind(engine, collision, move |args| {
         let reply = state
             .borrow_mut()
-            .collision_from_voxels(Value::Object(args))
-            .map_err(runtime)?;
+            .collision_from_voxels(Value::Object(args))?;
         Ok(dynamic(&reply))
-    };
-    let with_options = run.clone();
-    engine.register_fn("collision_from_voxels", move || run(&Map::new()));
-    engine.register_fn("collision_from_voxels", move |opts: Map| {
-        with_options(&opts)
     });
     for named in [false, true] {
         let state = scratch.clone();

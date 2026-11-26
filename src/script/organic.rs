@@ -8,113 +8,43 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use rhai::{Array, Dynamic, Engine, Map, INT};
+use rhai::{Dynamic, Engine, Map};
 
-use super::shapes::{box_args, json, tool_options, Args, Fallible};
+use super::bind::{bind, Binding, Pos::*};
+use super::shapes::Args;
 use super::stone::reply;
-use super::{runtime, Scratch};
+use super::Scratch;
 use crate::remote::{self, Organic};
 
+/// The organic tools' bindings ([`super::bind`]): `deform` over the whole
+/// object or a box.
+pub(super) const BINDINGS: &[Binding] = &[
+    Binding::new("deform", "deform", &[Str("op")]).excluded(&["x0", "y0", "z0", "x1", "y1", "z1"]),
+    Binding::new("deform", "deform", &[Corners, Str("op")]),
+    Binding::new(
+        "loft",
+        "loft",
+        &[List("points"), Slots("palette", "palettes")],
+    ),
+    Binding::new("blend_shapes", "blend_shapes", &[List("shapes")]),
+    Binding::new("brush", "brush", &[Str("op"), List("points")]),
+];
+
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
-    for with_opts in [false, true] {
+    for binding in BINDINGS {
         let state = scratch.clone();
-        let run = move |corners: Option<[INT; 6]>, op: &str, opts: &Map| -> Fallible<Map> {
-            let mut args =
-                tool_options(opts, "deform", &["op", "x0", "x1", "y0", "y1", "z0", "z1"])?;
-            if let Some(corners) = corners {
-                args.extend(box_args(corners)?);
+        let name = binding.name;
+        bind(engine, *binding, move |args| {
+            let mut state = state.borrow_mut();
+            match name {
+                "deform" => state.organic(args, Organic::Deform),
+                "loft" => state.organic(args, Organic::Loft),
+                "blend_shapes" => state.blend(args),
+                "brush" => state.organic(args, Organic::Brush),
+                other => unreachable!("no runner for `{other}`"),
             }
-            args.insert("op".into(), op.into());
-            state
-                .borrow_mut()
-                .organic(args, Organic::Deform)
-                .map_err(runtime)
-        };
-        let boxed = run.clone();
-        if with_opts {
-            engine.register_fn("deform", move |op: &str, opts: Map| run(None, op, &opts));
-            engine.register_fn(
-                "deform",
-                move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT, op: &str, opts: Map| {
-                    boxed(Some([x0, y0, z0, x1, y1, z1]), op, &opts)
-                },
-            );
-        } else {
-            engine.register_fn("deform", move |op: &str| run(None, op, &Map::new()));
-            engine.register_fn(
-                "deform",
-                move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT, op: &str| {
-                    boxed(Some([x0, y0, z0, x1, y1, z1]), op, &Map::new())
-                },
-            );
-        }
-    }
-    for with_opts in [false, true] {
-        let state = scratch.clone();
-        let run = move |points: Array, palette: Dynamic, opts: &Map| -> Fallible<Map> {
-            let mut args = tool_options(opts, "loft", &["palette", "palettes", "points"])?;
-            args.insert("points".into(), json(&Dynamic::from_array(points))?);
-            if palette.is_array() {
-                args.insert("palettes".into(), json(&palette)?);
-            } else if palette.is_int() {
-                args.insert("palette".into(), json(&palette)?);
-            } else {
-                return Err(runtime(
-                    "loft palette must be an index or a list of indices",
-                ));
-            }
-            state
-                .borrow_mut()
-                .organic(args, Organic::Loft)
-                .map_err(runtime)
-        };
-        if with_opts {
-            engine.register_fn("loft", move |points: Array, palette: Dynamic, opts: Map| {
-                run(points, palette, &opts)
-            });
-        } else {
-            engine.register_fn("loft", move |points: Array, palette: Dynamic| {
-                run(points, palette, &Map::new())
-            });
-        }
-    }
-    for with_opts in [false, true] {
-        let state = scratch.clone();
-        let run = move |shapes: Array, opts: &Map| -> Fallible<Map> {
-            let mut args = tool_options(opts, "blend_shapes", &["shapes"])?;
-            args.insert("shapes".into(), json(&Dynamic::from_array(shapes))?);
-            state.borrow_mut().blend(args).map_err(runtime)
-        };
-        if with_opts {
-            engine.register_fn("blend_shapes", move |shapes: Array, opts: Map| {
-                run(shapes, &opts)
-            });
-        } else {
-            engine.register_fn("blend_shapes", move |shapes: Array| {
-                run(shapes, &Map::new())
-            });
-        }
-    }
-    for with_opts in [false, true] {
-        let state = scratch.clone();
-        let run = move |op: &str, points: Array, opts: &Map| -> Fallible<Map> {
-            let mut args = tool_options(opts, "brush", &["op", "points"])?;
-            args.insert("op".into(), op.into());
-            args.insert("points".into(), json(&Dynamic::from_array(points))?);
-            state
-                .borrow_mut()
-                .organic(args, Organic::Brush)
-                .map_err(runtime)
-        };
-        if with_opts {
-            engine.register_fn("brush", move |op: &str, points: Array, opts: Map| {
-                run(op, points, &opts)
-            });
-        } else {
-            engine.register_fn("brush", move |op: &str, points: Array| {
-                run(op, points, &Map::new())
-            });
-        }
+            .map(Dynamic::from_map)
+        });
     }
 }
 

@@ -31,255 +31,147 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use rhai::{Array, Dynamic, Engine, Map};
+use rhai::{Dynamic, Engine, Map};
 use serde_json::Value;
 
-use super::shapes::{json, tool_options, Args, Fallible};
-use super::{runtime, Scratch};
+use super::bind::{bind, Binding, Pos::*};
+use super::shapes::Args;
+use super::Scratch;
 use crate::remote;
 
+/// The single-image keys a script never takes: a view is a row of the
+/// views list, an image a list of rows.
+const IMAGE: &[&str] = &["alphaThreshold", "background", "path", "tolerance"];
+
+/// The views tools' bindings ([`super::bind`]). Each leaves out the
+/// single-image keys of its sheet (a script passes rows or views), and
+/// `pixelate_views` its PNG output, since scripts never write files.
+pub(super) const BINDINGS: &[Binding] = &[
+    Binding::new("decal", "decal", &[List("rows")])
+        .excluded(&["alphaThreshold", "crop", "path"])
+        .with_options_only(),
+    Binding::new(
+        "project_paint",
+        "project_paint",
+        &[Str("view"), List("rows")],
+    )
+    .excluded(&[
+        "alphaThreshold",
+        "crop",
+        "fillHoles",
+        "flood",
+        "mask",
+        "path",
+    ]),
+    Binding::new("project_paint", "project_paint", &[List("rows")])
+        .excluded(&[
+            "alphaThreshold",
+            "crop",
+            "fillHoles",
+            "flood",
+            "mask",
+            "path",
+        ])
+        .with_options_only(),
+    Binding::new("paint_from_views", "paint_from_views", &[List("views")]).excluded(&[
+        "alphaThreshold",
+        "background",
+        "excludeColors",
+        "excludeTolerance",
+        "fillHoles",
+        "flood",
+        "keepLargest",
+        "objects",
+        "path",
+        "tolerance",
+    ]),
+    Binding::new("fit_to_views", "fit_to_views", &[List("views")]).excluded(&[
+        "alphaThreshold",
+        "background",
+        "depthPath",
+        "fillHoles",
+        "flood",
+        "isolate",
+        "path",
+        "tolerance",
+    ]),
+    Binding::new("optimize_to_views", "optimize_to_views", &[List("views")]).excluded(&[
+        "alphaThreshold",
+        "background",
+        "depthPath",
+        "excludeColors",
+        "excludeTolerance",
+        "fillHoles",
+        "flood",
+        "keepLargest",
+        "path",
+        "tolerance",
+    ]),
+    Binding::new("orient_to_views", "orient_to_views", &[List("views")]).excluded(IMAGE),
+    Binding::new("carve_from_views", "carve_from_views", &[List("views")]).excluded(&[
+        "alphaThreshold",
+        "background",
+        "depthPath",
+        "fillHoles",
+        "flood",
+        "path",
+        "tolerance",
+    ]),
+    Binding::new("pixelate_views", "pixelate_views", &[List("views")])
+        .excluded(&[
+            "alphaThreshold",
+            "background",
+            "excludeColors",
+            "excludeTolerance",
+            "fillHoles",
+            "flood",
+            "keepLargest",
+            "path",
+            "png",
+            "pngScale",
+            "tolerance",
+        ])
+        .with_options_only(),
+];
+
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
-    {
+    for binding in BINDINGS {
         let state = scratch.clone();
-        engine.register_fn("decal", move |rows: Array, opts: Map| -> Fallible<Map> {
-            let mut args =
-                tool_options(&opts, "decal", &["alphaThreshold", "crop", "path", "rows"])?;
-            args.insert("rows".into(), json(&Dynamic::from_array(rows))?);
-            state.borrow_mut().decal_view(args).map_err(runtime)
-        });
-    }
-    let paint = {
-        let state = scratch.clone();
-        move |view: Option<&str>, rows: Array, opts: &Map| -> Fallible<Map> {
-            let mut args = tool_options(
-                opts,
-                "project_paint",
-                &[
-                    "alphaThreshold",
-                    "crop",
-                    "fillHoles",
-                    "flood",
-                    "mask",
-                    "path",
-                    "rows",
-                ],
-            )?;
-            if let Some(view) = view {
-                if args.contains_key("view") {
-                    return Err(super::runtime(
-                        "project_paint: pass the view once, not also in the options",
-                    ));
-                }
-                args.insert("view".into(), Value::String(view.to_string()));
-            }
-            args.insert("rows".into(), json(&Dynamic::from_array(rows))?);
-            state.borrow_mut().paint_view(args).map_err(runtime)
-        }
-    };
-    {
-        let paint = paint.clone();
-        engine.register_fn("project_paint", move |view: &str, rows: Array| {
-            paint(Some(view), rows, &Map::new())
-        });
-    }
-    {
-        let paint = paint.clone();
-        engine.register_fn(
-            "project_paint",
-            move |view: &str, rows: Array, opts: Map| paint(Some(view), rows, &opts),
-        );
-    }
-    engine.register_fn("project_paint", move |rows: Array, opts: Map| {
-        paint(None, rows, &opts)
-    });
-    for with_opts in [false, true] {
-        let state = scratch.clone();
-        let run = move |views: Array, opts: &Map| -> Fallible<Map> {
-            let mut args = tool_options(
-                opts,
-                "paint_from_views",
-                &[
-                    "alphaThreshold",
-                    "background",
-                    "excludeColors",
-                    "excludeTolerance",
-                    "fillHoles",
-                    "flood",
-                    "keepLargest",
-                    "objects",
-                    "path",
-                    "tolerance",
-                    "views",
-                ],
-            )?;
-            args.insert("views".into(), json(&Dynamic::from_array(views))?);
-            state.borrow_mut().paint_views(args).map_err(runtime)
-        };
-        if with_opts {
-            engine.register_fn("paint_from_views", move |views: Array, opts: Map| {
-                run(views, &opts)
-            });
-        } else {
-            engine.register_fn("paint_from_views", move |views: Array| {
-                run(views, &Map::new())
-            });
-        }
-    }
-    for with_opts in [false, true] {
-        let state = scratch.clone();
-        let run = move |views: Array, opts: &Map| -> Fallible<Map> {
-            let mut args = tool_options(
-                opts,
-                "fit_to_views",
-                &[
-                    "alphaThreshold",
-                    "background",
-                    "depthPath",
-                    "fillHoles",
-                    "flood",
-                    "isolate",
-                    "path",
-                    "tolerance",
-                    "views",
-                ],
-            )?;
-            args.insert("views".into(), json(&Dynamic::from_array(views))?);
-            state.borrow_mut().fit_views(args).map_err(runtime)
-        };
-        if with_opts {
-            engine.register_fn("fit_to_views", move |views: Array, opts: Map| {
-                run(views, &opts)
-            });
-        } else {
-            engine.register_fn("fit_to_views", move |views: Array| run(views, &Map::new()));
-        }
-    }
-    for with_opts in [false, true] {
-        let state = scratch.clone();
-        let run = move |views: Array, opts: &Map| -> Fallible<Map> {
-            let mut args = tool_options(
-                opts,
-                "optimize_to_views",
-                &[
-                    "alphaThreshold",
-                    "background",
-                    "depthPath",
-                    "excludeColors",
-                    "excludeTolerance",
-                    "fillHoles",
-                    "flood",
-                    "keepLargest",
-                    "path",
-                    "tolerance",
-                    "views",
-                ],
-            )?;
-            args.insert("views".into(), json(&Dynamic::from_array(views))?);
-            state.borrow_mut().optimize_views(args).map_err(runtime)
-        };
-        if with_opts {
-            engine.register_fn("optimize_to_views", move |views: Array, opts: Map| {
-                run(views, &opts)
-            });
-        } else {
-            engine.register_fn("optimize_to_views", move |views: Array| {
-                run(views, &Map::new())
-            });
-        }
-    }
-    for with_opts in [false, true] {
-        let state = scratch.clone();
-        let run = move |views: Array, opts: &Map| -> Fallible<Map> {
-            let mut args = tool_options(
-                opts,
-                "orient_to_views",
-                &["alphaThreshold", "background", "path", "tolerance", "views"],
-            )?;
-            args.insert("views".into(), json(&Dynamic::from_array(views))?);
+        let name = binding.name;
+        bind(engine, *binding, move |args| {
             let mut scratch = state.borrow_mut();
-            scratch.keep_going().map_err(runtime)?;
-            let (writes, reply) =
-                remote::orient_writes(scratch.cells(), &Value::Object(args), false)
-                    .map_err(runtime)?;
-            let changed = scratch.apply(&writes).map_err(runtime)?;
-            let mut out = super::document::dynamic(&Value::Object(reply))
-                .try_cast::<Map>()
-                .unwrap_or_default();
-            out.insert("changed".into(), Dynamic::from_int(changed));
-            Ok(out)
-        };
-        if with_opts {
-            engine.register_fn("orient_to_views", move |views: Array, opts: Map| {
-                run(views, &opts)
-            });
-        } else {
-            engine.register_fn("orient_to_views", move |views: Array| {
-                run(views, &Map::new())
-            });
-        }
+            match name {
+                "decal" => scratch.decal_view(args),
+                "project_paint" => scratch.paint_view(args),
+                "paint_from_views" => scratch.paint_views(args),
+                "fit_to_views" => scratch.fit_views(args),
+                "optimize_to_views" => scratch.optimize_views(args),
+                "carve_from_views" => scratch.carve_views(args),
+                "orient_to_views" => {
+                    scratch.keep_going()?;
+                    let (writes, reply) =
+                        remote::orient_writes(scratch.cells(), &Value::Object(args), false)?;
+                    let changed = scratch.apply(&writes)?;
+                    let mut out = super::document::dynamic(&Value::Object(reply))
+                        .try_cast::<Map>()
+                        .unwrap_or_default();
+                    out.insert("changed".into(), Dynamic::from_int(changed));
+                    Ok(out)
+                }
+                "pixelate_views" => {
+                    let palette = scratch.run_palette();
+                    let (_, reply) =
+                        remote::pixelate_writes(&Value::Object(args), false, &palette)?;
+                    Ok(reply
+                        .iter()
+                        .map(|(key, value)| (key.as_str().into(), super::document::dynamic(value)))
+                        .collect())
+                }
+                other => unreachable!("no runner for `{other}`"),
+            }
+            .map(Dynamic::from_map)
+        });
     }
-    for with_opts in [false, true] {
-        let state = scratch.clone();
-        let run = move |views: Array, opts: &Map| -> Fallible<Map> {
-            let mut args = tool_options(
-                opts,
-                "carve_from_views",
-                &[
-                    "alphaThreshold",
-                    "background",
-                    "depthPath",
-                    "fillHoles",
-                    "flood",
-                    "path",
-                    "tolerance",
-                    "views",
-                ],
-            )?;
-            args.insert("views".into(), json(&Dynamic::from_array(views))?);
-            state.borrow_mut().carve_views(args).map_err(runtime)
-        };
-        if with_opts {
-            engine.register_fn("carve_from_views", move |views: Array, opts: Map| {
-                run(views, &opts)
-            });
-        } else {
-            engine.register_fn("carve_from_views", move |views: Array| {
-                run(views, &Map::new())
-            });
-        }
-    }
-    let state = scratch.clone();
-    engine.register_fn(
-        "pixelate_views",
-        move |views: Array, opts: Map| -> Fallible<Map> {
-            let mut args = tool_options(
-                &opts,
-                "pixelate_views",
-                &[
-                    "alphaThreshold",
-                    "background",
-                    "excludeColors",
-                    "excludeTolerance",
-                    "fillHoles",
-                    "flood",
-                    "keepLargest",
-                    "path",
-                    "png",
-                    "pngScale",
-                    "tolerance",
-                    "views",
-                ],
-            )?;
-            args.insert("views".into(), json(&Dynamic::from_array(views))?);
-            let palette = state.borrow().run_palette();
-            let (_, reply) =
-                remote::pixelate_writes(&Value::Object(args), false, &palette).map_err(runtime)?;
-            Ok(reply
-                .iter()
-                .map(|(key, value)| (key.as_str().into(), super::document::dynamic(value)))
-                .collect())
-        },
-    );
 }
 
 impl Scratch {

@@ -40,7 +40,8 @@ panel label, hint, hard and soft range, and toggle item (`ui`, `hard`,
 `Session::op_args` (`state/op_args.rs`, the tool's MCP arguments, checked by
 `Session::op_call` as `remote::apply` checks them), and `ops::rhai_options` derives a Rhai
 function's option list from it (every `src/script` function takes options
-through `tool_options`). `ops/panel.rs` is the label, hint, and range table
+through `tool_options`; `script/bind.rs` registers the ones declared in each
+file's `BINDINGS` from their positional arguments). `ops/panel.rs` is the label, hint, and range table
 of the panel-struct sections, drawn by `prop_label`, `prop_slider`,
 `prop_drag`, and `prop_check`. MCP
 `tools/list`, the tool-to-method map, `control.methods`, `froxel run`
