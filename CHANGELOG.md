@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.0 – 2026-11-25
+
 ### Removed
 
 - The tool-shaped subcommands are gone; `froxel run <tool>` does each with

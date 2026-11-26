@@ -1,0 +1,5 @@
+• New: froxel run <tool> runs any MCP tool from the command line; the old render, preview, export and other subcommands are replaced by it.
+• New: Render "One frame" option, on by default.
+• Faster editing on large models and much faster mesh export.
+• Safer file loading: damaged .vox and glTF files no longer hang or crash.
+• A newer Froxel's rig or clip chunk no longer stops a file from opening.

@@ -8,7 +8,7 @@
 # ghcr.io/theromis/froxel-mcp:<version>, the package server.json lists.
 FROM debian:bookworm-slim
 
-ARG FROXEL_VERSION=0.3.5
+ARG FROXEL_VERSION=0.4.0
 # Set by BuildKit; amd64 when the builder does not set it.
 ARG TARGETARCH
 

@@ -4,7 +4,7 @@
 bl_info = {
     "name": "Froxel Bridge",
     "author": "Froxel contributors",
-    "version": (0, 3, 5),
+    "version": (0, 4, 0),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Froxel",
     "description": "Import a live Froxel model and bake it into the scene",

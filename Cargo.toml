@@ -1,6 +1,6 @@
 [package]
 name = "froxel"
-version = "0.3.5"
+version = "0.4.0"
 edition = "2021"
 publish = false
 # tests/*.rs are unit tests included with #[path], not integration tests.
@@ -76,7 +76,7 @@ required-features = ["android-lib"]
 # for each release: F-Droid reads the Android versionCode of a tag from here.
 # The release workflow fails when it does not match.
 [package.metadata.store]
-version_code = 30599
+version_code = 40099
 
 # `cargo apk build --lib --features android-lib --release` for the APK, then
 # `packaging/android/apk.sh` for the store APK (versionCode from

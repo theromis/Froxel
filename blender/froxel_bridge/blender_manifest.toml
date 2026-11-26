@@ -3,7 +3,7 @@ schema_version = "1.0.0"
 # The extension id is also the Python package name; keep it as the folder name.
 id = "froxel_bridge"
 # The release workflow sets this to the Froxel version before it builds the zip.
-version = "0.3.5"
+version = "0.4.0"
 name = "Froxel Bridge"
 tagline = "Import a live Froxel voxel model and bake it into the scene"
 maintainer = "Roman Vasilyev"
