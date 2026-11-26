@@ -1550,6 +1550,9 @@ fn every_range_loop_runs_at_the_top_level_and_inside_a_function() {
             8,
         ),
         ("fn f(n) { for i in 0..n { set(i, 0, 0, 1); } } f(3);", 3),
+        ("let x0 = 2; for x in x0..=5 { set(x, 0, 0, 1); }", 4),
+        ("let x0 = 2; for x in x0..(5 + 1) { set(x, 0, 0, 1); }", 4),
+        ("fn f(x0) { for x in x0..=5 { set(x, 0, 0, 1); } } f(2);", 4),
         ("for i in range(2, 6) { set(i, 0, 0, 1); }", 4),
         (
             "fn f() { for i in range(0, 10, 3) { set(i, 0, 0, 1); } } f();",
