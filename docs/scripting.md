@@ -119,6 +119,14 @@ set_palette(#{index: 11, material: "metal", roughness: 0.3}); // keeps its colou
 Coordinates are integers from −512 to 512. The box is inclusive, and the two
 corners may arrive in either order. Slot `0` erases.
 
+Every function that takes the six corners `x0, y0, z0, x1, y1, z1` also
+takes the box in its options map instead, as `min: [x, y, z]` and
+`max: [x, y, z]` (or `x0`..`z1`), with the corners left out of the call:
+`fill_ellipsoid(slot, #{min: [0, 0, 0], max: [9, 5, 4]})`,
+`carve_box(#{min: lo, max: hi})`, `collision_box("hit", #{min: lo, max: hi})`.
+It is MCP's box in either form, through the same parser: `min` without
+`max`, or the corners and `min` and `max` both, is an error.
+
 ```rhai
 set(x, y, z, slot);
 fill_box(x0, y0, z0, x1, y1, z1, slot);
@@ -184,7 +192,9 @@ the MCP tool replies, without `voxels`.
 
 ```rhai
 fill_box(x0, y0, z0, x1, y1, z1, slot, #{mode: "paint"});
+fill_box(slot, #{min: [x0, y0, z0], max: [x1, y1, z1], mode: "paint"}); // the same box
 fill_ellipsoid(x0, y0, z0, x1, y1, z1, slot);            // options: mode
+fill_ellipsoid(slot, #{min: [x0, y0, z0], max: [x1, y1, z1]});
 fill_rounded_box(x0, y0, z0, x1, y1, z1, radius, slot);  // options: mode
 fill_tube(points, slot_or_slots);
 fill_tube(points, slot_or_slots, #{radius: 1.5, curve: "smooth"});

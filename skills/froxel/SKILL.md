@@ -100,6 +100,10 @@ server is still running. A server started with `--watch` reloads by itself.
   "#rrggbb"` (or `"#rrggbbaa"`) or `r`, `g`, `b`, so a concept's hex codes
   go in as they are.
 - An object is at most 256 cells per axis. A cell lies in `[-1024, 1024)`.
+- A box is inclusive, given as `x0, y0, z0, x1, y1, z1` or as
+  `min: [x, y, z]` and `max: [x, y, z]`, on every tool that takes one
+  (fills, `carve`, `generate`, `recolor`, `smooth`, `deform`, stone and wood
+  tools, `set_marker`), in `batch` items and Rhai options too. Give one form.
 - `fill_box`, `fill_rounded_box`, `fill_ellipsoid`, `fill_tube`, and
   `generate` write **every** cell in the shape, empty ones too. `mode: "empty"` adds without
   overwriting; `mode: "paint"` recolours only existing cells.

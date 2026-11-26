@@ -6,6 +6,7 @@
 //! one table, so they cannot drift apart. The argument schemas are in
 //! [`schema`].
 
+pub(crate) mod bounds;
 mod panel;
 mod ranges;
 pub(crate) mod schema;

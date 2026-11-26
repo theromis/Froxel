@@ -64,6 +64,7 @@ let done = carve_from_views([
 if hollow > 0 {
     let b = done.bounds;
     let inset = 3 + hollow;
-    carve_box(b.min[0] + inset, b.min[1] + inset, b.max[2] - 1,
-              b.max[0] - inset, b.max[1] - inset, b.max[2]);
+    // A box as min and max, the same as the six corners.
+    carve_box(#{min: [b.min[0] + inset, b.min[1] + inset, b.max[2] - 1],
+                max: [b.max[0] - inset, b.max[1] - inset, b.max[2]]});
 }

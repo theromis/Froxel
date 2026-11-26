@@ -736,7 +736,10 @@ bake_scene, carve_from_views, fit_to_views, import_mesh, and the rest
        froxel run preview --input model.vox --path model.png --preset game
        froxel run export_mesh --input model.vox --path model.glb --color-atlas true
        froxel run bake_scene --scene scene.json --path level.glb
-       froxel run deform --input in.vox --args deform.json --out out.vox"
+       froxel run deform --input in.vox --args deform.json --out out.vox
+       froxel run fill_box --min 0,0,0 --max 7,7,7 --palette 5 --out box.vox
+
+A box is x0..z1 or min and max ([x, y, z], inclusive) on every tool."
                 );
                 std::process::exit(0);
             }

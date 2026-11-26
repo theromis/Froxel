@@ -608,10 +608,11 @@ place in whichever part is active, with no position subtracted by hand.
 `sweep`, `set_palette`, and surface tools such as `planks` goes in one call, one undo step:
 
 ```
-batch operations=[{tool: "fill_box", arguments: {x0: 0, y0: 0, z0: 0, x1: 9, y1: 2, z1: 0, palette: 3}}, {tool: "carve", arguments: {shape: "box", x0: 4, y0: 0, z0: 0, x1: 4, y1: 2, z1: 0}}]
+batch operations=[{tool: "fill_box", arguments: {x0: 0, y0: 0, z0: 0, x1: 9, y1: 2, z1: 0, palette: 3}}, {tool: "carve", arguments: {shape: "box", min: [4, 0, 0], max: [4, 2, 0]}}]
 ```
 
-The first item that fails stops it, the error names the item, and the
+Every box takes either form, `x0`..`z1` or `min: [x, y, z]` and
+`max: [x, y, z]`, as the second item does. The first item that fails stops it, the error names the item, and the
 document stays as it was. Render and export outside it: tools that write
 files are refused.
 

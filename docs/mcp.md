@@ -174,6 +174,7 @@ The server declares `capabilities.tools.listChanged: true` and sends
 
 ```sh
 froxel run fill_box --x0 0 --y0 0 --z0 0 --x1 7 --y1 7 --z1 7 --palette 5 --out box.vox
+froxel run fill_ellipsoid --input box.vox --min 1,1,1 --max 6,6,6 --palette 2 --out box.vox
 froxel run smooth --input box.vox --json '{"x0": 0, "y0": 0, "z0": 0, "x1": 7, "y1": 7, "z1": 7}' --out box.vox
 froxel run --list
 froxel run deform --help
@@ -252,6 +253,23 @@ fractional world coordinates: a joint may sit on a corner, a cell centre, or
 anywhere between cells. Palette
 index `0` is empty and erases a cell. Indices `1..255` are colors. A cell
 must lie in `[-1024, 1024)`.
+
+A box is inclusive. Every tool that takes one (`fill_box`, `fill_ellipsoid`,
+`fill_rounded_box`, `generate`, `get_voxels`, `carve`, `smooth`,
+`recolor`, `deform`, `blend_shapes`, the stone and wood tools,
+`set_marker` `box`, and the rest that list `x0`..`z1` below) takes it in
+either of two forms with the same meaning: the corners `x0`, `y0`, `z0`,
+`x1`, `y1`, `z1`, or the lists `min: [x, y, z]` and `max: [x, y, z]`.
+`planks`' rectangle is `x0`, `y0`, `x1`, `y1` or `min: [x, y]` and
+`max: [x, y]`. Give one form: both are taken only when they agree, and
+`min` without `max`, part of the corners, or a tool that needs a box with
+neither is refused. A `batch` item, the control port, `froxel run`, and a
+Rhai options map take both forms alike (one shared parser,
+`src/ops/bounds.rs`).
+
+```json
+{"min": [0, 0, 0], "max": [9, 5, 4], "palette": 2}
+```
 
 `space: "world"` gives a tool world cells instead. The handler subtracts the
 active object's position (for `split_object`, the source's) before the tool

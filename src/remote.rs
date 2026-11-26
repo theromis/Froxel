@@ -1001,6 +1001,10 @@ fn apply_unguarded(session: &mut Session, method: &str, params: &Value) -> Resul
     } else {
         params.clone()
     };
+    // A box given as min and max becomes the corners every tool reads,
+    // before the world-space hand-off moves them.
+    let mut params = params;
+    crate::ops::bounds::normalize_method(method, &mut params)?;
     // split_parts reads its own space: its points are in the source's frame.
     if is_world(&params)? && method != "object.split_parts" {
         return apply_world(session, method, &params);

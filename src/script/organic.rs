@@ -17,9 +17,9 @@ use super::Scratch;
 use crate::remote::{self, Organic};
 
 /// The organic tools' bindings ([`super::bind`]): `deform` over the whole
-/// object or a box.
+/// object, or a box given as corners or in the options map (`min`, `max`).
 pub(super) const BINDINGS: &[Binding] = &[
-    Binding::new("deform", "deform", &[Str("op")]).excluded(&["x0", "y0", "z0", "x1", "y1", "z1"]),
+    Binding::new("deform", "deform", &[Str("op")]),
     Binding::new("deform", "deform", &[Corners, Str("op")]),
     Binding::new(
         "loft",

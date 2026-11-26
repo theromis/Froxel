@@ -115,6 +115,7 @@ pub(crate) fn tools() -> &'static [Value] {
     static TOOLS: OnceLock<Vec<Value>> = OnceLock::new();
     TOOLS.get_or_init(|| {
         let mut tools = build();
+        super::bounds::with_box_forms(&mut tools);
         with_ranges(&mut tools);
         with_panel_props(&mut tools);
         tools

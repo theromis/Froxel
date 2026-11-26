@@ -131,7 +131,9 @@ impl Binding {
         self
     }
 
-    /// Every schema argument the options map may not hold.
+    /// Every schema argument the options map may not hold. A box the call
+    /// gives as corners, or one the function leaves out, is not an option in
+    /// either form (`x0..z1` or `min` and `max`).
     pub(super) fn not_options(&self) -> Vec<&'static str> {
         let mut keys: Vec<&'static str> = self
             .positional
@@ -140,17 +142,50 @@ impl Binding {
             .chain(self.fixed.iter().map(|(key, _)| *key))
             .chain(self.excluded.iter().copied())
             .collect();
+        if crate::ops::bounds::CORNERS
+            .iter()
+            .all(|key| keys.contains(key))
+            && crate::ops::bounds::box_form(self.tool).is_some()
+        {
+            keys.extend(crate::ops::bounds::LIST_KEYS);
+        }
         keys.sort_unstable();
         keys.dedup();
         keys
     }
 
+    /// The binding has the six corners positionally.
+    fn takes_corners(&self) -> bool {
+        self.positional
+            .iter()
+            .any(|pos| matches!(pos, Pos::Corners))
+    }
+
+    /// The overload of a corners binding that takes its box in the options
+    /// map instead, as `min` and `max` (or `x0..z1`): the same positional
+    /// arguments less the corners, then the map.
+    fn boxed(&self) -> BoxedBinding {
+        BoxedBinding(*self)
+    }
+
     /// The tool's arguments from one call's values (`values`, in positional
     /// order) and options.
     fn args(&self, values: &mut [&mut Dynamic], opts: &Map) -> Fallible<Args> {
-        let mut args = tool_options_as(opts, self.tool, &self.not_options(), self.name)?;
+        self.args_with(values, opts, &self.not_options(), self.positional)
+    }
+
+    /// [`Self::args`] with the options map's excluded keys and the
+    /// positional arguments given.
+    fn args_with(
+        &self,
+        values: &mut [&mut Dynamic],
+        opts: &Map,
+        not_options: &[&str],
+        positional: &[Pos],
+    ) -> Fallible<Args> {
+        let mut args = tool_options_as(opts, self.tool, not_options, self.name)?;
         let mut at = 0;
-        for pos in self.positional {
+        for pos in positional {
             match *pos {
                 Pos::Corners => {
                     let mut corners = [0; 6];
@@ -220,10 +255,72 @@ impl Binding {
         for (key, value) in self.fixed {
             args.insert((*key).into(), Value::String((*value).into()));
         }
+        // A box as min and max becomes the corners, as remote::apply makes it.
+        crate::ops::bounds::normalize(self.tool, &mut args)
+            .map_err(|error| runtime(format!("{}: {error}", self.name)))?;
         // The schema's hard ranges, as remote::apply checks them.
         crate::ops::check_tool_ranges(self.tool, &args)
             .map_err(|error| runtime(format!("{}: {error}", self.name)))?;
         Ok(args)
+    }
+}
+
+/// A corners binding's overload with the box in its options map
+/// ([`Binding::boxed`]).
+#[derive(Clone, Copy, Debug)]
+struct BoxedBinding(Binding);
+
+impl BoxedBinding {
+    fn positional(&self) -> Vec<Pos> {
+        self.0
+            .positional
+            .iter()
+            .copied()
+            .filter(|pos| !matches!(pos, Pos::Corners))
+            .collect()
+    }
+
+    /// The options map holds the box; a binding with no other options
+    /// (`collision_box`) takes only the box there.
+    fn not_options(&self) -> Vec<&'static str> {
+        let box_keys: Vec<&str> = crate::ops::bounds::CORNERS
+            .iter()
+            .chain(crate::ops::bounds::LIST_KEYS.iter())
+            .copied()
+            .collect();
+        if self.0.forms == Forms::WithoutOptions {
+            return crate::ops::schema::properties(self.0.tool)
+                .map(|properties| {
+                    properties
+                        .keys()
+                        .map(String::as_str)
+                        .filter(|key| !box_keys.contains(key))
+                        .collect()
+                })
+                .unwrap_or_default();
+        }
+        self.0
+            .not_options()
+            .into_iter()
+            .filter(|key| !box_keys.contains(key))
+            .collect()
+    }
+
+    fn args(&self, values: &mut [&mut Dynamic], opts: &Map) -> Fallible<Args> {
+        let required = crate::ops::bounds::box_form(self.0.tool).is_some_and(|form| form.required);
+        if required
+            && !crate::ops::bounds::LIST_KEYS
+                .iter()
+                .chain(crate::ops::bounds::CORNERS.iter())
+                .any(|key| opts.contains_key(*key))
+        {
+            return Err(runtime(format!(
+                "{} needs its box: the six corners, or min: [x, y, z] and max: [x, y, z] in the options map",
+                self.0.name
+            )));
+        }
+        self.0
+            .args_with(values, opts, &self.not_options(), &self.positional())
     }
 }
 
@@ -271,6 +368,25 @@ pub(super) fn bind_in_context(
                     (&mut values[..], Map::new())
                 };
                 let args = binding.args(values, &opts)?;
+                run(&ctx, args)
+            },
+        );
+    }
+    if binding.takes_corners() {
+        let boxed = binding.boxed();
+        let mut types: Vec<TypeId> = boxed
+            .positional()
+            .iter()
+            .flat_map(|pos| pos.types())
+            .collect();
+        types.push(TypeId::of::<Map>());
+        engine.register_raw_fn(
+            binding.name,
+            types,
+            move |ctx: NativeCallContext, values: &mut [&mut Dynamic]| -> Fallible<Dynamic> {
+                let (last, values) = values.split_last_mut().expect("the options map");
+                let opts = last.take().cast::<Map>();
+                let args = boxed.args(values, &opts)?;
                 run(&ctx, args)
             },
         );

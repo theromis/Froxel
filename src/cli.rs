@@ -366,7 +366,8 @@ Any MCP tool on a .vox with no window: open --input (or start empty), make
 and save to --out when given. Arguments come from --args (a JSON file),
 --json (a JSON object), and --<argument> <value> flags, later ones winning:
 --min-feature 2 is minFeature 2, a,b,c is a list of numbers, true and false
-are booleans, and {...} or [...] is JSON. Every argument is checked
+are booleans, and {...} or [...] is JSON. A box is --x0 .. --z1 or
+--min x,y,z --max x,y,z. Every argument is checked
 against the tool's schema, as MCP checks it. The window's tools
 (screenshots, ui_inspect, ui_click) and reload are not run here.";
 

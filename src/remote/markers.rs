@@ -3,7 +3,7 @@
 
 use serde_json::{json, Value};
 
-use super::{opt_ivec3, opt_str, opt_vec3, req_str};
+use super::{opt_str, opt_vec3, req_str};
 use crate::state::{cell_box, check_direction, check_point, MarkerKind, Session};
 
 pub(super) fn set_marker(session: &mut Session, params: &Value) -> Result<Value, String> {
@@ -89,10 +89,6 @@ pub(crate) fn marker_kind(params: &Value) -> Result<MarkerKind, String> {
                 }
                 Ok(out)
             };
-            if let Some(min) = opt_ivec3(params, "min")? {
-                let max = opt_ivec3(params, "max")?.ok_or("max is required with min")?;
-                return Ok(cell_box(min, max));
-            }
             Ok(cell_box(
                 corner("x0", "y0", "z0")?,
                 corner("x1", "y1", "z1")?,
