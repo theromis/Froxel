@@ -169,67 +169,39 @@ fn bake_light(ui: &mut Ui, session: &mut Session) {
     if session.export.bake.is_none() {
         return;
     }
-    slider_f32(
-        ui,
-        session,
-        "Bake occlusion",
-        SliderTarget::BakeOcclusion,
-        0.0..=1.0,
-        2,
-    );
-    slider_f32(
-        ui,
-        session,
-        "Bake distance",
-        SliderTarget::BakeDistance,
-        1.0..=64.0,
-        0,
-    );
-    slider_i32(ui, session, "Bake rays", SliderTarget::BakeRays, 4..=256);
-    slider_f32(
-        ui,
-        session,
-        "Sun energy",
-        SliderTarget::BakeSunEnergy,
-        0.0..=4.0,
-        2,
-    );
-    slider_f32(
-        ui,
-        session,
-        "Ambient energy",
-        SliderTarget::BakeAmbientEnergy,
-        0.0..=4.0,
-        2,
-    );
-    slider_f32(
-        ui,
-        session,
-        "Sun softness",
-        SliderTarget::BakeSunSoftness,
-        0.0..=15.0,
-        1,
-    );
+    for (path, target) in [
+        ("bake.occlusion", SliderTarget::BakeOcclusion),
+        ("bake.distance", SliderTarget::BakeDistance),
+        ("bake.rays", SliderTarget::BakeRays),
+        ("bake.sunEnergy", SliderTarget::BakeSunEnergy),
+        ("bake.ambientEnergy", SliderTarget::BakeAmbientEnergy),
+        ("bake.sunSoftness", SliderTarget::BakeSunSoftness),
+    ] {
+        op_field_slider(ui, session, "export_mesh", path, target);
+    }
     let sun = session.sun_dir().to_array();
     if let Some(bake) = &mut session.export.bake {
         ui.horizontal_wrapped(|ui| {
             ui.color_edit_button_rgb(&mut bake.sun_color)
-                .on_hover_text("Sun colour");
+                .on_hover_text(crate::ops::field_ui("export_mesh", "bake.sunColor").tooltip());
             ui.color_edit_button_rgb(&mut bake.ambient_color)
-                .on_hover_text("Ambient colour");
+                .on_hover_text(crate::ops::field_ui("export_mesh", "bake.ambientColor").tooltip());
+            let from_light = crate::ops::field_ui("export_mesh", "bake.sunDirection");
             if ui
-                .button("Sun from Light")
-                .on_hover_text("Bake with the Light section's sun direction")
+                .button(from_light.label)
+                .on_hover_text(from_light.tooltip())
                 .clicked()
             {
                 bake.sun_direction = sun;
             }
         });
         ui.horizontal_wrapped(|ui| {
+            let preset = crate::ops::field_ui("export_mesh", "bake.preset");
             ui.add_sized(
                 [64.0, 16.0],
-                egui::Label::new(RichText::new("Light preset").small().color(DIM)),
-            );
+                egui::Label::new(RichText::new(preset.label).small().color(DIM)),
+            )
+            .on_hover_text(preset.tooltip());
             egui::ComboBox::from_id_salt("bake-preset")
                 .selected_text("Apply…")
                 .show_ui(ui, |ui| {

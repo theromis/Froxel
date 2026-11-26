@@ -165,6 +165,8 @@ pointer press and release, so every widget can be driven by MCP.
 ## Still hand-written
 
 - Window-only settings with no tool argument: One frame, NEE, RIS samples,
-  clamp, temporal smoothing, horizon, the sun's direction and disc, the
-  fields inside `bake`, and the generator form.
+  clamp, temporal smoothing, horizon, the sun's direction and disc, and the
+  generator form. (The fields inside `export_mesh` `bake` are
+  `ops::panel::FIELDS` rows, checked against the argument's description and
+  drawn by `op_field_slider`.)
 - The Rhai readers named under Rhai.

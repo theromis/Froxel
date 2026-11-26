@@ -444,3 +444,22 @@ fn every_panel_choice_names_arguments_of_its_tools() {
         assert!(!choice.label.is_empty() && !choice.hint.is_empty());
     }
 }
+
+/// Every panel field of an object argument is named in that argument's
+/// schema description, the only place the schema describes it.
+#[test]
+fn every_panel_field_is_named_in_its_argument() {
+    for field in panel::FIELDS {
+        let (key, name) = field.path.split_once('.').expect("key.field");
+        let description = schema::properties(field.tool).unwrap()[key]["description"]
+            .as_str()
+            .unwrap_or("");
+        assert!(
+            description.contains(name),
+            "{} {key} does not describe `{name}`",
+            field.tool
+        );
+        let prop = field_ui(field.tool, field.path);
+        assert!(!prop.label.is_empty() && !prop.hint.is_empty());
+    }
+}

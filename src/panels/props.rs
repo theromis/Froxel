@@ -115,6 +115,19 @@ pub(super) fn op_slider(
     slider(ui, session, prop.label, &prop, target);
 }
 
+/// [`op_slider`] for a field of an object argument (`bake.occlusion`),
+/// from `ops::panel::FIELDS`.
+pub(super) fn op_field_slider(
+    ui: &mut Ui,
+    session: &mut Session,
+    tool: &str,
+    path: &str,
+    target: SliderTarget,
+) {
+    let prop = crate::ops::field_ui(tool, path);
+    slider(ui, session, prop.label, &prop, target);
+}
+
 /// [`op_slider`] under another label, for an argument a tool shows more
 /// than once (the Tube tool's Start and End radius).
 pub(super) fn op_slider_as(

@@ -46,7 +46,8 @@
   MCP argument they set. Rhai functions take every option their MCP tool
   lists, from the same schema.
 - The Export options and the Render, Camera, Path tracer, and Sky rows that
-  `render` takes have tooltips from `export_mesh` and `render`.
+  `render` takes have tooltips from `export_mesh` and `render`; so do the
+  Bake light sliders, colours, and preset, from `export_mesh` `bake`.
 - MCP `ui_click` presses the Tube tool's toggles (Blade, Flat ends, Smooth)
   and its colour buttons; `ui_inspect` lists them as `op.fill_tube.*`.
 - MCP `ui_click` on a point with no listed control sends the window a real

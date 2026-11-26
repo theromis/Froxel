@@ -381,6 +381,29 @@ pub(crate) fn prop_ui(tool: &str, key: &str) -> PropUi {
     }
 }
 
+/// A field of an object argument as a panel shows it (`ops::panel::FIELDS`,
+/// such as `export_mesh` `bake.occlusion`), in the shape [`prop_ui`]
+/// returns. Panics on an unknown field.
+pub(crate) fn field_ui(tool: &str, path: &str) -> PropUi {
+    let field = panel::FIELDS
+        .iter()
+        .find(|field| field.tool == tool && field.path == path)
+        .unwrap_or_else(|| panic!("ops::panel has no field `{path}` of `{tool}`"));
+    PropUi {
+        tool: field.tool,
+        key: field.path,
+        label: field.label,
+        hint: field.hint,
+        soft: field.soft,
+        digits: field.digits.unwrap_or(0) as usize,
+        decimals: field.digits.map(|digits| digits as usize),
+        speed: None,
+        on: None,
+        integer: field.integer,
+        items: Vec::new(),
+    }
+}
+
 /// A panel's choice row of `tool` (`ops::panel::CHOICES`): its label and
 /// tooltip, the hint then the MCP arguments it sets. Panics on an unknown
 /// row, as [`prop_ui`] does.

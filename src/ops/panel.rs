@@ -461,3 +461,32 @@ pub(super) const CHOICES: &[PanelChoice] = &[
     PanelChoice { tools: &["optimize_to_views"], id: "colours", keys: &["downscale"], label: "Colours", hint: "Colours of the pixelation shared by every view (pixelate_views colors), eyes and pupils kept as accents." },
     PanelChoice { tools: &["paint_from_views"], id: "colours", keys: &["newSlots", "slots"], label: "Colours", hint: "Used: the slots the object already uses. New: up to N new colours clustered from the sheet's, in free slots, with eyes and mouths kept their own. Slots: the listed slots." },
 ];
+
+/// A field inside an object argument (`export_mesh` `bake`), as a panel
+/// shows it. The schema describes such an object in its description only,
+/// so `tests/ops.rs` checks each field is named there.
+pub(super) struct PanelField {
+    pub tool: &'static str,
+    /// `key.field`, such as `bake.occlusion`.
+    pub path: &'static str,
+    pub label: &'static str,
+    pub hint: &'static str,
+    pub soft: Option<(f64, f64)>,
+    pub digits: Option<u64>,
+    pub integer: bool,
+}
+
+/// Every panel-drawn field of an object argument.
+#[rustfmt::skip]
+pub(super) const FIELDS: &[PanelField] = &[
+    PanelField { tool: "export_mesh", path: "bake.occlusion", label: "Bake occlusion", hint: "How much a fully blocked texel darkens, 0..1.", soft: Some((0.0, 1.0)), digits: Some(2), integer: false },
+    PanelField { tool: "export_mesh", path: "bake.distance", label: "Bake distance", hint: "How far, in cells, a ray still finds an occluder.", soft: Some((1.0, 64.0)), digits: Some(0), integer: false },
+    PanelField { tool: "export_mesh", path: "bake.rays", label: "Bake rays", hint: "Occlusion rays per cell face; more is smoother and slower.", soft: Some((4.0, 256.0)), digits: Some(0), integer: true },
+    PanelField { tool: "export_mesh", path: "bake.sunEnergy", label: "Sun energy", hint: "Strength of the baked sun.", soft: Some((0.0, 4.0)), digits: Some(2), integer: false },
+    PanelField { tool: "export_mesh", path: "bake.ambientEnergy", label: "Ambient energy", hint: "Strength of the baked ambient light.", soft: Some((0.0, 4.0)), digits: Some(2), integer: false },
+    PanelField { tool: "export_mesh", path: "bake.sunSoftness", label: "Sun softness", hint: "The sun disc's half angle in degrees; 0 is a hard shadow.", soft: Some((0.0, 15.0)), digits: Some(1), integer: false },
+    PanelField { tool: "export_mesh", path: "bake.sunColor", label: "Sun colour", hint: "Colour of the baked sun.", soft: None, digits: None, integer: false },
+    PanelField { tool: "export_mesh", path: "bake.ambientColor", label: "Ambient colour", hint: "Colour of the baked ambient light.", soft: None, digits: None, integer: false },
+    PanelField { tool: "export_mesh", path: "bake.sunDirection", label: "Sun from Light", hint: "Bake with the Light section's sun direction.", soft: None, digits: None, integer: false },
+    PanelField { tool: "export_mesh", path: "bake.preset", label: "Light preset", hint: "Take the sun and ambient light of a lighting preset, such as old_pond.", soft: None, digits: None, integer: false },
+];
