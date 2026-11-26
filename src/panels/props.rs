@@ -102,44 +102,27 @@ fn title_case(item: &str) -> String {
         .unwrap_or_default()
 }
 
-/// A slider for a number argument over its soft range, with the schema's
-/// digits (whole steps for an integer), writing `target`.
-pub(super) fn op_slider(
-    ui: &mut Ui,
-    session: &mut Session,
-    tool: &str,
-    key: &str,
-    target: SliderTarget,
-) {
-    let prop = prop_ui(tool, key);
-    slider(ui, session, prop.label, &prop, target);
-}
-
-/// [`op_slider`] for a field of an object argument (`bake.occlusion`),
-/// from `ops::panel::FIELDS`.
-pub(super) fn op_field_slider(
-    ui: &mut Ui,
-    session: &mut Session,
-    tool: &str,
-    path: &str,
-    target: SliderTarget,
-) {
-    let prop = crate::ops::field_ui(tool, path);
+/// A slider for the argument `target` names (`SliderTarget::schema_prop`):
+/// over its registry range, with its digits (whole steps for an integer).
+pub(super) fn op_slider(ui: &mut Ui, session: &mut Session, target: SliderTarget) {
+    let prop = schema_prop(target);
     slider(ui, session, prop.label, &prop, target);
 }
 
 /// [`op_slider`] under another label, for an argument a tool shows more
 /// than once (the Tube tool's Start and End radius).
-pub(super) fn op_slider_as(
-    ui: &mut Ui,
-    session: &mut Session,
-    tool: &str,
-    key: &str,
-    label: &str,
-    target: SliderTarget,
-) {
-    let prop = prop_ui(tool, key);
+pub(super) fn op_slider_as(ui: &mut Ui, session: &mut Session, label: &str, target: SliderTarget) {
+    let prop = schema_prop(target);
     slider(ui, session, label, &prop, target);
+}
+
+fn schema_prop(target: SliderTarget) -> PropUi {
+    target.prop().unwrap_or_else(|| {
+        panic!(
+            "{} names no argument (SliderTarget::schema_prop)",
+            target.id()
+        )
+    })
 }
 
 fn slider(ui: &mut Ui, session: &mut Session, label: &str, prop: &PropUi, target: SliderTarget) {

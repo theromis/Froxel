@@ -464,8 +464,11 @@ refused.
 
 When the server runs with `--connect`, edits appear in the open editor.
 `set_view` moves its camera, `screenshot_viewport` captures it, and
-`ui_inspect` with `ui_click` drive the controls. In a headless session these
-tools fail; use `preview`, `render`, and `model_view` instead.
+`ui_inspect` with `ui_click` drive the controls: a listed control (a tool,
+a slider, a Tube toggle such as `op.fill_tube.caps`) is activated directly,
+and any other point gets a real pointer click, so checkboxes and combo boxes
+work too. In a headless session these tools fail; use `preview`, `render`,
+and `model_view` instead.
 
 ## Mistakes to avoid
 

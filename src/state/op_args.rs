@@ -93,10 +93,9 @@ impl Session {
     pub(crate) fn write_op_slider(&mut self, target: SliderTarget, value: f32) {
         let (tool, key) = target.op_arg().expect("a slider over a tool argument");
         let prop = crate::ops::prop_ui(tool, key);
-        let (min, max) = prop.soft.unwrap_or((f64::MIN, f64::MAX));
-        let value = f64::from(value).clamp(min, max);
+        let value = target.registry_clamp_f64(f64::from(value));
         let value = if prop.integer {
-            json!(value.round() as i64)
+            json!(value as i64)
         } else {
             json!(value)
         };
@@ -105,6 +104,68 @@ impl Session {
 }
 
 impl SliderTarget {
+    /// The tool argument (or `key.field`) a slider drawn from the registry
+    /// shows: its label, hint, and range come from there, and
+    /// [`Session::write_slider`] keeps a value inside that range.
+    pub(crate) fn schema_prop(self) -> Option<(&'static str, &'static str)> {
+        if let Some(arg) = self.op_arg() {
+            return Some(arg);
+        }
+        Some(match self {
+            SliderTarget::TubeStart | SliderTarget::TubeEnd => ("fill_tube", "radius"),
+            SliderTarget::SmoothIterations => ("smooth", "iterations"),
+            SliderTarget::SmoothFillAt => ("smooth", "fillAt"),
+            SliderTarget::SmoothRemoveAt => ("smooth", "removeAt"),
+            SliderTarget::ExportAo => ("export_mesh", "aoStrength"),
+            SliderTarget::ExportAoRadius => ("export_mesh", "aoRadius"),
+            SliderTarget::BakeOcclusion => ("export_mesh", "bake.occlusion"),
+            SliderTarget::BakeDistance => ("export_mesh", "bake.distance"),
+            SliderTarget::BakeRays => ("export_mesh", "bake.rays"),
+            SliderTarget::BakeSunEnergy => ("export_mesh", "bake.sunEnergy"),
+            SliderTarget::BakeAmbientEnergy => ("export_mesh", "bake.ambientEnergy"),
+            SliderTarget::BakeSunSoftness => ("export_mesh", "bake.sunSoftness"),
+            SliderTarget::MaxSamples => ("render", "samples"),
+            SliderTarget::Aperture => ("render", "aperture"),
+            SliderTarget::FocusDistance => ("render", "focus"),
+            SliderTarget::MaxBounces => ("render", "bounces"),
+            SliderTarget::SkyIntensity => ("render", "skyIntensity"),
+            SliderTarget::SunIntensity => ("render", "sunIntensity"),
+            _ => return None,
+        })
+    }
+
+    /// [`Self::schema_prop`] as the panel metadata it names.
+    pub(crate) fn prop(self) -> Option<crate::ops::PropUi> {
+        let (tool, path) = self.schema_prop()?;
+        Some(if path.contains('.') {
+            crate::ops::field_ui(tool, path)
+        } else {
+            crate::ops::prop_ui(tool, path)
+        })
+    }
+
+    /// `value` kept inside the registry range of a schema-drawn slider, and
+    /// whole for an integer one; other sliders keep their own clamps.
+    pub(crate) fn registry_clamp(self, value: f32) -> f32 {
+        self.registry_clamp_f64(f64::from(value)) as f32
+    }
+
+    /// [`Self::registry_clamp`] in the precision a tool argument keeps.
+    pub(crate) fn registry_clamp_f64(self, value: f64) -> f64 {
+        let Some(prop) = self.prop() else {
+            return value;
+        };
+        let Some((min, max)) = prop.soft else {
+            return value;
+        };
+        let value = value.clamp(min, max);
+        if prop.integer {
+            value.round()
+        } else {
+            value
+        }
+    }
+
     /// The tool argument a slider edits in [`Session::op_args`], for the
     /// sliders drawn by `panels/props.rs` from the schema.
     pub(crate) fn op_arg(self) -> Option<(&'static str, &'static str)> {

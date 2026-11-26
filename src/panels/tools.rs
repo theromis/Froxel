@@ -277,17 +277,10 @@ fn viewport_mirror(ui: &mut Ui, field: &mut crate::state::MirrorField) {
 fn tube(ui: &mut Ui, session: &mut Session) {
     // Labels, ranges, and tooltips are fill_tube's schema (ops::prop_ui).
     let tool = "fill_tube";
-    op_slider_as(
-        ui,
-        session,
-        tool,
-        "radius",
-        "Start",
-        SliderTarget::TubeStart,
-    );
-    op_slider_as(ui, session, tool, "radius", "End", SliderTarget::TubeEnd);
-    op_slider(ui, session, tool, "aspect", SliderTarget::TubeAspect);
-    op_slider(ui, session, tool, "roll", SliderTarget::TubeRoll);
+    op_slider_as(ui, session, "Start", SliderTarget::TubeStart);
+    op_slider_as(ui, session, "End", SliderTarget::TubeEnd);
+    op_slider(ui, session, SliderTarget::TubeAspect);
+    op_slider(ui, session, SliderTarget::TubeRoll);
     row(ui, |ui| {
         op_toggle(ui, session, tool, "profile");
         op_toggle(ui, session, tool, "caps");
@@ -322,8 +315,8 @@ fn tube(ui: &mut Ui, session: &mut Session) {
         );
     }
     match pattern.as_str() {
-        Some("rings") => op_slider(ui, session, tool, "period", SliderTarget::TubePeriod),
-        Some("stripes") => op_slider(ui, session, tool, "sectors", SliderTarget::TubeSectors),
+        Some("rings") => op_slider(ui, session, SliderTarget::TubePeriod),
+        Some("stripes") => op_slider(ui, session, SliderTarget::TubeSectors),
         _ => {}
     }
 }

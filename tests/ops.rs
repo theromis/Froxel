@@ -354,8 +354,7 @@ fn every_panel_widget_names_an_argument_with_panel_metadata() {
             "prop_check(",
             "op_toggle(",
             "op_choice(",
-            "op_slider(",
-            "op_slider_as(",
+            "choice_label(",
         ] {
             let mut from = flat.as_str();
             while let Some(hit) = from.find(widget) {

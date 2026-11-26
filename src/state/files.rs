@@ -1352,6 +1352,12 @@ impl Session {
     }
 
     pub(crate) fn write_slider(&mut self, target: SliderTarget, value: f32) {
+        // A schema-drawn slider's range is the registry's (ops::panel); a
+        // tool argument in op_args is kept in f64 by write_op_slider.
+        let value = match target.op_arg() {
+            Some(_) => value,
+            None => target.registry_clamp(value),
+        };
         let whole = value.round() as i32;
         match target {
             SliderTarget::BrushSize => self.brush_size = whole.clamp(1, 63),
@@ -1380,9 +1386,9 @@ impl Session {
             SliderTarget::ConiferCrown => self.conifer_crown = value.clamp(0.0, 1.0),
             SliderTarget::ConiferNeedle => self.conifer_needle = whole.clamp(1, 255),
             SliderTarget::ConiferSeed => self.conifer_seed = whole.clamp(0, 9999),
-            SliderTarget::MaxSamples => self.max_samples = whole.clamp(16, 8192),
-            SliderTarget::Aperture => self.aperture = value.clamp(0.0, 3.0),
-            SliderTarget::FocusDistance => self.focus_distance = value.clamp(1.0, 500.0),
+            SliderTarget::MaxSamples => self.max_samples = whole,
+            SliderTarget::Aperture => self.aperture = value,
+            SliderTarget::FocusDistance => self.focus_distance = value,
             SliderTarget::MaterialRoughness => {
                 self.material_mut().roughness = value.clamp(0.0, 1.0)
             }
@@ -1399,27 +1405,27 @@ impl Session {
                 self.material_mut().motion_amount = value.clamp(0.0, 4.0);
                 self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
             }
-            SliderTarget::MaxBounces => self.max_bounces = whole.clamp(1, 8),
+            SliderTarget::MaxBounces => self.max_bounces = whole,
             SliderTarget::NeeRis => self.nee_ris = whole.clamp(1, 32),
             SliderTarget::IndirectClamp => self.indirect_clamp = value.clamp(0.0, 32.0),
             SliderTarget::EmaFloor => self.ema_floor = value.clamp(0.0, 1.0),
-            SliderTarget::SkyIntensity => self.sky_intensity = value.clamp(0.0, 4.0),
+            SliderTarget::SkyIntensity => self.sky_intensity = value,
             SliderTarget::HorizonSoftness => self.horizon_softness = value.clamp(0.0, 15.0),
             SliderTarget::SunElevation => self.sun_elevation = value.clamp(-90.0, 90.0),
             SliderTarget::SunAzimuth => self.sun_azimuth = value.clamp(0.0, 360.0),
             SliderTarget::SunDisc => self.sun_disc = value.clamp(0.1, 30.0),
-            SliderTarget::SunIntensity => self.sun_intensity = value.clamp(0.0, 10.0),
-            SliderTarget::TubeStart => self.tube_start = value.clamp(0.5, 32.0),
-            SliderTarget::TubeEnd => self.tube_end = value.clamp(0.5, 32.0),
+            SliderTarget::SunIntensity => self.sun_intensity = value,
+            SliderTarget::TubeStart => self.tube_start = value,
+            SliderTarget::TubeEnd => self.tube_end = value,
             SliderTarget::TubeSecond => self.tube_second = whole.clamp(1, 255),
             SliderTarget::TubePeriod
             | SliderTarget::TubeSectors
             | SliderTarget::TubeAspect
             | SliderTarget::TubeRoll => self.write_op_slider(target, value),
-            SliderTarget::SmoothIterations => self.smooth_iterations = whole.clamp(1, 8),
-            SliderTarget::SmoothFillAt => self.smooth_fill_at = whole.clamp(1, 27),
-            SliderTarget::SmoothRemoveAt => self.smooth_remove_at = whole.clamp(-1, 25),
-            SliderTarget::ExportAo => self.export.ao_strength = value.clamp(0.0, 1.0),
+            SliderTarget::SmoothIterations => self.smooth_iterations = whole,
+            SliderTarget::SmoothFillAt => self.smooth_fill_at = whole,
+            SliderTarget::SmoothRemoveAt => self.smooth_remove_at = whole,
+            SliderTarget::ExportAo => self.export.ao_strength = value,
             SliderTarget::ExportAoRadius => {
                 self.export.ao_radius =
                     whole.clamp(0, crate::export::occlusion::MAX_RADIUS as i32) as u32;
@@ -1432,15 +1438,13 @@ impl Session {
             | SliderTarget::BakeSunSoftness => {
                 if let Some(bake) = &mut self.export.bake {
                     match target {
-                        SliderTarget::BakeOcclusion => bake.occlusion = value.clamp(0.0, 1.0),
-                        SliderTarget::BakeDistance => bake.distance = value.clamp(1.0, 64.0),
-                        SliderTarget::BakeRays => bake.rays = whole.clamp(4, 256) as u32,
-                        SliderTarget::BakeSunEnergy => bake.sun_energy = value.clamp(0.0, 4.0),
-                        SliderTarget::BakeAmbientEnergy => {
-                            bake.ambient_energy = value.clamp(0.0, 4.0)
-                        }
+                        SliderTarget::BakeOcclusion => bake.occlusion = value,
+                        SliderTarget::BakeDistance => bake.distance = value,
+                        SliderTarget::BakeRays => bake.rays = whole as u32,
+                        SliderTarget::BakeSunEnergy => bake.sun_energy = value,
+                        SliderTarget::BakeAmbientEnergy => bake.ambient_energy = value,
                         _ => {
-                            bake.sun_softness = value.clamp(0.0, 15.0);
+                            bake.sun_softness = value;
                             bake.sun_rays = if bake.sun_softness > 0.0 { 16 } else { 1 };
                         }
                     }

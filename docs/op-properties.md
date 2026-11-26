@@ -112,11 +112,14 @@ field.
 - Both note their buttons for `ui_inspect` and `ui_click` (ids
   `op.<tool>.<key>` and `op.<tool>.<key>.<item>`, actions
   `UiAction::OpToggle` and `UiAction::OpChoice`), so MCP can press them.
-- `op_slider(ui, session, tool, key, target)` and `op_slider_as(..., label)`:
-  a slider over the soft range with the schema's digits, integer for an
-  integer property, hint on the label. `SliderTarget::op_arg` names the
-  argument a slider edits, so `ui_inspect` and `ui_click` drive it as before,
-  and `write_slider` keeps the value inside the soft range.
+- `op_slider(ui, session, target)` and `op_slider_as(ui, session, label,
+  target)`: the slider target names its argument (`SliderTarget::schema_prop`,
+  a tool argument or a `key.field` of `ops::panel::FIELDS`), so the panel
+  passes only the target. The slider runs over the registry range with its
+  digits, integer for an integer property, hint on the label; `ui_inspect`
+  and `ui_click` drive it as before, and `write_slider` keeps every such value
+  inside that range (`SliderTarget::registry_clamp`), with no clamp numbers
+  of its own. `SliderTarget::op_arg` marks the ones stored in `op_args`.
   `op_slider_as` relabels a property a tool shows twice (the Tube tool's
   Start and End radius, which become each point's radius, so they stay
   session fields).
@@ -168,5 +171,5 @@ pointer press and release, so every widget can be driven by MCP.
   clamp, temporal smoothing, horizon, the sun's direction and disc, and the
   generator form. (The fields inside `export_mesh` `bake` are
   `ops::panel::FIELDS` rows, checked against the argument's description and
-  drawn by `op_field_slider`.)
+  drawn by `op_slider`.)
 - The Rhai readers named under Rhai.

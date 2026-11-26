@@ -2769,3 +2769,94 @@ fn one_frame_traces_again_once_the_view_holds_still() {
     session.yaw += 10.0;
     assert!(session.render_traces(7.0, true));
 }
+
+/// Every slider a panel draws with op_slider names its argument through
+/// SliderTarget::schema_prop, with a registry range, and write_slider keeps
+/// a value inside that range.
+#[test]
+fn schema_drawn_sliders_take_their_range_from_the_registry() {
+    use SliderTarget::*;
+    let targets = [
+        TubeStart,
+        TubeEnd,
+        TubeAspect,
+        TubeRoll,
+        TubePeriod,
+        TubeSectors,
+        SmoothIterations,
+        SmoothFillAt,
+        SmoothRemoveAt,
+        ExportAo,
+        ExportAoRadius,
+        BakeOcclusion,
+        BakeDistance,
+        BakeRays,
+        BakeSunEnergy,
+        BakeAmbientEnergy,
+        BakeSunSoftness,
+        MaxSamples,
+        Aperture,
+        FocusDistance,
+        MaxBounces,
+        SkyIntensity,
+        SunIntensity,
+    ];
+    let names = [
+        "TubeStart",
+        "TubeEnd",
+        "TubeAspect",
+        "TubeRoll",
+        "TubePeriod",
+        "TubeSectors",
+        "SmoothIterations",
+        "SmoothFillAt",
+        "SmoothRemoveAt",
+        "ExportAo",
+        "ExportAoRadius",
+        "BakeOcclusion",
+        "BakeDistance",
+        "BakeRays",
+        "BakeSunEnergy",
+        "BakeAmbientEnergy",
+        "BakeSunSoftness",
+        "MaxSamples",
+        "Aperture",
+        "FocusDistance",
+        "MaxBounces",
+        "SkyIntensity",
+        "SunIntensity",
+    ];
+    for target in targets {
+        let prop = target.prop().unwrap_or_else(|| panic!("{}", target.id()));
+        assert!(prop.soft.is_some(), "{} has no range", target.id());
+    }
+    // Every op_slider target in the panels is one of them.
+    for source in [
+        include_str!("../src/panels/render.rs"),
+        include_str!("../src/panels/tools.rs"),
+    ] {
+        for (_, rest) in source
+            .match_indices("op_slider")
+            .map(|(at, _)| ((), &source[at..]))
+        {
+            let call = &rest[..rest.find(')').unwrap_or(rest.len())];
+            if let Some(at) = call.find("SliderTarget::") {
+                let name: String = call[at + 14..]
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric())
+                    .collect();
+                assert!(
+                    names.contains(&name.as_str()),
+                    "op_slider of {name} has no schema_prop"
+                );
+            }
+        }
+    }
+    let mut session = Session::new();
+    session.write_slider(MaxSamples, 99_999.0);
+    assert_eq!(session.max_samples, 8192);
+    session.write_slider(SmoothRemoveAt, -7.0);
+    assert_eq!(session.smooth_remove_at, -1);
+    session.write_slider(TubeStart, 0.1);
+    assert_eq!(session.tube_start, 0.5);
+}

@@ -84,21 +84,9 @@ pub(super) fn export(ui: &mut Ui, session: &mut Session) {
             UiAction::Export(flag),
         );
     }
-    op_slider(
-        ui,
-        session,
-        "export_mesh",
-        "aoStrength",
-        SliderTarget::ExportAo,
-    );
+    op_slider(ui, session, SliderTarget::ExportAo);
     ui.add_enabled_ui(session.export.ao_strength > 0.0, |ui| {
-        op_slider(
-            ui,
-            session,
-            "export_mesh",
-            "aoRadius",
-            SliderTarget::ExportAoRadius,
-        );
+        op_slider(ui, session, SliderTarget::ExportAoRadius);
         ui.horizontal_wrapped(|ui| {
             let prop = crate::ops::prop_ui("export_mesh", "aoTarget");
             ui.add_sized(
@@ -169,15 +157,15 @@ fn bake_light(ui: &mut Ui, session: &mut Session) {
     if session.export.bake.is_none() {
         return;
     }
-    for (path, target) in [
-        ("bake.occlusion", SliderTarget::BakeOcclusion),
-        ("bake.distance", SliderTarget::BakeDistance),
-        ("bake.rays", SliderTarget::BakeRays),
-        ("bake.sunEnergy", SliderTarget::BakeSunEnergy),
-        ("bake.ambientEnergy", SliderTarget::BakeAmbientEnergy),
-        ("bake.sunSoftness", SliderTarget::BakeSunSoftness),
+    for target in [
+        SliderTarget::BakeOcclusion,
+        SliderTarget::BakeDistance,
+        SliderTarget::BakeRays,
+        SliderTarget::BakeSunEnergy,
+        SliderTarget::BakeAmbientEnergy,
+        SliderTarget::BakeSunSoftness,
     ] {
-        op_field_slider(ui, session, "export_mesh", path, target);
+        op_slider(ui, session, target);
     }
     let sun = session.sun_dir().to_array();
     if let Some(bake) = &mut session.export.bake {
@@ -256,7 +244,7 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
                 ui.selectable_value(&mut session.glass_mode, GlassMode::Absorption, "Absorption");
             });
     });
-    op_slider(ui, session, "render", "samples", SliderTarget::MaxSamples);
+    op_slider(ui, session, SliderTarget::MaxSamples);
     ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut session.render_one_frame, "One frame").on_hover_text(
             "Do not start over on every step of an orbit or edit: the edit view shows while the view changes, and a new frame starts once it holds still. Off renders live.",
@@ -314,9 +302,9 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
             .small()
             .color(DIM),
     );
-    op_slider(ui, session, "render", "aperture", SliderTarget::Aperture);
+    op_slider(ui, session, SliderTarget::Aperture);
     ui.add_enabled_ui(session.aperture > 0.0, |ui| {
-        op_slider(ui, session, "render", "focus", SliderTarget::FocusDistance);
+        op_slider(ui, session, SliderTarget::FocusDistance);
     });
     if ui.button("Save render…").clicked() {
         session.save_render();
@@ -527,7 +515,7 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
 
 pub(super) fn light(ui: &mut Ui, session: &mut Session) {
     section(ui, "Path tracer");
-    op_slider(ui, session, "render", "bounces", SliderTarget::MaxBounces);
+    op_slider(ui, session, SliderTarget::MaxBounces);
     ui.add_enabled_ui(session.stochastic_gi, |ui| {
         ui.checkbox(&mut session.power_weighted_nee, "Power-weighted NEE");
         slider_i32(ui, session, "RIS samples", SliderTarget::NeeRis, 1..=32);
@@ -551,13 +539,7 @@ pub(super) fn light(ui: &mut Ui, session: &mut Session) {
 
     section(ui, "Sky");
     prop_check(ui, "render", "atmospheric", &mut session.atmospheric_sky);
-    op_slider(
-        ui,
-        session,
-        "render",
-        "skyIntensity",
-        SliderTarget::SkyIntensity,
-    );
+    op_slider(ui, session, SliderTarget::SkyIntensity);
     ui.add_enabled_ui(!session.atmospheric_sky, |ui| {
         slider_f32(
             ui,
@@ -594,13 +576,7 @@ pub(super) fn light(ui: &mut Ui, session: &mut Session) {
         0.1..=30.0,
         1,
     );
-    op_slider(
-        ui,
-        session,
-        "render",
-        "sunIntensity",
-        SliderTarget::SunIntensity,
-    );
+    op_slider(ui, session, SliderTarget::SunIntensity);
     ui.horizontal_wrapped(|ui| {
         ui.add_sized(
             [96.0, 16.0],
@@ -676,9 +652,9 @@ pub(super) fn smooth(ui: &mut Ui, session: &mut Session) {
     let enabled = session.voxel_count() > 0 && session.editor_mode == EditorMode::Model;
     ui.add_enabled_ui(enabled, |ui| {
         section(ui, "Smooth");
-        op_slider(ui, session, "smooth", "iterations", SliderTarget::SmoothIterations);
-        op_slider(ui, session, "smooth", "fillAt", SliderTarget::SmoothFillAt);
-        op_slider(ui, session, "smooth", "removeAt", SliderTarget::SmoothRemoveAt);
+        op_slider(ui, session, SliderTarget::SmoothIterations);
+        op_slider(ui, session, SliderTarget::SmoothFillAt);
+        op_slider(ui, session, SliderTarget::SmoothRemoveAt);
         let scope = if session.picked.is_empty() {
             "Smooth object"
         } else {
