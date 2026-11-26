@@ -369,6 +369,9 @@ fn every_panel_widget_names_an_argument_with_panel_metadata() {
                 };
                 let (tool, key) = match (quoted(args[1]), args.get(2).and_then(|a| quoted(a))) {
                     (Some(tool), Some(key)) => (tool, key),
+                    // A prop_* row whose tool is a variable (mirror_row, the
+                    // Growth plant) is checked where the table merges.
+                    _ if widget.starts_with("prop_") || widget == "choice_label(" => continue,
                     _ => {
                         // op_* take the session, then `tool` (a variable
                         // for the Tube tool) and the key.
@@ -382,6 +385,11 @@ fn every_panel_widget_names_an_argument_with_panel_metadata() {
                         (tool, key)
                     }
                 };
+                if widget == "choice_label(" {
+                    let _ = choice_ui(&tool, &key);
+                    checked += 1;
+                    continue;
+                }
                 let prop = prop_ui(&tool, &key);
                 if matches!(
                     widget,
@@ -397,4 +405,42 @@ fn every_panel_widget_names_an_argument_with_panel_metadata() {
         }
     }
     assert!(checked > 300, "only {checked} panel widgets");
+}
+
+/// Every panel choice row names tools, and arguments one of them has, and
+/// no two rows of a tool share an id.
+#[test]
+fn every_panel_choice_names_arguments_of_its_tools() {
+    let mut seen = std::collections::HashSet::new();
+    for choice in panel::CHOICES {
+        for tool in choice.tools {
+            assert!(
+                schema::properties(tool).is_some(),
+                "{} names `{tool}`",
+                choice.id
+            );
+        }
+        assert!(
+            !choice.keys.is_empty() || choice.tools.len() > 1,
+            "{} sets no argument and picks no tool",
+            choice.id
+        );
+        for key in choice.keys {
+            assert!(
+                choice
+                    .tools
+                    .iter()
+                    .any(|tool| schema::properties(tool).unwrap().contains_key(*key)),
+                "{} sets `{key}`, which none of {:?} takes",
+                choice.id,
+                choice.tools
+            );
+        }
+        assert!(
+            seen.insert((choice.tools[0], choice.id)),
+            "{} twice",
+            choice.id
+        );
+        assert!(!choice.label.is_empty() && !choice.hint.is_empty());
+    }
 }

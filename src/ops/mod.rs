@@ -381,6 +381,22 @@ pub(crate) fn prop_ui(tool: &str, key: &str) -> PropUi {
     }
 }
 
+/// A panel's choice row of `tool` (`ops::panel::CHOICES`): its label and
+/// tooltip, the hint then the MCP arguments it sets. Panics on an unknown
+/// row, as [`prop_ui`] does.
+pub(crate) fn choice_ui(tool: &str, id: &str) -> (&'static str, String) {
+    let choice = panel::CHOICES
+        .iter()
+        .find(|choice| choice.tools[0] == tool && choice.id == id)
+        .unwrap_or_else(|| panic!("ops::panel has no choice `{id}` of `{tool}`"));
+    let names = if choice.keys.is_empty() {
+        choice.tools.join(", ")
+    } else {
+        format!("{} {}", choice.tools[0], choice.keys.join(", "))
+    };
+    (choice.label, format!("{} (MCP {names})", choice.hint))
+}
+
 /// The options map keys of a Rhai function that runs MCP `tool`: every
 /// argument except the ones it takes positionally, so a new schema argument
 /// is a new Rhai option with no edit in `src/script`.

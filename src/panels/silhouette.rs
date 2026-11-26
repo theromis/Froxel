@@ -7,14 +7,9 @@
 
 use egui::{RichText, Ui};
 
-use super::{prop_check, prop_drag, prop_label};
+use super::{choice_label, prop_check, prop_drag, prop_label};
 use super::{section, DIM};
 use crate::state::{EditorMode, Session, CAMERAS, SIDES};
-
-fn label(ui: &mut Ui, text: &str, tip: &str) {
-    ui.label(RichText::new(text).small().color(DIM))
-        .on_hover_text(tip);
-}
 
 fn background(ui: &mut Ui, id: &str, field: &mut crate::state::BackgroundField) {
     ui.horizontal_wrapped(|ui| {
@@ -277,7 +272,7 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
                 prop_label(ui, "carve_from_views", "background");
                 background(ui, "carve-background", &mut panel.background);
                 ui.end_row();
-                label(ui, "Colour", "From the views: each cell takes the pixel of the view whose surface is nearest, quantised to the palette. Off fills the active slot.");
+                choice_label(ui, "carve_from_views", "colour");
                 ui.checkbox(&mut panel.colour_views, "From views");
                 ui.end_row();
                 prop_label(ui, "carve_from_views", "shell");
@@ -286,7 +281,7 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
                 prop_label(ui, "carve_from_views", "smooth");
                 ui.add(egui::DragValue::new(&mut panel.smooth).range(0..=crate::tools::MAX_CARVE_PASSES as i32));
                 ui.end_row();
-                label(ui, "Depth", "How the depth maps are read. Hull places each image row's nearest pixel where the silhouettes are nearest in that row; Box spreads the map over the box, for a relief. Invert: black is near. Back: mirror the surface for the far side, when the opposite view has no map. Tolerance: cells in front of the surface that stay.");
+                choice_label(ui, "carve_from_views", "depth");
                 ui.horizontal_wrapped(|ui| {
                     egui::ComboBox::from_id_salt("carve-depth-calibrate")
                         .width(60.0)
@@ -309,7 +304,7 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
                     .on_hover_text("Tolerance: cells in front of a depth surface that stay.");
                 });
                 ui.end_row();
-                label(ui, "Depth parts", "Auto curve: fit the map's curve (gamma) to the silhouette contour, for a map not linear in depth such as Depth Anything's. Regions: calibrate each part of the map (one peak each, apart where the grey jumps or dips by more than Edge) on its own against the silhouettes, for a map that normalises each part like shading, as an image generator draws it.");
+                choice_label(ui, "carve_from_views", "depthParts");
                 ui.horizontal_wrapped(|ui| {
                     ui.checkbox(&mut panel.depth_auto_curve, "Auto curve")
                         .on_hover_text("gamma auto: the exponent whose calibration meets the silhouette contour best.");
@@ -323,7 +318,7 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
                     .on_hover_text("Edge: the grey step (0..1) between two regions, a jump or a valley between two peaks.");
                 });
                 ui.end_row();
-                label(ui, "Depth detail", "A second depth sheet laid out as the views: its regions give the curvature inside each part, and each row's depth map gives their order and offsets. Use the image generator's sheet here and Depth Anything's as the rows' maps.");
+                choice_label(ui, "carve_from_views", "depthDetail");
                 ui.horizontal_wrapped(|ui| {
                     ui.add(
                         egui::TextEdit::singleline(&mut panel.depth_detail)
@@ -414,7 +409,7 @@ pub(super) fn paint(ui: &mut Ui, session: &mut Session) {
                 prop_label(ui, "project_paint", "background");
                 background(ui, "paint-background", &mut panel.background);
                 ui.end_row();
-                label(ui, "Scale", "Fit stretches the image over the box as seen from the view; off places it at Cells / px, centred and standing on the box's bottom, as Carve from views does.");
+                choice_label(ui, "project_paint", "scale");
                 ui.horizontal_wrapped(|ui| {
                     ui.checkbox(&mut panel.fit, "Fit box");
                     ui.add_enabled(
@@ -460,10 +455,10 @@ pub(super) fn paint(ui: &mut Ui, session: &mut Session) {
                         .desired_width(90.0),
                 );
                 ui.end_row();
-                label(ui, "Colour", "From the image: each pixel quantised to the nearest palette slot. Off paints the active slot where the image is inked.");
+                choice_label(ui, "project_paint", "colour");
                 ui.checkbox(&mut panel.colour_image, "From image");
                 ui.end_row();
-                super::edit::mirror_row(ui, "paint-mirror", &mut panel.mirror);
+                super::edit::mirror_row(ui, "project_paint", "paint-mirror", &mut panel.mirror);
             });
         if ui
             .button("Paint")
@@ -556,10 +551,10 @@ pub(super) fn decal(ui: &mut Ui, session: &mut Session) {
                         .desired_width(90.0),
                 );
                 ui.end_row();
-                label(ui, "Colour", "From the image: each pixel quantised to the nearest palette slot. Off paints the active slot where the image is inked.");
+                choice_label(ui, "decal", "colour");
                 ui.checkbox(&mut panel.colour_image, "From image");
                 ui.end_row();
-                super::edit::mirror_row(ui, "decal-mirror", &mut panel.mirror);
+                super::edit::mirror_row(ui, "decal", "decal-mirror", &mut panel.mirror);
             });
         if ui
             .button("Lay decal")
@@ -723,7 +718,7 @@ pub(super) fn optimize(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
-                label(ui, "Colours", "Colours of the pixelation shared by every view (pixelate_views colors), eyes and pupils kept as accents.");
+                choice_label(ui, "optimize_to_views", "colours");
                 ui.add(egui::DragValue::new(&mut panel.colors).range(1..=32));
                 ui.end_row();
                 prop_label(ui, "optimize_to_views", "iterations");
@@ -765,14 +760,12 @@ pub(super) fn optimize(ui: &mut Ui, session: &mut Session) {
                 );
                 ui.end_row();
                 let clip = cfg!(feature = "clip");
-                label(ui, "Semantic", if clip {
-                    "CLIP: compare each view with the model's patch by patch and, in the patches least alike, let each view show its own colours, kept only when the views read more alike (faces, eyes, legs). Needs the CLIP ViT-B/32 weights at models/clip-vit-base-patch32.safetensors in Froxel's support folder. Rounds and patches tried per round."
-                } else {
-                    "CLIP semantic term: this froxel is built without the clip feature (cargo build --release --features clip-metal)."
-                });
+                prop_label(ui, "optimize_to_views", "semantic");
                 ui.add_enabled_ui(clip, |ui| {
                     ui.horizontal_wrapped(|ui| {
-                        ui.checkbox(&mut panel.semantic, "CLIP");
+                        ui.checkbox(&mut panel.semantic, "CLIP").on_disabled_hover_text(
+                            "This froxel is built without the clip feature (cargo build --release --features clip-metal).",
+                        );
                         ui.add_enabled(panel.semantic, egui::DragValue::new(&mut panel.semantic_rounds).range(0..=8))
                             .on_hover_text("Rounds");
                         ui.add_enabled(panel.semantic, egui::DragValue::new(&mut panel.semantic_patches).range(0..=64))
@@ -1026,7 +1019,7 @@ pub(super) fn paint_views(ui: &mut Ui, session: &mut Session) {
                 prop_label(ui, "paint_from_views", "mirror");
                 ui.checkbox(&mut panel.mirror, "Missing side");
                 ui.end_row();
-                label(ui, "Colours", "Used: the slots the object already uses. New: up to N new colours clustered from the sheet's, in free slots, with eyes and mouths kept their own. Slots: the listed slots.");
+                choice_label(ui, "paint_from_views", "colours");
                 ui.horizontal_wrapped(|ui| {
                     ui.selectable_value(&mut panel.colours, 0, "Used");
                     ui.selectable_value(&mut panel.colours, 1, "New");

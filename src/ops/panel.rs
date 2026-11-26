@@ -406,4 +406,58 @@ pub(super) const PANEL: &[PanelProp] = &[
     PanelProp { tool: "render", key: "atmospheric", label: "Atmospheric sky", hint: "Nishita single-scatter sky (Rayleigh and Mie), lit by the sun's colour and direction. Off: a flat horizon gradient.", soft: None, digits: None, speed: None },
     PanelProp { tool: "render", key: "skyIntensity", label: "Intensity", hint: "Sky intensity.", soft: Some((0.0, 4.0)), digits: Some(2), speed: None },
     PanelProp { tool: "render", key: "sunIntensity", label: "Intensity", hint: "Sun intensity.", soft: Some((0.0, 10.0)), digits: Some(2), speed: None },
+    PanelProp { tool: "recolor", key: "mirror", label: "Mirror", hint: "Paint both sides in one step: the tool runs again on the far side of a plane across the axis, on that side's own surface, with the picture mirrored. The plane is the object's centre unless At gives its coordinate in cells (a multiple of 0.5; cell c spans c..c+1, so 16 swaps cells 15 and 16).", soft: None, digits: None, speed: None },
+    PanelProp { tool: "surface_stroke", key: "mirror", label: "Mirror", hint: "Paint both sides in one step: the tool runs again on the far side of a plane across the axis, on that side's own surface, with the picture mirrored. The plane is the object's centre unless At gives its coordinate in cells (a multiple of 0.5; cell c spans c..c+1, so 16 swaps cells 15 and 16).", soft: None, digits: None, speed: None },
+    PanelProp { tool: "project_paint", key: "mirror", label: "Mirror", hint: "Paint both sides in one step: the tool runs again on the far side of a plane across the axis, on that side's own surface, with the picture mirrored. The plane is the object's centre unless At gives its coordinate in cells (a multiple of 0.5; cell c spans c..c+1, so 16 swaps cells 15 and 16).", soft: None, digits: None, speed: None },
+    PanelProp { tool: "decal", key: "mirror", label: "Mirror", hint: "Paint both sides in one step: the tool runs again on the far side of a plane across the axis, on that side's own surface, with the picture mirrored. The plane is the object's centre unless At gives its coordinate in cells (a multiple of 0.5; cell c spans c..c+1, so 16 swaps cells 15 and 16).", soft: None, digits: None, speed: None },
+    PanelProp { tool: "joints", key: "course", label: "Course", hint: "Course height range in cells with Courses; with Columns, the spacing of the bed joints across a column.", soft: None, digits: None, speed: None },
+    PanelProp { tool: "moss", key: "palettes", label: "Palettes", hint: "Moss slots, picked in patches. Empty is the active slot.", soft: None, digits: None, speed: None },
+    PanelProp { tool: "algae", key: "palettes", label: "Palettes", hint: "Algae slots from the bottom of the band to its top. Empty is the active slot.", soft: None, digits: None, speed: None },
+    PanelProp { tool: "vines", key: "palettes", label: "Palettes", hint: "Vine slots from the anchor to the tip; give them rising sway in Material. Empty is the active slot.", soft: None, digits: None, speed: None },
+    PanelProp { tool: "moss", key: "amount", label: "Amount", hint: "Coverage of the faces.", soft: Some((0.0, 1.0)), digits: Some(2), speed: None },
+    PanelProp { tool: "algae", key: "amount", label: "Amount", hint: "Coverage at the bottom of the band.", soft: Some((0.0, 1.0)), digits: Some(2), speed: None },
+    PanelProp { tool: "vines", key: "amount", label: "Amount", hint: "Share of top edge cells a strand starts from.", soft: Some((0.0, 1.0)), digits: Some(2), speed: None },
+    PanelProp { tool: "moss", key: "length", label: "Length", hint: "Curtain length range in cells with Caps, drape length with Cushions.", soft: None, digits: None, speed: None },
+    PanelProp { tool: "vines", key: "length", label: "Length", hint: "Strand length range in cells.", soft: None, digits: None, speed: None },
+    PanelProp { tool: "optimize_to_views", key: "semantic", label: "Semantic", hint: "CLIP: compare each view with the model's patch by patch and, in the patches least alike, let each view show its own colours, kept only when the views read more alike (faces, eyes, legs). Needs the CLIP ViT-B/32 weights at models/clip-vit-base-patch32.safetensors in Froxel's support folder. Rounds and patches tried per round.", soft: None, digits: None, speed: None },
+];
+
+/// A panel row that chooses between arguments, or between tools (Growth's
+/// Plant), rather than setting one: its label and hint, kept here with the
+/// arguments it touches so the panels name no text of their own.
+/// [`super::choice_ui`] reads it; `panels/props.rs` `choice_label` draws it.
+pub(super) struct PanelChoice {
+    /// The tools the row belongs to; the first is the one panels name.
+    pub tools: &'static [&'static str],
+    /// The row's name within its first tool.
+    pub id: &'static str,
+    /// The arguments the choice sets; each is an argument of one of the tools.
+    pub keys: &'static [&'static str],
+    pub label: &'static str,
+    pub hint: &'static str,
+}
+
+/// Every choice row of the panels.
+#[rustfmt::skip]
+pub(super) const CHOICES: &[PanelChoice] = &[
+    PanelChoice { tools: &["foliage"], id: "volume", keys: &["ellipsoids", "from"], label: "Volume", hint: "Ellipsoids: the crown's shape, a broad middle and a few lobes. From slots: the cells of a crown already sculpted, re-clustered; those no clump keeps are removed." },
+    PanelChoice { tools: &["import_mesh"], id: "fit", keys: &["size", "voxelSize", "scale"], label: "Fit", hint: "Size: cells along the longest axis. Voxel: metres per cell, so the mesh keeps its real size (0.08 for 0.08 m voxels). Scale: cells per file unit." },
+    PanelChoice { tools: &["import_mesh"], id: "maxTilt", keys: &["orient"], label: "Max tilt", hint: "Degrees Upright may move the mesh's up. A fish's thinnest axis lies flat, so a larger tilt would lay it on its side; past this the file's up stays." },
+    PanelChoice { tools: &["fill_box", "fill_ellipsoid", "fill_rounded_box"], id: "intersectShape", keys: &["mode"], label: "Shape", hint: "The shape inscribed in the selection's box. The active object keeps its cells inside it, as they are, and loses the rest." },
+    PanelChoice { tools: &["shell_plates"], id: "seams", keys: &["seamDepth", "seamWidth"], label: "Seams", hint: "The seam slot, or Groove to cut the seams Seam depth cells deep." },
+    PanelChoice { tools: &["reduce_palette"], id: "colours", keys: &["colors", "palette"], label: "Colours", hint: "Cluster: the object's colours become Colors clusters (k-means in Oklab), with small distinct accents such as eyes kept. Snap: every colour takes the nearest of the Palette list. Despeckle: only the majority filter." },
+    PanelChoice { tools: &["moss", "algae", "vines"], id: "plant", keys: &[], label: "Plant", hint: "Moss: caps on tops and curtains down faces, or separate cushions. Algae: a waterline band, dense low and thinning up. Vines: strands hanging from top edges." },
+    PanelChoice { tools: &["sweep"], id: "profile", keys: &["profile", "width", "height", "radius"], label: "Profile", hint: "A rounded rectangle standing on the path, or a polygon of u v points (u to the left of the path, v up). A cell is in when its centre is inside the profile at the nearest point of the path." },
+    PanelChoice { tools: &["sweep"], id: "erase", keys: &["palette"], label: "Erase", hint: "Remove the solid cells the sweep covers instead of filling: a slanted cut along a closed or curved outline. Palettes, Pattern, Period, Mode, and Seed do not apply." },
+    PanelChoice { tools: &["trim_outline"], id: "skinSlot", keys: &["skin"], label: "Slot", hint: "The skin's palette slot; 0 is the active slot." },
+    PanelChoice { tools: &["set_marker"], id: "kind", keys: &["kind"], label: "Kind", hint: "Point: the top centre of the selection. Box: a collision box over the selection. Connector: a joining end at the selection's centre." },
+    PanelChoice { tools: &["carve_from_views"], id: "colour", keys: &["palette", "slots"], label: "Colour", hint: "From the views: each cell takes the pixel of the view whose surface is nearest, quantised to the palette. Off fills the active slot." },
+    PanelChoice { tools: &["carve_from_views"], id: "depth", keys: &["views", "depthPath"], label: "Depth", hint: "How the depth maps are read. Hull places each image row's nearest pixel where the silhouettes are nearest in that row; Box spreads the map over the box, for a relief. Invert: black is near. Back: mirror the surface for the far side, when the opposite view has no map. Tolerance: cells in front of the surface that stay." },
+    PanelChoice { tools: &["carve_from_views"], id: "depthParts", keys: &["views"], label: "Depth parts", hint: "Auto curve: fit the map's curve (gamma) to the silhouette contour, for a map not linear in depth such as Depth Anything's. Regions: calibrate each part of the map (one peak each, apart where the grey jumps or dips by more than Edge) on its own against the silhouettes, for a map that normalises each part like shading, as an image generator draws it." },
+    PanelChoice { tools: &["carve_from_views"], id: "depthDetail", keys: &["views"], label: "Depth detail", hint: "A second depth sheet laid out as the views: its regions give the curvature inside each part, and each row's depth map gives their order and offsets. Use the image generator's sheet here and Depth Anything's as the rows' maps." },
+    PanelChoice { tools: &["project_paint"], id: "scale", keys: &["size", "cellsPerPixel"], label: "Scale", hint: "Fit stretches the image over the box as seen from the view; off places it at Cells / px, centred and standing on the box's bottom, as Carve from views does." },
+    PanelChoice { tools: &["project_paint"], id: "colour", keys: &["palette", "slots"], label: "Colour", hint: "From the image: each pixel quantised to the nearest palette slot. Off paints the active slot where the image is inked." },
+    PanelChoice { tools: &["decal"], id: "colour", keys: &["palette", "slots"], label: "Colour", hint: "From the image: each pixel quantised to the nearest palette slot. Off paints the active slot where the image is inked." },
+    PanelChoice { tools: &["optimize_to_views"], id: "colours", keys: &["downscale"], label: "Colours", hint: "Colours of the pixelation shared by every view (pixelate_views colors), eyes and pupils kept as accents." },
+    PanelChoice { tools: &["paint_from_views"], id: "colours", keys: &["newSlots", "slots"], label: "Colours", hint: "Used: the slots the object already uses. New: up to N new colours clustered from the sheet's, in free slots, with eyes and mouths kept their own. Slots: the listed slots." },
 ];

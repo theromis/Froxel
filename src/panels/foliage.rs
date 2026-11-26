@@ -1,15 +1,10 @@
 //! The Foliage inspector section: MCP `foliage`, a clustered tree crown.
 
-use egui::{RichText, Ui};
+use egui::Ui;
 
-use super::{prop_drag, prop_label, prop_slider};
-use super::{section, DIM};
+use super::section;
+use super::{choice_label, prop_drag, prop_label, prop_slider};
 use crate::state::{EditorMode, Session, FOLIAGE_SOURCES};
-
-fn label(ui: &mut Ui, text: &str, tip: &str) {
-    ui.label(RichText::new(text).small().color(DIM))
-        .on_hover_text(tip);
-}
 
 fn slots_field(ui: &mut Ui, text: &mut String, hint: &str) {
     ui.add(
@@ -30,7 +25,7 @@ pub(super) fn foliage(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Volume", "Ellipsoids: the crown's shape, a broad middle and a few lobes. From slots: the cells of a crown already sculpted, re-clustered; those no clump keeps are removed.");
+                choice_label(ui, "foliage", "volume");
                 ui.horizontal_wrapped(|ui| {
                     for (index, name) in FOLIAGE_SOURCES.iter().enumerate() {
                         ui.selectable_value(&mut panel.source, index, *name);

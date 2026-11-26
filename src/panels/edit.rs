@@ -5,15 +5,15 @@
 //! Components (MCP `components`), De-terrace (MCP `deterrace`), Reduce
 //! palette (MCP `reduce_palette`), and Split parts (MCP `split_parts`).
 
-use egui::{RichText, Ui};
+use egui::Ui;
 
-use super::{prop_check, prop_drag, prop_label};
-use super::{section, DIM};
+use super::section;
+use super::{choice_label, prop_check, prop_drag, prop_label};
 use crate::state::{EditorMode, Session, INTERSECT_SHAPES};
 
 /// The Mirror row (MCP `mirror`): on, the axis, and the plane.
-pub(super) fn mirror_row(ui: &mut Ui, id: &str, field: &mut crate::state::MirrorField) {
-    label(ui, "Mirror", "Paint both sides in one step: the tool runs again on the far side of a plane across the axis, on that side's own surface, with the picture mirrored. The plane is the object's centre unless At gives its coordinate in cells (a multiple of 0.5; cell c spans c..c+1, so 16 swaps cells 15 and 16).");
+pub(super) fn mirror_row(ui: &mut Ui, tool: &str, id: &str, field: &mut crate::state::MirrorField) {
+    prop_label(ui, tool, "mirror");
     ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut field.on, "");
         ui.add_enabled_ui(field.on, |ui| {
@@ -34,11 +34,6 @@ pub(super) fn mirror_row(ui: &mut Ui, id: &str, field: &mut crate::state::Mirror
         });
     });
     ui.end_row();
-}
-
-fn label(ui: &mut Ui, text: &str, tip: &str) {
-    ui.label(RichText::new(text).small().color(DIM))
-        .on_hover_text(tip);
 }
 
 /// MCP `split_object`: cells of the active object into another object.
@@ -134,7 +129,7 @@ pub(super) fn recolor(ui: &mut Ui, session: &mut Session) {
                         .desired_width(120.0),
                 );
                 ui.end_row();
-                mirror_row(ui, "recolor-mirror", &mut session.edit.recolor.mirror);
+                mirror_row(ui, "recolor", "recolor-mirror", &mut session.edit.recolor.mirror);
             });
         if ui
             .button("Recolor")
@@ -171,7 +166,7 @@ pub(super) fn intersect(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Shape", "The shape inscribed in the selection's box. The active object keeps its cells inside it, as they are, and loses the rest.");
+                choice_label(ui, "fill_box", "intersectShape");
                 egui::ComboBox::from_id_salt("intersect-shape")
                     .width(110.0)
                     .selected_text(INTERSECT_SHAPES[panel.shape.min(INTERSECT_SHAPES.len() - 1)].0)
@@ -246,7 +241,7 @@ pub(super) fn stroke(ui: &mut Ui, session: &mut Session) {
                 prop_label(ui, "surface_stroke", "palette");
                 ui.checkbox(&mut panel.groove, "Groove");
                 ui.end_row();
-                mirror_row(ui, "stroke-mirror", &mut panel.mirror);
+                mirror_row(ui, "surface_stroke", "stroke-mirror", &mut panel.mirror);
             });
         if ui
             .button("Stroke")
@@ -398,7 +393,7 @@ pub(super) fn plates(ui: &mut Ui, session: &mut Session) {
                     slots(ui, &mut panel.rim_slots, "rim");
                 });
                 ui.end_row();
-                label(ui, "Seams", "The seam slot, or Groove to cut the seams Seam depth cells deep.");
+                choice_label(ui, "shell_plates", "seams");
                 ui.horizontal_wrapped(|ui| {
                     ui.add_enabled(!panel.groove, egui::DragValue::new(&mut panel.seam).range(1..=255));
                     ui.checkbox(&mut panel.groove, "Groove");
@@ -498,7 +493,7 @@ pub(super) fn reduce(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Colours", "Cluster: the object's colours become Colors clusters (k-means in Oklab), with small distinct accents such as eyes kept. Snap: every colour takes the nearest of the Palette list. Despeckle: only the majority filter.");
+                choice_label(ui, "reduce_palette", "colours");
                 ui.horizontal_wrapped(|ui| {
                     ui.selectable_value(&mut panel.mode, 0, "Cluster");
                     ui.selectable_value(&mut panel.mode, 1, "Snap");
@@ -514,7 +509,11 @@ pub(super) fn reduce(ui: &mut Ui, session: &mut Session) {
                     ui.end_row();
                 } else if panel.mode == 1 {
                     prop_label(ui, "reduce_palette", "palette");
-                    ui.add(egui::TextEdit::singleline(&mut panel.palette).hint_text("3 4 #e8822a").desired_width(120.0));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut panel.palette)
+                            .hint_text("3 4 #e8822a")
+                            .desired_width(120.0),
+                    );
                     ui.end_row();
                 }
                 prop_label(ui, "reduce_palette", "despeckle");
@@ -524,12 +523,18 @@ pub(super) fn reduce(ui: &mut Ui, session: &mut Session) {
                 prop_drag(ui, "reduce_palette", "minSame", &mut panel.min_same);
                 ui.end_row();
                 prop_label(ui, "reduce_palette", "protect");
-                ui.add(egui::TextEdit::singleline(&mut panel.protect).hint_text("none").desired_width(90.0));
+                ui.add(
+                    egui::TextEdit::singleline(&mut panel.protect)
+                        .hint_text("none")
+                        .desired_width(90.0),
+                );
                 ui.end_row();
             });
         if ui
             .button("Reduce palette")
-            .on_hover_text("MCP reduce_palette over the selection's box, or the whole object. One undo step.")
+            .on_hover_text(
+                "MCP reduce_palette over the selection's box, or the whole object. One undo step.",
+            )
             .clicked()
         {
             session.reduce_from_panel();

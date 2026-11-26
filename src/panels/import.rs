@@ -1,15 +1,10 @@
 //! The Import mesh inspector section: MCP `import_mesh` from the editor.
 
-use egui::{RichText, Ui};
+use egui::Ui;
 
-use super::{prop_drag, prop_label};
-use super::{section, DIM};
+use super::section;
+use super::{choice_label, prop_drag, prop_label};
 use crate::state::{EditorMode, Session};
-
-fn label(ui: &mut Ui, text: &str, tip: &str) {
-    ui.label(RichText::new(text).small().color(DIM))
-        .on_hover_text(tip);
-}
 
 /// MCP `import_mesh`: a .glb, .gltf, or .obj voxelized with these options.
 pub(super) fn import(ui: &mut Ui, session: &mut Session) {
@@ -32,7 +27,7 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                     browse = ui.button("…").on_hover_text("Choose a mesh and import it.").clicked();
                 });
                 ui.end_row();
-                label(ui, "Fit", "Size: cells along the longest axis. Voxel: metres per cell, so the mesh keeps its real size (0.08 for 0.08 m voxels). Scale: cells per file unit.");
+                choice_label(ui, "import_mesh", "fit");
                 ui.horizontal_wrapped(|ui| {
                     for (index, name) in ["Size", "Voxel", "Scale"].into_iter().enumerate() {
                         ui.selectable_value(&mut panel.fit, index, name);
@@ -122,7 +117,7 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                 });
                 ui.end_row();
                 if panel.orient == 1 || panel.orient == 3 {
-                    label(ui, "Max tilt", "Degrees Upright may move the mesh's up. A fish's thinnest axis lies flat, so a larger tilt would lay it on its side; past this the file's up stays.");
+                    choice_label(ui, "import_mesh", "maxTilt");
                     ui.add(egui::DragValue::new(&mut panel.max_tilt).range(0.0..=180.0).speed(1.0).suffix("°"));
                     ui.end_row();
                 }

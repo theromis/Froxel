@@ -236,3 +236,11 @@ pub(super) fn prop_action_checkbox(
         .on_hover_text(prop.tooltip());
     super::run_action(session, id, prop.label, resp, action);
 }
+
+/// A grid row's label for a panel row that chooses between arguments (or
+/// tools), from `ops::panel::CHOICES`.
+pub(super) fn choice_label(ui: &mut Ui, tool: &str, id: &str) {
+    let (label, tooltip) = crate::ops::choice_ui(tool, id);
+    ui.label(RichText::new(label).small().color(DIM))
+        .on_hover_text(tooltip);
+}

@@ -5,18 +5,13 @@
 
 use egui::{RichText, Ui};
 
-use super::{prop_drag, prop_label, prop_slider};
+use super::{choice_label, prop_drag, prop_label, prop_slider};
 use super::{section, DIM};
 use crate::state::{
     EditorMode, MarkerKind, Plant, Session, BARK_ALONG, DIRECTIONS, FACINGS, RADIAL_AXES,
     RADIAL_ENDS, RADIAL_KINDS, RADIAL_PROFILES, RELIEF_FACINGS,
 };
 use crate::tools::JointPattern;
-
-fn label(ui: &mut Ui, text: &str, tip: &str) {
-    ui.label(RichText::new(text).small().color(DIM))
-        .on_hover_text(tip);
-}
 
 /// The button text: over the selection, or the whole object.
 fn scope(session: &Session, verb: &str) -> String {
@@ -122,12 +117,7 @@ pub(super) fn joints(ui: &mut Ui, session: &mut Session) {
                 range_f32(ui, &mut panel.spacing, 2.0..=128.0);
                 ui.end_row();
                 if panel.pattern != JointPattern::Cracks {
-                    let tip = if panel.pattern == JointPattern::Courses {
-                        "Course height range in cells."
-                    } else {
-                        "Spacing of the bed joints across a column, in cells."
-                    };
-                    label(ui, "Course", tip);
+                    prop_label(ui, "joints", "course");
                     range_i32(ui, &mut panel.course, 1..=128);
                     ui.end_row();
                 } else {
@@ -610,7 +600,7 @@ pub(super) fn growth(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Plant", "Moss: caps on tops and curtains down faces, or separate cushions. Algae: a waterline band, dense low and thinning up. Vines: strands hanging from top edges.");
+                choice_label(ui, "moss", "plant");
                 ui.horizontal_wrapped(|ui| {
                     for (plant, name) in [
                         (Plant::Moss, "Moss"),
@@ -634,21 +624,17 @@ pub(super) fn growth(ui: &mut Ui, session: &mut Session) {
                     });
                     ui.end_row();
                 }
-                let tip = match panel.plant {
-                    Plant::Moss => "Moss slots, picked in patches. Empty is the active slot.",
-                    Plant::Algae => "Algae slots from the bottom of the band to its top. Empty is the active slot.",
-                    Plant::Vines => "Vine slots from the anchor to the tip; give them rising sway in Material. Empty is the active slot.",
+                // Each plant is its own tool, with its own wording.
+                let plant = match panel.plant {
+                    Plant::Moss => "moss",
+                    Plant::Algae => "algae",
+                    Plant::Vines => "vines",
                 };
-                label(ui, "Palettes", tip);
+                prop_label(ui, plant, "palettes");
                 slots_field(ui, &mut panel.palettes, "active slot");
                 ui.end_row();
-                let tip = match panel.plant {
-                    Plant::Moss => "Coverage of the faces.",
-                    Plant::Algae => "Coverage at the bottom of the band.",
-                    Plant::Vines => "Share of top edge cells a strand starts from.",
-                };
-                label(ui, "Amount", tip);
-                ui.add(egui::Slider::new(&mut panel.amount, 0.0..=1.0).max_decimals(2));
+                prop_label(ui, plant, "amount");
+                prop_slider(ui, plant, "amount", &mut panel.amount);
                 ui.end_row();
                 prop_label(ui, "moss", "noise");
                 prop_slider(ui, "moss", "noise", &mut panel.noise);
@@ -717,14 +703,7 @@ pub(super) fn growth(ui: &mut Ui, session: &mut Session) {
                     ui.end_row();
                 }
                 if panel.plant != Plant::Algae {
-                    let tip = if panel.plant == Plant::Moss && panel.cushions {
-                        "Drape length range in cells."
-                    } else if panel.plant == Plant::Moss {
-                        "Curtain length range in cells."
-                    } else {
-                        "Strand length range in cells."
-                    };
-                    label(ui, "Length", tip);
+                    prop_label(ui, plant, "length");
                     range_i32(ui, &mut panel.length, 1..=128);
                     ui.end_row();
                 }
@@ -775,7 +754,7 @@ pub(super) fn sweep(ui: &mut Ui, session: &mut Session) {
                 prop_label(ui, "sweep", "curve");
                 ui.checkbox(&mut panel.smooth, "Smooth");
                 ui.end_row();
-                label(ui, "Profile", "A rounded rectangle standing on the path, or a polygon of u v points (u to the left of the path, v up). A cell is in when its centre is inside the profile at the nearest point of the path.");
+                choice_label(ui, "sweep", "profile");
                 ui.horizontal_wrapped(|ui| {
                     ui.selectable_value(&mut panel.polygon, false, "Rectangle");
                     ui.selectable_value(&mut panel.polygon, true, "Polygon");
@@ -787,16 +766,24 @@ pub(super) fn sweep(ui: &mut Ui, session: &mut Session) {
                     ui.end_row();
                 } else {
                     prop_label(ui, "sweep", "width");
-                    ui.add(egui::DragValue::new(&mut panel.width).range(0.5..=512.0).speed(0.1));
+                    ui.add(
+                        egui::DragValue::new(&mut panel.width)
+                            .range(0.5..=512.0)
+                            .speed(0.1),
+                    );
                     ui.end_row();
                     prop_label(ui, "sweep", "height");
-                    ui.add(egui::DragValue::new(&mut panel.height).range(0.5..=512.0).speed(0.1));
+                    ui.add(
+                        egui::DragValue::new(&mut panel.height)
+                            .range(0.5..=512.0)
+                            .speed(0.1),
+                    );
                     ui.end_row();
                     prop_label(ui, "sweep", "radius");
                     prop_drag(ui, "sweep", "radius", &mut panel.radius);
                     ui.end_row();
                 }
-                label(ui, "Erase", "Remove the solid cells the sweep covers instead of filling: a slanted cut along a closed or curved outline. Palettes, Pattern, Period, Mode, and Seed do not apply.");
+                choice_label(ui, "sweep", "erase");
                 ui.checkbox(&mut panel.erase, "Erase");
                 ui.end_row();
                 prop_label(ui, "sweep", "palettes");
@@ -831,7 +818,11 @@ pub(super) fn sweep(ui: &mut Ui, session: &mut Session) {
             {
                 session.sweep_point_at_selection();
             }
-            let name = if session.stone.sweep.erase { "Erase" } else { "Sweep" };
+            let name = if session.stone.sweep.erase {
+                "Erase"
+            } else {
+                "Sweep"
+            };
             if ui
                 .button(name)
                 .on_hover_text("MCP sweep along the points; Erase is its palette 0. One undo step.")
@@ -878,7 +869,7 @@ pub(super) fn trim(ui: &mut Ui, session: &mut Session) {
                 ui.checkbox(&mut panel.skin, "New skin");
                 ui.end_row();
                 if panel.skin {
-                    label(ui, "Slot", "The skin's palette slot; 0 is the active slot.");
+                    choice_label(ui, "trim_outline", "skinSlot");
                     ui.add(egui::DragValue::new(&mut panel.slot).range(0..=255));
                     ui.end_row();
                     prop_label(ui, "trim_outline", "thickness");
@@ -963,7 +954,7 @@ pub(super) fn markers(ui: &mut Ui, session: &mut Session) {
             prop_label(ui, "set_marker", "name");
             ui.add(egui::TextEdit::singleline(&mut panel.name).desired_width(120.0));
             ui.end_row();
-            label(ui, "Kind", "Point: the top centre of the selection. Box: a collision box over the selection. Connector: a joining end at the selection's centre.");
+            choice_label(ui, "set_marker", "kind");
             ui.horizontal_wrapped(|ui| {
                 for (index, name) in ["Point", "Box", "Connector"].into_iter().enumerate() {
                     ui.selectable_value(&mut panel.kind, index, name);
