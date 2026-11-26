@@ -45,6 +45,8 @@
 - MCP `ui_click` on a point with no listed control sends the window a real
   pointer press and release, so any widget there (a checkbox, a combo box,
   a button) is clicked; before, it was an error.
+- Rhai `set_palette(#{...})` refuses a key `set_palette` does not take when
+  the script runs, naming it, instead of when the run is replayed.
 
 ## 0.4.0 – 2026-11-25
 

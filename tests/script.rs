@@ -1641,6 +1641,7 @@ fn every_binding_is_declared_against_its_tool_schema() {
         super::silhouette::BINDINGS,
         super::document::BINDINGS,
         super::markers::BINDINGS,
+        super::import::BINDINGS,
     ]
     .concat();
     assert!(all.len() >= 45, "only {} bindings", all.len());
@@ -1693,4 +1694,10 @@ fn clear_object_empties_the_run_object_and_refuses_it_by_name() {
         err.contains("clear_object() empties the object being written"),
         "{err}"
     );
+}
+
+#[test]
+fn set_palette_refuses_a_misspelt_key_when_the_script_runs() {
+    let err = run_cells("set_palette(#{index: 2, colour: \"#ff0000\"});").unwrap_err();
+    assert!(err.contains("set_palette has no option `colour`"), "{err}");
 }

@@ -32,6 +32,9 @@ pub(super) enum Pos {
     Triple(&'static str),
     /// Any value, as JSON.
     Any(&'static str),
+    /// A value of the function's own that is no tool argument (`voxelize`'s
+    /// mesh): handed to the runner under this key, which takes it out.
+    Own(&'static str),
     /// A slot (`.0`) or a list of slots (`.1`), by the value's type.
     Slots(&'static str, &'static str),
 }
@@ -49,6 +52,7 @@ impl Pos {
                 vec![key]
             }
             Pos::Slots(one, many) => vec![one, many],
+            Pos::Own(_) => Vec::new(),
         }
     }
 
@@ -59,7 +63,9 @@ impl Pos {
             Pos::List(_) => vec![TypeId::of::<Array>()],
             Pos::Str(_) => vec![TypeId::of::<ImmutableString>()],
             Pos::Triple(_) => vec![TypeId::of::<Dynamic>(); 3],
-            Pos::Number(_) | Pos::Any(_) | Pos::Slots(..) => vec![TypeId::of::<Dynamic>()],
+            Pos::Number(_) | Pos::Any(_) | Pos::Own(_) | Pos::Slots(..) => {
+                vec![TypeId::of::<Dynamic>()]
+            }
         }
     }
 }
@@ -190,7 +196,7 @@ impl Binding {
                     args.insert(key.into(), Value::Array(point));
                     at += 3;
                 }
-                Pos::List(key) | Pos::Any(key) => {
+                Pos::List(key) | Pos::Any(key) | Pos::Own(key) => {
                     args.insert(key.into(), json(&*values[at])?);
                     at += 1;
                 }

@@ -14,31 +14,36 @@ use std::rc::Rc;
 use rhai::{Array, Dynamic, Engine, Map};
 use serde_json::Value;
 
+use super::bind::{bind, Binding, Pos::*};
 use super::document::dynamic;
-use super::shapes::{tool_options_as, Args, Fallible};
-use super::{number, runtime, Scratch};
+use super::shapes::Args;
+use super::{number, Scratch};
 use crate::import::{Mesh, Up};
 use crate::remote;
 
+/// `voxelize(mesh, opts)`: `import_mesh`'s options on a mesh the script
+/// builds, instead of a file ([`super::bind`]).
+pub(super) const BINDINGS: &[Binding] = &[Binding::new("voxelize", "import_mesh", &[Own("mesh")])
+    .excluded(&["name", "newObject", "path"])];
+
 pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
-    for with_opts in [false, true] {
+    for binding in BINDINGS {
         let state = scratch.clone();
-        let run = move |mesh: &Map, opts: &Map| -> Fallible<Map> {
-            // import_mesh's options; the mesh is the first argument, not a path.
-            let args = tool_options_as(
-                opts,
-                "import_mesh",
-                &["name", "newObject", "path"],
-                "voxelize",
-            )?;
-            let mesh = mesh_of(mesh).map_err(runtime)?;
-            state.borrow_mut().voxelize(&mesh, args).map_err(runtime)
-        };
-        if with_opts {
-            engine.register_fn("voxelize", move |mesh: Map, opts: Map| run(&mesh, &opts));
-        } else {
-            engine.register_fn("voxelize", move |mesh: Map| run(&mesh, &Map::new()));
-        }
+        bind(engine, *binding, move |mut args| {
+            let mesh = match args.remove("mesh") {
+                Some(Value::Object(mesh)) => mesh,
+                _ => {
+                    return Err(
+                        "voxelize mesh must be a map of positions, triangles, and colors".into(),
+                    )
+                }
+            };
+            let mesh = mesh_of(&super::document::dynamic(&Value::Object(mesh)).cast::<Map>())?;
+            state
+                .borrow_mut()
+                .voxelize(&mesh, args)
+                .map(Dynamic::from_map)
+        });
     }
 }
 

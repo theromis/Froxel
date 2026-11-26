@@ -15,7 +15,7 @@ use rhai::{Array, Dynamic, Engine, EvalAltResult, Map, NativeCallContext, INT};
 use serde_json::{json, Value};
 
 use super::bind::{bind_in_context, Binding, Pos::*};
-use super::shapes::{json, Args};
+use super::shapes::Args;
 use super::{runtime, BuiltKey, Scratch};
 use crate::remote;
 use crate::state::Session;
@@ -140,6 +140,10 @@ pub(super) const BINDINGS: &[Binding] = &[
     )
     .without_options(),
     Binding::new("remove_clip", "remove_clip", &[Str("name")]).without_options(),
+    // set_palette(#{index, color}) is the tool's arguments as one map;
+    // set_palette([...]) its entries.
+    Binding::new("set_palette", "set_palette", &[]).with_options_only(),
+    Binding::new("set_palette", "set_palette", &[List("entries")]).without_options(),
 ];
 
 /// Why a script cannot remove or clear the object it writes.
@@ -277,23 +281,6 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
             }
         });
     }
-
-    let state = scratch.clone();
-    engine.register_fn(
-        "set_palette",
-        move |ctx: NativeCallContext, entry: Map| -> Fallible<()> {
-            let params = json(&Dynamic::from_map(entry))?;
-            record(&state, &ctx, "set_palette", "palette.set", params)
-        },
-    );
-    let state = scratch.clone();
-    engine.register_fn(
-        "set_palette",
-        move |ctx: NativeCallContext, entries: Array| -> Fallible<()> {
-            let params = json!({"entries": json(&Dynamic::from_array(entries))?});
-            record(&state, &ctx, "set_palette", "palette.set", params)
-        },
-    );
 
     let state = scratch.clone();
     engine.register_fn("list_bones", move || -> Array {
