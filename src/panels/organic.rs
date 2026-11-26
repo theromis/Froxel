@@ -8,11 +8,6 @@ use super::{prop_drag, prop_label};
 use super::{section, DIM};
 use crate::state::{EditorMode, Session, DEFORM_OPS, DIRECTIONS};
 
-fn label(ui: &mut Ui, text: &str, tip: &str) {
-    ui.label(RichText::new(text).small().color(DIM))
-        .on_hover_text(tip);
-}
-
 fn number(ui: &mut Ui, value: &mut f32, range: std::ops::RangeInclusive<f32>, speed: f64) {
     ui.add(
         egui::DragValue::new(value)
@@ -94,7 +89,7 @@ pub(super) fn deform(ui: &mut Ui, session: &mut Session) {
                         ui.end_row();
                     }
                     2 => {
-                        label(ui, "Angle", "Degrees of twist over the length.");
+                        prop_label(ui, "deform", "angle");
                         number(ui, &mut panel.angle, -2880.0..=2880.0, 1.0);
                         ui.end_row();
                     }

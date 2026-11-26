@@ -711,7 +711,8 @@ pub(super) fn growth(ui: &mut Ui, session: &mut Session) {
                     prop_label(ui, "moss", "curtains");
                     prop_slider(ui, "moss", "curtains", &mut panel.curtains);
                     ui.end_row();
-                    label(ui, "Thickness", "Cushion thickness on tops.");
+                    // Caps take 1..=3, cushions 1..=4 (remote::stone).
+                    prop_label(ui, "moss", "thickness");
                     ui.add(egui::Slider::new(&mut panel.thickness, 1..=3));
                     ui.end_row();
                 }
