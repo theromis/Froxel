@@ -42,6 +42,9 @@
   `render` takes have tooltips from `export_mesh` and `render`.
 - MCP `ui_click` presses the Tube tool's toggles (Blade, Flat ends, Smooth)
   and its colour buttons; `ui_inspect` lists them as `op.fill_tube.*`.
+- MCP `ui_click` on a point with no listed control sends the window a real
+  pointer press and release, so any widget there (a checkbox, a combo box,
+  a button) is clicked; before, it was an error.
 
 ## 0.4.0 – 2026-11-25
 

@@ -401,7 +401,7 @@ tracer. A file with no scene graph still loads its first model.
 | `screenshot_viewport` | — | PNG of the 3D viewport, including its mode chips. Connected mode only |
 | `screenshot_region` | `x`, `y`, `width`, `height` | PNG of a rectangle in window points. Connected mode only |
 | `ui_inspect` | — | Previous frame's controls, tool, mode, active object, voxel count, and status. Connected mode only |
-| `ui_click` | `x`, `y` | Click the topmost registered control. A viewport hit stamps the active tool. A slider sets its value from the point. A palette cell selects that slot. Connected mode only |
+| `ui_click` | `x`, `y` | Click the topmost registered control. A viewport hit stamps the active tool. A slider sets its value from the point. A palette cell selects that slot. Elsewhere, a real pointer click. Connected mode only |
 | `set_marker` | `name` | Name a point, a collision box, or a connector on an object: `kind` (`point`, `box`, `connector`), `point`, the box's inclusive cells `x0`..`z1`, `direction`, `object`. Saved in the `.vox` and exported as a glTF node. A marker of the same name is replaced. One undo step |
 | `remove_marker` | `name` or `all` | Remove one marker, or every marker. One undo step |
 | `list_markers` | — | Markers with `local`, `world`, and `gltf` coordinates |
@@ -1483,7 +1483,9 @@ the client area. The reply also includes `tool`, `toolMode`, `editorMode`,
 region that contains the point. A hit on the viewport is a press and release
 of the active tool. A hit on a slider sets that slider from how far `x` is
 along the track. A hit on a palette cell selects that slot. A point on no
-region is an error. Both tools need the connected window; headless they fail
+region gets a real pointer press and release in the next two frames, so any
+widget there (a checkbox, a combo box, a button) is clicked; the reply is
+`pointer` `[x, y]`. Both tools need the connected window; headless they fail
 like the screenshots.
 
 `render` path-traces every visible object and writes a PNG. It does not need a
@@ -3077,7 +3079,8 @@ Render mode in the window path-traces on the GPU; saving that frame is a
 window command. `render` is a separate CPU trace, and `model_view` a flat
 one without lighting. It does not drive every mouse tool
 by name. `ui_click` hits the controls `ui_inspect` lists, including sliders
-and palette cells, plus a stamp in the viewport. Voxel changes also go
+and palette cells, plus a stamp in the viewport, and clicks the pointer on
+any other widget. Voxel changes also go
 through `set_voxel`, `set_voxels`, and `fill_box` on the active object.
 Screenshots need the connected window.
 

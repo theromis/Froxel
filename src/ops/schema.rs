@@ -1184,7 +1184,7 @@ fn build() -> Vec<Value> {
             "path": str_prop("Optional file to write. Its folder is created.")
         }), &["x", "y", "width", "height"]),
         define("ui_inspect", "Controls from the previous frame: tool buttons, mode, outliner, sliders, palette cells, viewport chips, and the viewport rectangle, in window points. Only when connected to a window.", json!({}), &[]),
-        define("ui_click", "Click the topmost registered control at a window point. A viewport hit stamps the active tool. A slider hit sets that slider from the point along its track. A palette cell selects that slot. Only when connected to a window.", json!({
+        define("ui_click", "Click the topmost registered control at a window point. A viewport hit stamps the active tool. A slider hit sets that slider from the point along its track. A palette cell selects that slot. A point on no registered control gets a real pointer press and release, so any widget there (a checkbox, a combo box, a button) is clicked; the reply is then pointer [x, y]. Only when connected to a window.", json!({
             "x": num_prop("X in window points, origin at the top-left of the client area"),
             "y": num_prop("Y in window points, origin at the top-left of the client area")
         }), &["x", "y"]),

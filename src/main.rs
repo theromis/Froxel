@@ -328,6 +328,7 @@ fn main(
                 inflight: None,
                 viewport_rect: egui::Rect::NOTHING,
                 mobile: mobile::MobileUi::default(),
+                pointer_clicks: VecDeque::new(),
                 #[cfg(target_os = "macos")]
                 native_menu: None,
             }))
@@ -377,8 +378,18 @@ struct Shell {
     inflight: Option<InflightShot>,
     viewport_rect: egui::Rect,
     mobile: mobile::MobileUi,
+    /// MCP `ui_click` points with no registered control: a real pointer
+    /// press and release fed to egui by `raw_input_hook`, so any widget
+    /// (a checkbox, a combo box) can be clicked.
+    pointer_clicks: VecDeque<PointerClick>,
     #[cfg(target_os = "macos")]
     native_menu: Option<native_menu::NativeMenu>,
+}
+
+/// One queued pointer click and whether its press has been sent.
+struct PointerClick {
+    at: egui::Pos2,
+    pressed: bool,
 }
 
 struct PendingShot {
@@ -398,6 +409,29 @@ struct InflightShot {
 }
 
 impl eframe::App for Shell {
+    /// Feed a queued `ui_click` pointer click: the press in one frame, the
+    /// release in the next, so egui sees a click on whatever is there.
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        let Some(click) = self.pointer_clicks.front_mut() else {
+            return;
+        };
+        let event = |pressed| egui::Event::PointerButton {
+            pos: click.at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        if click.pressed {
+            raw_input.events.push(event(false));
+            self.pointer_clicks.pop_front();
+        } else {
+            raw_input.events.push(egui::Event::PointerMoved(click.at));
+            raw_input.events.push(event(true));
+            click.pressed = true;
+        }
+        ctx.request_repaint();
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = &ui.ctx().clone();
         #[cfg(target_os = "android")]
@@ -544,7 +578,13 @@ impl Shell {
             .and_then(Value::as_f64)
             .ok_or("missing number y")? as f32;
         let Some(region) = self.session.ui_target(x, y) else {
-            return Err(format!("no control at {x}, {y}"));
+            // No listed control: press and release the pointer there, as a
+            // mouse would, for the widgets ui_inspect does not list.
+            self.pointer_clicks.push_back(PointerClick {
+                at: egui::pos2(x, y),
+                pressed: false,
+            });
+            return Ok(serde_json::json!({"pointer": [x, y]}));
         };
         if self.mobile.activate(&region.id, &mut self.session) {
             return Ok(serde_json::json!({"id": region.id, "label": region.label}));
