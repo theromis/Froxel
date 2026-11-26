@@ -451,7 +451,7 @@ impl Session {
     }
 
     /// The cells of a tube through `points` with the Tube tool's colours,
-    /// from the same [`crate::tools::tube`] as MCP `fill_tube`.
+    /// from the same [`crate::tools::tube_capped`] as MCP `fill_tube`.
     pub(crate) fn tube_cells(
         &self,
         points: &[crate::tools::TubePoint],
@@ -461,7 +461,12 @@ impl Session {
             roll: f64::from(self.tube_roll).to_radians(),
             blade: self.tube_blade,
         };
-        let cells = crate::tools::tube_shaped(points, self.tube_smooth, shape)?;
+        let caps = if self.tube_flat_caps {
+            crate::tools::Caps::Flat
+        } else {
+            crate::tools::Caps::Round
+        };
+        let cells = crate::tools::tube_capped(points, self.tube_smooth, shape, caps)?;
         let slots = [
             self.paint_slot(),
             match self.tool_mode {
@@ -720,6 +725,7 @@ impl Session {
                 | (self.tube_second as u64) << 8
                 | (self.tube_colors as u64) << 2
                 | (self.tube_blade as u64) << 7
+                | (self.tube_flat_caps as u64) << 5
                 | (self.tube_smooth as u64) << 1
                 | self.tube_chain as u64,
         );

@@ -106,9 +106,9 @@ pub use relief::{column_relief, relief_facing, ReliefSpec};
 pub use rig_split::{split_parts, Metric, PartSeed, Plane, RigSplitSpec};
 pub use scatter::{scatter, PieceKind, ScatterSpec, Scattered, MAX_PIECES};
 #[cfg(test)]
-pub use sculpt::{smooth, tube};
+pub use sculpt::{smooth, tube, tube_shaped};
 pub use sculpt::{
-    smooth_checked, tube_shaped, Smoothed, TubeCell, TubePattern, TubePoint, TubeShape,
+    smooth_checked, tube_capped, Smoothed, TubeCell, TubePattern, TubePoint, TubeShape,
     MAX_SMOOTH_ITERATIONS,
 };
 pub use shapes::{

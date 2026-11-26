@@ -293,8 +293,13 @@ fn tube(ui: &mut Ui, session: &mut Session) {
         -180.0..=180.0,
         0,
     );
-    ui.toggle_value(&mut session.tube_blade, "Blade")
-        .on_hover_text("A wedge: full thickness at one edge, one cell at the other");
+    row(ui, |ui| {
+        ui.toggle_value(&mut session.tube_blade, "Blade")
+            .on_hover_text("A wedge: full thickness at one edge, one cell at the other");
+        ui.toggle_value(&mut session.tube_flat_caps, "Flat ends").on_hover_text(
+            "Cut the tube square at its first and last points instead of rounding them, for pipes, discs, rims, and wheels (MCP fill_tube caps flat)",
+        );
+    });
     row(ui, |ui| {
         ui.toggle_value(&mut session.tube_smooth, "Smooth")
             .on_hover_text("A curve through the chain's points instead of straight segments");

@@ -266,7 +266,11 @@ server is still running. A server started with `--watch` reloads by itself.
    separate balls and bricks; `op: "subtract"` with a `palette` carves and
    lines a soft groove, `colors: "last"` keeps eyes listed after the body,
    and `mirror` draws one side (`tests/fixtures/examples/blob_snowman.rhai`). Grow limbs, roots, branches, and twigs with `fill_tube`
-   (a radius per point, so it tapers; `curve: "smooth"` bends it). Build
+   (a radius per point, so it tapers; `curve: "smooth"` bends it; `caps:
+   "flat"` cuts the ends square at the first and last points, for pipes,
+   discs, rims, barrels, and wheels: a flat tube, then the same points at
+   palette 0 and a radius one less, is a pipe with a one-cell wall;
+   `tests/fixtures/examples/flanged_pipe.rhai`). Build
    trunks, roots, and limbs that must not read as pipes with `loft` (an
    elliptical section per point with `roll`, `flatTop`, and a knobbly
    `noise` outline), reshape with `deform` (`bend`, `taper`, `twist`,

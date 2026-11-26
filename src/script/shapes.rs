@@ -20,10 +20,12 @@ use crate::remote::{self, Sculpt};
 
 const FILL: &[&str] = &["mode", "space", "mirror"];
 const CARVE: &[&str] = &["space"];
-const TUBE_SHAPE: &[&str] = &["radius", "curve", "aspect", "roll", "profile", "space"];
+const TUBE_SHAPE: &[&str] = &[
+    "radius", "curve", "caps", "aspect", "roll", "profile", "space",
+];
 const TUBE: &[&str] = &[
-    "mode", "radius", "curve", "aspect", "roll", "profile", "pattern", "period", "sectors", "seed",
-    "space", "mirror",
+    "mode", "radius", "curve", "caps", "aspect", "roll", "profile", "pattern", "period", "sectors",
+    "seed", "space", "mirror",
 ];
 const TERRACE: &[&str] = &[
     "mode",

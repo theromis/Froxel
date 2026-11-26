@@ -506,6 +506,7 @@ fn shape_fills_build_what_the_mcp_tools_build() {
             pattern: "stripes", sectors: 2, mode: "empty"
         });
         fill_tube([[0, 0, 12], [8, 0, 12]], 6, #{radius: 2, profile: "blade"});
+        fill_tube([[16, 0, 0], [16, 6, 0]], 7, #{radius: 3, caps: "flat"});
         "#,
     )
     .unwrap();
@@ -532,9 +533,14 @@ fn shape_fills_build_what_the_mcp_tools_build() {
             "voxel.tube",
             json!({"points": [[0, 0, 12], [8, 0, 12]], "palette": 6, "radius": 2, "profile": "blade"}),
         ),
+        (
+            "voxel.tube",
+            json!({"points": [[16, 0, 0], [16, 6, 0]], "palette": 7, "radius": 3, "caps": "flat"}),
+        ),
     ]);
     assert_eq!(script, mcp);
-    for slot in 1..=6 {
+    assert!(script.keys().all(|c| c.0 < 16 || (0..=6).contains(&c.1)));
+    for slot in 1..=7 {
         assert!(
             script.values().any(|&s| s == slot),
             "slot {slot} is missing"
@@ -666,6 +672,39 @@ fn math_and_array_helpers() {
     )
     .unwrap_err();
     assert!(err.contains("too large"), "{err}");
+}
+
+#[test]
+fn the_flanged_pipe_has_square_ends_and_a_clean_wall() {
+    let mut session = Session::new();
+    session.replace_empty();
+    session
+        .set_script(0, include_str!("fixtures/examples/flanged_pipe.rhai"))
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    let pipe = cells_of(&session);
+    // Nothing below the base or above the mouth.
+    assert!(
+        pipe.keys().all(|c| (0..=16).contains(&c.2)),
+        "a cap overshoots"
+    );
+    // Hollow all the way through, a one-cell wall at radius 6.
+    for z in 0..=16 {
+        assert!(!pipe.contains_key(&(0, 0, z)) && !pipe.contains_key(&(5, 0, z)));
+    }
+    for z in [0, 8, 14] {
+        assert_eq!(pipe.get(&(0, 6, z)), Some(&3), "wall at z {z}");
+        assert_eq!(pipe.get(&(-6, 0, z)), Some(&3), "wall at z {z}");
+    }
+    // The flange stands out at the mouth only.
+    assert_eq!(pipe.get(&(-8, 0, 16)), Some(&4));
+    assert_eq!(pipe.get(&(-8, 0, 15)), Some(&4));
+    assert!(!pipe.contains_key(&(-8, 0, 14)));
+    // The valve wheel: a red rim one cell thick around an open middle.
+    assert_eq!(pipe.get(&(9, 3, 8)), Some(&5));
+    assert!(!pipe.contains_key(&(10, 3, 8)));
+    assert!(!pipe.contains_key(&(9, 1, 9)));
+    assert_eq!(pipe.get(&(9, 1, 8)), Some(&5), "a spoke");
 }
 
 #[test]

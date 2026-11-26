@@ -298,6 +298,128 @@ fn smooth_fills_a_pit_and_removes_a_spike_keeping_colours() {
 }
 
 #[test]
+fn flat_caps_cut_an_exact_cylinder_and_round_caps_stay() {
+    let ends = [
+        tube_point(0.0, 0.0, 0.0, 12.0),
+        tube_point(0.0, 13.0, 0.0, 12.0),
+    ];
+    let mut want = Vec::new();
+    for y in 0..=13 {
+        for x in -12i32..=12 {
+            for z in -12i32..=12 {
+                if x * x + z * z <= 144 {
+                    want.push((x, y, z));
+                }
+            }
+        }
+    }
+    want.sort();
+    let flat = tube_capped(&ends, false, TubeShape::ROUND, Caps::Flat).unwrap();
+    let mut got: Vec<Cell> = flat.iter().map(|c| c.cell).collect();
+    got.sort();
+    assert_eq!(got, want);
+    // Round caps are the tube as before: half balls past both ends.
+    let round = tube_capped(&ends, false, TubeShape::ROUND, Caps::Round).unwrap();
+    assert_eq!(round, tube(&ends, false).unwrap());
+    let ys: Vec<i32> = round.iter().map(|c| c.cell.1).collect();
+    assert_eq!((ys.iter().min(), ys.iter().max()), (Some(&-12), Some(&25)));
+    // A flat tube is the round one cut, with the same along and around.
+    for cell in &flat {
+        assert!(round.contains(cell), "{cell:?}");
+    }
+}
+
+#[test]
+fn flat_caps_need_a_direction_and_make_a_disc_of_half_a_cell() {
+    let one = [
+        tube_point(3.0, 3.0, 3.0, 4.0),
+        tube_point(3.0, 3.0, 3.0, 4.0),
+    ];
+    let err = tube_capped(&one, false, TubeShape::ROUND, Caps::Flat).unwrap_err();
+    assert!(err.contains("flat caps need"), "{err}");
+    assert!(tube_capped(&one, true, TubeShape::ROUND, Caps::Flat).is_err());
+    // A round tube of one place is still a ball.
+    assert!(tube_capped(&one, false, TubeShape::ROUND, Caps::Round).is_ok());
+    let disc = tube_capped(
+        &[
+            tube_point(0.0, 0.0, 0.0, 4.0),
+            tube_point(0.0, 0.0, 0.5, 4.0),
+        ],
+        false,
+        TubeShape::ROUND,
+        Caps::Flat,
+    )
+    .unwrap();
+    assert!(disc.iter().all(|c| c.cell.2 == 0));
+    assert_eq!(disc.len(), 49);
+    // Repeated end points do not bring a round end back.
+    let repeated = tube_capped(
+        &[
+            tube_point(0.0, 0.0, 0.0, 3.0),
+            tube_point(0.0, 0.0, 0.0, 3.0),
+            tube_point(6.0, 0.0, 0.0, 3.0),
+            tube_point(6.0, 0.0, 0.0, 3.0),
+        ],
+        false,
+        TubeShape::ROUND,
+        Caps::Flat,
+    )
+    .unwrap();
+    assert!(repeated.iter().all(|c| (0..=6).contains(&c.cell.0)));
+}
+
+#[test]
+fn flat_caps_keep_smooth_curves_bends_and_flat_profiles() {
+    // The first span runs straight up y, so its cap plane is y = 0.
+    let bent = [
+        tube_point(0.0, 0.0, 0.0, 3.0),
+        tube_point(0.0, 8.0, 0.0, 3.0),
+        tube_point(0.0, 16.0, 0.0, 3.0),
+        tube_point(8.0, 24.0, 0.0, 2.0),
+    ];
+    let round = tube_capped(&bent, true, TubeShape::ROUND, Caps::Round).unwrap();
+    let flat = tube_capped(&bent, true, TubeShape::ROUND, Caps::Flat).unwrap();
+    assert!(round.iter().any(|c| c.cell.1 < 0));
+    assert!(flat.iter().all(|c| c.cell.1 >= 0));
+    assert!(flat.iter().any(|c| c.cell == (8, 24, 0)));
+    assert!(flat.iter().all(|c| round.contains(c)));
+    assert!(flat.len() < round.len());
+    // A polyline bend keeps its round joint; only the two ends are cut.
+    let corner = [
+        tube_point(0.0, 0.0, 0.0, 3.0),
+        tube_point(10.0, 0.0, 0.0, 3.0),
+        tube_point(10.0, 10.0, 0.0, 3.0),
+    ];
+    let flat = tube_capped(&corner, false, TubeShape::ROUND, Caps::Flat).unwrap();
+    assert!(flat.iter().any(|c| c.cell == (12, -2, 0)));
+    assert!(flat.iter().all(|c| c.cell.0 >= 0 && c.cell.1 <= 10));
+    for shape in [
+        TubeShape {
+            aspect: 0.3,
+            roll: 0.4,
+            blade: false,
+        },
+        TubeShape {
+            aspect: 0.75,
+            roll: 0.0,
+            blade: true,
+        },
+    ] {
+        let ends = [
+            tube_point(0.0, 0.0, 0.0, 4.0),
+            tube_point(12.0, 0.0, 0.0, 4.0),
+        ];
+        let round = tube_capped(&ends, false, shape, Caps::Round).unwrap();
+        let flat = tube_capped(&ends, false, shape, Caps::Flat).unwrap();
+        assert!(round.iter().any(|c| c.cell.0 < 0 || c.cell.0 > 12));
+        let xs: Vec<i32> = flat.iter().map(|c| c.cell.0).collect();
+        assert_eq!((xs.iter().min(), xs.iter().max()), (Some(&0), Some(&12)));
+        let mid = |cells: &[TubeCell]| cells.iter().filter(|c| c.cell.0 == 6).count();
+        assert_eq!(mid(&flat), mid(&round));
+    }
+}
+
+#[test]
 fn flat_tube_lies_flat_rolls_and_tapers_to_a_blade() {
     let ends = [
         tube_point(0.0, 0.0, 0.0, 4.0),

@@ -2161,7 +2161,7 @@ fn intersect_writes(
 }
 
 /// The tube in `params`: `points` of `[x, y, z]`, `[x, y, z, radius]`, or
-/// `{x, y, z, radius?}`, the default `radius`, and `curve`.
+/// `{x, y, z, radius?}`, the default `radius`, `curve`, and `caps`.
 fn tube_cells(params: &Value) -> Result<Vec<crate::tools::TubeCell>, String> {
     let list = params
         .get("points")
@@ -2212,7 +2212,16 @@ fn tube_cells(params: &Value) -> Result<Vec<crate::tools::TubeCell>, String> {
         Some("smooth") => true,
         Some(other) => return Err(format!("curve must be polyline or smooth, not `{other}`")),
     };
-    crate::tools::tube_shaped(&points, curve, tube_shape(params)?)
+    crate::tools::tube_capped(&points, curve, tube_shape(params)?, tube_caps(params)?)
+}
+
+/// `caps` of `fill_tube` and a carved tube: round (the default) or flat.
+fn tube_caps(params: &Value) -> Result<crate::tools::Caps, String> {
+    match opt_str(params, "caps")?.as_deref() {
+        None | Some("round") => Ok(crate::tools::Caps::Round),
+        Some("flat") => Ok(crate::tools::Caps::Flat),
+        Some(other) => Err(format!("caps must be round or flat, not `{other}`")),
+    }
 }
 
 /// `aspect`, `roll` (degrees), and `profile` of `fill_tube` and a carved tube.

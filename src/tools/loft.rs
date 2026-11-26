@@ -65,12 +65,12 @@ impl Section {
     }
 }
 
-/// How the loft closes at its two ends.
+/// How a loft or a tube closes at its two ends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Caps {
     /// Cut square across the path at the end points.
     Flat,
-    /// Rounded like a tube's ends.
+    /// Rounded: a tube's end grows a half ball of its radius.
     Round,
 }
 

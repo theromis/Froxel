@@ -1479,6 +1479,61 @@ fn fill_tube_takes_a_flat_blade_profile() {
 }
 
 #[test]
+fn fill_tube_flat_caps_make_a_pipe_with_square_ends() {
+    let mut head = Headless::new();
+    head.ok(
+        "fill_tube",
+        json!({"points": [[0, 0, 0], [0, 6, 0]], "radius": 5, "caps": "flat", "palette": 3}),
+    );
+    head.ok(
+        "fill_tube",
+        json!({"points": [[0, 0, 0], [0, 6, 0]], "radius": 4, "caps": "flat", "palette": 0}),
+    );
+    let cells = &head.session.active().cells;
+    let ring = |y: i32| {
+        let mut ring = Vec::new();
+        for x in -5i32..=5 {
+            for z in -5i32..=5 {
+                let r2 = x * x + z * z;
+                if r2 > 16 && r2 <= 25 {
+                    ring.push((x, y, z));
+                }
+            }
+        }
+        ring
+    };
+    let mut want: Vec<_> = (0..=6).flat_map(ring).collect();
+    let mut got: Vec<_> = cells.keys().copied().collect();
+    want.sort();
+    got.sort();
+    assert_eq!(got, want);
+    let round = head.call(
+        "fill_tube",
+        json!({"points": [[20, 0, 0], [20, 6, 0]], "radius": 2, "palette": 4}),
+    );
+    assert!(round.get("error").is_none(), "{round}");
+    let cells = &head.session.active().cells;
+    assert!(cells.contains_key(&(20, -2, 0)) && cells.contains_key(&(20, 8, 0)));
+    let bad = error_text(&head.call(
+        "fill_tube",
+        json!({"points": [[0, 0, 0], [4, 0, 0]], "radius": 1, "palette": 1, "caps": "square"}),
+    ));
+    assert!(bad.contains("caps must be round or flat"), "{bad}");
+    let still = error_text(&head.call(
+        "fill_tube",
+        json!({"points": [[0, 0, 0], [0, 0, 0]], "radius": 3, "palette": 1, "caps": "flat"}),
+    ));
+    assert!(still.contains("flat caps need"), "{still}");
+    head.ok(
+        "carve",
+        json!({"shape": "tube", "points": [[20, 0, 0], [20, 3, 0]], "radius": 3, "caps": "flat"}),
+    );
+    let cells = &head.session.active().cells;
+    assert!(cells.contains_key(&(20, -1, 0)) && !cells.contains_key(&(20, 0, 0)));
+    assert!(!cells.contains_key(&(20, 3, 0)) && cells.contains_key(&(20, 4, 0)));
+}
+
+#[test]
 fn break_end_breaks_the_active_object_as_one_undo_step() {
     let mut head = Headless::new();
     head.ok(

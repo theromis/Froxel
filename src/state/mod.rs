@@ -831,6 +831,8 @@ pub struct Session {
     pub tube_aspect: f32,
     pub tube_roll: f32,
     pub tube_blade: bool,
+    /// Tube tool: cut the ends square, as `fill_tube`'s `caps: "flat"`.
+    pub tube_flat_caps: bool,
     pub tube_second: i32,
     pub tube_period: f32,
     pub tube_sectors: i32,

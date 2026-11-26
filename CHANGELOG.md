@@ -14,6 +14,13 @@
 
 ### Added
 
+- `fill_tube` (MCP, Rhai, and `carve` `tube`) takes `caps`: `round` (the
+  default, as before) or `flat`, which cuts the tube square at its first and
+  last points, so two points make an exact cylinder and a flat tube hollowed
+  by a thinner one is a pipe with square ends. Flat caps refuse points that
+  are all in one place. The Tube tool has **Flat ends**.
+  `tests/fixtures/examples/flanged_pipe.rhai` is a pipe with a flange and a
+  valve wheel.
 - Scripts have `range(a, b)`, `range(a, b, step)`, `atan(x)`, `atan(y, x)`,
   `asin`, and `acos`; `atan2` takes integers too.
 

@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::f64::consts::TAU;
 use std::hash::{BuildHasherDefault, Hasher};
 
+use super::loft::Caps;
 use crate::state::Cell;
 
 /// Most cells one tube, carve, or smooth may cover.
@@ -137,6 +138,41 @@ struct Segment {
     along: f64,
     normal: [f64; 3],
     binormal: [f64; 3],
+    /// Flat caps: the planes this segment's cells must not lie behind, each
+    /// a point and the normal pointing into the tube.
+    cuts: [Option<([f64; 3], [f64; 3])>; 2],
+}
+
+/// Flat caps: drop the segments of no length, which are only a ball at a
+/// point, and cut the segments near each end by the plane through the end
+/// point across the path there. Near is within two radii along the path, as
+/// far as a joint's ball can reach back past the end, so the short segments
+/// of a smooth curve do not round the end again; a far part of the path
+/// that comes back behind the plane keeps its cells.
+fn cap_ends(segments: &mut Vec<Segment>) -> Result<(), String> {
+    segments.retain(|s| {
+        let d = sub(s.b, s.a);
+        dot(d, d) > 1.0e-12
+    });
+    let (Some(first), Some(last)) = (segments.first(), segments.last()) else {
+        return Err("flat caps need the tube's points to be apart: a path of one place has no direction to cut across. Give two different points; a disc one cell thick is two points half a cell apart along its axis".into());
+    };
+    let direction = |s: &Segment| normalize(sub(s.b, s.a)).unwrap_or([1.0, 0.0, 0.0]);
+    let start = (first.a, direction(first), first.ra);
+    let end_dir = direction(last);
+    let end = (last.b, scale(end_dir, -1.0), last.rb);
+    let total = last.along + dot(sub(last.b, last.a), sub(last.b, last.a)).sqrt();
+    for segment in segments.iter_mut() {
+        let len = dot(sub(segment.b, segment.a), sub(segment.b, segment.a)).sqrt();
+        let reach = 2.0 * segment.ra.max(segment.rb) + 1.0;
+        if segment.along <= 2.0 * start.2 + reach {
+            segment.cuts[0] = Some((start.0, start.1));
+        }
+        if total - (segment.along + len) <= 2.0 * end.2 + reach {
+            segment.cuts[1] = Some((end.0, end.1));
+        }
+    }
+    Ok(())
 }
 
 /// Every cell whose centre lies within the tube, and every cell the axis
@@ -154,6 +190,21 @@ pub fn tube_shaped(
     points: &[TubePoint],
     curve: bool,
     shape: TubeShape,
+) -> Result<Vec<TubeCell>, String> {
+    tube_capped(points, curve, shape, Caps::Round)
+}
+
+/// [`tube_shaped`] with round or flat ends. Flat caps cut the tube square at
+/// its first and last points, by the planes through them perpendicular to
+/// the path there: a cell is in only when its centre lies between them
+/// (on a plane counts). Joints between segments stay round. The path must
+/// have some length, since a path of one place has no direction to cut
+/// across; two points half a cell apart make a disc one cell thick.
+pub fn tube_capped(
+    points: &[TubePoint],
+    curve: bool,
+    shape: TubeShape,
+    caps: Caps,
 ) -> Result<Vec<TubeCell>, String> {
     if !(0.05..=1.0).contains(&shape.aspect) || !shape.roll.is_finite() {
         return Err("aspect must be 0.05..=1 and roll a finite angle".into());
@@ -190,7 +241,10 @@ pub fn tube_shaped(
             "the curve needs more than {MAX_TUBE_SEGMENTS} segments; split it into several calls"
         ));
     }
-    let segments = rolled_segments(&path, shape);
+    let mut segments = rolled_segments(&path, shape);
+    if caps == Caps::Flat {
+        cap_ends(&mut segments)?;
+    }
     let mut work = 0i64;
     for segment in &segments {
         let (min, max) = segment_box(segment);
@@ -402,6 +456,7 @@ fn segments(path: &[TubePoint]) -> Vec<Segment> {
             along,
             normal: n,
             binormal: cross(tangent, n),
+            cuts: [None, None],
         });
         along += len;
     }
@@ -414,6 +469,13 @@ fn consider(best: &mut TubeCells, segment: &Segment, shape: TubeShape, cell: Cel
     let c = [f64::from(cell.0), f64::from(cell.1), f64::from(cell.2)];
     let d = sub(segment.b, segment.a);
     let len2 = dot(d, d);
+    // A flat cap: the centre must not lie past an end plane, even for a
+    // cell the axis passes through.
+    for (point, inward) in segment.cuts.iter().flatten() {
+        if dot(sub(c, *point), *inward) < -1.0e-9 {
+            return;
+        }
+    }
     let t = if len2 > 0.0 {
         (dot(sub(c, segment.a), d) / len2).clamp(0.0, 1.0)
     } else {

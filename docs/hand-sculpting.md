@@ -34,7 +34,7 @@ It is how agents should model living things through MCP.
    cell as one cell instead of losing it. Otherwise build the large
    forms with `fill_box`,
    `fill_rounded_box`, and `fill_ellipsoid`. Grow limbs, roots, branches,
-   tails, and twigs with `fill_tube`. Cut hollows, tunnels, and pits with
+   tails, and twigs with `fill_tube` (`caps: "flat"` for pipes and discs). Cut hollows, tunnels, and pits with
    `carve`. Get the proportions and the silhouette right before any detail.
 2. **Render and compare.** `render` the document and put the PNG beside the
    reference (concept art, a photo of the real animal). Look at the
@@ -272,7 +272,14 @@ the command line.
 `fill_tube` fills a round tube through a list of points, each with its own
 radius, so one call makes a tapering limb, root, or branch. Its joints and
 ends are round. `curve` `smooth` bends it through the points instead of
-joining them straight. `palettes` with a `pattern` colours it: `stripes`
+joining them straight. For pipes, discs, rims, barrels, and wheels, pass
+`caps` `flat`: the ends are cut square at the first and last points instead
+of running a radius past them, so two points along an axis make an exact
+cylinder. A pipe is that tube, then the same points at `palette` 0 and a
+radius one less, which leaves a one-cell wall with flat ends; a disc one
+cell thick is two points half a cell apart along its axis (hollow it the
+same way for a ring or a wheel rim). Do not stack one-cell `fill_ellipsoid`
+discs for these (`tests/fixtures/examples/flanged_pipe.rhai`). `palettes` with a `pattern` colours it: `stripes`
 runs grooves along it (bark), `rings` bands it along its length (a tail),
 and `random` speckles it.
 `aspect` flattens it and `profile` `blade` makes it a wedge, so a tube

@@ -215,6 +215,7 @@ laid out by `pattern`. Options:
 | --- | --- | --- |
 | `radius` | none | Radius of a point that has none. |
 | `curve` | `"polyline"` | `"smooth"` passes a Catmull-Rom curve through the points. |
+| `caps` | `"round"` | `"flat"` cuts the ends square at the first and last points instead of half balls past them: pipes, discs, rims, wheels. Refused when the points are all in one place. |
 | `aspect` | `1.0` | Thickness over width, 0.05..=1; below 1 flattens the tube. |
 | `roll` | `0` | Degrees the flat side turns about the axis. |
 | `profile` | `"round"` | `"blade"` tapers the thickness to a wedge. |
@@ -230,6 +231,10 @@ fill_tube([[0, 0, 4, 4], [14, 2, 5, 3.5], [30, 3, 4, 3]], [3, 4],
     #{curve: "smooth", pattern: "stripes", sectors: 10});
 // A flat splinter.
 fill_tube([[30, 3, 6, 1.5], [36, 3, 7, 0.5]], 7, #{aspect: 0.4, profile: "blade"});
+// A pipe with square ends and a one-cell wall, and a disc one cell thick.
+fill_tube([[0, 0, 0], [0, 0, 12]], 3, #{radius: 5, caps: "flat"});
+fill_tube([[0, 0, 0], [0, 0, 12]], 0, #{radius: 4, caps: "flat"});
+fill_tube([[12, 0, 6], [12.5, 0, 6]], 5, #{radius: 3, caps: "flat"});
 ```
 
 ### Carve
@@ -239,7 +244,7 @@ carve_box(x0, y0, z0, x1, y1, z1);
 carve_ellipsoid(x0, y0, z0, x1, y1, z1);
 carve_rounded_box(x0, y0, z0, x1, y1, z1, radius);
 carve_tube(points);
-carve_tube(points, #{radius: 2.5}); // options: radius, curve, aspect, roll, profile
+carve_tube(points, #{radius: 2.5}); // options: radius, curve, caps, aspect, roll, profile
 ```
 
 Each removes the solid cells inside the shape and returns how many it
@@ -1305,6 +1310,11 @@ weathers while the top stays flat: no refill after the dressing.
 fallen hollow log with every shape call: a tube trunk with `bark` plates, `smooth`,
 buttress roots built with `push`, `break_end` at the far end, a carved
 hollow, a ground slab, and `scatter` debris under the break.
+
+`tests/fixtures/examples/flanged_pipe.rhai` builds a standing iron pipe
+from flat-capped tubes: the pipe hollowed through by the same tube in slot 0,
+a flange at its mouth, and a valve wheel made of a one-cell disc, hollowed to
+a ring, with two spokes.
 
 `tests/fixtures/examples/fallen_tree.rhai` builds a
 fallen tree with the organic tools: a `loft` trunk that tapers, sags, and is

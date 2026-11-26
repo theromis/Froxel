@@ -330,7 +330,7 @@ tracer. A file with no scene graph still loads its first model.
 | `fill_box` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palette` | Fill an inclusive box of **local** cells, at most 2000000, one undo step |
 | `fill_ellipsoid` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palette` | Fill the ellipsoid inscribed in that box. The box volume is checked first, even when the solid is smaller. One undo step |
 | `fill_rounded_box` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palette`, `radius` | Same box, with an edge bevel of `radius` voxels. `radius` 0 is the full box. The radius is clamped to half the shortest side |
-| `fill_tube` | `points`, `palette` or `palettes` | Fill a tube through 2..=1024 **local** points, each with its own radius. Optional `radius`, `curve` (`polyline`, `smooth`), `aspect`, `roll`, `profile` (`round`, `blade`), `pattern` (`rings`, `stripes`, `random`), `period`, `sectors`, `seed`, `mode`. At most 2000000 cells, one undo step |
+| `fill_tube` | `points`, `palette` or `palettes` | Fill a tube through 2..=1024 **local** points, each with its own radius. Optional `radius`, `curve` (`polyline`, `smooth`), `caps` (`round`, `flat`), `aspect`, `roll`, `profile` (`round`, `blade`), `pattern` (`rings`, `stripes`, `random`), `period`, `sectors`, `seed`, `mode`. At most 2000000 cells, one undo step |
 | `sweep` | `points`, `profile` or `width` and `height`, `palette` or `palettes` | Fill a 2D cross-section along 2..=1024 **local** points, kept perpendicular to the path, for curved walls, banks, and ledges. Each point may carry `twist` and `scale`. Optional `radius`, `curve` (`polyline`, `smooth`), `pattern` (`bands`, `rings`, `random`), `period`, `seed`, `mode`. `palette` `0` erases the solid cells it covers instead, for a slanted cut along a closed or curved outline (`mode` `empty` is refused with it). Replies with `cells` and `length`, and `removed` when erasing. At most 2000000 cells, one undo step |
 | `trim_outline` | `outline` | Remove every solid cell outside a surface: a closed plan outline of `[x, y]` points moved inward by `inset`, one number or `[z, inset]` pairs per height. Optional `curve` (`polyline`, `smooth`), a box `x0`..`z1`, `only`, `skin` (a slot), `thickness`. Replies with `removed`, `painted`, `added`, and a `warning` when nothing was outside. One undo step |
 | `blend_shapes` | `shapes` | Fill simple shapes blended as signed distance fields with a smooth minimum, so they flow into each other like clay: statues, creatures, topiary, roots. Each shape is `{shape: sphere | ellipsoid | box | capsule | torus, ...}` with `op` (`union`, `subtract`, `intersect`), `k`, `palette`, and `rotate`. Optional `k` (fillet in cells, default 3), `palette`, `grow`, `colors` (`nearest`, `last`), `seam`, `seed`, box `x0`..`z1`, `mode` (`replace`, `empty`, `paint`, `intersect`), `mirror`, `space`. Replies with `cells`, `changed`, `shapes`, `evaluated`, `bounds`. One undo step. See [Blended shapes](#blended-shapes) |
@@ -512,9 +512,21 @@ whole number is the centre of that cell. A point without a radius uses
 `radius`; one with neither is an error. Radii are 0.5..=128, and 0.5 is one
 cell thick. A cell is filled when its centre is within the radius of the
 axis, the radius running linearly from point to point, so the tube tapers
-and its joints and ends are round. The cells the axis passes through are
+and its joints are round. The cells the axis passes through are
 always filled, so a thin sloped tube stays connected. `curve` `smooth` runs
 a Catmull-Rom curve through every point instead of straight segments.
+`caps` `round` (the default) ends the tube in half balls, so it runs its
+radius past the first and last points. `caps` `flat` cuts it square there,
+by the planes through those points across the path: a cell is filled only
+when its centre lies between them (on a plane counts), and that cut beats
+the always-filled axis cells. Joints between segments stay round. Points
+`[0, 0, 0]` and `[0, 13, 0]` at radius 12 fill exactly the cells with y
+0..=13 inside the circle of radius 12; the same call at `palette` 0 and
+radius 11 then hollows it to a pipe with a one-cell wall and square ends.
+Two points half a cell apart along the axis are a disc one cell thick (a
+rim, a wheel, a manhole lid). Flat caps refuse a path whose points are all
+in one place, which has no direction to cut across; with round caps that
+path is a ball.
 `palette` colours the whole tube; `palettes` (1..=64 indices, repeat one to
 weight it) cycles by `pattern`: `rings` (the default) bands along the length
 every `period` cells (default 2), `stripes` divides the circumference into
@@ -555,7 +567,8 @@ cells are tested.
 
 `carve` removes cells and never paints. `shape` `box`, `ellipsoid`, and
 `rounded_box` take the corners (and `radius`) of their fill tools; `tube`
-takes `points`, `radius`, and `curve` of `fill_tube`. `removed` counts the
+takes `points`, `radius`, `curve`, `caps`, `aspect`, `roll`, and `profile`
+of `fill_tube`, so `caps` `flat` bores a hole with square ends. `removed` counts the
 cells that were solid.
 
 `break_end` snaps the active object across the plane through `point` with
@@ -2993,7 +3006,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `set_voxel`, `set_voxels` | Brush, Line, Circle, Square, Face, Mutator |
 | `fill_box` | Box tool with Fill |
 | `fill_ellipsoid`, `fill_rounded_box` | Generator: Ellipsoid, Rounded box |
-| `fill_tube` | Tube tool: drag from the start radius to the end radius; Chain adds a point per drag and Smooth curves through them until Finish; Flatten, Roll, and Blade shape it; Solid, Rings, Stripes, or Random with a second slot |
+| `fill_tube` | Tube tool: drag from the start radius to the end radius; Chain adds a point per drag and Smooth curves through them until Finish; Flatten, Roll, and Blade shape it; Flat ends cuts it square (`caps` `flat`); Solid, Rings, Stripes, or Random with a second slot |
 | `sweep` | Sweep section: Points (one per line, Point at selection adds the selection's centre), Smooth, Rectangle (Width, Height, Radius) or Polygon, Palettes, Bands, Rings, or Random, Period, Mode, Seed |
 | `trim_outline` | Trim section: Outline (one point per line, Point at selection adds the selection's centre), Smooth, Inset, Only, New skin, Slot, Thickness; Trim inside the selection's box or on the whole object |
 | `carve_from_views` | Carve from views section: three view rows (on, side, Image…, crop, Flip, depth map…), Cells / px, Size, Origin (World), Background (Auto, Alpha, Key with tolerance), Colour from views or the active slot, Shell, Smooth, Depth (Hull or Box, Invert, Back, tolerance), Depth parts (Auto curve, Regions, Edge), Depth detail…, Pixel art (Downscale, colours), Intersect (Keep inside only), Carve |

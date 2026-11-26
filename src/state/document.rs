@@ -62,6 +62,7 @@ impl Session {
             tube_aspect: 1.0,
             tube_roll: 0.0,
             tube_blade: false,
+            tube_flat_caps: false,
             tube_second: 1,
             tube_period: 2.0,
             tube_sectors: 6,
