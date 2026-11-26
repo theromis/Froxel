@@ -4,6 +4,11 @@
 
 ### Fixed
 
+- With **One frame** on, Render mode traces a new frame once an orbit, a
+  slider drag, or an edit has held still for a moment; before, it stayed on
+  the edit view until **Render frame** was pressed.
+- The viewport **Motion** checkbox has a tooltip and is disabled in Render
+  mode: it previews palette slot sway and bob in the edit view only.
 - Scripts can loop over `a..=b`; it stopped with "For loop expects iterable
   type" at the top level and inside a `fn`.
 

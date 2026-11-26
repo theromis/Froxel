@@ -275,11 +275,11 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
     slider_i32(ui, session, "Samples", SliderTarget::MaxSamples, 16..=8192);
     ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut session.render_one_frame, "One frame").on_hover_text(
-            "Trace one frame of the view as it was when Render was entered or Render frame pressed, instead of starting over on every orbit and edit. Off renders live.",
+            "Do not start over on every step of an orbit or edit: the edit view shows while the view changes, and a new frame starts once it holds still. Off renders live.",
         );
         if ui
             .add_enabled(session.render_one_frame, egui::Button::new("Render frame"))
-            .on_hover_text("Trace a new frame of the view as it is now")
+            .on_hover_text("Trace a new frame of the view as it is now, without waiting for it to hold still")
             .clicked()
         {
             session.request_render_frame();

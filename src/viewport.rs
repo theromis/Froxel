@@ -145,9 +145,13 @@ pub fn show(
         // Entering Render traces a frame at once.
         session.request_render_frame();
     }
-    let traced = session.render_mode == RenderMode::Render && session.render_traces();
+    let now = ctx.input(|i| i.time);
+    let traced =
+        session.render_mode == RenderMode::Render && session.render_traces(now, pointer.any_down());
     if session.render_mode == RenderMode::Render && !traced {
-        session.cancel_pending_render("the view changed; press Render frame");
+        session.cancel_pending_render("the view changed");
+        // Wake up to start the new frame once the view holds still.
+        ctx.request_repaint_after(std::time::Duration::from_millis(100));
     }
     let painter = ui.painter().with_clip_rect(rect);
     if traced && paint_gpu(ctx, render_state, session, cache, rect, &painter) {
@@ -223,7 +227,7 @@ pub fn show(
         painter.text(
             rect.left_bottom() + egui::vec2(12.0, -18.0),
             egui::Align2::LEFT_BOTTOM,
-            "The view changed since the frame. Render frame traces it again.",
+            "The view changed. A new frame starts once it holds still.",
             egui::FontId::proportional(13.0),
             egui::Color32::from_rgb(244, 246, 250),
         );
@@ -282,7 +286,15 @@ pub fn show(
     }
     ui.scope_builder(egui::UiBuilder::new().max_rect(motion_chip), |ui| {
         hud_frame(ui, |ui| {
-            ui.checkbox(&mut session.motion_preview, "Motion");
+            let edit = session.render_mode == RenderMode::Edit;
+            ui.add_enabled(
+                edit,
+                egui::Checkbox::new(&mut session.motion_preview, "Motion"),
+            )
+            .on_hover_text("Sway and bob of palette slots with motion, in the edit view only")
+            .on_disabled_hover_text(
+                "Motion previews in the edit view only. Render traces a still scene.",
+            );
         });
     });
     ui.scope_builder(egui::UiBuilder::new().max_rect(left), |ui| {

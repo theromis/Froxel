@@ -2651,22 +2651,31 @@ fn a_chunk_from_a_newer_froxel_is_left_out_and_the_voxels_still_open() {
 }
 
 #[test]
-fn one_frame_traces_the_view_it_started_from_until_asked_again() {
+fn one_frame_traces_again_once_the_view_holds_still() {
     let mut session = Session::new();
     assert!(session.render_one_frame);
     // Entering Render asks for a frame; it keeps tracing while unchanged.
-    assert!(session.render_traces());
-    assert!(session.render_traces());
+    assert!(session.render_traces(0.0, false));
+    assert!(session.render_traces(1.0, false));
+    // An orbit does not restart the frame while it goes on.
     session.yaw += 10.0;
+    assert!(!session.render_traces(2.0, true));
     assert!(
-        !session.render_traces(),
-        "an orbit does not restart the frame"
+        !session.render_traces(3.0, true),
+        "a held button is not still"
     );
+    session.yaw += 10.0;
+    assert!(!session.render_traces(3.1, false));
+    assert!(!session.render_traces(3.2, false), "not still long enough");
+    assert!(session.render_traces(3.6, false), "held still: a new frame");
+    assert!(session.render_traces(5.0, false));
+    // Render frame starts one at once.
+    session.yaw += 10.0;
+    assert!(!session.render_traces(6.0, false));
     session.request_render_frame();
-    assert!(session.render_traces());
-    assert!(session.render_traces());
+    assert!(session.render_traces(6.0, false));
     // Live render traces whatever the view.
     session.render_one_frame = false;
     session.yaw += 10.0;
-    assert!(session.render_traces());
+    assert!(session.render_traces(7.0, true));
 }

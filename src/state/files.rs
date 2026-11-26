@@ -11,6 +11,10 @@ use super::*;
 
 use super::dialog::{self, CloseAnswer};
 
+/// With One frame on, how long a changed view holds still before a new
+/// frame starts from it.
+pub(crate) const RENDER_SETTLE_SECS: f64 = 0.4;
+
 impl Session {
     pub fn new_document(&mut self) {
         self.commit();
@@ -794,13 +798,23 @@ impl Session {
 
     /// Whether Render mode traces this paint. Live render always does. With
     /// One frame on, a requested frame starts from the view now, and it keeps
-    /// tracing while the view is unchanged; once it changes, the edit view is
-    /// drawn until Render frame asks for a new one.
-    pub(crate) fn render_traces(&mut self) -> bool {
+    /// tracing while the view is unchanged. A changed view is drawn as the
+    /// edit view while it keeps changing (an orbit, a slider drag, an edit);
+    /// once it has held still for [`RENDER_SETTLE_SECS`] with nothing pressed
+    /// (`held` false), a new frame starts from it. `now` is in seconds.
+    pub(crate) fn render_traces(&mut self, now: f64, held: bool) -> bool {
         if !self.render_one_frame {
             return true;
         }
         let key = crate::trace::frame_key(self, [0, 0]);
+        if !self.render_requested && key != self.render_frame_key {
+            if key != self.render_settle_key || held {
+                self.render_settle_key = key;
+                self.render_settle_since = now;
+            } else if now - self.render_settle_since >= RENDER_SETTLE_SECS {
+                self.render_requested = true;
+            }
+        }
         if self.render_requested {
             self.render_requested = false;
             self.render_frame_key = key;

@@ -131,6 +131,8 @@ impl Session {
             render_one_frame: true,
             render_requested: true,
             render_frame_key: 0,
+            render_settle_key: 0,
+            render_settle_since: 0.0,
             aces: true,
             denoise: false,
             motion_preview: false,
