@@ -228,7 +228,7 @@ fn build() -> Vec<Value> {
             }
             p
         }, &["x0", "y0", "z0", "x1", "y1", "z1"]),
-        define("set_palette", "Replace one palette slot, or many via entries, as one undo step. The colour is color, \"#rrggbb\" or \"#rrggbbaa\" as the other tools take colours (or [r, g, b, a?]), or r, g, b (and a) as numbers; not both. motion is none, sway, or bob.", json!({
+        define("set_palette", "Replace one palette slot, or many via entries, as one undo step. The colour is color, \"#rrggbb\" or \"#rrggbbaa\" as the other tools take colours (or [r, g, b, a?]), or r, g, b (and a) as numbers; not both; leave the colour out to keep the slot's. motion is none, sway, or bob. material (diffuse, metal, emissive, or glass) and its roughness, metallic, transparency, ior, emission, and power are the slot's Render material, as the Render panel's Material section sets it; each one left out keeps the slot's.", json!({
             "index": int_prop("Palette slot 0..255"),
             "color": {"type": ["string", "array"], "items": {"type": "integer"}, "description": "\"#rrggbb\" or \"#rrggbbaa\" (the # may be left out), or [r, g, b] or [r, g, b, a] in 0..255. Instead of r, g, b."},
             "r": int_prop("Red 0..255"),
@@ -236,9 +236,16 @@ fn build() -> Vec<Value> {
             "b": int_prop("Blue 0..255"),
             "a": int_prop("Alpha 0..255. Defaults to 255, or the alpha of a #rrggbbaa color."),
             "motion": str_prop("none, sway, or bob. Omit to leave the slot's motion."),
-            "motionAmount": num_prop("Motion strength, 0..4. Omit to leave it. Default 1 when a kind is first set."),
+            "motionAmount": soft(ui(num_prop("Motion strength, 0..4. Omit to leave it. Default 1 when a kind is first set."), "Amount", "Motion strength"), 0.0, 4.0, 2),
+            "material": ui(json!({"type": "string", "enum": ["diffuse", "metal", "emissive", "glass"], "description": "The slot's Render material: diffuse, metal, emissive, or glass. Omit to leave it."}), "Material", "The slot's material in Render mode and the tracers"),
+            "roughness": soft(ui(num_prop("metal, glass: surface roughness, 0..1; 0 is a mirror or clear glass. Omit to leave it."), "Roughness", "Surface roughness; 0 is a mirror"), 0.0, 1.0, 2),
+            "metallic": soft(ui(num_prop("metal: how metallic the surface is, 0..1. Omit to leave it."), "Metallic", "How metallic the surface is"), 0.0, 1.0, 2),
+            "transparency": soft(ui(num_prop("glass: how much light passes through, 0..1. Omit to leave it."), "Transparency", "How much light passes through"), 0.0, 1.0, 2),
+            "ior": soft(ui(num_prop("glass: index of refraction, 1..3. Omit to leave it."), "IoR", "Index of refraction"), 1.0, 3.0, 2),
+            "emission": soft(ui(num_prop("emissive: light given off, 0..100. Omit to leave it."), "Emission", "Light given off"), 0.0, 100.0, 0),
+            "power": soft(ui(int_prop("emissive: a whole multiplier of the emission, 1..5. Omit to leave it."), "Power", "Whole multiplier of the emission"), 1.0, 5.0, 0),
             "motion_amount": num_prop("Older name of motionAmount; still accepted."),
-            "entries": {"type": "array", "description": "Batch of {index, color | r,g,b, a?, motion?, motionAmount?}, such as {\"index\": 3, \"color\": \"#5c6838\"}. Omit when passing index."}
+            "entries": {"type": "array", "description": "Batch of {index, color | r,g,b, a?, motion?, motionAmount?, material?, roughness?, metallic?, transparency?, ior?, emission?, power?}, such as {\"index\": 3, \"color\": \"#5c6838\"}. Omit when passing index."}
         }), &[]),
         define("set_active_object", "Edit a different object from inspect_document. Later voxel tools use that object's local cells.", json!({"index": int_prop("Object index")}), &["index"]),
         define("add_object", "Add an empty object at a world voxel position and return its index. It becomes active unless makeActive is false. size is a local capacity hint; the object still grows up to 256 per axis. One undo step.", json!({
@@ -1238,6 +1245,15 @@ fn build() -> Vec<Value> {
             "bones": {"type": "boolean", "description": "Draw the skeleton overlay in the viewport. false hides it for a screenshot. Omit to keep it."},
             "oneFrame": ui(bool_prop("The window's Render mode traces one frame and starts a new one once the view holds still, instead of starting over on every step of an orbit or edit. Omit to keep it."), "One frame", "Do not start over on every orbit or edit step; trace again once the view holds still"),
             "temporalSmooth": soft(ui(hard(num_prop("The window's live Render mode: the least weight a new frame gets against the frames before it, 0..1; lower is smoother and slower to follow a change. Omit to keep it."), 0.0, 1.0), "Temporal smooth", "Least weight a new live frame gets"), 0.0, 1.0, 3)
+        }), &[]),
+        define("set_tool", "Pick the window's tool and its options, as the tool strip, the mode buttons, the palette, and the tool options row do, so a ui_click on the viewport then stamps that tool. Not an edit and not undoable. Replies with the tool, mode, slot, and options as they now are.", json!({
+            "tool": ui(json!({"type": "string", "enum": ["brush", "line", "circle", "square", "box", "face", "generator", "tube", "sculpt", "mutator", "marquee", "box_select", "flood_select"], "description": "The tool: brush, line, circle, square, box, face, generator, tube, sculpt, mutator, marquee, box_select, or flood_select. Omit to keep it."}), "Tool", "The window's active tool"),
+            "mode": ui(json!({"type": "string", "enum": ["add", "remove", "paint"], "description": "add, remove, or paint. Omit to keep it."}), "Mode", "Add, remove, or paint"),
+            "slot": ui(int_prop("The active palette slot, 0..255. Omit to keep it."), "Slot", "The active palette slot"),
+            "size": soft(ui(int_prop("Brush, Line, Circle, Square, Box, Mutator: brush size in cells, 1..63. Omit to keep it."), "Size", "Brush size in cells"), 1.0, 63.0, 0),
+            "shape": ui(json!({"type": "string", "enum": ["square", "circle"], "description": "The brush's shape: square or circle. Omit to keep it."}), "Shape", "The brush's shape"),
+            "seedColor": soft(ui(int_prop("Mutator: the slot foliage grows from, 1..255. Omit to keep it."), "Slot", "The slot foliage grows from"), 1.0, 255.0, 0),
+            "density": soft(ui(num_prop("Mutator: the share of free cells beside the seed colour that grow, 0..1. Omit to keep it."), "Density", "Share of free cells that grow"), 0.0, 1.0, 2)
         }), &[]),
         define("screenshot", "PNG of the whole editor window. Only when connected to a window.", json!({"path": str_prop("Optional file to write. Its folder is created.")}), &[]),
         define("screenshot_viewport", "PNG of the 3D viewport. Only when connected to a window.", json!({"path": str_prop("Optional file to write. Its folder is created.")}), &[]),

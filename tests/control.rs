@@ -83,3 +83,58 @@ fn a_trickling_peer_is_cut_off_at_the_deadline() {
     assert!(started.elapsed() < Duration::from_millis(450));
     writer.join().unwrap();
 }
+
+#[test]
+fn a_request_a_drawing_window_never_takes_is_withdrawn_and_never_runs() {
+    let (jobs_tx, jobs_rx) = mpsc::channel();
+    let server = ControlServer {
+        port: 0,
+        jobs: jobs_rx,
+        window: Arc::new(Window::default()),
+    };
+    let (reply_tx, reply_rx) = mpsc::channel();
+    let state = Arc::new(AtomicU8::new(PENDING));
+    jobs_tx
+        .send(Job {
+            method: "ui.inspect".into(),
+            params: Value::Null,
+            reply: reply_tx,
+            state: state.clone(),
+        })
+        .unwrap();
+    // No frame is drawn: the request is withdrawn after the stall.
+    let started = Instant::now();
+    let waited = wait_reply(
+        &reply_rx,
+        &state,
+        &server.window.frames,
+        Duration::from_millis(50),
+        Duration::from_secs(5),
+    );
+    assert!(matches!(waited, Waited::Stalled));
+    assert!(started.elapsed() < Duration::from_secs(1));
+    // The window drawing again later does not run it.
+    assert!(server.poll().is_empty());
+    std::mem::forget(server);
+}
+
+#[test]
+fn a_taken_request_is_answered_and_not_withdrawn() {
+    let frames = AtomicU64::new(0);
+    let state = AtomicU8::new(TAKEN);
+    let (reply_tx, reply_rx) = mpsc::channel();
+    let answer = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(120));
+        reply_tx.send(Ok(json!({"done": true}))).unwrap();
+    });
+    // Taken work may take longer than the stall without being withdrawn.
+    let waited = wait_reply(
+        &reply_rx,
+        &state,
+        &frames,
+        Duration::from_millis(30),
+        Duration::from_secs(5),
+    );
+    assert!(matches!(waited, Waited::Reply(Ok(_))));
+    answer.join().unwrap();
+}

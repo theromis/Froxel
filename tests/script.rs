@@ -774,6 +774,7 @@ object("arm");
 fill_box(4, 0, 0, 6, 1, 1, 2);
 set_palette(#{index: 2, r: 10, g: 20, b: 30, a: 128, motion: "sway", motion_amount: 2.0});
 set_palette([#{index: 3, r: 1, g: 2, b: 3}]);
+set_palette(#{index: 4, material: "metal", roughness: 0.3, metallic: 1.0});
 if !has_bone("root") {
     add_bone("root", [0.0, 0.0, 0.0]);
     add_bone("arm", [4.0, 0.5, 0.5], #{parent: "root"});
@@ -828,6 +829,9 @@ fn object_bone_clip_and_palette_calls_run_after_the_voxels_as_one_step() {
         "mirrored after the voxels"
     );
     assert_eq!(session.palette[2], [10, 20, 30, 128]);
+    let metal = session.materials[4];
+    assert!(metal.ty == crate::state::MaterialType::Metal);
+    assert!((metal.roughness - 0.3).abs() < 1e-6 && metal.metallic == 1.0);
     assert_eq!(session.palette[3][..3], [1, 2, 3]);
     assert_eq!(session.clips[0].name, "wave");
 

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use serde_json::{json, Map, Value};
 
-use super::{as_i32, opt_i32_range, opt_str, slot_list};
+use super::{as_i32, opt_i32_or, opt_str, slot_list};
 use crate::state::{
     cell_box, check_marker_name, replace_collision_markers, Cell, MarkerKind, Session, MAX_MARKERS,
 };
@@ -61,10 +61,10 @@ fn collision_spec(params: &Value) -> Result<CollisionSpec, String> {
     Ok(CollisionSpec {
         only: slot_list(params, "only")?,
         exclude: slot_list(params, "exclude")?,
-        layer: opt_i32_range(params, "layer", 1, 1, 64)?,
+        layer: opt_i32_or(params, "layer", 1)?,
         bands,
-        min_feature: opt_i32_range(params, "minFeature", 1, 1, 32)?,
-        hole_size: opt_i32_range(params, "holeSize", 3, 1, 64)?,
+        min_feature: opt_i32_or(params, "minFeature", 1)?,
+        hole_size: opt_i32_or(params, "holeSize", 3)?,
         max_boxes,
     })
 }

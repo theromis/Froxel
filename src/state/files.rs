@@ -564,19 +564,23 @@ impl Session {
     }
 
     pub(crate) fn write_palette(&mut self, slots: &[PaletteChange]) -> i64 {
-        let mut changed = 0i64;
-        for change in slots {
+        // Each slot as the change leaves it: colour, motion, and material.
+        let after = |session: &Session, change: &PaletteChange| {
             let index = change.index as usize;
-            let material = self.materials[index];
-            let motion = change.motion.unwrap_or(material.motion);
-            let amount = change.amount.unwrap_or(material.motion_amount);
-            if self.palette[index] != change.rgba
-                || material.motion != motion
-                || material.motion_amount != amount
-            {
-                changed += 1;
+            let mut material = change.material.apply(session.materials[index]);
+            material.motion = change.motion.unwrap_or(material.motion);
+            if let Some(amount) = change.amount {
+                material.motion_amount = amount.clamp(0.0, 4.0);
             }
-        }
+            (change.rgba.unwrap_or(session.palette[index]), material)
+        };
+        let changed = slots
+            .iter()
+            .filter(|change| {
+                let index = change.index as usize;
+                after(self, change) != (self.palette[index], self.materials[index])
+            })
+            .count() as i64;
         if changed == 0 {
             return 0;
         }
@@ -584,13 +588,9 @@ impl Session {
         self.checkpoint();
         for change in slots {
             let index = change.index as usize;
-            self.palette[index] = change.rgba;
-            if let Some(motion) = change.motion {
-                self.materials[index].motion = motion;
-            }
-            if let Some(amount) = change.amount {
-                self.materials[index].motion_amount = amount.clamp(0.0, 4.0);
-            }
+            let (rgba, material) = after(self, change);
+            self.palette[index] = rgba;
+            self.materials[index] = material;
         }
         self.commit();
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
@@ -1451,26 +1451,23 @@ impl Session {
             | SliderTarget::ConiferCrown
             | SliderTarget::ConiferNeedle
             | SliderTarget::ConiferSeed => self.write_op_slider(target, value),
-            SliderTarget::BrushSize => self.brush_size = whole.clamp(1, 63),
-            SliderTarget::FoliageSeed => self.foliage_seed = whole.clamp(1, 255),
-            SliderTarget::FoliageDensity => self.foliage_density = value.clamp(0.0, 1.0),
+            SliderTarget::BrushSize => self.brush_size = whole,
+            SliderTarget::FoliageSeed => self.foliage_seed = whole,
+            SliderTarget::FoliageDensity => self.foliage_density = value,
             SliderTarget::MaxSamples => self.max_samples = whole,
             SliderTarget::Aperture => self.aperture = value,
             SliderTarget::FocusDistance => self.focus_distance = value,
-            SliderTarget::MaterialRoughness => {
-                self.material_mut().roughness = value.clamp(0.0, 1.0)
-            }
-            SliderTarget::MaterialMetallic => self.material_mut().metallic = value.clamp(0.0, 1.0),
-            SliderTarget::MaterialTransparency => {
-                self.material_mut().transparency = value.clamp(0.0, 1.0);
-            }
-            SliderTarget::MaterialIor => self.material_mut().ior = value.clamp(1.0, 3.0),
+            SliderTarget::MaterialRoughness => self.material_mut().roughness = value,
+            SliderTarget::MaterialMetallic => self.material_mut().metallic = value,
+            SliderTarget::MaterialTransparency => self.material_mut().transparency = value,
+            SliderTarget::MaterialIor => self.material_mut().ior = value,
             SliderTarget::MaterialEmission => {
-                self.material_mut().emission = (value / 100.0).clamp(0.0, 1.0);
+                // Shown 0..100, kept as a share.
+                self.material_mut().emission = value / 100.0;
             }
-            SliderTarget::MaterialPower => self.material_mut().emission_power = whole.clamp(1, 5),
+            SliderTarget::MaterialPower => self.material_mut().emission_power = whole,
             SliderTarget::MotionAmount => {
-                self.material_mut().motion_amount = value.clamp(0.0, 4.0);
+                self.material_mut().motion_amount = value;
                 self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
             }
             SliderTarget::MaxBounces => self.max_bounces = whole,

@@ -101,10 +101,8 @@ pub(crate) fn blend_spec(params: &Value) -> Result<BlendSpec, String> {
             crate::tools::MAX_BLEND_SHAPES
         ));
     }
+    // k, grow, and seam are in their schema ranges (ops::check_arguments).
     let k = opt_f64(params, "k")?.unwrap_or(3.0);
-    if !(0.0..=crate::tools::MAX_BLEND_K).contains(&k) {
-        return Err(format!("k must be 0..={} cells", crate::tools::MAX_BLEND_K));
-    }
     let palette = match params.get("palette") {
         None | Some(Value::Null) => None,
         Some(_) => Some(slot(params, "palette")?),
@@ -115,18 +113,12 @@ pub(crate) fn blend_spec(params: &Value) -> Result<BlendSpec, String> {
         .map(|(index, item)| shape(item, k, palette).map_err(|err| format!("shape {index}: {err}")))
         .collect::<Result<Vec<_>, _>>()?;
     let grow = opt_f64(params, "grow")?.unwrap_or(0.0);
-    if !(-16.0..=16.0).contains(&grow) {
-        return Err("grow must be -16..=16 cells".into());
-    }
     let colors = match opt_str(params, "colors")?.as_deref() {
         None | Some("nearest") => BlendColors::Nearest,
         Some("last") => BlendColors::Last,
         Some(other) => return Err(format!("colors must be nearest or last, not `{other}`")),
     };
     let seam = opt_f64(params, "seam")?.unwrap_or(0.0);
-    if !(0.0..=32.0).contains(&seam) {
-        return Err("seam must be 0..=32 cells".into());
-    }
     let seed = match params.get("seed") {
         None | Some(Value::Null) => 0,
         Some(found) => found

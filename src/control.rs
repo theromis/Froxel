@@ -8,7 +8,7 @@ use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -26,17 +26,39 @@ const AUTH_DEADLINE: Duration = Duration::from_secs(5);
 const IDLE_TIMEOUT: Duration = Duration::from_secs(600);
 /// Connections served at once; one past this is closed at accept.
 const MAX_CONNECTIONS: usize = 16;
+/// A request the window has not taken after this long, with no frame drawn
+/// meanwhile, is withdrawn: the window is hidden, minimised, or otherwise
+/// drawing nothing, and would run it whenever it next drew.
+const STALL: Duration = Duration::from_secs(5);
+/// The longest a taken request may run before the client is told so.
+const REPLY_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// A job's [`Job::state`]: waiting, taken by the window, or withdrawn.
+const PENDING: u8 = 0;
+const TAKEN: u8 = 1;
+const WITHDRAWN: u8 = 2;
 
 pub struct Job {
     pub method: String,
     pub params: Value,
     pub reply: Sender<Result<Value, String>>,
+    /// [`PENDING`], [`TAKEN`], or [`WITHDRAWN`]; the window takes a job only
+    /// while it is pending, so a withdrawn one never runs.
+    state: Arc<AtomicU8>,
+}
+
+/// What the connection threads know of the window: its context, to wake it,
+/// and how many frames it has drawn, to tell when it is drawing none.
+#[derive(Default)]
+struct Window {
+    ctx: Mutex<Option<egui::Context>>,
+    frames: AtomicU64,
 }
 
 pub struct ControlServer {
     pub port: u16,
     jobs: Receiver<Job>,
-    wake: Arc<Mutex<Option<egui::Context>>>,
+    window: Arc<Window>,
 }
 
 impl ControlServer {
@@ -46,24 +68,33 @@ impl ControlServer {
         let port = listener.local_addr()?.port();
         let token = issue(port)?;
         let (tx, jobs) = mpsc::channel();
-        let wake = Arc::new(Mutex::new(None));
-        let wake_thread = wake.clone();
+        let window = Arc::new(Window::default());
+        let window_thread = window.clone();
         thread::Builder::new()
             .name("froxel-control".into())
-            .spawn(move || accept_loop(listener, token, tx, wake_thread))?;
+            .spawn(move || accept_loop(listener, token, tx, window_thread))?;
         eprintln!("control listening on 127.0.0.1:{port}");
-        Ok(Self { port, jobs, wake })
+        Ok(Self { port, jobs, window })
     }
 
     /// Wake the editor when a request arrives, including while it is idle.
     pub fn bind_context(&self, ctx: &egui::Context) {
-        *self.wake.lock().expect("control wake") = Some(ctx.clone());
+        *self.window.ctx.lock().expect("control wake") = Some(ctx.clone());
     }
 
+    /// The requests waiting, taken by this frame. Called once a frame, which
+    /// is how a connection knows the window is drawing.
     pub fn poll(&self) -> Vec<Job> {
+        self.window.frames.fetch_add(1, Ordering::SeqCst);
         let mut jobs = Vec::new();
         while let Ok(job) = self.jobs.try_recv() {
-            jobs.push(job);
+            let taken = job
+                .state
+                .compare_exchange(PENDING, TAKEN, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok();
+            if taken {
+                jobs.push(job);
+            }
         }
         jobs
     }
@@ -75,12 +106,7 @@ impl Drop for ControlServer {
     }
 }
 
-fn accept_loop(
-    listener: TcpListener,
-    token: String,
-    tx: Sender<Job>,
-    wake: Arc<Mutex<Option<egui::Context>>>,
-) {
+fn accept_loop(listener: TcpListener, token: String, tx: Sender<Job>, window: Arc<Window>) {
     let open = Arc::new(AtomicUsize::new(0));
     for conn in listener.incoming() {
         let Ok(conn) = conn else { continue };
@@ -91,10 +117,10 @@ fn accept_loop(
         }
         let token = token.clone();
         let tx = tx.clone();
-        let wake = wake.clone();
+        let window = window.clone();
         let open = open.clone();
         thread::spawn(move || {
-            if let Err(err) = serve_conn(conn, &token, &tx, &wake) {
+            if let Err(err) = serve_conn(conn, &token, &tx, &window) {
                 eprintln!("control connection: {err}");
             }
             open.fetch_sub(1, Ordering::SeqCst);
@@ -157,12 +183,7 @@ pub(crate) fn read_line_within(
     }
 }
 
-fn serve_conn(
-    conn: TcpStream,
-    token: &str,
-    tx: &Sender<Job>,
-    wake: &Mutex<Option<egui::Context>>,
-) -> io::Result<()> {
+fn serve_conn(conn: TcpStream, token: &str, tx: &Sender<Job>, window: &Window) -> io::Result<()> {
     let mut write = conn.try_clone()?;
     let mut reader = BufReader::new(conn);
     let mut deadline = Some(Instant::now() + AUTH_DEADLINE);
@@ -213,29 +234,84 @@ fn serve_conn(
         let method = msg["method"].as_str().unwrap().to_string();
         let params = msg.get("params").cloned().unwrap_or(json!({}));
         let (reply_tx, reply_rx) = mpsc::channel();
+        let state = Arc::new(AtomicU8::new(PENDING));
         if tx
             .send(Job {
                 method,
                 params,
                 reply: reply_tx,
+                state: state.clone(),
             })
             .is_err()
         {
             break;
         }
-        if let Some(ctx) = wake.lock().expect("control wake").as_ref() {
+        if let Some(ctx) = window.ctx.lock().expect("control wake").as_ref() {
             ctx.request_repaint();
         }
-        let result = reply_rx.recv_timeout(Duration::from_secs(60));
-        let body = match result {
-            Ok(Ok(value)) => json!({"id": id, "ok": true, "result": value}),
-            Ok(Err(error)) => json!({"id": id, "ok": false, "error": error}),
-            Err(_) => json!({"id": id, "ok": false, "error": "timeout", "state": "may-have-run"}),
+        let body = match wait_reply(&reply_rx, &state, &window.frames, STALL, REPLY_TIMEOUT) {
+            Waited::Reply(Ok(value)) => json!({"id": id, "ok": true, "result": value}),
+            Waited::Reply(Err(error)) => json!({"id": id, "ok": false, "error": error}),
+            Waited::Stalled => json!({
+                "id": id,
+                "ok": false,
+                "error": "the editor window is drawing no frames (hidden, minimised, or covered), so it did not take the request; show the window and send it again",
+                "state": "not-run"
+            }),
+            Waited::Timeout => {
+                json!({"id": id, "ok": false, "error": "timeout", "state": "may-have-run"})
+            }
         };
         writeln!(write, "{body}")?;
         write.flush()?;
     }
     Ok(())
+}
+
+/// How a request ended for the connection.
+enum Waited {
+    Reply(Result<Value, String>),
+    /// Withdrawn before the window took it: it will not run.
+    Stalled,
+    /// Taken, but no reply within [`REPLY_TIMEOUT`].
+    Timeout,
+}
+
+/// Wait for the window's reply. A request still pending after `stall`
+/// ([`STALL`]) with no frame drawn since it was sent is withdrawn, so a
+/// window that draws nothing answers at once instead of running it much
+/// later; a taken one gets `timeout` ([`REPLY_TIMEOUT`]).
+fn wait_reply(
+    reply: &Receiver<Result<Value, String>>,
+    state: &AtomicU8,
+    frames: &AtomicU64,
+    stall: Duration,
+    timeout: Duration,
+) -> Waited {
+    let sent = Instant::now();
+    let frames_at_send = frames.load(Ordering::SeqCst);
+    loop {
+        match reply.recv_timeout(stall.min(Duration::from_millis(250))) {
+            Ok(result) => return Waited::Reply(result),
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return Waited::Reply(Err("the editor dropped the request".into()))
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+        }
+        let elapsed = sent.elapsed();
+        let drew = frames.load(Ordering::SeqCst) != frames_at_send;
+        if elapsed >= stall
+            && !drew
+            && state
+                .compare_exchange(PENDING, WITHDRAWN, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+        {
+            return Waited::Stalled;
+        }
+        if elapsed >= timeout {
+            return Waited::Timeout;
+        }
+    }
 }
 
 pub struct ControlClient {

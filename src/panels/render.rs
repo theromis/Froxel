@@ -424,14 +424,21 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
     );
     let mut ty = session.materials[session.active_slot as usize].ty;
     let before = ty;
+    // The types are set_palette's `material` items.
+    let prop = crate::ops::prop_ui("set_palette", "material");
     egui::ComboBox::from_id_salt("material")
         .selected_text(ty.name())
         .show_ui(ui, |ui| {
-            ui.selectable_value(&mut ty, MaterialType::Diffuse, "Diffuse");
-            ui.selectable_value(&mut ty, MaterialType::Metal, "Metal");
-            ui.selectable_value(&mut ty, MaterialType::Emissive, "Emissive");
-            ui.selectable_value(&mut ty, MaterialType::Glass, "Glass");
-        });
+            for kind in prop
+                .items
+                .iter()
+                .filter_map(|item| MaterialType::from_key(item))
+            {
+                ui.selectable_value(&mut ty, kind, kind.name());
+            }
+        })
+        .response
+        .on_hover_text(prop.tooltip());
     if ty != before {
         session.begin_edit();
         session.material_mut().ty = ty;
@@ -452,63 +459,21 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
         session.end_edit();
         session.mesh_epoch = session.mesh_epoch.wrapping_add(1);
     }
-    material_slider_f32(
-        ui,
-        session,
-        "Amount",
-        SliderTarget::MotionAmount,
-        0.0..=4.0,
-        2,
-    );
+    material_slider(ui, session, SliderTarget::MotionAmount);
     match ty {
         MaterialType::Diffuse => {}
         MaterialType::Metal => {
-            material_slider_f32(
-                ui,
-                session,
-                "Roughness",
-                SliderTarget::MaterialRoughness,
-                0.0..=1.0,
-                2,
-            );
-            material_slider_f32(
-                ui,
-                session,
-                "Metallic",
-                SliderTarget::MaterialMetallic,
-                0.0..=1.0,
-                2,
-            );
+            material_slider(ui, session, SliderTarget::MaterialRoughness);
+            material_slider(ui, session, SliderTarget::MaterialMetallic);
         }
         MaterialType::Glass => {
-            material_slider_f32(
-                ui,
-                session,
-                "Roughness",
-                SliderTarget::MaterialRoughness,
-                0.0..=1.0,
-                2,
-            );
-            material_slider_f32(
-                ui,
-                session,
-                "Transparency",
-                SliderTarget::MaterialTransparency,
-                0.0..=1.0,
-                2,
-            );
-            material_slider_f32(ui, session, "IoR", SliderTarget::MaterialIor, 1.0..=3.0, 2);
+            material_slider(ui, session, SliderTarget::MaterialRoughness);
+            material_slider(ui, session, SliderTarget::MaterialTransparency);
+            material_slider(ui, session, SliderTarget::MaterialIor);
         }
         MaterialType::Emissive => {
-            material_slider_f32(
-                ui,
-                session,
-                "Emission",
-                SliderTarget::MaterialEmission,
-                0.0..=100.0,
-                0,
-            );
-            material_slider_i32(ui, session, "Power", SliderTarget::MaterialPower, 1..=5);
+            material_slider(ui, session, SliderTarget::MaterialEmission);
+            material_slider(ui, session, SliderTarget::MaterialPower);
         }
     }
 }

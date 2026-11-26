@@ -90,8 +90,7 @@ pub(super) fn options(ui: &mut Ui, session: &mut Session) {
         session.tool,
         Tool::Face | Tool::Generator | Tool::Tube | Tool::Sculpt
     ) {
-        slider_i32(ui, session, "Size", SliderTarget::BrushSize, 1..=63);
-        session.brush_size = session.brush_size.clamp(1, 63);
+        op_slider(ui, session, SliderTarget::BrushSize);
         segment(
             ui,
             &mut session.brush_shape,
@@ -206,19 +205,11 @@ pub(super) fn options(ui: &mut Ui, session: &mut Session) {
                 });
             });
             ui.label(RichText::new("Seed color").small().color(DIM));
-            slider_i32(ui, session, "Slot", SliderTarget::FoliageSeed, 1..=255);
-            session.foliage_seed = session.foliage_seed.clamp(1, 255);
+            op_slider(ui, session, SliderTarget::FoliageSeed);
             if ui.button("Use active palette slot").clicked() {
                 session.foliage_seed = session.active_slot as i32;
             }
-            slider_f32(
-                ui,
-                session,
-                "Density",
-                SliderTarget::FoliageDensity,
-                0.0..=1.0,
-                2,
-            );
+            op_slider(ui, session, SliderTarget::FoliageDensity);
         }
         _ => {}
     }

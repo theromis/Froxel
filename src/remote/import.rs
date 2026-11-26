@@ -209,13 +209,11 @@ pub(crate) fn import_plan(
     };
     let max_new = match opt_f64(params, "maxNewSlots")? {
         None => DEFAULT_MAX_NEW_SLOTS,
-        Some(n) if (0.0..=255.0).contains(&n) && n.fract() == 0.0 => n as usize,
-        Some(_) => return Err("maxNewSlots must be a whole number 0..=255".into()),
+        // In its schema range (ops::check_arguments).
+        Some(n) if n.fract() == 0.0 => n as usize,
+        Some(_) => return Err("maxNewSlots must be a whole number".into()),
     };
     let tolerance = opt_f64(params, "tolerance")?.unwrap_or(DEFAULT_TOLERANCE);
-    if !(0.0..=442.0).contains(&tolerance) {
-        return Err("tolerance must be 0..=442 (sRGB distance)".into());
-    }
     let min_feature = super::organic::min_feature_arg(params)?;
     let voxels = crate::import::voxelize(mesh, &options)?;
     let (map, new_slots) = match one {
@@ -535,9 +533,10 @@ pub(super) fn apply_import(session: &mut Session, params: &Value) -> Result<Valu
             .iter()
             .map(|(slot, rgb)| PaletteChange {
                 index: *slot,
-                rgba: [rgb[0], rgb[1], rgb[2], 255],
+                rgba: Some([rgb[0], rgb[1], rgb[2], 255]),
                 motion: None,
                 amount: None,
+                material: Default::default(),
             })
             .collect();
         session.write_palette(&changes);

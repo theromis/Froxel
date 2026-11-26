@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- A control-port request the window does not take within 5 seconds, because
+  it draws no frames (hidden, minimised, or covered), is withdrawn with
+  `state` `not-run` instead of waiting a minute and running whenever the
+  window next draws.
 - Every number argument whose description states a range now has it in the
   schema (218 of them), so a value outside it is refused the same way by
   every frontend instead of by some handlers and clamped by others.
@@ -21,6 +25,14 @@
 
 ### Added
 
+- MCP `set_palette` (and Rhai `set_palette`) sets a slot's Render material:
+  `material` (`diffuse`, `metal`, `emissive`, `glass`), `roughness`,
+  `metallic`, `transparency`, `ior`, `emission`, and `power`, with the colour
+  optional. The Material section draws its sliders from those arguments.
+- MCP `set_tool` picks the window's tool, mode, active slot, brush size and
+  shape, and the Mutator's seed colour and density, so a `ui_click` on the
+  viewport stamps with a known tool; the tool options row draws Size, Seed
+  color, and Density from it.
 - MCP `ui_click` takes a control's `id` from `ui_inspect` instead of a
   point (a slider with `value`), so a redraw that moved the control cannot
   send the click astray; picking an item of an open drop-down closes it.

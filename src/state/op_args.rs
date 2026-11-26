@@ -143,6 +143,16 @@ impl SliderTarget {
             SliderTarget::SunAzimuth => ("render", "sunAzimuth"),
             SliderTarget::SunDisc => ("render", "sunDisc"),
             SliderTarget::EmaFloor => ("set_view", "temporalSmooth"),
+            SliderTarget::BrushSize => ("set_tool", "size"),
+            SliderTarget::FoliageSeed => ("set_tool", "seedColor"),
+            SliderTarget::FoliageDensity => ("set_tool", "density"),
+            SliderTarget::MaterialRoughness => ("set_palette", "roughness"),
+            SliderTarget::MaterialMetallic => ("set_palette", "metallic"),
+            SliderTarget::MaterialTransparency => ("set_palette", "transparency"),
+            SliderTarget::MaterialIor => ("set_palette", "ior"),
+            SliderTarget::MaterialEmission => ("set_palette", "emission"),
+            SliderTarget::MaterialPower => ("set_palette", "power"),
+            SliderTarget::MotionAmount => ("set_palette", "motionAmount"),
             _ => return None,
         })
     }

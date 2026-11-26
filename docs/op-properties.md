@@ -194,6 +194,13 @@ The Render panel's Path tracer, Sky, and Sun rows are `render` arguments
 (`op_slider`, `prop_check`), `render` overrides the window's values for one
 still, and `set_view` sets the window's.
 
+The Material section's sliders are `set_palette` arguments (`roughness`,
+`metallic`, `transparency`, `ior`, `emission`, `power`, `motionAmount`), and
+the tool options row's Size, Seed color, and Density are `set_tool`
+arguments (`size`, `seedColor`, `density`); `material_slider` and
+`op_slider` draw them from those properties. No panel slider keeps a range
+of its own but the Tube tool's Second slot, the second item of `palettes`.
+
 ## Still hand-written
 
 - The Rhai readers named under Rhai.

@@ -3340,6 +3340,7 @@ const NOT_IN_SCRIPTING: &[&str] = &[
     "model_view",
     "reload",
     "set_view",
+    "set_tool",
     "screenshot",
     "screenshot_viewport",
     "screenshot_region",
@@ -3418,4 +3419,77 @@ fn set_view_sets_how_the_window_renders() {
     )
     .unwrap_err();
     assert!(error.contains("sunElevation"), "{error}");
+}
+
+#[test]
+fn set_palette_sets_a_slots_material() {
+    let mut head = Headless::new();
+    let before = head.session.palette[9];
+    let reply = head.ok(
+        "set_palette",
+        json!({"index": 9, "material": "glass", "roughness": 0.2, "transparency": 0.8, "ior": 1.33}),
+    );
+    assert_eq!(reply["changed"], 1);
+    let material = head.session.materials[9];
+    assert!(material.ty == crate::state::MaterialType::Glass);
+    assert!((material.ior - 1.33).abs() < 1e-6 && (material.transparency - 0.8).abs() < 1e-6);
+    // Leaving the colour out keeps it.
+    assert_eq!(head.session.palette[9], before);
+    // Emission is given 0..100 as the panel shows it.
+    head.ok(
+        "set_palette",
+        json!({"entries": [{"index": 3, "color": "#ffaa00", "material": "emissive", "emission": 50, "power": 2}]}),
+    );
+    assert!((head.session.materials[3].emission - 0.5).abs() < 1e-6);
+    assert_eq!(head.session.materials[3].emission_power, 2);
+    // Out of range, in a call or an entry, and a bad type are refused.
+    for (args, says) in [
+        (json!({"index": 9, "ior": 4}), "ior"),
+        (
+            json!({"entries": [{"index": 9, "roughness": 2}]}),
+            "roughness",
+        ),
+        (json!({"index": 9, "material": "wood"}), "material"),
+        (json!({"index": 9}), "pass color"),
+    ] {
+        let error = crate::remote::apply(&mut head.session, "palette.set", &args).unwrap_err();
+        assert!(error.contains(says), "{args}: {error}");
+    }
+    // The same values again change nothing.
+    let again = head.ok(
+        "set_palette",
+        json!({"index": 9, "material": "glass", "ior": 1.33}),
+    );
+    assert_eq!(again["changed"], 0);
+}
+
+#[test]
+fn set_tool_picks_the_windows_tool_and_its_options() {
+    let mut head = Headless::new();
+    let reply = head.ok(
+        "set_tool",
+        json!({"tool": "mutator", "mode": "paint", "slot": 7, "size": 5, "shape": "circle", "seedColor": 12, "density": 0.4}),
+    );
+    assert_eq!(reply["tool"], "mutator");
+    assert!(head.session.tool == crate::state::Tool::Mutator);
+    assert!(head.session.tool_mode == crate::state::ToolMode::Paint);
+    assert_eq!(head.session.active_slot, 7);
+    assert_eq!(
+        (head.session.brush_size, head.session.foliage_seed),
+        (5, 12)
+    );
+    assert!((head.session.foliage_density - 0.4).abs() < 1e-6);
+    // Every tool has an id set_tool takes.
+    for tool in crate::state::Tool::ALL {
+        let reply = head.ok("set_tool", json!({"tool": tool.id()}));
+        assert_eq!(reply["tool"], tool.id());
+    }
+    for (args, says) in [
+        (json!({"size": 64}), "size"),
+        (json!({"tool": "hammer"}), "tool"),
+        (json!({"mode": "erase"}), "mode"),
+    ] {
+        let error = crate::remote::apply(&mut head.session, "view.tool", &args).unwrap_err();
+        assert!(error.contains(says), "{args}: {error}");
+    }
 }

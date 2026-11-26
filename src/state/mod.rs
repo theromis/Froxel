@@ -67,6 +67,25 @@ impl Tool {
         }
     }
 
+    /// The MCP `set_tool` `tool` of this tool.
+    pub fn id(self) -> &'static str {
+        match self {
+            Tool::Brush => "brush",
+            Tool::Line => "line",
+            Tool::Circle => "circle",
+            Tool::Square => "square",
+            Tool::Box => "box",
+            Tool::Face => "face",
+            Tool::Generator => "generator",
+            Tool::Tube => "tube",
+            Tool::Sculpt => "sculpt",
+            Tool::Mutator => "mutator",
+            Tool::Marquee => "marquee",
+            Tool::BoxSelect => "box_select",
+            Tool::FloodSelect => "flood_select",
+        }
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Tool::Brush => "Brush",
@@ -295,6 +314,28 @@ pub enum MaterialType {
 }
 
 impl MaterialType {
+    /// The MCP `set_palette` `material` of this type.
+    pub fn key(self) -> &'static str {
+        match self {
+            MaterialType::Diffuse => "diffuse",
+            MaterialType::Metal => "metal",
+            MaterialType::Emissive => "emissive",
+            MaterialType::Glass => "glass",
+        }
+    }
+
+    /// The type of an MCP `material`.
+    pub fn from_key(key: &str) -> Option<Self> {
+        [
+            MaterialType::Diffuse,
+            MaterialType::Metal,
+            MaterialType::Emissive,
+            MaterialType::Glass,
+        ]
+        .into_iter()
+        .find(|ty| ty.key() == key)
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             MaterialType::Diffuse => "Diffuse",
@@ -360,9 +401,37 @@ pub struct Material {
 #[derive(Clone, Copy)]
 pub struct PaletteChange {
     pub index: u8,
-    pub rgba: [u8; 4],
+    /// `None` keeps the slot's colour.
+    pub rgba: Option<[u8; 4]>,
     pub motion: Option<Motion>,
     pub amount: Option<f32>,
+    pub material: MaterialChange,
+}
+
+/// The material fields one `set_palette` slot sets; `None` keeps the slot's.
+#[derive(Clone, Copy, Default)]
+pub struct MaterialChange {
+    pub ty: Option<MaterialType>,
+    pub roughness: Option<f32>,
+    pub metallic: Option<f32>,
+    pub transparency: Option<f32>,
+    pub ior: Option<f32>,
+    pub emission: Option<f32>,
+    pub power: Option<i32>,
+}
+
+impl MaterialChange {
+    /// `material` with these fields set.
+    pub fn apply(&self, mut material: Material) -> Material {
+        material.ty = self.ty.unwrap_or(material.ty);
+        material.roughness = self.roughness.unwrap_or(material.roughness);
+        material.metallic = self.metallic.unwrap_or(material.metallic);
+        material.transparency = self.transparency.unwrap_or(material.transparency);
+        material.ior = self.ior.unwrap_or(material.ior);
+        material.emission = self.emission.unwrap_or(material.emission);
+        material.emission_power = self.power.unwrap_or(material.emission_power);
+        material
+    }
 }
 
 impl Default for Material {

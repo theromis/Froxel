@@ -92,6 +92,9 @@ server is still running. A server started with `--watch` reloads by itself.
   `smooth`, `loft`, `blend_shapes`, `brush`, `carve_from_views`, `project_paint`,
   `paint_from_views`, `decal`, `split_object`) to give world cells instead; parts that moved after a
   save and reopen, or a `mirror_object` copy, need no subtraction then.
+- `set_palette` also sets a slot's Render material (`material` `metal`,
+  `glass`, `emissive`, with `roughness`, `metallic`, `transparency`, `ior`,
+  `emission`, `power`); leave the colour out to change only that.
 - Palette `0` erases. Slots `1..255` are colours; set them with `set_palette`
   (`entries` sets many at once) before you fill. A colour is `color:
   "#rrggbb"` (or `"#rrggbbaa"`) or `r`, `g`, `b`, so a concept's hex codes
@@ -472,7 +475,8 @@ refused.
 
 When the server runs with `--connect`, edits appear in the open editor.
 `set_view` moves its camera, `screenshot_viewport` captures it, and
-`ui_inspect` with `ui_click` drive the controls: click a listed control (a
+`set_tool` picks the window's tool, mode, slot, and brush size before a
+`ui_click` on the viewport stamps with it. `ui_inspect` with `ui_click` drive the controls: click a listed control (a
 tool, a slider, a Tube toggle such as `op.fill_tube.caps`) by its `id`
 (`{"id": "tool.generator"}`, a slider with `value`), which no redraw can
 send astray; any other point gets a real pointer click, so checkboxes and

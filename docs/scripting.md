@@ -111,6 +111,7 @@ still works). It sets alpha, which
 set_palette(#{index: 9, r: 120, g: 200, b: 255, a: 96});   // a glassy slot
 set_palette([#{index: 5, r: 40, g: 160, b: 60, motion: "sway", motionAmount: 1.5}]);
 set_palette(#{index: 10, color: "#78c8ff60"});            // hex, with alpha
+set_palette(#{index: 11, material: "metal", roughness: 0.3}); // keeps its colour
 ```
 
 ## Voxels

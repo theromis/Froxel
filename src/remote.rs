@@ -142,8 +142,8 @@ fn still_size(
     angles: &[(f32, f32)],
     pixels_per_voxel: Option<f32>,
 ) -> Result<(u32, u32), String> {
-    let width = opt_i32_range(params, "width", 0, 1, MAX_SIDE)?;
-    let height = opt_i32_range(params, "height", 0, 1, MAX_SIDE)?;
+    let width = opt_i32_or(params, "width", 0)?;
+    let height = opt_i32_or(params, "height", 0)?;
     if width > 0 && height > 0 {
         return Ok((width as u32, height as u32));
     }
@@ -186,8 +186,8 @@ fn render_scene(session: &mut Session, params: &Value) -> Result<Value, String> 
     if path.is_empty() {
         return Err("path is empty".into());
     }
-    let samples = opt_i32_range(params, "samples", 16, 1, 8192)?;
-    let bounces = opt_i32_range(params, "bounces", 4, 0, 8)?;
+    let samples = opt_i32_or(params, "samples", 16)?;
+    let bounces = opt_i32_or(params, "bounces", 4)?;
     let seed = opt_i32_range(params, "seed", 1, 0, i32::MAX)?;
     let denoise = opt_bool(params, "denoise")?.unwrap_or(true);
     let aces = opt_bool(params, "aces")?.unwrap_or(true);
@@ -461,13 +461,12 @@ fn preview(session: &mut Session, params: &Value) -> Result<Value, String> {
     if path.is_empty() {
         return Err("path is empty".into());
     }
-    let max = crate::preview::MAX_SIZE as i32;
     let sheet = crate::sheet::wanted(params);
     // A sheet's width and height are each tile's.
     let side = if sheet { crate::sheet::TILE } else { 1024 } as i32;
     let mut preview = crate::preview::Preview {
-        width: opt_i32_range(params, "width", side, 1, max)? as u32,
-        height: opt_i32_range(params, "height", side, 1, max)? as u32,
+        width: opt_i32_or(params, "width", side)? as u32,
+        height: opt_i32_or(params, "height", side)? as u32,
         ..Default::default()
     };
     preview_camera(params, &mut preview)?;
@@ -834,6 +833,84 @@ fn set_view(session: &mut Session, params: &Value) -> Result<Value, String> {
         "bones": session.view_bones,
         "oneFrame": session.render_one_frame,
         "temporalSmooth": session.ema_floor
+    }))
+}
+
+/// MCP `set_tool`: the window's tool, mode, slot, and tool options. Ranges
+/// are the schema's (`ops::check_arguments`).
+fn set_tool(session: &mut Session, params: &Value) -> Result<Value, String> {
+    use crate::state::{BrushShape, Tool, ToolMode};
+    let tool = match opt_str(params, "tool")? {
+        None => None,
+        Some(name) => Some(
+            Tool::ALL
+                .into_iter()
+                .find(|tool| tool.id() == name)
+                .ok_or_else(|| format!("no tool `{name}`"))?,
+        ),
+    };
+    let mode = match opt_str(params, "mode")?.as_deref() {
+        None => None,
+        Some("add") => Some(ToolMode::Add),
+        Some("remove") => Some(ToolMode::Remove),
+        Some("paint") => Some(ToolMode::Paint),
+        Some(other) => return Err(format!("mode must be add, remove, or paint, not `{other}`")),
+    };
+    let shape = match opt_str(params, "shape")?.as_deref() {
+        None => None,
+        Some("square") => Some(BrushShape::Square),
+        Some("circle") => Some(BrushShape::Circle),
+        Some(other) => return Err(format!("shape must be square or circle, not `{other}`")),
+    };
+    let slot = params
+        .get("slot")
+        .map(|_| opt_i32_or(params, "slot", 0))
+        .transpose()?;
+    let size = params
+        .get("size")
+        .map(|_| opt_i32_or(params, "size", 1))
+        .transpose()?;
+    let seed = params
+        .get("seedColor")
+        .map(|_| opt_i32_or(params, "seedColor", 1))
+        .transpose()?;
+    let density = opt_f64(params, "density")?;
+    if let Some(tool) = tool {
+        session.tool = tool;
+    }
+    if let Some(mode) = mode {
+        session.tool_mode = mode;
+    }
+    if let Some(slot) = slot {
+        session.active_slot = slot as u8;
+    }
+    if let Some(size) = size {
+        session.brush_size = size;
+    }
+    if let Some(shape) = shape {
+        session.brush_shape = shape;
+    }
+    if let Some(seed) = seed {
+        session.foliage_seed = seed;
+    }
+    if let Some(density) = density {
+        session.foliage_density = density as f32;
+    }
+    Ok(json!({
+        "tool": session.tool.id(),
+        "mode": match session.tool_mode {
+            ToolMode::Add => "add",
+            ToolMode::Remove => "remove",
+            ToolMode::Paint => "paint",
+        },
+        "slot": session.active_slot,
+        "size": session.brush_size,
+        "shape": match session.brush_shape {
+            BrushShape::Square => "square",
+            BrushShape::Circle => "circle",
+        },
+        "seedColor": session.foliage_seed,
+        "density": session.foliage_density
     }))
 }
 
@@ -1291,6 +1368,7 @@ fn apply_unguarded(session: &mut Session, method: &str, params: &Value) -> Resul
         "render.flat" => model_view(session, &params),
         "render.preview" => preview(session, &params),
         "view.set" => set_view(session, &params),
+        "view.tool" => set_tool(session, &params),
         "script.set" => {
             let index = script_index(session, &params)?;
             let source = req_str(&params, "source")?;
@@ -2920,11 +2998,15 @@ fn palette_slots(params: &Value) -> Result<Vec<crate::state::PaletteChange>, Str
 }
 
 fn one_slot(value: &Value) -> Result<crate::state::PaletteChange, String> {
+    // index and motionAmount are in their schema ranges: a call's by
+    // ops::check_arguments, an entry's by check_tool_ranges below.
     let index = req_i32(value, "index")?;
-    if !(0..=255).contains(&index) {
-        return Err("palette index must be 0..255".into());
+    // An entry's numbers are checked against the schema as a call's are.
+    if let Some(map) = value.as_object() {
+        crate::ops::check_tool_ranges("set_palette", map)?;
     }
     let channels = ["r", "g", "b"].iter().any(|key| value.get(*key).is_some());
+    let keeps_colour = !channels && value.get("color").is_none() && value.get("a").is_none();
     let [r, g, b, a] = match value.get("color") {
         Some(color) => {
             if channels {
@@ -2939,6 +3021,7 @@ fn one_slot(value: &Value) -> Result<crate::state::PaletteChange, String> {
                 None => rgba,
             }
         }
+        None if keeps_colour => [0; 4],
         None if !channels => return Err("pass color (\"#rrggbb\") or r, g, b".into()),
         None => [
             byte(value, "r")?,
@@ -2960,19 +3043,51 @@ fn one_slot(value: &Value) -> Result<crate::state::PaletteChange, String> {
     let key = alias(value, "motionAmount", "motion_amount")?;
     let amount = match opt_f64(value, key)? {
         None => None,
-        Some(number) => {
-            if !(0.0..=4.0).contains(&number) {
-                return Err(format!("{key} is out of range"));
-            }
-            Some(number as f32)
-        }
+        Some(number) => Some(number as f32),
     };
+    let number = |key: &str| -> Result<Option<f32>, String> {
+        Ok(opt_f64(value, key)?.map(|found| found as f32))
+    };
+    let material = crate::state::MaterialChange {
+        ty: match opt_str(value, "material")? {
+            None => None,
+            Some(text) => Some(crate::state::MaterialType::from_key(&text).ok_or_else(|| {
+                format!("material must be diffuse, metal, emissive, or glass, not `{text}`")
+            })?),
+        },
+        roughness: number("roughness")?,
+        metallic: number("metallic")?,
+        transparency: number("transparency")?,
+        ior: number("ior")?,
+        // Shown 0..100, kept as a share.
+        emission: number("emission")?.map(|value| value / 100.0),
+        power: match value.get("power") {
+            None | Some(Value::Null) => None,
+            Some(found) => Some(found.as_i64().ok_or("power must be a whole number")? as i32),
+        },
+    };
+    if keeps_colour && motion.is_none() && amount.is_none() && material_is_empty(&material) {
+        return Err(
+            "pass color (\"#rrggbb\") or r, g, b, or a motion or material to change".into(),
+        );
+    }
     Ok(crate::state::PaletteChange {
         index: index as u8,
-        rgba: [r, g, b, a],
+        rgba: (!keeps_colour).then_some([r, g, b, a]),
         motion,
         amount,
+        material,
     })
+}
+
+fn material_is_empty(material: &crate::state::MaterialChange) -> bool {
+    material.ty.is_none()
+        && material.roughness.is_none()
+        && material.metallic.is_none()
+        && material.transparency.is_none()
+        && material.ior.is_none()
+        && material.emission.is_none()
+        && material.power.is_none()
 }
 
 fn byte(value: &Value, key: &str) -> Result<u8, String> {
@@ -2982,6 +3097,15 @@ fn byte(value: &Value, key: &str) -> Result<u8, String> {
 
 pub fn req_str(value: &Value, key: &str) -> Result<String, String> {
     opt_str(value, key)?.ok_or_else(|| format!("missing string {key}"))
+}
+
+/// A whole-number argument, or `fallback` when it is left out. Its range is
+/// the schema's, which `ops::check_arguments` has already checked.
+pub(crate) fn opt_i32_or(value: &Value, key: &str, fallback: i32) -> Result<i32, String> {
+    match value.get(key) {
+        None | Some(Value::Null) => Ok(fallback),
+        Some(found) => as_i32(found).ok_or_else(|| format!("{key} must be a whole number")),
+    }
 }
 
 fn opt_i32_range(value: &Value, key: &str, fallback: i32, lo: i32, hi: i32) -> Result<i32, String> {

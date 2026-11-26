@@ -508,34 +508,6 @@ pub(super) fn slider_i32(
     });
 }
 
-pub(super) fn slider_f32(
-    ui: &mut Ui,
-    session: &mut Session,
-    label: &str,
-    target: SliderTarget,
-    range: std::ops::RangeInclusive<f32>,
-    digits: usize,
-) {
-    let mut value = slider_value(session, target);
-    let column = !ui.layout().is_horizontal();
-    row(ui, |ui| {
-        slider_label(ui, label, column);
-        let resp = ui.add(Slider::new(&mut value, range.clone()).show_value(false));
-        note_slider(
-            session,
-            label,
-            target,
-            resp.rect,
-            *range.start(),
-            *range.end(),
-        );
-        if resp.changed() {
-            session.write_slider(target, value);
-        }
-        ui.monospace(format!("{value:.digits$}"));
-    });
-}
-
 /// A slider's name: a fixed column in the Inspector, its own width in the
 /// tool options row (where [`row`] wraps the name, track, and value as one).
 fn slider_label(ui: &mut Ui, label: &str, column: bool) {
@@ -656,27 +628,34 @@ pub(super) fn material_shown(session: &Session, target: SliderTarget) -> f32 {
     }
 }
 
-pub(super) fn material_slider_f32(
-    ui: &mut Ui,
-    session: &mut Session,
-    label: &str,
-    target: SliderTarget,
-    range: std::ops::RangeInclusive<f32>,
-    digits: usize,
-) {
+/// A slider over the active slot's material field `target` names
+/// (`SliderTarget::schema_prop`, a `set_palette` argument): labelled,
+/// ranged, and stepped from that property, one undo step per drag.
+pub(super) fn material_slider(ui: &mut Ui, session: &mut Session, target: SliderTarget) {
+    let prop = target
+        .prop()
+        .unwrap_or_else(|| panic!("{} names no argument", target.id()));
+    let (min, max) = prop
+        .soft
+        .unwrap_or_else(|| panic!("`set_palette` `{}` has no soft range", prop.key));
+    let (min, max) = (min as f32, max as f32);
+    let digits = if prop.integer { 0 } else { prop.digits };
     let mut shown = material_shown(session, target);
     let column = !ui.layout().is_horizontal();
     row(ui, |ui| {
-        slider_label(ui, label, column);
-        let resp = ui.add(Slider::new(&mut shown, range.clone()).show_value(false));
-        note_slider(
-            session,
-            label,
-            target,
-            resp.rect,
-            *range.start(),
-            *range.end(),
-        );
+        let text = RichText::new(prop.label).small().color(DIM);
+        let name = if column {
+            ui.add_sized([96.0, 16.0], egui::Label::new(text))
+        } else {
+            ui.add(egui::Label::new(text))
+        };
+        name.on_hover_text(prop.tooltip());
+        let mut slider = Slider::new(&mut shown, min..=max).show_value(false);
+        if prop.integer {
+            slider = slider.integer();
+        }
+        let resp = ui.add(slider).on_hover_text(prop.tooltip());
+        note_slider(session, prop.label, target, resp.rect, min, max);
         if resp.changed() {
             session.begin_edit();
             session.write_slider(target, shown);
@@ -685,37 +664,6 @@ pub(super) fn material_slider_f32(
             session.end_edit();
         }
         ui.monospace(format!("{shown:.digits$}"));
-    });
-}
-
-pub(super) fn material_slider_i32(
-    ui: &mut Ui,
-    session: &mut Session,
-    label: &str,
-    target: SliderTarget,
-    range: std::ops::RangeInclusive<i32>,
-) {
-    let mut shown = material_shown(session, target).round() as i32;
-    let column = !ui.layout().is_horizontal();
-    row(ui, |ui| {
-        slider_label(ui, label, column);
-        let resp = ui.add(Slider::new(&mut shown, range.clone()).show_value(false));
-        note_slider(
-            session,
-            label,
-            target,
-            resp.rect,
-            *range.start() as f32,
-            *range.end() as f32,
-        );
-        if resp.changed() {
-            session.begin_edit();
-            session.write_slider(target, shown as f32);
-        }
-        if resp.drag_stopped() || (resp.changed() && !resp.dragged()) {
-            session.end_edit();
-        }
-        ui.monospace(format!("{shown}"));
     });
 }
 

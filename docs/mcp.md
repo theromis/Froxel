@@ -363,7 +363,7 @@ tracer. A file with no scene graph still loads its first model.
 | `vines` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1`, `palettes` | Vine strands hanging from top edges, graded through `palettes` to the tip, with optional `blooms`. Optional `amount`, `length`, `bloomChance`, `noise`, `faces`, `facing`, `band`, `only`, `exclude`, `seed`. Replies with `added`, `strands`, `blooms`. One undo step |
 | `smooth` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Majority filter in an inclusive box of at most 2000000 cells that keeps colours. Optional `iterations` (1..=8), `fillAt`, `removeAt`. Replies with `filled`, `removed`, `iterations`. One undo step |
 | `get_voxels` | `x0`, `y0`, `z0`, `x1`, `y1`, `z1` | Non-empty **local** cells inside an inclusive box, at most 100000 |
-| `set_palette` | `index` and `color` or `r`, `g`, `b`; or `entries` | Replace one slot, or many via `entries`, as one undo step. `color` is `"#rrggbb"` or `"#rrggbbaa"` (or `[r, g, b, a?]`), as the other tools take colours. `a` defaults to 255. Optional `motion` (`none`, `sway`, `bob`) and `motionAmount` (0..4; the older `motion_amount` still works) |
+| `set_palette` | `index` and `color` or `r`, `g`, `b`; or `entries` | Replace one slot, or many via `entries`, as one undo step. `color` is `"#rrggbb"` or `"#rrggbbaa"` (or `[r, g, b, a?]`), as the other tools take colours. `a` defaults to 255. Optional `motion` (`none`, `sway`, `bob`) and `motionAmount` (0..4; the older `motion_amount` still works), and the slot's Render material: `material` (`diffuse`, `metal`, `emissive`, `glass`), `roughness` and `metallic` (0..1), `transparency` (0..1), `ior` (1..3), `emission` (0..100), `power` (1..5). Leave the colour out to change only the motion or material |
 | `set_active_object` | `index` | Edit a different object. Later voxel tools use its local cells |
 | `add_object` | — | Empty object. Optional `name`, world `position` `[x, y, z]` (default `[0, 0, 0]`), `size` `[x, y, z]` (capacity hint, each axis 1..=256), `makeActive` (default true; the older `make_active` still works). Returns the index. One undo step |
 | `set_object` | `index` | Optional `name`, world `position`, `hidden`. Moving changes the scene-graph translation, so voxels move in the world. One undo step |
@@ -397,6 +397,7 @@ tracer. A file with no scene graph still loads its first model.
 | `optimize_to_views` | `views` or `path` | Iterate a small creature (20 to 60 cells long) until its orthographic views match its pixel-art views (see Optimizing to pixel-art views): an excess ray's column goes, a missing ray gains a cell touching the body inside every other view, within `band` cells (default 3) of the starting surface, connected, never thinner than `minFeature`; then every surface cell takes the slot the views that see it agree on, weighted by how squarely each faces it, with a smoothness term (`smooth`) and the accent guard (`accents`, `accentShare`), and `colorCarve` removes an edge cell two views paint differently when both still meet the body. Views are `pixelate_views` rows, or crops pixelated at the object's box (`downscale`). Replies with each view's `agreement`, `iou`, `color`, and `colorError` before and after, `added`, `removed`, `recolored`, `iterations`, `blocked`. Deterministic, one undo step |
 | `measure_sheet` | `path` | Read a views sheet image, writing nothing: each view's tight `crop` (connected inked regions under the background rule and the mask edits, merged within `gap` pixels, regions under `minShare` of the largest in `ignored`), the 2 x 2 `layout` names (front, side, top, back), the cube pitch per view (`pitchX`, `pitchY`, `strength`, `cubes`, `square`) from the autocorrelation of the cube seams, `checks` (front height = side height, front width = top width, side length = top length, in percent of pixels and of cubes, `ok` within `checkTolerance`), `fitViews` for `carve_from_views` and `fit_to_views`, and with `parts` the top view's parts sticking out of its body. See [Measuring a sheet](#measuring-a-sheet) |
 | `reload` | — | Restart this server on the rebuilt binary in place, keeping the connection and the open document, then send `notifications/tools/list_changed`. `force` reloads an unchanged binary. See [Reloading the server](#reloading-the-server) |
+| `set_tool` | — | Pick the window's `tool` (`brush` … `flood_select`), `mode` (`add`, `remove`, `paint`), active `slot`, and tool options: `size` (1..63) and `shape` (`square`, `circle`) of the brush, `seedColor` (1..255) and `density` (0..1) of the Mutator, so a `ui_click` on the viewport then stamps that tool. Replies with them as they now are. Not an edit |
 | `set_view` | — | Move the session camera; connected, the window's. Optional `view`, `yaw`, `pitch`, `preset`, `presets`, `placementYaw`, `frame`, `distance`, `orthographic`, `bones`, and the window's Render mode refresh: `oneFrame` (trace one frame and again once the view holds still) and `temporalSmooth` (0..1, the live render's least weight for a new frame). Not an edit |
 | `screenshot` | — | PNG of the whole editor window. Connected mode only |
 | `screenshot_viewport` | — | PNG of the 3D viewport, including its mode chips. Connected mode only |
@@ -1523,7 +1524,10 @@ of the active tool. A hit on a slider sets that slider from how far `x` is
 along the track. A hit on a palette cell selects that slot. A point on no
 region gets a real pointer press and release in the next two frames, so any
 widget there (a checkbox, a combo box, a button) is clicked; the reply is
-`pointer` `[x, y]`. Both tools need the connected window; headless they fail
+`pointer` `[x, y]`. A request the window has not taken within 5 seconds,
+with no frame drawn meanwhile (the window is hidden, minimised, or covered),
+is withdrawn and answered with `state` `not-run`: it does not run later
+when the window shows again, so it is safe to send again. Both tools need the connected window; headless they fail
 like the screenshots.
 
 `render` path-traces every visible object and writes a PNG. It does not need a
@@ -3117,7 +3121,8 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `foliage` | Foliage section: Volume (Ellipsoids, with Ellipsoid at selection, or From slots), Palettes, Core, Size, Gap, Flatten, Ragged, Light, Dark, Masses, Groove, Keep, Seed; Grow crown within the selection's box, or the whole crown with nothing selected |
 | `moss`, `algae`, `vines` | Growth section: Moss (Caps or Cushions), Algae, or Vines, Palettes, Amount, Noise, Faces, Facing, Band, Only, Paint, Curtains, Thickness, Size, Gap, Exposure, Drapes, Length, Blooms, Bloom chance, Seed, over the selection's box or the whole object |
 | `smooth` | Smooth section: Passes, Fill at, Remove at, over the selection or the whole object |
-| `set_palette` | Palette dock (colour and alpha, and a hex field: `#rrggbb` or `#rrggbbaa` and Return) and the Material section (motion) |
+| `set_palette` | Palette dock (colour and alpha, and a hex field: `#rrggbb` or `#rrggbbaa` and Return) and the Material section (type, motion, and each type's sliders, labelled and ranged from its schema) |
+| `set_tool` | The tool strip, Add/Remove/Paint, the palette's active slot, and the tool options row's Size, Shape, Seed color, and Density |
 | `set_active_object`, `add_object`, `set_object`, `remove_object` | Objects tree and the Object inspector |
 | `mirror_object` | Object inspector: Mirror X, Y, Z and Mirror bones too |
 | `clear_object` | Clear object section: Clear empties the active object |

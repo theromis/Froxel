@@ -1045,10 +1045,8 @@ fn sweep_writes(cells: &HashMap<Cell, u8>, params: &Value) -> Result<(Writes, us
     if palettes.is_empty() {
         return Err("palette or palettes is required".into());
     }
+    // In its schema range (ops::check_arguments).
     let period = opt_f64(params, "period")?.unwrap_or(2.0);
-    if !(0.5..=512.0).contains(&period) {
-        return Err("period must be 0.5..=512".into());
-    }
     let pattern = opt_str(params, "pattern")?.unwrap_or_else(|| "bands".into());
     if !["bands", "rings", "random"].contains(&pattern.as_str()) {
         return Err(format!(

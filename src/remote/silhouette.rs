@@ -1040,8 +1040,8 @@ pub(super) fn compare_silhouette(session: &mut Session, params: &Value) -> Resul
         .map_err(|err| format!("concept: {err}"))?;
     let max = crate::preview::MAX_SIZE as i32;
     let aspect = concept.width as f32 / concept.height as f32;
-    let width = super::opt_i32_range(params, "width", 0, 16, max)?;
-    let height = super::opt_i32_range(params, "height", 0, 16, max)?;
+    let width = super::opt_i32_or(params, "width", 0)?;
+    let height = super::opt_i32_or(params, "height", 0)?;
     let (width, height) = match (width, height) {
         (0, 0) => (((512.0 * aspect).round() as i32).clamp(16, max), 512),
         (0, h) => (((h as f32 * aspect).round() as i32).clamp(16, max), h),

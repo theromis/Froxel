@@ -414,10 +414,8 @@ fn loft_writes(cells: &HashMap<Cell, u8>, params: &Value) -> Result<(Writes, usi
     if palettes.is_empty() {
         return Err("palette or palettes is required".into());
     }
+    // In its schema range (ops::check_arguments).
     let period = number(params, "period", 2.0)?;
-    if !(0.5..=512.0).contains(&period) {
-        return Err("period must be 0.5..=512".into());
-    }
     let sectors = match params.get("sectors") {
         None | Some(Value::Null) => palettes.len() as u64,
         Some(found) => found

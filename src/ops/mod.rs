@@ -199,6 +199,7 @@ pub(crate) const OPS: &[Op] = &[
     op("preview", "render.preview", Write, 0),
     op("reload", "server.reload", Add, 0),
     op("set_view", "view.set", Settle, 0),
+    op("set_tool", "view.tool", Settle, 0),
     op("screenshot", "ui.screenshot", Write, 0),
     op("screenshot_viewport", "ui.screenshot", Write, 0),
     op("screenshot_region", "ui.screenshot", Write, 0),
