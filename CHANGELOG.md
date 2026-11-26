@@ -38,6 +38,10 @@
   tooltips, and slider ranges from the tool schema; the tooltips end with the
   MCP argument they set. Rhai functions take every option their MCP tool
   lists, from the same schema.
+- The Export options and the Render, Camera, Path tracer, and Sky rows that
+  `render` takes have tooltips from `export_mesh` and `render`.
+- MCP `ui_click` presses the Tube tool's toggles (Blade, Flat ends, Smooth)
+  and its colour buttons; `ui_inspect` lists them as `op.fill_tube.*`.
 
 ## 0.4.0 – 2026-11-25
 
