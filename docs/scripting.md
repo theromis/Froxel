@@ -1509,7 +1509,9 @@ let face = roll.int(1, 6);       // inclusive
 | `clamp(x, lo, hi)` | The same rule. `lo` above `hi` is an error. |
 | `sin(x)`, `cos(x)`, `tan(x)` | Radians, a float. |
 | `hypot(x, y)` | Float length of `(x, y)`. |
-| `atan2(y, x)` | Radians, the same argument order as the C function. |
+| `atan(x)` | Radians, a float. |
+| `atan(y, x)`, `atan2(y, x)` | Radians of the angle of `(x, y)`, the same argument order as the C function. |
+| `asin(x)`, `acos(x)` | Radians. `x` outside -1..=1 is an error. |
 | `PI`, `PI()` | π. Functions declared with `fn` cannot see `PI`; use `PI()` there. |
 
 ```rhai
@@ -1520,6 +1522,11 @@ let cells = to_int(ceil(r));
 
 Loops, `if`, `let`, `fn`, and array literals such as `[r, g, b]` are the
 language. Array indexing, `for item in array`, and `array.len()` work.
+Integer loops are `for i in a..b` (`b` excluded), `for i in a..=b` (`b`
+included), `for i in range(a, b)` (the same as `a..b`), and
+`for i in range(a, b, step)` (by `step`, `b` excluded; a negative step
+counts down, 0 is an error). They work the same at the top level and inside
+a `fn`.
 
 ## Arrays
 

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Fixed
+
+- Scripts can loop over `a..=b`; it stopped with "For loop expects iterable
+  type" at the top level and inside a `fn`.
+
+### Added
+
+- Scripts have `range(a, b)`, `range(a, b, step)`, `atan(x)`, `atan(y, x)`,
+  `asin`, and `acos`; `atan2` takes integers too.
+
 ## 0.4.0 – 2026-11-25
 
 ### Removed

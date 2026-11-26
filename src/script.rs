@@ -294,7 +294,7 @@ pub(crate) fn execute(
     engine.set_max_string_size(MAX_STRING);
     engine.set_max_expr_depths(64, 32);
     engine.set_strict_variables(true);
-    engine.register_iterator::<std::ops::Range<INT>>();
+    math::ranges(&mut engine);
     // `for p in points` and `points.len()` read a list; `push` and `insert`
     // (in `math`) grow one up to the array limit.
     engine.register_iterator::<Array>();

@@ -26,6 +26,21 @@ pub(super) fn register(engine: &mut Engine) {
     engine.register_fn("tan", |value: Dynamic| -> Fallible<FLOAT> {
         Ok(float(&value, "tan")?.tan())
     });
+    engine.register_fn("atan", |value: Dynamic| -> Fallible<FLOAT> {
+        Ok(float(&value, "atan")?.atan())
+    });
+    engine.register_fn("atan", |y: Dynamic, x: Dynamic| -> Fallible<FLOAT> {
+        Ok(float(&y, "atan")?.atan2(float(&x, "atan")?))
+    });
+    engine.register_fn("atan2", |y: Dynamic, x: Dynamic| -> Fallible<FLOAT> {
+        Ok(float(&y, "atan2")?.atan2(float(&x, "atan2")?))
+    });
+    engine.register_fn("asin", |value: Dynamic| -> Fallible<FLOAT> {
+        unit(float(&value, "asin")?, "asin").map(FLOAT::asin)
+    });
+    engine.register_fn("acos", |value: Dynamic| -> Fallible<FLOAT> {
+        unit(float(&value, "acos")?, "acos").map(FLOAT::acos)
+    });
     // The float forms of these are registered in `execute`.
     engine.register_fn("sin", |value: INT| (value as FLOAT).sin());
     engine.register_fn("cos", |value: INT| (value as FLOAT).cos());
@@ -104,6 +119,59 @@ pub(super) fn register(engine: &mut Engine) {
             Dynamic::UNIT
         }
     });
+}
+
+/// `range(from, to, step)`: `from` up to `to`, `to` excluded, by `step`; a
+/// negative step counts down.
+#[derive(Clone)]
+pub(super) struct StepRange {
+    from: INT,
+    to: INT,
+    step: INT,
+}
+
+impl Iterator for StepRange {
+    type Item = INT;
+
+    fn next(&mut self) -> Option<INT> {
+        let more = if self.step > 0 {
+            self.from < self.to
+        } else {
+            self.from > self.to
+        };
+        if !more {
+            return None;
+        }
+        let value = self.from;
+        self.from = self.from.checked_add(self.step).unwrap_or(self.to);
+        Some(value)
+    }
+}
+
+/// Loops over integer ranges: `a..b`, `a..=b`, `range(a, b)`, and
+/// `range(a, b, step)`. Rhai builds `a..=b` as an inclusive range, which
+/// needs its own iterator.
+pub(super) fn ranges(engine: &mut Engine) {
+    engine.register_iterator::<std::ops::Range<INT>>();
+    engine.register_iterator::<std::ops::RangeInclusive<INT>>();
+    engine.register_iterator::<StepRange>();
+    engine.register_fn("range", |from: INT, to: INT| from..to);
+    engine.register_fn(
+        "range",
+        |from: INT, to: INT, step: INT| -> Fallible<StepRange> {
+            if step == 0 {
+                return Err(runtime("range step must not be 0"));
+            }
+            Ok(StepRange { from, to, step })
+        },
+    );
+}
+
+fn unit(value: FLOAT, function: &str) -> Fallible<FLOAT> {
+    if !(-1.0..=1.0).contains(&value) {
+        return Err(runtime(format!("{function} expects a number in -1..=1")));
+    }
+    Ok(value)
 }
 
 fn float(value: &Dynamic, function: &str) -> Fallible<FLOAT> {

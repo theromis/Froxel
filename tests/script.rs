@@ -1537,3 +1537,52 @@ fn a_color_is_whole_bytes_unless_written_with_a_point_within_one() {
         assert!(read(bad.clone()).is_err(), "{bad} should be refused");
     }
 }
+
+#[test]
+fn every_range_loop_runs_at_the_top_level_and_inside_a_function() {
+    let cases = [
+        (
+            "let n = to_int(3.5 * 2.0); for i in 0..=n { set(i, 0, 0, 1); }",
+            8,
+        ),
+        (
+            "fn f(len) { let n = to_int(len * 2.0); for i in 0..=n { set(i, 0, 0, 1); } } f(3.5);",
+            8,
+        ),
+        ("fn f(n) { for i in 0..n { set(i, 0, 0, 1); } } f(3);", 3),
+        ("for i in range(2, 6) { set(i, 0, 0, 1); }", 4),
+        (
+            "fn f() { for i in range(0, 10, 3) { set(i, 0, 0, 1); } } f();",
+            4,
+        ),
+        ("for i in range(9, 0, -4) { set(i, 0, 0, 1); }", 3),
+        (
+            "let a = to_int(atan(1.0) * 4.0 / PI); let b = to_int(round(atan(1, 0) * 2.0 / PI)); \
+             let c = to_int(round(atan2(1, -1) * 4.0 / PI)); set(a, b, c, 1);",
+            1,
+        ),
+    ];
+    for (source, count) in cases {
+        let mut session = Session::new();
+        session.replace_empty();
+        session.set_script(0, source).unwrap();
+        session
+            .regenerate_script(0)
+            .unwrap_or_else(|err| panic!("{source}: {err}"));
+        assert_eq!(session.objects[0].cells.len(), count, "{source}");
+    }
+    let mut session = Session::new();
+    session.replace_empty();
+    session
+        .set_script(
+            0,
+            "fn f() { atan2(1, 1) * 4.0 } set(to_int(round(f())), 0, 0, 1);",
+        )
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    assert!(cells_of(&session).contains_key(&(3, 0, 0)));
+    let err = session
+        .set_script(0, "for i in range(0, 4, 0) { set(i, 0, 0, 1); }")
+        .unwrap_err();
+    assert!(err.contains("range step must not be 0"), "{err}");
+}
