@@ -276,6 +276,13 @@ one, Play gets none and the App Store gets "Bug fixes and improvements." A
 version still in review or waiting for release stops the iOS step; finish it
 first.
 
+The App Store descriptions live only in App Store Connect. They name no
+non-Apple platform: iOS 0.3.3 (build 30399) was rejected on 2026-11-26 under
+guideline 2.3.10 for "also runs on macOS, Windows, Linux, and FreeBSD", and
+that line was removed (Froxel for Mac may still be named). The macOS
+description, then waiting for review as 0.3.5, still listed Windows, Linux,
+FreeBSD, and Android.
+
 | Secret | Value |
 |---|---|
 | `ASC_RELEASE_KEY` | The text of an App Store Connect API key with the App Manager role, `AuthKey_<id>.p8` |
