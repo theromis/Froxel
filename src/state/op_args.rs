@@ -50,6 +50,23 @@ impl Session {
         }
     }
 
+    /// Flip a toggle option ([`crate::ops::PropUi::on`], or a boolean):
+    /// on becomes left out, off becomes on.
+    pub(crate) fn flip_op_arg(&mut self, tool: &'static str, key: &str) {
+        let prop = crate::ops::prop_ui(tool, key);
+        let current = self.op_arg(tool, key);
+        let on = match prop.on {
+            Some(item) => current == item,
+            None => current == true,
+        };
+        let value = match (on, prop.on) {
+            (true, _) => None,
+            (false, Some(item)) => Some(item.into()),
+            (false, None) => Some(true.into()),
+        };
+        self.set_op_arg(tool, key, value);
+    }
+
     /// A tool's panel options plus `extra`, checked and filled in exactly as
     /// `remote::apply` does for an MCP call of `tool`, so the panel cannot
     /// send what MCP would refuse.

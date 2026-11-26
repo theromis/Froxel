@@ -512,6 +512,12 @@ pub enum UiAction {
     Viewport,
     Palette(u8),
     Slider(SliderSpec),
+    /// A toggle over a tool argument in `Session::op_args` (`panels/props.rs`
+    /// `op_toggle`): flips it between its `on` item and left out.
+    OpToggle(&'static str, &'static str),
+    /// A choice button over a tool argument (`op_choice`): sets it to the
+    /// item, or leaves it out for `None`.
+    OpChoice(&'static str, &'static str, Option<&'static str>),
 }
 
 /// A checkbox in the Export panel.

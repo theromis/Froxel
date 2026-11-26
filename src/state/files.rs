@@ -1322,6 +1322,10 @@ impl Session {
                 *value = !*value;
             }
             UiAction::Palette(slot) => self.select_palette_slot(slot, false),
+            UiAction::OpToggle(tool, key) => self.flip_op_arg(tool, key),
+            UiAction::OpChoice(tool, key, item) => {
+                self.set_op_arg(tool, key, item.map(Into::into));
+            }
             UiAction::Slider(spec) => {
                 let (x, _) = at.ok_or("slider click needs a point")?;
                 let t = if region.w <= f32::EPSILON {

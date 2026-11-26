@@ -91,6 +91,9 @@ field.
   out.
 - `op_choice(ui, session, tool, key, none)`: one button per enum item, plus
   an optional first button that leaves the key out (the Tube tool's Solid).
+- Both note their buttons for `ui_inspect` and `ui_click` (ids
+  `op.<tool>.<key>` and `op.<tool>.<key>.<item>`, actions
+  `UiAction::OpToggle` and `UiAction::OpChoice`), so MCP can press them.
 - `op_slider(ui, session, tool, key, target)` and `op_slider_as(..., label)`:
   a slider over the soft range with the schema's digits, integer for an
   integer property, hint on the label. `SliderTarget::op_arg` names the

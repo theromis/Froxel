@@ -8,7 +8,7 @@ use egui::{RichText, Slider, Ui};
 
 use super::{note_slider, row, slider_value, DIM};
 use crate::ops::{prop_ui, PropUi};
-use crate::state::{Session, SliderTarget};
+use crate::state::{Session, SliderTarget, UiAction};
 
 /// A toggle for a tool argument in [`Session::op_args`]: a boolean, or an
 /// enum with `x-ui.on`, which is that item when on and left out (its
@@ -20,17 +20,18 @@ pub(super) fn op_toggle(ui: &mut Ui, session: &mut Session, tool: &str, key: &st
         Some(item) => current == item,
         None => current == true,
     };
-    if ui
+    let response = ui
         .toggle_value(&mut on, prop.label)
-        .on_hover_text(prop.tooltip())
-        .changed()
-    {
-        let value = match (on, prop.on) {
-            (false, _) => None,
-            (true, Some(item)) => Some(item.into()),
-            (true, None) => Some(true.into()),
-        };
-        session.set_op_arg(prop.tool, key, value);
+        .on_hover_text(prop.tooltip());
+    // ui_click and ui_inspect see it as the argument it sets.
+    session.note_ui(
+        &format!("op.{}.{}", prop.tool, prop.key),
+        prop.label,
+        response.rect,
+        UiAction::OpToggle(prop.tool, prop.key),
+    );
+    if response.changed() {
+        session.flip_op_arg(prop.tool, prop.key);
     }
 }
 
@@ -46,7 +47,8 @@ pub(super) fn op_choice(
 ) {
     let prop = prop_ui(tool, key);
     let current = session.op_arg(prop.tool, key);
-    let mut picked: Option<Option<&str>> = None;
+    let mut picked: Option<Option<&'static str>> = None;
+    let mut notes = Vec::new();
     row(ui, |ui| {
         let gap = ui.spacing().item_spacing.x;
         ui.spacing_mut().item_spacing.x = 2.0;
@@ -63,16 +65,29 @@ pub(super) fn op_choice(
                 Some(item) => current == item,
                 None => current.is_null(),
             };
-            if ui
-                .selectable_label(selected, label)
-                .on_hover_text(prop.tooltip())
-                .clicked()
-            {
+            let response = ui
+                .selectable_label(selected, &label)
+                .on_hover_text(prop.tooltip());
+            notes.push((
+                format!("op.{}.{}.{}", prop.tool, prop.key, item.unwrap_or("none")),
+                label,
+                response.rect,
+                item,
+            ));
+            if response.clicked() {
                 picked = Some(item);
             }
         }
         ui.spacing_mut().item_spacing.x = gap;
     });
+    for (id, label, rect, item) in notes {
+        session.note_ui(
+            &id,
+            &label,
+            rect,
+            UiAction::OpChoice(prop.tool, prop.key, item),
+        );
+    }
     if let Some(item) = picked {
         session.set_op_arg(prop.tool, key, item.map(Into::into));
     }

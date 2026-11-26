@@ -1586,6 +1586,54 @@ fn palette_click_selects_the_slot_and_a_slider_uses_the_track() {
 }
 
 #[test]
+fn ui_click_flips_a_schema_toggle_and_picks_a_choice() {
+    let mut session = Session::new();
+    let rect = |y: f32| egui::Rect::from_min_size(egui::pos2(0.0, y), egui::vec2(40.0, 14.0));
+    session.note_ui(
+        "op.fill_tube.caps",
+        "Flat ends",
+        rect(0.0),
+        UiAction::OpToggle("fill_tube", "caps"),
+    );
+    session.note_ui(
+        "op.fill_tube.pattern.stripes",
+        "Stripes",
+        rect(20.0),
+        UiAction::OpChoice("fill_tube", "pattern", Some("stripes")),
+    );
+    session.note_ui(
+        "op.fill_tube.pattern.none",
+        "Solid",
+        rect(40.0),
+        UiAction::OpChoice("fill_tube", "pattern", None),
+    );
+    let click = |session: &mut Session, y: f32| {
+        let hit = session.ui_target(2.0, y).unwrap();
+        session.activate_ui(&hit, None).unwrap();
+    };
+    click(&mut session, 2.0);
+    assert_eq!(
+        session.op_arg("fill_tube", "caps"),
+        serde_json::json!("flat")
+    );
+    click(&mut session, 2.0);
+    assert!(
+        session.op_arg("fill_tube", "caps").is_null(),
+        "off leaves it out"
+    );
+    // curve starts smooth in the Tube panel; a click turns it off.
+    session.flip_op_arg("fill_tube", "curve");
+    assert!(session.op_arg("fill_tube", "curve").is_null());
+    click(&mut session, 22.0);
+    assert_eq!(
+        session.op_arg("fill_tube", "pattern"),
+        serde_json::json!("stripes")
+    );
+    click(&mut session, 42.0);
+    assert!(session.op_arg("fill_tube", "pattern").is_null());
+}
+
+#[test]
 fn motion_round_trips_in_matl_and_a_still_file_is_unchanged() {
     let (cells, palette, mut materials) = sample();
     let still = save_vox(&cells, &palette, &materials).expect("save");
