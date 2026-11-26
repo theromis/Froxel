@@ -81,8 +81,8 @@ fn tube_shape_props() -> [(&'static str, Value); 5] {
     let props = [
         toggle(ui(json!({"type": "string", "enum": ["polyline", "smooth"], "description": "polyline (default) or smooth."}), "Smooth", "A curve through the points instead of straight segments"), "smooth"),
         toggle(ui(json!({"type": "string", "enum": ["round", "flat"], "description": "round (default): half balls past the end points. flat: cut square at the first and last points, across the path there; a cell is in only when its centre is between those planes."}), "Flat ends", "Cut the tube square at its first and last points instead of rounding them, for pipes, discs, rims, and wheels"), "flat"),
-        soft(ui(hard(num_prop("Flatten: thickness over width, 0.05..=1. 1 (default) is round. The thickness is at least one cell and runs up for a level tube, so a flat tube lies flat."), 0.05, 1.0), "Flatten", "Thickness over width; 1 is round"), 0.05, 1.0, 2),
-        soft(ui(num_prop("Degrees to turn a flat or blade cross-section about the axis. 90 stands a level shard on its edge."), "Roll", "Degrees to turn a flat or blade cross-section about the axis"), -180.0, 180.0, 0),
+        soft(ui(hard(with_default(num_prop("Flatten: thickness over width, 0.05..=1. 1 (the default) is round. The thickness is at least one cell and runs up for a level tube, so a flat tube lies flat."), json!(1.0)), 0.05, 1.0), "Flatten", "Thickness over width; 1 is round"), 0.05, 1.0, 2),
+        soft(ui(with_default(num_prop("Degrees to turn a flat or blade cross-section about the axis. 90 stands a level shard on its edge. Defaults to 0."), json!(0.0)), "Roll", "Degrees to turn a flat or blade cross-section about the axis"), -180.0, 180.0, 0),
         toggle(ui(json!({"type": "string", "enum": ["round", "blade"], "description": "blade tapers the thickness across the width to one cell at one edge: a wedge, for splinters and broken plank ends. Defaults to round."}), "Blade", "A wedge: full thickness at one edge, one cell at the other"), "blade"),
     ];
     let mut out = TUBE_SHAPE_KEYS.map(|key| (key, Value::Null));
@@ -223,8 +223,8 @@ fn build() -> Vec<Value> {
             "radius": tube_radius_prop("Radius for points that give none, 0.5..=128. 0.5 is one cell thick."),
             "palette": int_prop("Palette index. 0 erases. Pass this or palettes."),
             "palettes": {"type": "array", "items": {"type": "integer"}, "description": "1..=64 palette indices cycled by pattern. Repeat an index to weight it."},
-            "pattern": {"type": "string", "enum": ["rings", "stripes", "random"], "description": "How palettes are laid out. Defaults to rings."},
-            "period": soft(ui(num_prop("rings: band length along the tube in cells. Defaults to 2."), "Period", "Band length along the tube in cells"), 1.0, 16.0, 1),
+            "pattern": ui(json!({"type": "string", "enum": ["rings", "stripes", "random"], "description": "How palettes are laid out. Defaults to rings."}), "Colours", "How the palettes are laid out along and around the tube"),
+            "period": soft(ui(with_default(num_prop("rings: band length along the tube in cells. Defaults to 2."), json!(2.0)), "Period", "Band length along the tube in cells"), 1.0, 16.0, 1),
             "sectors": soft(ui(hard(int_prop("stripes: sectors around the tube, 1..=256. Defaults to the number of palettes."), 1.0, 256.0), "Sectors", "Stripes around the tube"), 1.0, 32.0, 0),
             "seed": int_prop("random: seed. Defaults to 0."),
             "mode": fill_mode_prop()

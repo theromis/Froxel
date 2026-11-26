@@ -31,6 +31,8 @@
   fill_tube --help` prints each option's short hint. The Tube tool's labels,
   slider ranges, and tooltips come from the same schema, so its tooltips now
   name the MCP argument they set.
+- The Tube tool keeps its options as `fill_tube` arguments and runs them
+  through the same argument check and parser as MCP `fill_tube`.
 
 ## 0.4.0 – 2026-11-25
 

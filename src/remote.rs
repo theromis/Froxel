@@ -2243,7 +2243,7 @@ fn tube_shape(params: &Value) -> Result<crate::tools::TubeShape, String> {
 }
 
 /// A tube's cells with `palette`, or `palettes` laid out by `pattern`.
-fn tube_writes(params: &Value) -> Result<Vec<(i32, i32, i32, i32)>, String> {
+pub(crate) fn tube_writes(params: &Value) -> Result<Vec<(i32, i32, i32, i32)>, String> {
     let palettes = match (params.get("palette"), params.get("palettes")) {
         (Some(_), Some(_)) => return Err("pass palette or palettes, not both".into()),
         (Some(_), None) => vec![req_i32(params, "palette")?],

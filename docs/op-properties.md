@@ -37,7 +37,7 @@ builders next to the property:
 | `title` | `ui(prop, label, hint)` | `name` | panel label, MCP (standard JSON Schema) |
 | `x-ui.hint` | `ui(...)` | short `description` | panel tooltip, `froxel run <tool> --help` short line |
 | `x-ui.soft`, `x-ui.digits` | `soft(prop, lo, hi, digits)` | `soft_min`, `soft_max`, `precision` | slider track and shown digits |
-| `x-ui.on` | `toggle(prop, on)` | a two-item enum drawn as a checkbox | toggle widget: on is that item, off the default |
+| `x-ui.on` | `toggle(prop, on)` | a two-item enum drawn as a checkbox | toggle widget: on is that item, off leaves it out |
 
 `x-ui` is stripped from the MCP `tools/list` (`schema::mcp_tools`), so the MCP
 reply does not grow; `title` and the hard range stay, since they are standard.
@@ -68,29 +68,44 @@ irregular ones keep a hand closure.
 
 ## Panels
 
-`src/panels/props.rs`:
+A tool's panel options are that tool's MCP arguments: `Session::op_args`
+(`src/state/op_args.rs`) maps a tool name to an argument map, as a Blender
+operator keeps its properties. A key left out takes its schema default
+(`Session::op_arg`). When the tool runs, `Session::op_call` adds the values
+the drag supplies (points, palette), then runs the same `ops::check_arguments`
+and `ops::fill_defaults` as `remote::apply`, and the result goes to the same
+parser as MCP (`remote::tube_writes` for the Tube tool). The panel cannot send
+an option MCP would refuse, and a new schema option needs no new session
+field.
 
-- `op_toggle(ui, tool, key, &mut bool)`: a toggle labelled `title`, with the
-  hint and `(MCP tool key on)` as its tooltip. Works for a boolean property or
-  an enum with `x-ui.on`.
+`src/panels/props.rs` draws widgets over that map:
+
+- `op_toggle(ui, session, tool, key)`: a toggle labelled `title`, with the
+  hint and `(MCP tool key on)` as its tooltip. For a boolean it sets
+  `true`; for an enum with `x-ui.on` it sets that item. Off leaves the key
+  out.
+- `op_choice(ui, session, tool, key, none)`: one button per enum item, plus
+  an optional first button that leaves the key out (the Tube tool's Solid).
 - `op_slider(ui, session, tool, key, target)` and `op_slider_as(..., label)`:
   a slider over the soft range with the schema's digits, integer for an
-  integer property, hint on the label, and the `SliderTarget` it writes and
-  reports to `ui_inspect` / `ui_click`. `op_slider_as` relabels a property a
-  tool shows twice (the Tube tool's Start and End radius).
+  integer property, hint on the label. `SliderTarget::op_arg` names the
+  argument a slider edits, so `ui_inspect` and `ui_click` drive it as before,
+  and `write_slider` keeps the value inside the soft range.
+  `op_slider_as` relabels a property a tool shows twice (the Tube tool's
+  Start and End radius, which become each point's radius, so they stay
+  session fields).
 
-The session fields stay typed (`tube_flat_caps: bool`), so the drag code keeps
-its plain fields; the helper only removes the label, range, digits, and
-tooltip a panel used to repeat. Layout is unchanged: the helpers go through
-`row`, so `tests/panels.rs` holds.
+The helpers go through `row`, so `tests/panels.rs` holds.
 
 ## Migrated
 
-- `fill_tube` (and `carve` `tube`): the Tube tool's Start, End, Flatten, Roll,
-  Blade, Flat ends, Smooth, Period, and Sectors come from the schema; Rhai
-  `fill_tube` and `carve_tube` options are derived. Chain, Finish, the colour
-  segment (Solid is "palette, not palettes"), and Second slot are panel-only
-  and stay hand-written.
+- `fill_tube` (and `carve` `tube`): the Tube tool's Flatten, Roll, Blade,
+  Flat ends, Smooth, the colour buttons, Period, and Sectors are
+  `op_args["fill_tube"]`, drawn from the schema, and a drag runs them
+  through the MCP argument check and `remote::tube_writes`. Start, End,
+  Chain, Finish, and Second slot are the drag's own (point radii, the chain,
+  the second of `palettes`) and stay session fields. Rhai `fill_tube` and
+  `carve_tube` options are derived.
 
 ## Still to migrate
 
@@ -112,5 +127,7 @@ and panels to `op_toggle`/`op_slider`, tool by tool:
   (`panels/tools.rs`, plain `egui::Slider`s with their own hints), Foliage,
   Organic (loft/deform/blend), Stone, Silhouette (views tools), Import,
   Export and Bake (`panels/render.rs`, `SliderTarget::Export*`/`Bake*`).
-- Then: generate the positional Rhai bindings, and an enum segment helper
-  (`op_choice`) for enum options shown as buttons.
+- Each migration moves the panel's session fields into `op_args[tool]`,
+  maps its sliders in `SliderTarget::op_arg`, and runs the tool through
+  `Session::op_call`.
+- Then: generate the positional Rhai bindings.

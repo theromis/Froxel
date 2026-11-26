@@ -289,11 +289,11 @@ fn tube(ui: &mut Ui, session: &mut Session) {
     op_slider(ui, session, tool, "aspect", SliderTarget::TubeAspect);
     op_slider(ui, session, tool, "roll", SliderTarget::TubeRoll);
     row(ui, |ui| {
-        op_toggle(ui, tool, "profile", &mut session.tube_blade);
-        op_toggle(ui, tool, "caps", &mut session.tube_flat_caps);
+        op_toggle(ui, session, tool, "profile");
+        op_toggle(ui, session, tool, "caps");
     });
     row(ui, |ui| {
-        op_toggle(ui, tool, "curve", &mut session.tube_smooth);
+        op_toggle(ui, session, tool, "curve");
         let chain = session.tube_chain;
         ui.toggle_value(&mut session.tube_chain, "Chain")
             .on_hover_text("Each drag adds a point to one tube");
@@ -310,17 +310,9 @@ fn tube(ui: &mut Ui, session: &mut Session) {
         });
     }
     ui.separator();
-    segment(
-        ui,
-        &mut session.tube_colors,
-        &[
-            ("Solid", TubeColors::Solid),
-            ("Rings", TubeColors::Rings),
-            ("Stripes", TubeColors::Stripes),
-            ("Random", TubeColors::Random),
-        ],
-    );
-    if session.tube_colors != TubeColors::Solid {
+    op_choice(ui, session, tool, "pattern", Some("Solid"));
+    let pattern = session.op_arg(tool, "pattern");
+    if !pattern.is_null() {
         slider_i32(
             ui,
             session,
@@ -329,9 +321,9 @@ fn tube(ui: &mut Ui, session: &mut Session) {
             1..=255,
         );
     }
-    match session.tube_colors {
-        TubeColors::Rings => op_slider(ui, session, tool, "period", SliderTarget::TubePeriod),
-        TubeColors::Stripes => op_slider(ui, session, tool, "sectors", SliderTarget::TubeSectors),
+    match pattern.as_str() {
+        Some("rings") => op_slider(ui, session, tool, "period", SliderTarget::TubePeriod),
+        Some("stripes") => op_slider(ui, session, tool, "sectors", SliderTarget::TubeSectors),
         _ => {}
     }
 }

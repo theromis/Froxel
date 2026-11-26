@@ -2075,14 +2075,56 @@ fn tube_remove_carves_and_stripes_use_the_second_slot() {
     assert!(session.active().cells.contains_key(&(8, 3, 0)));
 
     let mut session = tube_floor();
-    session.tube_colors = TubeColors::Stripes;
+    session.set_op_arg("fill_tube", "pattern", Some(serde_json::json!("stripes")));
     session.tube_second = 9;
-    session.tube_sectors = 4;
+    session.write_slider(SliderTarget::TubeSectors, 4.0);
     session.tube_start = 3.0;
     session.tube_end = 3.0;
     tube_drag(&mut session, 4.0, 14.0);
     let used: HashSet<u8> = session.active().cells.values().copied().collect();
     assert!(used.contains(&7) && used.contains(&9), "{used:?}");
+}
+
+#[test]
+fn tube_panel_options_are_fill_tube_arguments_checked_as_mcp_checks_them() {
+    // Flat ends: the tube stops square at the end points, as fill_tube
+    // caps flat does.
+    let mut session = tube_floor();
+    session.set_op_arg("fill_tube", "caps", Some(serde_json::json!("flat")));
+    session.tube_start = 2.0;
+    session.tube_end = 2.0;
+    tube_drag(&mut session, 4.0, 12.0);
+    let xs: Vec<i32> = session
+        .active()
+        .cells
+        .iter()
+        .filter(|(_, slot)| **slot == 7)
+        .map(|((x, _, _), _)| *x)
+        .collect();
+    assert_eq!(xs.iter().min(), Some(&4), "no half ball before the start");
+    assert_eq!(xs.iter().max(), Some(&12), "no half ball past the end");
+    // A slider stays in the schema's soft range, whole for an integer.
+    session.write_slider(SliderTarget::TubeSectors, 99.6);
+    assert_eq!(
+        session.op_arg("fill_tube", "sectors"),
+        serde_json::json!(32)
+    );
+    session.write_slider(SliderTarget::TubeAspect, 0.0);
+    assert_eq!(
+        session.op_arg("fill_tube", "aspect"),
+        serde_json::json!(0.05)
+    );
+    // A left-out option reads its schema default.
+    assert_eq!(session.op_arg("fill_tube", "roll"), serde_json::json!(0.0));
+    // The options go through the MCP argument check: a key fill_tube does
+    // not take is refused, not ignored.
+    session.set_op_arg("fill_tube", "colour", Some(serde_json::json!(3)));
+    let point = crate::tools::TubePoint {
+        at: [0.0, 0.0, 0.0],
+        radius: 1.0,
+    };
+    let err = session.tube_cells(&[point, point]).unwrap_err();
+    assert!(err.contains("fill_tube has no argument `colour`"), "{err}");
 }
 
 #[test]

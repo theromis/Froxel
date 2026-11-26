@@ -10,12 +10,81 @@ use super::{note_slider, row, slider_value, DIM};
 use crate::ops::{prop_ui, PropUi};
 use crate::state::{Session, SliderTarget};
 
-/// A toggle for a boolean argument or an enum argument with `x-ui.on`:
-/// on is that item, off is the default.
-pub(super) fn op_toggle(ui: &mut Ui, tool: &str, key: &str, value: &mut bool) -> egui::Response {
+/// A toggle for a tool argument in [`Session::op_args`]: a boolean, or an
+/// enum with `x-ui.on`, which is that item when on and left out (its
+/// default) when off.
+pub(super) fn op_toggle(ui: &mut Ui, session: &mut Session, tool: &str, key: &str) {
     let prop = prop_ui(tool, key);
-    ui.toggle_value(value, prop.label)
+    let current = session.op_arg(prop.tool, key);
+    let mut on = match prop.on {
+        Some(item) => current == item,
+        None => current == true,
+    };
+    if ui
+        .toggle_value(&mut on, prop.label)
         .on_hover_text(prop.tooltip())
+        .changed()
+    {
+        let value = match (on, prop.on) {
+            (false, _) => None,
+            (true, Some(item)) => Some(item.into()),
+            (true, None) => Some(true.into()),
+        };
+        session.set_op_arg(prop.tool, key, value);
+    }
+}
+
+/// One button per item of an enum argument in [`Session::op_args`],
+/// labelled with the item. `none` adds a first button that leaves the
+/// argument out (the Tube tool's Solid, which is `palette`, not `palettes`).
+pub(super) fn op_choice(
+    ui: &mut Ui,
+    session: &mut Session,
+    tool: &str,
+    key: &str,
+    none: Option<&str>,
+) {
+    let prop = prop_ui(tool, key);
+    let current = session.op_arg(prop.tool, key);
+    let mut picked: Option<Option<&str>> = None;
+    row(ui, |ui| {
+        let gap = ui.spacing().item_spacing.x;
+        ui.spacing_mut().item_spacing.x = 2.0;
+        let choices = none
+            .map(|label| (label.to_string(), None))
+            .into_iter()
+            .chain(
+                prop.items
+                    .iter()
+                    .map(|item| (title_case(item), Some(*item))),
+            );
+        for (label, item) in choices {
+            let selected = match item {
+                Some(item) => current == item,
+                None => current.is_null(),
+            };
+            if ui
+                .selectable_label(selected, label)
+                .on_hover_text(prop.tooltip())
+                .clicked()
+            {
+                picked = Some(item);
+            }
+        }
+        ui.spacing_mut().item_spacing.x = gap;
+    });
+    if let Some(item) = picked {
+        session.set_op_arg(prop.tool, key, item.map(Into::into));
+    }
+}
+
+/// `stripes` as a button label: `Stripes`.
+fn title_case(item: &str) -> String {
+    let mut chars = item.chars();
+    chars
+        .next()
+        .map(|first| first.to_uppercase().chain(chars).collect())
+        .unwrap_or_default()
 }
 
 /// A slider for a number argument over its soft range, with the schema's

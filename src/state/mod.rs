@@ -49,17 +49,6 @@ impl Tool {
     }
 }
 
-/// How the Tube tool colours its cells: the active slot alone, or the
-/// active slot and the Tube's second slot in a pattern, as MCP `fill_tube`'s
-/// `palettes` and `pattern`.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum TubeColors {
-    Solid,
-    Rings,
-    Stripes,
-    Random,
-}
-
 /// The Break panel: the fields of MCP `break_end`.
 #[derive(Clone, PartialEq)]
 pub struct BreakPanel {
@@ -723,6 +712,7 @@ mod import;
 mod joints;
 mod markers;
 mod objects;
+mod op_args;
 mod organic;
 mod pick;
 mod pointer;
@@ -821,21 +811,10 @@ pub struct Session {
     /// Tube tool: the radius at the start and at the end of a drag.
     pub tube_start: f32,
     pub tube_end: f32,
-    /// Tube tool: a Catmull-Rom curve through a chain's points.
-    pub tube_smooth: bool,
     /// Tube tool: each drag adds a point to one tube until Finish.
     pub tube_chain: bool,
-    pub tube_colors: TubeColors,
-    /// Tube tool: flatten (thickness over width), roll in degrees, and the
-    /// wedge profile, as `fill_tube`'s `aspect`, `roll`, and `profile`.
-    pub tube_aspect: f32,
-    pub tube_roll: f32,
-    pub tube_blade: bool,
-    /// Tube tool: cut the ends square, as `fill_tube`'s `caps: "flat"`.
-    pub tube_flat_caps: bool,
+    /// Tube tool: the second slot of a `pattern`, with the active slot.
     pub tube_second: i32,
-    pub tube_period: f32,
-    pub tube_sectors: i32,
     /// The chain so far, the cells before it, and the cells after its last
     /// drag. A stroke continues the chain only when it starts from those
     /// cells, so an undo or any other edit starts a new tube.
@@ -843,6 +822,12 @@ pub struct Session {
     pub(crate) tube_base: Option<Cells>,
     pub(crate) tube_after: Option<Cells>,
     pub(crate) tube_preview: Option<(Vec<crate::tools::TubePoint>, Cells)>,
+    /// The options a tool's panel edits, as that tool's MCP arguments, keyed
+    /// by tool (`fill_tube` for the Tube tool): Blender's operator
+    /// properties. A left-out key takes its schema default, and a drag runs
+    /// them through the same argument check and parser as MCP
+    /// (`docs/op-properties.md`).
+    pub op_args: std::collections::BTreeMap<&'static str, op_args::OpArgs>,
     pub break_panel: BreakPanel,
     pub scatter_panel: ScatterPanel,
     /// The contact sheet's reference PNG, the first tile when set.

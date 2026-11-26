@@ -36,7 +36,9 @@ operation registry: `OPS` in `ops/mod.rs` names every MCP tool, its
 `space`, and `mirror`; `ops/schema.rs` is each tool's argument schema, including a property's
 panel label, hint, hard and soft range, and toggle item (`ui`, `hard`,
 `soft`, `toggle`; `docs/op-properties.md`): `panels/props.rs` (`op_slider`,
-`op_toggle`) draws a widget from it, and `ops::rhai_options` derives a Rhai
+`op_toggle`, `op_choice`) draws a widget from it over the panel's
+`Session::op_args` (`state/op_args.rs`, the tool's MCP arguments, checked by
+`Session::op_call` as `remote::apply` checks them), and `ops::rhai_options` derives a Rhai
 function's option list from it. MCP
 `tools/list`, the tool-to-method map, `control.methods`, `froxel run`
 (any tool from the command line, with `--list` and `<tool> --help`), and the argument

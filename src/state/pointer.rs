@@ -450,46 +450,39 @@ impl Session {
         self.write_preview(under, edits);
     }
 
-    /// The cells of a tube through `points` with the Tube tool's colours,
-    /// from the same [`crate::tools::tube_capped`] as MCP `fill_tube`.
+    /// The cells of a tube through `points` with the Tube tool's options
+    /// (`op_args["fill_tube"]`) and colours: the arguments of an MCP
+    /// `fill_tube` call, checked and parsed by the same code
+    /// ([`Session::op_call`], `remote::tube_writes`).
     pub(crate) fn tube_cells(
         &self,
         points: &[crate::tools::TubePoint],
     ) -> Result<Vec<(Cell, u8)>, String> {
-        let shape = crate::tools::TubeShape {
-            aspect: f64::from(self.tube_aspect.clamp(0.05, 1.0)),
-            roll: f64::from(self.tube_roll).to_radians(),
-            blade: self.tube_blade,
-        };
-        let caps = if self.tube_flat_caps {
-            crate::tools::Caps::Flat
-        } else {
-            crate::tools::Caps::Round
-        };
-        let cells = crate::tools::tube_capped(points, self.tube_smooth, shape, caps)?;
-        let slots = [
-            self.paint_slot(),
-            match self.tool_mode {
-                ToolMode::Remove => 0,
-                _ => self.tube_second.clamp(1, 255) as u8,
-            },
-        ];
-        let pattern = match self.tube_colors {
-            TubeColors::Solid => None,
-            TubeColors::Rings => Some(crate::tools::TubePattern::Rings {
-                period: f64::from(self.tube_period),
-            }),
-            TubeColors::Stripes => Some(crate::tools::TubePattern::Stripes {
-                sectors: self.tube_sectors.max(1) as u32,
-            }),
-            TubeColors::Random => Some(crate::tools::TubePattern::Random { seed: 0 }),
-        };
-        Ok(cells
+        let mut extra = super::op_args::OpArgs::new();
+        let points: Vec<_> = points
             .iter()
-            .map(|cell| {
-                let slot = pattern.map_or(slots[0], |pattern| slots[pattern.pick(cell, 2)]);
-                (cell.cell, slot)
+            .map(|point| {
+                let [x, y, z] = point.at;
+                serde_json::json!([x, y, z, point.radius])
             })
+            .collect();
+        extra.insert("points".into(), points.into());
+        // A pattern lays out the active slot and the second slot; Remove
+        // erases with both.
+        let patterned = !self.op_arg("fill_tube", "pattern").is_null();
+        if patterned && self.tool_mode != ToolMode::Remove {
+            let second = self.tube_second.clamp(1, 255);
+            extra.insert(
+                "palettes".into(),
+                serde_json::json!([self.paint_slot(), second]),
+            );
+        } else {
+            extra.insert("palette".into(), self.paint_slot().into());
+        }
+        let args = self.op_call("fill_tube", extra)?;
+        Ok(crate::remote::tube_writes(&args)?
+            .into_iter()
+            .map(|(x, y, z, slot)| ((x, y, z), slot as u8))
             .collect())
     }
 
@@ -709,26 +702,23 @@ impl Session {
             .wrapping_mul(16777619)
             .wrapping_add(self.circle_fill as u64);
         h = h.wrapping_mul(16777619).wrapping_add(self.box_fill as u64);
-        for value in [
-            self.tube_start,
-            self.tube_end,
-            self.tube_period,
-            self.tube_aspect,
-            self.tube_roll,
-        ] {
+        for value in [self.tube_start, self.tube_end] {
             h = h
                 .wrapping_mul(16777619)
                 .wrapping_add(u64::from(value.to_bits()));
         }
-        h = h.wrapping_mul(16777619).wrapping_add(
-            (self.tube_sectors as u64) << 16
-                | (self.tube_second as u64) << 8
-                | (self.tube_colors as u64) << 2
-                | (self.tube_blade as u64) << 7
-                | (self.tube_flat_caps as u64) << 5
-                | (self.tube_smooth as u64) << 1
-                | self.tube_chain as u64,
-        );
+        h = h
+            .wrapping_mul(16777619)
+            .wrapping_add((self.tube_second as u64) << 8 | self.tube_chain as u64);
+        // Every tool's panel options, as the MCP arguments they are.
+        for (tool, args) in &self.op_args {
+            for byte in tool
+                .bytes()
+                .chain(serde_json::to_string(args).unwrap_or_default().into_bytes())
+            {
+                h = h.wrapping_mul(16777619).wrapping_add(u64::from(byte));
+            }
+        }
         h = h
             .wrapping_mul(16777619)
             .wrapping_add(self.foliage_seed as u64);
