@@ -134,20 +134,48 @@ def open_submission(client, app, platform, version_id):
     A version belongs to one submission at a time, so one left open by an earlier run or
     by App Store Connect is submitted instead of a new one. Prefer the one holding the
     version; otherwise any open one, so failed runs do not pile up empty drafts.
+
+    A submission App Review rejected an item of stays UNRESOLVED_ISSUES, and App Store
+    Connect refuses to send it again with a new build ("Version is not ready to be
+    submitted yet", 409). Such a submission is cancelled, which frees its version for a
+    new one; one where App Review only asked a question (no rejected item) is reused.
     """
     open_ones = client.call(
         "GET",
         f"/v1/reviewSubmissions?filter[app]={app}&filter[platform]={platform}"
         "&filter[state]=READY_FOR_REVIEW,UNRESOLVED_ISSUES&limit=20",
     )["data"]
+    kept = []
     for sub in open_ones:
         items = client.call("GET", f"/v1/reviewSubmissions/{sub['id']}/items?include=appStoreVersion")["data"]
+        if any(item["attributes"].get("state") == "REJECTED" for item in items):
+            cancel_submission(client, sub["id"])
+            continue
+        kept.append(sub)
         for item in items:
             linked = (item.get("relationships", {}).get("appStoreVersion", {}).get("data") or {}).get("id")
             if linked == version_id:
                 return sub["id"], True
-    ready = [s for s in open_ones if s["attributes"]["state"] == "READY_FOR_REVIEW"]
+    ready = [s for s in kept if s["attributes"]["state"] == "READY_FOR_REVIEW"]
     return (ready[0]["id"], False) if ready else (None, False)
+
+
+def cancel_submission(client, submission):
+    """Cancel a review submission and wait until it has let go of its items."""
+    print(f"review submission {submission}: has a rejected item; cancelling it")
+    client.call(
+        "PATCH",
+        f"/v1/reviewSubmissions/{submission}",
+        {"data": {"type": "reviewSubmissions", "id": submission, "attributes": {"canceled": True}}},
+    )
+    if client.dry_run:
+        return
+    for _ in range(30):
+        state = client.call("GET", f"/v1/reviewSubmissions/{submission}")["data"]["attributes"]["state"]
+        if state != "CANCELING":
+            return
+        time.sleep(10)
+    sys.exit(f"asc_release: review submission {submission} is still CANCELING after 5 minutes")
 
 
 def main():

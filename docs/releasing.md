@@ -266,9 +266,12 @@ tracks as complete, which sends production for review. `App Store` runs
 `tools/asc_release.py`: it waits until App Store Connect has processed the
 build, reuses the editable iOS version or creates one, sets its version and
 What's New, attaches the build, and submits it. A version left in an open
-review submission, including one App Review answered with unresolved issues,
-counts as editable: the new build replaces the old one in that submission,
-which is sent again. A reply App Review asked for still goes in App Store
+review submission counts as editable: the new build replaces the old one in
+that submission, which is sent again. That includes one where App Review
+asked a question and left the submission with unresolved issues, but not one
+holding a rejected item: App Store Connect refuses to send that again (a 409,
+"Version is not ready to be submitted yet"), so the script cancels it and
+makes a new submission. A reply App Review asked for still goes in App Store
 Connect by hand. The version's release type
 (manual or after approval) is kept. Both stores take their release notes from
 the version's `CHANGELOG.md` section through `tools/release_notes.py`; without
@@ -285,7 +288,8 @@ uploaded by hand with `altool`), went back for review that day. The old
 submission, in `UNRESOLVED_ISSUES` with the rejected item, refused the new
 build with a 409 "Version is not ready to be submitted yet" however long it
 waited; cancelling it (`canceled: true`) and running `asc_release.py` again
-made a fresh submission that went through. The macOS
+made a fresh submission that went through, and the script now does that
+itself. The macOS
 description, then waiting for review as 0.3.5, still listed Windows, Linux,
 FreeBSD, and Android.
 
