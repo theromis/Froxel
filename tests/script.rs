@@ -1640,6 +1640,7 @@ fn every_binding_is_declared_against_its_tool_schema() {
         super::organic::BINDINGS,
         super::silhouette::BINDINGS,
         super::document::BINDINGS,
+        super::markers::BINDINGS,
     ]
     .concat();
     assert!(all.len() >= 45, "only {} bindings", all.len());
@@ -1678,6 +1679,18 @@ fn a_declared_binding_refuses_an_option_its_tool_does_not_take() {
     let err = run_cells("fill_tube([[0, 0, 0], [0, 4, 0]], \"red\");").unwrap_err();
     assert!(
         err.contains("fill_tube palette must be an index or a list of indices"),
+        "{err}"
+    );
+}
+
+#[test]
+fn clear_object_empties_the_run_object_and_refuses_it_by_name() {
+    let cells = run_cells("fill_box(0, 0, 0, 2, 2, 2, 3); let n = clear_object(); fill_box(0, 0, 0, 0, 0, 0, n - 26);").unwrap();
+    assert_eq!(cells.len(), 1, "cleared, then one cell of slot 27 - 26");
+    assert_eq!(cells.values().next(), Some(&1));
+    let err = run_cells(r#"clear_object("host");"#).unwrap_err();
+    assert!(
+        err.contains("clear_object() empties the object being written"),
         "{err}"
     );
 }

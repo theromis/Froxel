@@ -9,39 +9,54 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use rhai::{Array, Dynamic, Engine, INT};
-use serde_json::{json, Value};
+use rhai::{Dynamic, Engine};
+use serde_json::Value;
 
-use super::bind::{bind, Binding};
+use super::bind::{bind, Binding, Pos::*};
 use super::document::dynamic;
-use super::shapes::{json, Fallible};
-use super::{runtime, BuiltKey, Scratch};
+use super::{BuiltKey, Scratch};
 use crate::state::{check_marker_name, replace_collision_markers, Marker, MAX_MARKERS};
 
-pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
-    let state = scratch.clone();
-    engine.register_fn(
-        "marker",
-        move |name: &str, x: Dynamic, y: Dynamic, z: Dynamic| -> Fallible<()> {
-            let point = Value::Array(vec![json(&x)?, json(&y)?, json(&z)?]);
-            state
-                .borrow_mut()
-                .marker(name, json!({"kind": "point", "point": point}))
-                .map_err(runtime)
-        },
-    );
-    let state = scratch.clone();
-    engine.register_fn(
+/// The markers a script places on its own object: `set_marker` with a fixed
+/// kind ([`super::bind`]). The object is always the one being written, so
+/// none takes `object`; an unnamed `collision_box` is named
+/// `collision_<n>`.
+pub(super) const BINDINGS: &[Binding] = &[
+    Binding::new("marker", "set_marker", &[Str("name"), Triple("point")])
+        .fixed(&[("kind", "point")])
+        .excluded(&["object", "direction", "x0", "y0", "z0", "x1", "y1", "z1"])
+        .without_options(),
+    Binding::new(
         "connector",
-        move |name: &str, point: Array, direction: Array| -> Fallible<()> {
-            let args = json!({
-                "kind": "connector",
-                "point": json(&Dynamic::from_array(point))?,
-                "direction": json(&Dynamic::from_array(direction))?,
-            });
-            state.borrow_mut().marker(name, args).map_err(runtime)
-        },
-    );
+        "set_marker",
+        &[Str("name"), List("point"), List("direction")],
+    )
+    .fixed(&[("kind", "connector")])
+    .excluded(&["object", "x0", "y0", "z0", "x1", "y1", "z1"])
+    .without_options(),
+    Binding::new("collision_box", "set_marker", &[Str("name"), Corners])
+        .fixed(&[("kind", "box")])
+        .excluded(&["object", "point", "direction"])
+        .without_options(),
+    Binding::new("collision_box", "set_marker", &[Corners])
+        .fixed(&[("kind", "box")])
+        .excluded(&["object", "name", "point", "direction"])
+        .without_options(),
+];
+
+pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
+    for binding in BINDINGS {
+        let state = scratch.clone();
+        bind(engine, *binding, move |mut args| {
+            let mut scratch = state.borrow_mut();
+            let name = match args.remove("name") {
+                Some(Value::String(name)) => name,
+                _ => format!("collision_{}", scratch.collision_count() + 1),
+            };
+            scratch.marker(&name, Value::Object(args))?;
+            Ok(Dynamic::UNIT)
+        });
+    }
     let state = scratch.clone();
     // A script edits its own object, so it takes no object.
     let collision =
@@ -52,36 +67,6 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
             .collision_from_voxels(Value::Object(args))?;
         Ok(dynamic(&reply))
     });
-    for named in [false, true] {
-        let state = scratch.clone();
-        let run = move |name: Option<&str>, c: [INT; 6]| -> Fallible<()> {
-            let mut scratch = state.borrow_mut();
-            let name = match name {
-                Some(name) => name.to_string(),
-                None => format!("collision_{}", scratch.collision_count() + 1),
-            };
-            let mut args = json!({"kind": "box"});
-            for (key, value) in ["x0", "y0", "z0", "x1", "y1", "z1"].iter().zip(c) {
-                args[*key] = json!(value);
-            }
-            scratch.marker(&name, args).map_err(runtime)
-        };
-        if named {
-            engine.register_fn(
-                "collision_box",
-                move |name: &str, x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT| {
-                    run(Some(name), [x0, y0, z0, x1, y1, z1])
-                },
-            );
-        } else {
-            engine.register_fn(
-                "collision_box",
-                move |x0: INT, y0: INT, z0: INT, x1: INT, y1: INT, z1: INT| {
-                    run(None, [x0, y0, z0, x1, y1, z1])
-                },
-            );
-        }
-    }
 }
 
 impl Scratch {

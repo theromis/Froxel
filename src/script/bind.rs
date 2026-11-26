@@ -28,6 +28,8 @@ pub(super) enum Pos {
     Str(&'static str),
     /// A list, as JSON.
     List(&'static str),
+    /// Three numbers, as the list `[x, y, z]` (`marker`'s point).
+    Triple(&'static str),
     /// Any value, as JSON.
     Any(&'static str),
     /// A slot (`.0`) or a list of slots (`.1`), by the value's type.
@@ -38,7 +40,12 @@ impl Pos {
     fn keys(self) -> Vec<&'static str> {
         match self {
             Pos::Corners => vec!["x0", "y0", "z0", "x1", "y1", "z1"],
-            Pos::Int(key) | Pos::Number(key) | Pos::Str(key) | Pos::List(key) | Pos::Any(key) => {
+            Pos::Int(key)
+            | Pos::Number(key)
+            | Pos::Str(key)
+            | Pos::List(key)
+            | Pos::Triple(key)
+            | Pos::Any(key) => {
                 vec![key]
             }
             Pos::Slots(one, many) => vec![one, many],
@@ -51,6 +58,7 @@ impl Pos {
             Pos::Int(_) => vec![TypeId::of::<INT>()],
             Pos::List(_) => vec![TypeId::of::<Array>()],
             Pos::Str(_) => vec![TypeId::of::<ImmutableString>()],
+            Pos::Triple(_) => vec![TypeId::of::<Dynamic>(); 3],
             Pos::Number(_) | Pos::Any(_) | Pos::Slots(..) => vec![TypeId::of::<Dynamic>()],
         }
     }
@@ -170,6 +178,17 @@ impl Binding {
                         .map_err(|_| runtime(format!("{key} must be a string")))?;
                     args.insert(key.into(), value.into());
                     at += 1;
+                }
+                Pos::Triple(key) => {
+                    let mut point = Vec::with_capacity(3);
+                    for value in &values[at..at + 3] {
+                        if !(value.is_int() || value.is_float()) {
+                            return Err(runtime(format!("{key} takes three numbers")));
+                        }
+                        point.push(json(value)?);
+                    }
+                    args.insert(key.into(), Value::Array(point));
+                    at += 3;
                 }
                 Pos::List(key) | Pos::Any(key) => {
                     args.insert(key.into(), json(&*values[at])?);

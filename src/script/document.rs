@@ -109,6 +109,10 @@ pub(super) const BINDINGS: &[Binding] = &[
     Binding::new("set_object", "set_object", &[Any("index")]).with_options_only(),
     Binding::new("remove_object", "remove_object", &[Any("index")]).without_options(),
     Binding::new("clear_object", "clear_object", &[Any("index")]).without_options(),
+    // clear_object() empties the object being written, at once.
+    Binding::new("clear_object", "clear_object", &[])
+        .excluded(&["index"])
+        .without_options(),
     // `makeActive` is the window's; a run keeps writing its own object.
     Binding::new("components", "components", &[Str("op")]).excluded(&["index", "makeActive"]),
     Binding::new(
@@ -244,6 +248,13 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
             "get_voxels" => get_voxels(&state, args),
             "set_voxels" => set_voxels(&state, args),
             "components" => components(&state, ctx, args),
+            "clear_object" if !args.contains_key("index") => {
+                let mut scratch = state.borrow_mut();
+                let cells = scratch.cells_mut();
+                let removed = cells.len() as INT;
+                cells.clear();
+                Ok(Dynamic::from_int(removed))
+            }
             _ => {
                 // An object operation the run records and applies afterwards.
                 match name {
@@ -284,14 +295,6 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
         },
     );
 
-    let state = scratch.clone();
-    engine.register_fn("clear_object", move || -> INT {
-        let mut scratch = state.borrow_mut();
-        let cells = scratch.cells_mut();
-        let removed = cells.len() as INT;
-        cells.clear();
-        removed
-    });
     let state = scratch.clone();
     engine.register_fn("list_bones", move || -> Array {
         list(&state.borrow().view.bones, "bones")
