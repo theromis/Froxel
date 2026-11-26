@@ -1,24 +1,24 @@
 {
-    "version": "0.3.5",
+    "version": "0.4.0",
     "description": "Voxel editor with a path tracer, rigging, glTF export, and an MCP server for agents.",
     "homepage": "https://github.com/theromis/Froxel",
     "license": "MIT",
     "notes": "Windows builds are not code-signed yet; SmartScreen may ask on the first launch.",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/theromis/Froxel/releases/download/v0.3.5/froxel-0.3.5-windows-x64.zip",
-            "hash": "75a405a103b2fcb9fdab01094027d82f7cf8f786349a4b975bdda8938fcda8d0",
-            "extract_dir": "froxel-0.3.5-windows-x64"
+            "url": "https://github.com/theromis/Froxel/releases/download/v0.4.0/froxel-0.4.0-windows-x64.zip",
+            "hash": "0fa68f9d7d3a7421c0ddad70ee38ef9a6501ba0ea347cc6f897e353be0277bab",
+            "extract_dir": "froxel-0.4.0-windows-x64"
         },
         "32bit": {
-            "url": "https://github.com/theromis/Froxel/releases/download/v0.3.5/froxel-0.3.5-windows-x86.zip",
-            "hash": "f463cbcf13d13c01b565971e33eeabc5d949796f1e6798a1f8089d3a3fe4a671",
-            "extract_dir": "froxel-0.3.5-windows-x86"
+            "url": "https://github.com/theromis/Froxel/releases/download/v0.4.0/froxel-0.4.0-windows-x86.zip",
+            "hash": "abe0140e7020304db488370aed53705a7ba0057ecf535555b500b00e3b773182",
+            "extract_dir": "froxel-0.4.0-windows-x86"
         },
         "arm64": {
-            "url": "https://github.com/theromis/Froxel/releases/download/v0.3.5/froxel-0.3.5-windows-arm64.zip",
-            "hash": "a009cf5a2f5a9ec196053ca4b2e96916d9bbf291905cef28c8f84ad7322482b5",
-            "extract_dir": "froxel-0.3.5-windows-arm64"
+            "url": "https://github.com/theromis/Froxel/releases/download/v0.4.0/froxel-0.4.0-windows-arm64.zip",
+            "hash": "727c9147ddc18825e3a74c7af169c5b747983e1c2104055041658e17ce4e4633",
+            "extract_dir": "froxel-0.4.0-windows-arm64"
         }
     },
     "bin": "froxel.exe",
