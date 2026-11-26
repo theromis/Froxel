@@ -216,3 +216,23 @@ fn soft_range(prop: &PropUi) -> (f64, f64) {
     prop.soft
         .unwrap_or_else(|| panic!("`{}` argument `{}` has no soft range", prop.tool, prop.key))
 }
+
+/// A checkbox over a tool argument that runs a `UiAction` (the Export
+/// options), so `ui_click` presses it too: labelled and explained by the
+/// argument, noted as `id`.
+pub(super) fn prop_action_checkbox(
+    ui: &mut Ui,
+    session: &mut Session,
+    id: &str,
+    tool: &str,
+    key: &str,
+    on: bool,
+    action: UiAction,
+) {
+    let prop = prop_ui(tool, key);
+    let mut shown = on;
+    let resp = ui
+        .checkbox(&mut shown, prop.label)
+        .on_hover_text(prop.tooltip());
+    super::run_action(session, id, prop.label, resp, action);
+}

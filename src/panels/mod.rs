@@ -727,5 +727,6 @@ mod stone;
 mod tools;
 
 use props::{
-    op_choice, op_slider, op_slider_as, op_toggle, prop_check, prop_drag, prop_label, prop_slider,
+    op_choice, op_slider, op_slider_as, op_toggle, prop_action_checkbox, prop_check, prop_drag,
+    prop_label, prop_slider,
 };

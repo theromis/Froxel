@@ -44,59 +44,68 @@ pub(super) fn export(ui: &mut Ui, session: &mut Session) {
     let options = [
         (
             "export.merge",
-            "Merge faces",
+            "merge",
             session.export.merge,
             ExportFlag::Merge,
         ),
         (
             "export.vertex-colors",
-            "Vertex colors",
+            "vertexColors",
             session.export.vertex_colors,
             ExportFlag::VertexColors,
         ),
         (
             "export.hidden",
-            "Hidden objects",
+            "exportHidden",
             session.export.export_hidden,
             ExportFlag::Hidden,
         ),
         (
             "export.split",
-            "One mesh per object",
+            "splitObjects",
             session.export.split_objects,
             ExportFlag::Split,
         ),
         (
             "export.atlas",
-            "Colour atlas",
+            "colorAtlas",
             session.export.color_atlas,
             ExportFlag::Atlas,
         ),
     ];
-    for (id, label, on, flag) in options {
-        action_checkbox(ui, session, id, label, on, UiAction::Export(flag));
-    }
-    slider_f32(
-        ui,
-        session,
-        "Occlusion",
-        SliderTarget::ExportAo,
-        0.0..=1.0,
-        2,
-    );
-    ui.add_enabled_ui(session.export.ao_strength > 0.0, |ui| {
-        slider_i32(
+    for (id, key, on, flag) in options {
+        prop_action_checkbox(
             ui,
             session,
-            "AO radius",
+            id,
+            "export_mesh",
+            key,
+            on,
+            UiAction::Export(flag),
+        );
+    }
+    op_slider(
+        ui,
+        session,
+        "export_mesh",
+        "aoStrength",
+        SliderTarget::ExportAo,
+    );
+    ui.add_enabled_ui(session.export.ao_strength > 0.0, |ui| {
+        op_slider(
+            ui,
+            session,
+            "export_mesh",
+            "aoRadius",
             SliderTarget::ExportAoRadius,
-            0..=crate::export::occlusion::MAX_RADIUS as i32,
         );
         ui.horizontal_wrapped(|ui| {
+            let prop = crate::ops::prop_ui("export_mesh", "aoTarget");
             ui.add_sized(
                 [64.0, 16.0],
-                egui::Label::new(RichText::new("AO target").small().color(DIM)),
-            );
+                egui::Label::new(RichText::new(prop.label).small().color(DIM)),
+            )
+            .on_hover_text(prop.tooltip());
             let target = &mut session.export.ao_target;
             egui::ComboBox::from_id_salt("ao-target")
                 .selected_text(target.name())
@@ -148,14 +157,13 @@ pub(super) fn export(ui: &mut Ui, session: &mut Session) {
 /// a sharper shadow, which follow the softness here.
 fn bake_light(ui: &mut Ui, session: &mut Session) {
     let on = session.export.bake.is_some();
-    let hover = "Paint ray-traced occlusion and a sun with shadows into the colour atlas, one texel per cell face, to draw unshaded in a game. Needs Colour atlas (MCP export option bake)";
-    let mut shown = on;
-    let resp = ui.checkbox(&mut shown, "Bake light").on_hover_text(hover);
-    run_action(
+    prop_action_checkbox(
+        ui,
         session,
         "export.bake",
-        "Bake light",
-        resp,
+        "export_mesh",
+        "bake",
+        on,
         UiAction::Export(ExportFlag::Bake),
     );
     if session.export.bake.is_none() {
@@ -251,13 +259,17 @@ fn bake_light(ui: &mut Ui, session: &mut Session) {
 
 pub(super) fn render(ui: &mut Ui, session: &mut Session) {
     section(ui, "Render");
-    ui.checkbox(&mut session.stochastic_gi, "Stochastic Sampling GI")
-        .on_hover_text("On: bounce light and sample emissive faces. Off: sun and sky only.");
+    prop_check(ui, "render", "stochasticGi", &mut session.stochastic_gi);
     ui.horizontal_wrapped(|ui| {
         ui.add_sized(
             [64.0, 16.0],
-            egui::Label::new(RichText::new("Glass").small().color(DIM)),
-        );
+            egui::Label::new(
+                RichText::new(crate::ops::prop_ui("render", "glassMode").label)
+                    .small()
+                    .color(DIM),
+            ),
+        )
+        .on_hover_text(crate::ops::prop_ui("render", "glassMode").tooltip());
         egui::ComboBox::from_id_salt("glass")
             .selected_text(match session.glass_mode {
                 GlassMode::Probabilistic => "Probabilistic",
@@ -272,7 +284,7 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
                 ui.selectable_value(&mut session.glass_mode, GlassMode::Absorption, "Absorption");
             });
     });
-    slider_i32(ui, session, "Samples", SliderTarget::MaxSamples, 16..=8192);
+    op_slider(ui, session, "render", "samples", SliderTarget::MaxSamples);
     ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut session.render_one_frame, "One frame").on_hover_text(
             "Do not start over on every step of an orbit or edit: the edit view shows while the view changes, and a new frame starts once it holds still. Off renders live.",
@@ -287,8 +299,7 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
     });
     section(ui, "Camera");
     ui.horizontal_wrapped(|ui| {
-        ui.checkbox(&mut session.orthographic, "Orthographic")
-            .on_hover_text("Parallel projection in the viewport, the tracer, and saved images");
+        prop_check(ui, "render", "orthographic", &mut session.orthographic);
         if ui
             .button("Game view")
             .on_hover_text("The gameplay camera: frog-world's, orthographic, yaw -135, pitch 32, unless Camera presets… or the user's camera_presets.json redefines game; turned by Placement turn (MCP set_view and preview preset game)")
@@ -323,7 +334,7 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
                 .suffix("°"),
         );
     });
-    ui.checkbox(&mut session.aces, "ACES tonemap");
+    prop_check(ui, "render", "aces", &mut session.aces);
     ui.checkbox(&mut session.denoise, "Denoise")
         .on_hover_text(crate::denoise::hover());
     ui.label(
@@ -331,23 +342,9 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
             .small()
             .color(DIM),
     );
-    slider_f32(
-        ui,
-        session,
-        "Aperture",
-        SliderTarget::Aperture,
-        0.0..=3.0,
-        2,
-    );
+    op_slider(ui, session, "render", "aperture", SliderTarget::Aperture);
     ui.add_enabled_ui(session.aperture > 0.0, |ui| {
-        slider_f32(
-            ui,
-            session,
-            "Focus",
-            SliderTarget::FocusDistance,
-            1.0..=500.0,
-            0,
-        );
+        op_slider(ui, session, "render", "focus", SliderTarget::FocusDistance);
     });
     if ui.button("Save render…").clicked() {
         session.save_render();
@@ -558,7 +555,7 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
 
 pub(super) fn light(ui: &mut Ui, session: &mut Session) {
     section(ui, "Path tracer");
-    slider_i32(ui, session, "Bounces", SliderTarget::MaxBounces, 1..=8);
+    op_slider(ui, session, "render", "bounces", SliderTarget::MaxBounces);
     ui.add_enabled_ui(session.stochastic_gi, |ui| {
         ui.checkbox(&mut session.power_weighted_nee, "Power-weighted NEE");
         slider_i32(ui, session, "RIS samples", SliderTarget::NeeRis, 1..=32);
@@ -581,17 +578,13 @@ pub(super) fn light(ui: &mut Ui, session: &mut Session) {
     );
 
     section(ui, "Sky");
-    ui.checkbox(&mut session.atmospheric_sky, "Atmospheric sky")
-        .on_hover_text(
-            "Nishita single-scatter sky (Rayleigh and Mie), lit by the sun's colour and direction. Off: a flat horizon gradient.",
-        );
-    slider_f32(
+    prop_check(ui, "render", "atmospheric", &mut session.atmospheric_sky);
+    op_slider(
         ui,
         session,
-        "Intensity",
+        "render",
+        "skyIntensity",
         SliderTarget::SkyIntensity,
-        0.0..=4.0,
-        2,
     );
     ui.add_enabled_ui(!session.atmospheric_sky, |ui| {
         slider_f32(
@@ -629,13 +622,12 @@ pub(super) fn light(ui: &mut Ui, session: &mut Session) {
         0.1..=30.0,
         1,
     );
-    slider_f32(
+    op_slider(
         ui,
         session,
-        "Intensity",
+        "render",
+        "sunIntensity",
         SliderTarget::SunIntensity,
-        0.0..=10.0,
-        2,
     );
     ui.horizontal_wrapped(|ui| {
         ui.add_sized(
