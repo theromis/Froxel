@@ -97,6 +97,12 @@ pub fn desktop(
 /// Settings of the current tool in a row above the viewport, and the
 /// palette below it. Call after the side panels so both span only the
 /// viewport's width. Returns the two docks' rectangles.
+/// The Generator tool's options for its kind, drawn from MCP `generate`'s
+/// schema: the desktop tool options row and the phone's options sheet.
+pub fn generator_options(ui: &mut Ui, session: &mut Session) {
+    tools::generator(ui, session);
+}
+
 pub fn around_viewport(ui: &mut Ui, session: &mut Session) -> (egui::Rect, egui::Rect) {
     let style = ui.style().clone();
     let tool_options = egui::Panel::top("tool-options")

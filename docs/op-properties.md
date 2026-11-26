@@ -167,16 +167,35 @@ pointer press and release, so every widget can be driven by MCP.
   the second of `palettes`) and stay session fields. Rhai `fill_tube` and
   `carve_tube` options are derived.
 
-- `generate`, the Generator tool: the kind (a drop-down, `op_combo`), axis,
+- `generate`, the Generator tool (on the desktop and on the phone's options
+  sheet, `panels::generator_options`): the kind (a drop-down, `op_combo`), axis,
   apex, Clockwise, and every kind's sliders are `op_args["generate"]`, drawn
   from the schema; a drag adds the box and the active slot as `palette` and
   runs `remote::generate_cells`, which MCP `generate` and Rhai `generate`
   run too. The seeds of Perlin, Tree, and Conifer are one `seed`.
 
+## Hard ranges
+
+`src/ops/ranges.rs` is a table of `(tool, argument, minimum, maximum)` for
+the arguments whose description states a range, merged into the schema as
+`hard` would write it inline. `tests/ops.rs` reads every description and
+fails when a stated range is not the schema's, so a new range in the prose
+is a new row. `ops::check_arguments` refuses a number outside it for MCP,
+the control port, `froxel run`, and the panels' `op_call`, and the Rhai
+bindings check it with `ops::check_tool_ranges`.
+
+## Window settings
+
+The Render panel's Path tracer, Sky, and Sun rows are `render` arguments
+(`nee`, `ris`, `indirectClamp`, `horizon`, `sunElevation`, `sunAzimuth`,
+`sunDisc`, `sunColor`, with `skyIntensity`, `sunIntensity`, `atmospheric`,
+`bounces`), and One frame and Temporal smooth are `set_view` arguments
+(`oneFrame`, `temporalSmooth`): the panel draws them from those properties
+(`op_slider`, `prop_check`), `render` overrides the window's values for one
+still, and `set_view` sets the window's.
+
 ## Still hand-written
 
-- Window-only settings with no tool argument: One frame, NEE, RIS samples,
-  clamp, temporal smoothing, horizon, and the sun's direction and disc.
-  (The fields inside `export_mesh` `bake` are `ops::panel::FIELDS` rows, checked against the argument's description and
-  drawn by `op_slider`.)
 - The Rhai readers named under Rhai.
+- Buttons that run an action rather than set an argument (Render frame,
+  Save render, the outliner's New and Delete).

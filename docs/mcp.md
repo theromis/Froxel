@@ -386,7 +386,7 @@ tracer. A file with no scene graph still loads its first model.
 | `remove_clip` | `name` | Remove a clip. One undo step |
 | `undo` | — | Undo the last edit |
 | `redo` | — | Redo the last undone edit |
-| `render` | `path` | Path-trace the scene to a PNG. The camera fits the visible cells (or `target`) in the frame. `width` and `height` default to 256 (up to 4096, 4096 × 2048 pixels in all); one alone and the other follows the model. `samples` defaults to 16. `bounces` defaults to 4. `denoise` defaults to true. `yaw` defaults to 30°, `pitch` to 25°. Optional `zoom`, `margin`, `target`, `distance`, `orthographic`, `views`, `pose`, `showBones` |
+| `render` | `path` | Path-trace the scene to a PNG. The camera fits the visible cells (or `target`) in the frame. `width` and `height` default to 256 (up to 4096, 4096 × 2048 pixels in all); one alone and the other follows the model. `samples` defaults to 16. `bounces` defaults to 4. `denoise` defaults to true. `yaw` defaults to 30°, `pitch` to 25°. Optional `zoom`, `margin`, `target`, `distance`, `orthographic`, `views`, `pose`, `showBones`, and the Render panel's light, which otherwise keeps the document's: `atmospheric`, `skyIntensity`, `horizon`, `sunElevation`, `sunAzimuth`, `sunDisc`, `sunIntensity`, `sunColor`, `nee`, `ris`, `indirectClamp`, `stochasticGi` |
 | `model_view` | `path` | Flat model view PNG: each pixel is the palette colour of the first cell hit, no light, no tonemap. Fitted like `render`. `width` and `height` default to 512 (up to 4096). Orthographic by default. Optional `view`, `yaw`, `pitch`, `zoom`, `margin`, `target`, `pixelsPerVoxel`, `distance`, `orthographic`, `background`, `views`, `pose`, `showBones` |
 | `preview` | `path` | Fast lit PNG: the viewport's mesh and light rasterised on the CPU in well under a second, fitted to the model or one object with a margin. `width` and `height` default to 1024 (up to 4096). Optional `view`, `yaw`, `pitch`, `preset` (`game`: orthographic, yaw −135, pitch 32), `presets` (an object or a JSON file; the user's `camera_presets.json` is read too), `placementYaw` (the asset's turn about up where it is placed in a level), `orthographic`, `fov`, `margin`, `object`, `isolate`, `background`, `antialias`, `pose`. `inputs`, `variants`, or `reference` (with `columns`, `labels`) make a labelled contact sheet of several models and a concept image. `overlay` (`true`, or `boxes`, `points`, `connectors`) draws the markers over the model with their names (`overlayLabels`). `lighting` (`old_pond`, or a name from `lightingPresets` or the user's `lighting_presets.json`, or fields: sun direction, colour, and energy, ambient colour and energy, exposure, background, a LUT) lights it as a game does. Replies `previewTriangles` (the unmerged mesh it draws) and `export` (`triangles` and `quads` that `export_mesh` writes with the options in `export`, such as `colorAtlas`); `countsLabel` writes both on the image. See [preview.md](preview.md). `glb` draws a written `.glb` instead of the document, unlit, as a game draws a baked file |
 | `project_paint` | `view` or `yaw` + `pitch`, `path` or `rows` | Recolour the active object's existing surface from one image projected along a view: never adds or removes cells. The image is a PNG `path` with `crop`, `background`, `tolerance`, `alphaThreshold`, `flip`, or `rows` with a `legend`; background pixels leave the surface alone. Optional `origin` and `size` (the box that may be painted; defaults to the object's bounds), `cellsPerPixel` or `imageSize`, `palette` or `slots`, `coverage`, `depth` (cells below the visible surface, default 1), `normalLimit` (degrees; steeper surfaces are skipped), `only` (slots that may be repainted), `mirror` (both sides of a plane). Replies with `cells`, `changed`, `bounds`, `origin`, `size`, `grid`, `covered`, `rays`, and `steep`. One undo step. See [Silhouettes](#silhouettes) |
@@ -397,12 +397,12 @@ tracer. A file with no scene graph still loads its first model.
 | `optimize_to_views` | `views` or `path` | Iterate a small creature (20 to 60 cells long) until its orthographic views match its pixel-art views (see Optimizing to pixel-art views): an excess ray's column goes, a missing ray gains a cell touching the body inside every other view, within `band` cells (default 3) of the starting surface, connected, never thinner than `minFeature`; then every surface cell takes the slot the views that see it agree on, weighted by how squarely each faces it, with a smoothness term (`smooth`) and the accent guard (`accents`, `accentShare`), and `colorCarve` removes an edge cell two views paint differently when both still meet the body. Views are `pixelate_views` rows, or crops pixelated at the object's box (`downscale`). Replies with each view's `agreement`, `iou`, `color`, and `colorError` before and after, `added`, `removed`, `recolored`, `iterations`, `blocked`. Deterministic, one undo step |
 | `measure_sheet` | `path` | Read a views sheet image, writing nothing: each view's tight `crop` (connected inked regions under the background rule and the mask edits, merged within `gap` pixels, regions under `minShare` of the largest in `ignored`), the 2 x 2 `layout` names (front, side, top, back), the cube pitch per view (`pitchX`, `pitchY`, `strength`, `cubes`, `square`) from the autocorrelation of the cube seams, `checks` (front height = side height, front width = top width, side length = top length, in percent of pixels and of cubes, `ok` within `checkTolerance`), `fitViews` for `carve_from_views` and `fit_to_views`, and with `parts` the top view's parts sticking out of its body. See [Measuring a sheet](#measuring-a-sheet) |
 | `reload` | — | Restart this server on the rebuilt binary in place, keeping the connection and the open document, then send `notifications/tools/list_changed`. `force` reloads an unchanged binary. See [Reloading the server](#reloading-the-server) |
-| `set_view` | — | Move the session camera; connected, the window's. Optional `view`, `yaw`, `pitch`, `preset`, `presets`, `placementYaw`, `frame`, `distance`, `orthographic`, `bones`. Not an edit |
+| `set_view` | — | Move the session camera; connected, the window's. Optional `view`, `yaw`, `pitch`, `preset`, `presets`, `placementYaw`, `frame`, `distance`, `orthographic`, `bones`, and the window's Render mode refresh: `oneFrame` (trace one frame and again once the view holds still) and `temporalSmooth` (0..1, the live render's least weight for a new frame). Not an edit |
 | `screenshot` | — | PNG of the whole editor window. Connected mode only |
 | `screenshot_viewport` | — | PNG of the 3D viewport, including its mode chips. Connected mode only |
 | `screenshot_region` | `x`, `y`, `width`, `height` | PNG of a rectangle in window points. Connected mode only |
 | `ui_inspect` | — | Previous frame's controls, tool, mode, active object, voxel count, and status. Connected mode only |
-| `ui_click` | `x`, `y` | Click the topmost registered control. A viewport hit stamps the active tool. A slider sets its value from the point. A palette cell selects that slot. Elsewhere, a real pointer click. Connected mode only |
+| `ui_click` | `id`, or `x`, `y` | Click a control by its `ui_inspect` `id` (a slider at `value`), or the topmost registered control at a point. A viewport hit stamps the active tool. A slider sets its value from the point. A palette cell selects that slot. Elsewhere, a real pointer click. Connected mode only |
 | `set_marker` | `name` | Name a point, a collision box, or a connector on an object: `kind` (`point`, `box`, `connector`), `point`, the box's inclusive cells `x0`..`z1`, `direction`, `object`. Saved in the `.vox` and exported as a glTF node. A marker of the same name is replaced. One undo step |
 | `remove_marker` | `name` or `all` | Remove one marker, or every marker. One undo step |
 | `list_markers` | — | Markers with `local`, `world`, and `gltf` coordinates |
@@ -420,6 +420,11 @@ tracer. A file with no scene graph still loads its first model.
 `set_voxels` accepts each cell as `{"x","y","z","palette"}` or as
 `[x, y, z, palette]`. A later duplicate of the same coordinate wins. Cells
 that already hold the requested index are not an undo step.
+
+A number outside the range a tool's schema gives it (`minimum` and
+`maximum`, the range its description states) is refused before the tool
+runs, naming the argument and the range, from MCP, the control port,
+`froxel run`, the panels, and Rhai alike.
 
 `fill_box` corners may arrive in either order. The box is inclusive.
 By default every fill writes every cell inside its shape, empty ones
@@ -1505,8 +1510,15 @@ Model/Object and Edit/Render chips, and the viewport. Each region is `id`,
 the client area. The reply also includes `tool`, `toolMode`, `editorMode`,
 `renderMode`, `activeObject`, `voxels`, and `status`.
 
-`ui_click` takes `x` and `y` in those same points and activates the topmost
-region that contains the point. A hit on the viewport is a press and release
+`ui_click` takes a region's `id`, or `x` and `y` in those same points. With
+an `id` the click lands on that control wherever it is now (its centre, a
+point `x`, `y` inside it, or for a slider `value` along its track, so
+`{"id": "slider.tree-depth", "value": 4}` sets 4), and a redraw that moved
+the control does not send it astray; an `id` that is not on screen is
+refused. With only a point it activates the topmost region that contains
+it. Items of an open drop-down (`op.generate.kind.conifer` once the
+Generator box is open) come before whatever lies under them, and picking
+one closes the drop-down. A hit on the viewport is a press and release
 of the active tool. A hit on a slider sets that slider from how far `x` is
 along the track. A hit on a palette cell selects that slot. A point on no
 region gets a real pointer press and release in the next two frames, so any
@@ -3117,9 +3129,9 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `set_pose`, `clear_pose` | Pose section |
 | `add_clip`, `set_clip_keys`, `list_clips`, `remove_clip` | Clips section: Add, Key pose at a time, Delete |
 | `undo`, `redo` | Edit menu |
-| `render` | Render mode and Save render |
+| `render` | Render mode and Save render; the Render panel's Path tracer, Sky, and Sun sliders are its arguments, labelled and ranged from its schema |
 | `preview`, `model_view` | Render section: Save preview, Save model view, from the window's camera; Camera section: Game view, Camera presets… for `presets`, Placement turn for `placementYaw`; Sheet of files…, Sheet of variants…, and Reference… for a contact sheet; Markers on preview for the overlay; Counts on preview for `countsLabel`, counted with the Export panel's options; Preview light and Light presets… for `lighting` and `lightingPresets` |
-| `set_view` | Orbit, pan, and zoom in the viewport; Camera section: Orthographic, Game view (with Camera presets… and Placement turn) |
+| `set_view` | Orbit, pan, and zoom in the viewport; Camera section: Orthographic, Game view (with Camera presets… and Placement turn); Render panel: One frame and Temporal smooth |
 | `set_script`, `get_script`, `set_params`, `list_params`, `regenerate` | Script section |
 | `set_marker`, `remove_marker`, `list_markers` | Markers section: the list with ✕ to remove, Name, Point, Box, or Connector with Facing, Add at selection |
 | `collision_from_voxels` | Markers section, Collision from voxels: Prefix, Layer, Z bands, Min feature, Hole size, Only, Leave out, Max boxes, Build collision; the status gives the box count, the solid covered, and the empty cells filled |

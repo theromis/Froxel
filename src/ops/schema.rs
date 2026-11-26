@@ -115,6 +115,7 @@ pub(crate) fn tools() -> &'static [Value] {
     static TOOLS: OnceLock<Vec<Value>> = OnceLock::new();
     TOOLS.get_or_init(|| {
         let mut tools = build();
+        with_ranges(&mut tools);
         with_panel_props(&mut tools);
         tools
     })
@@ -122,6 +123,26 @@ pub(crate) fn tools() -> &'static [Value] {
 
 /// Merge [`super::panel::PANEL`] into the properties it names, as
 /// [`ui`] and [`soft`] write them inline.
+/// Merge [`super::ranges::RANGES`] into the properties as `hard` would.
+fn with_ranges(tools: &mut [Value]) {
+    for &(name, key, min, max) in super::ranges::RANGES {
+        let tool = tools
+            .iter_mut()
+            .find(|tool| tool["name"] == name)
+            .unwrap_or_else(|| panic!("ops::ranges names `{name}`, which is not a tool"));
+        let property = tool["inputSchema"]["properties"]
+            .get_mut(key)
+            .unwrap_or_else(|| {
+                panic!("ops::ranges names `{name}` `{key}`, which it does not take")
+            });
+        assert!(
+            property.get("minimum").is_none() && property.get("maximum").is_none(),
+            "`{name}` `{key}` has its range inline and in ops::ranges"
+        );
+        *property = hard(property.take(), min, max);
+    }
+}
+
 fn with_panel_props(tools: &mut [Value]) {
     for row in super::panel::PANEL {
         let tool = tools
@@ -1129,6 +1150,14 @@ fn build() -> Vec<Value> {
             "normalPath": str_prop("Also write the first-hit normal of the main view as a PNG here."),
             "aperture": num_prop("Lens aperture. Omit to keep the document setting."),
             "focus": num_prop("Focus distance. Omit to keep the document setting."),
+            "nee": ui(bool_prop("Power-weighted next-event estimation of emissive faces, with stochasticGi. Omit to keep the document setting."), "Power-weighted NEE", "Pick emissive faces by power for direct light"),
+            "ris": soft(ui(hard(int_prop("Candidates per light sample (resampled importance sampling), with stochasticGi, 1..32. Omit to keep the document setting."), 1.0, 32.0), "RIS samples", "Candidates per light sample"), 1.0, 32.0, 0),
+            "indirectClamp": soft(ui(hard(num_prop("Largest radiance an indirect bounce may carry, against fireflies, 0..32; 0 is no clamp. Omit to keep the document setting."), 0.0, 32.0), "Indirect clamp", "Largest radiance a bounce may carry; 0 is none"), 0.0, 32.0, 1),
+            "horizon": soft(ui(hard(num_prop("Flat sky: degrees the horizon gradient blends over, 0..15. Omit to keep the document setting."), 0.0, 15.0), "Horizon", "Degrees the flat sky's horizon blends over"), 0.0, 15.0, 1),
+            "sunElevation": soft(ui(hard(num_prop("Sun height above the horizon in degrees, -90..90. Omit to keep the document setting."), -90.0, 90.0), "Elevation", "Sun height above the horizon in degrees"), -90.0, 90.0, 0),
+            "sunAzimuth": soft(ui(hard(num_prop("Sun direction round up in degrees, 0..360. Omit to keep the document setting."), 0.0, 360.0), "Azimuth", "Sun direction round up in degrees"), 0.0, 360.0, 0),
+            "sunDisc": soft(ui(hard(num_prop("Sun disc size in degrees, 0.1..30; larger gives softer shadows. Omit to keep the document setting."), 0.1, 30.0), "Disc size", "Sun disc size in degrees"), 0.1, 30.0, 1),
+            "sunColor": ui(json!({"type": ["string", "array"], "items": {"type": "integer"}, "description": "Sun colour, \"#rrggbb\" or [r, g, b] in 0..255. Omit to keep the document setting."}), "Color", "Sun colour"),
             }), json!({
             "yaw": num_prop("Orbit yaw in degrees. 0 puts the camera on +X, looking toward -X. A model facing -Y is face-on at yaw -90. Omit to keep the framing angle (30)."),
             "pitch": num_prop("Orbit pitch in degrees, -90..90. 90 looks straight down. Omit to keep the framing angle (25)."),
@@ -1206,7 +1235,9 @@ fn build() -> Vec<Value> {
             "preset": str_prop("Named camera: game (orthographic, yaw -135, pitch 32: frog-world's gameplay camera, unless presets or the user's camera_presets.json redefines it), default, or one from presets; yaw, pitch, view, and orthographic given here win over it."),
             "presets": camera_presets_prop(),
             "placementYaw": placement_yaw_prop(),
-            "bones": {"type": "boolean", "description": "Draw the skeleton overlay in the viewport. false hides it for a screenshot. Omit to keep it."}
+            "bones": {"type": "boolean", "description": "Draw the skeleton overlay in the viewport. false hides it for a screenshot. Omit to keep it."},
+            "oneFrame": ui(bool_prop("The window's Render mode traces one frame and starts a new one once the view holds still, instead of starting over on every step of an orbit or edit. Omit to keep it."), "One frame", "Do not start over on every orbit or edit step; trace again once the view holds still"),
+            "temporalSmooth": soft(ui(hard(num_prop("The window's live Render mode: the least weight a new frame gets against the frames before it, 0..1; lower is smoother and slower to follow a change. Omit to keep it."), 0.0, 1.0), "Temporal smooth", "Least weight a new live frame gets"), 0.0, 1.0, 3)
         }), &[]),
         define("screenshot", "PNG of the whole editor window. Only when connected to a window.", json!({"path": str_prop("Optional file to write. Its folder is created.")}), &[]),
         define("screenshot_viewport", "PNG of the 3D viewport. Only when connected to a window.", json!({"path": str_prop("Optional file to write. Its folder is created.")}), &[]),
@@ -1218,10 +1249,12 @@ fn build() -> Vec<Value> {
             "path": str_prop("Optional file to write. Its folder is created.")
         }), &["x", "y", "width", "height"]),
         define("ui_inspect", "Controls from the previous frame: tool buttons, mode, outliner, sliders, palette cells, viewport chips, and the viewport rectangle, in window points. Only when connected to a window.", json!({}), &[]),
-        define("ui_click", "Click the topmost registered control at a window point. A viewport hit stamps the active tool. A slider hit sets that slider from the point along its track. A palette cell selects that slot. A point on no registered control gets a real pointer press and release, so any widget there (a checkbox, a combo box, a button) is clicked; the reply is then pointer [x, y]. Only when connected to a window.", json!({
+        define("ui_click", "Click a control by its ui_inspect id, or the topmost registered control at a window point. An id needs no coordinates and survives a redraw that moved the control: the click lands at its centre, at x, y if given, or for a slider at value along its track. A viewport hit stamps the active tool. A slider hit sets that slider from the point along its track. A palette cell selects that slot. An item of an open drop-down is clicked before what lies under it, and picking it closes the drop-down. A point on no registered control gets a real pointer press and release, so any widget there (a checkbox, a combo box, a button) is clicked; the reply is then pointer [x, y]. Only when connected to a window.", json!({
+            "id": str_prop("A control's id from ui_inspect, such as tool.generator or op.generate.kind.conifer. Instead of a point, or with one inside the control."),
+            "value": num_prop("With the id of a slider: the value to set, as a point that far along its track."),
             "x": num_prop("X in window points, origin at the top-left of the client area"),
             "y": num_prop("Y in window points, origin at the top-left of the client area")
-        }), &["x", "y"]),
+        }), &[]),
         define("set_script", "Store a Rhai script on an object and read its parameters. One undo step. Voxels change only when regenerate runs. A failure keeps the source and reports the script line. Scripts have the sculpt tools as functions (fill_box with a mode, fill_ellipsoid, fill_rounded_box, fill_tube, generate, blend_shapes, carve_box, carve_ellipsoid, carve_rounded_box, carve_tube, recolor, surface_stroke, shell_plates, smooth, break_end, scatter, joints, column_relief, weather, bark, cavity_tint, radial_relief, foliage, moss, algae, vines, sweep, trim_outline, loft, deform, brush, voxelize (import_mesh's voxelizer on an inline mesh; scripts read no files), carve_from_views with views given as rows and a legend, pixelate_views with views as rows (returns pixel art rows at the cell grid), project_paint and decal with the image as rows and a legend, fit_to_views with views as rows and a legend (no other objects in view; reference names an object the run builds), and marker, collision_box, connector, collision_from_voxels for markers) with the MCP options in a trailing map such as #{mode: \"empty\"}, get_voxels, set_voxels, and the document tools (set_palette, set_object, remove_object, clear_object, mirror_object, split_object, add_bone, set_bone, place_joints, remove_bone, bind_object, list_bones, set_pose, clear_pose, add_clip, set_clip_keys, list_clips, remove_clip), which apply after the script in the same undo step, plus sqrt, pow, PI, min, max, clamp, push on arrays, and strings (\"ledge_\" + 4, `ledge_${i}`, to_string); docs/scripting.md lists them.", json!({
             "object": int_prop("Object index. Omit for the active object."),
             "source": str_prop("Rhai source. Empty clears the script.")

@@ -382,6 +382,7 @@ fn a_fixed_cpu_still_has_a_stable_png() {
             frame: None,
             margin: crate::still::MARGIN,
             pixels_per_voxel: None,
+            light: Default::default(),
         },
     );
     let png = encode_png(&image, &session).expect("png");
@@ -476,4 +477,56 @@ fn a_part_flattened_to_zero_is_left_out() {
     assert_eq!(world.count, 0);
     let world = build_world(&posed_block([1.0, 1.0, 0.5]));
     assert_eq!(world.count, 4);
+}
+
+#[test]
+fn a_still_takes_the_render_panels_light_and_leaves_the_session_as_it_was() {
+    let mut session = Session::new();
+    session.objects[0].cells.clear();
+    voxel(&mut session, (0, 0, 0), 36);
+    voxel(&mut session, (1, 0, 0), 40);
+    voxel(&mut session, (0, 0, 1), 50);
+    let still = |light: crate::still::Light| crate::still::Still {
+        width: 8,
+        height: 8,
+        samples: 2,
+        bounces: 2,
+        seed: 1,
+        aces: true,
+        denoise: false,
+        atmospheric: Some(false),
+        sky_intensity: None,
+        sun_intensity: Some(3.0),
+        aperture: None,
+        focus: None,
+        glass: None,
+        stochastic_gi: None,
+        yaw: 30.0,
+        pitch: 25.0,
+        distance: 1.0,
+        orthographic: None,
+        frame: None,
+        margin: 0.05,
+        pixels_per_voxel: None,
+        light,
+    };
+    let before = (session.sun_elevation, session.sun_color, session.nee_ris);
+    let plain = crate::still::render_cpu(&mut session, &still(Default::default()));
+    let low_red_sun = crate::still::render_cpu(
+        &mut session,
+        &still(crate::still::Light {
+            sun_elevation: Some(-30.0),
+            sun_color: Some([1.0, 0.2, 0.2]),
+            ris: Some(4),
+            ..Default::default()
+        }),
+    );
+    assert!(
+        plain.mean() != low_red_sun.mean(),
+        "the light changed nothing"
+    );
+    assert_eq!(
+        (session.sun_elevation, session.sun_color, session.nee_ris),
+        before
+    );
 }

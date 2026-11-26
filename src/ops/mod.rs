@@ -7,6 +7,7 @@
 //! [`schema`].
 
 mod panel;
+mod ranges;
 pub(crate) mod schema;
 
 use serde_json::{json, Value};

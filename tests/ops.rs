@@ -492,3 +492,62 @@ fn every_frontend_refuses_a_value_outside_its_hard_range() {
     extra.insert("depth".into(), json!(6));
     assert!(session.op_call("generate", extra).is_err());
 }
+
+#[test]
+fn every_range_a_description_states_is_the_schema_range() {
+    // Where the prose and the range differ on purpose: 0 also erases, a
+    // cushion is thicker in its middle, and twist has no range.
+    let differ = [
+        ("set_voxel", "palette"),
+        ("surface_stroke", "palette"),
+        ("moss", "thickness"),
+        ("deform", "angle"),
+    ];
+    let mut checked = 0;
+    for tool in schema::tools() {
+        let name = tool["name"].as_str().unwrap();
+        let Some(properties) = tool["inputSchema"]["properties"].as_object() else {
+            continue;
+        };
+        for (key, property) in properties {
+            let numeric = matches!(property["type"].as_str(), Some("integer" | "number"));
+            let description = property["description"].as_str().unwrap_or("");
+            let Some(stated) = stated_range(description) else {
+                continue;
+            };
+            if !numeric || differ.contains(&(name, key.as_str())) {
+                continue;
+            }
+            let declared = (property["minimum"].as_f64(), property["maximum"].as_f64());
+            assert_eq!(
+                declared,
+                (Some(stated.0), Some(stated.1)),
+                "{name} `{key}` says {}..{} but declares {declared:?}; add it to ops::ranges",
+                stated.0,
+                stated.1
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked >= 200, "only {checked} ranges");
+}
+
+/// The first `a..b` or `a..=b` of a description.
+fn stated_range(description: &str) -> Option<(f64, f64)> {
+    let at = description.find("..")?;
+    let number = |text: &str| -> Option<f64> { text.parse().ok() };
+    let before: String = description[..at]
+        .chars()
+        .rev()
+        .take_while(|c| c.is_ascii_digit() || *c == '.' || *c == '-')
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    let after: String = description[at + 2..]
+        .trim_start_matches('=')
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.' || *c == '-')
+        .collect();
+    Some((number(&before)?, number(after.trim_end_matches('.'))?))
+}

@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- Every number argument whose description states a range now has it in the
+  schema (218 of them), so a value outside it is refused the same way by
+  every frontend instead of by some handlers and clamped by others.
 - A number argument outside the range its tool's schema states
   (`minimum`/`maximum`) is refused by the argument check of MCP, the control
   port, `froxel run`, the panels, and Rhai, naming the argument; before,
@@ -18,6 +21,14 @@
 
 ### Added
 
+- MCP `ui_click` takes a control's `id` from `ui_inspect` instead of a
+  point (a slider with `value`), so a redraw that moved the control cannot
+  send the click astray; picking an item of an open drop-down closes it.
+- MCP `render` (and `froxel run render`) takes the Render panel's light:
+  `sunElevation`, `sunAzimuth`, `sunDisc`, `sunColor`, `horizon`, `nee`,
+  `ris`, and `indirectClamp`; `set_view` takes the window's `oneFrame` and
+  `temporalSmooth`. The panel draws those rows from the same schema.
+- The phone's Generator sheet shows the kind's options, as the desktop does.
 - Every tool has a key: **C** circle, **Q** square, **N** generator,
   **P** tube, **K** box select, and **W** flood select join **V** **L** **B**
   **F** **S** **U** **M**, and each tool strip tooltip names its key.

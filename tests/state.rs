@@ -2800,6 +2800,13 @@ fn schema_drawn_sliders_take_their_range_from_the_registry() {
         MaxBounces,
         SkyIntensity,
         SunIntensity,
+        NeeRis,
+        IndirectClamp,
+        HorizonSoftness,
+        SunElevation,
+        SunAzimuth,
+        SunDisc,
+        EmaFloor,
         RoundRadius,
         TorusTube,
         NoiseScale,
@@ -2848,6 +2855,13 @@ fn schema_drawn_sliders_take_their_range_from_the_registry() {
         "MaxBounces",
         "SkyIntensity",
         "SunIntensity",
+        "NeeRis",
+        "IndirectClamp",
+        "HorizonSoftness",
+        "SunElevation",
+        "SunAzimuth",
+        "SunDisc",
+        "EmaFloor",
         "RoundRadius",
         "TorusTube",
         "NoiseScale",
@@ -2970,4 +2984,69 @@ fn the_generator_panel_runs_the_generate_tool_with_its_old_defaults() {
     let hit = session.ui_target(2.0, 2.0).unwrap();
     session.activate_ui(&hit, None).unwrap();
     assert_eq!(session.op_arg("generate", "kind"), json!("torus"));
+}
+
+#[test]
+fn ui_click_finds_a_control_by_its_id() {
+    use serde_json::json;
+    let mut session = Session::new();
+    let rect =
+        |x: f32, y: f32| egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(100.0, 20.0));
+    session.note_ui(
+        "tool.tube",
+        "Tube",
+        rect(0.0, 0.0),
+        UiAction::Tool(Tool::Tube),
+    );
+    session.note_ui(
+        "slider.tree-depth",
+        "Depth",
+        rect(0.0, 40.0),
+        UiAction::Slider(SliderSpec {
+            target: SliderTarget::TreeDepth,
+            min: 1.0,
+            max: 5.0,
+        }),
+    );
+    // An id needs no point: the centre of the control.
+    let (region, at) = session
+        .ui_click_target(&json!({"id": "tool.tube"}))
+        .unwrap()
+        .unwrap();
+    assert_eq!((region.id.as_str(), at), ("tool.tube", (50.0, 10.0)));
+    session.activate_ui(&region, Some(at)).unwrap();
+    assert!(session.tool == Tool::Tube);
+    // A slider's value is a point that far along its track.
+    let (region, at) = session
+        .ui_click_target(&json!({"id": "slider.tree-depth", "value": 4}))
+        .unwrap()
+        .unwrap();
+    assert_eq!(at, (75.0, 50.0));
+    session.activate_ui(&region, Some(at)).unwrap();
+    assert_eq!(session.op_arg("generate", "depth"), json!(4));
+    // Mistakes are refused, naming what to do.
+    for (params, says) in [
+        (json!({"id": "tool.nothing"}), "ui_inspect"),
+        (json!({"id": "tool.tube", "value": 3}), "not a slider"),
+        (
+            json!({"id": "slider.tree-depth", "value": 3, "x": 1, "y": 1}),
+            "not both",
+        ),
+        (json!({"x": 1}), "both x and y"),
+        (json!({}), "pass id"),
+    ] {
+        let Err(error) = session.ui_click_target(&params) else {
+            panic!("{params} was taken");
+        };
+        assert!(error.contains(says), "{params}: {error}");
+    }
+    // A point still finds the topmost control, and nothing off them.
+    assert!(session
+        .ui_click_target(&json!({"x": 5, "y": 5}))
+        .unwrap()
+        .is_some());
+    assert!(session
+        .ui_click_target(&json!({"x": 500, "y": 500}))
+        .unwrap()
+        .is_none());
 }

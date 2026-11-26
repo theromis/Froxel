@@ -200,6 +200,25 @@ fn render_scene(session: &mut Session, params: &Value) -> Result<Value, String> 
     let sun_intensity = opt_f64(params, alias(params, "sunIntensity", "sun-intensity")?)?;
     let aperture = opt_f64(params, "aperture")?;
     let focus = opt_f64(params, "focus")?;
+    let number = |key: &str| -> Result<Option<f32>, String> {
+        Ok(opt_f64(params, key)?.map(|value| value as f32))
+    };
+    let light = crate::still::Light {
+        nee: opt_bool(params, "nee")?,
+        ris: opt_f64(params, "ris")?.map(|value| value as i32),
+        indirect_clamp: number("indirectClamp")?,
+        horizon: number("horizon")?,
+        sun_elevation: number("sunElevation")?,
+        sun_azimuth: number("sunAzimuth")?,
+        sun_disc: number("sunDisc")?,
+        sun_color: match params.get("sunColor") {
+            None | Some(Value::Null) => None,
+            Some(value) => {
+                let ([r, g, b, _], _) = rgba_value(value, "sunColor")?;
+                Some([r, g, b].map(|channel| f32::from(channel) / 255.0))
+            }
+        },
+    };
     let glass_key = alias(params, "glassMode", "glass-mode")?;
     let glass = match opt_str(params, glass_key)? {
         None => None,
@@ -268,6 +287,7 @@ fn render_scene(session: &mut Session, params: &Value) -> Result<Value, String> 
         frame: Some(frame),
         margin: framing.margin,
         pixels_per_voxel: None,
+        light,
     };
     let (min, max) = still
         .frame
@@ -387,6 +407,7 @@ fn model_view(session: &mut Session, params: &Value) -> Result<Value, String> {
         frame: Some(frame),
         margin: framing.margin,
         pixels_per_voxel,
+        light: crate::still::Light::default(),
     };
     let (min, max) = still
         .frame
@@ -783,6 +804,8 @@ fn set_view(session: &mut Session, params: &Value) -> Result<Value, String> {
     let orthographic =
         opt_bool(params, "orthographic")?.or(preset.map(|preset| preset.orthographic));
     let bones = opt_bool(params, "bones")?;
+    let one_frame = opt_bool(params, "oneFrame")?;
+    let temporal = opt_f64(params, "temporalSmooth")?;
     let (old_yaw, old_pitch) = (session.yaw, session.pitch);
     if frame {
         session.frame_camera();
@@ -796,13 +819,21 @@ fn set_view(session: &mut Session, params: &Value) -> Result<Value, String> {
     if let Some(bones) = bones {
         session.view_bones = bones;
     }
+    if let Some(one_frame) = one_frame {
+        session.render_one_frame = one_frame;
+    }
+    if let Some(temporal) = temporal {
+        session.ema_floor = temporal as f32;
+    }
     Ok(json!({
         "yaw": session.yaw.to_degrees(),
         "pitch": session.pitch.to_degrees(),
         "distance": session.distance,
         "target": session.target.to_array(),
         "orthographic": session.orthographic,
-        "bones": session.view_bones
+        "bones": session.view_bones,
+        "oneFrame": session.render_one_frame,
+        "temporalSmooth": session.ema_floor
     }))
 }
 

@@ -754,6 +754,8 @@ fn generator_options(ui: &mut Ui, session: &mut Session) {
                 }
             }
         });
+    // The kind's own options, as on the desktop.
+    crate::panels::generator_options(ui, session);
 }
 
 fn mutator_options(ui: &mut Ui, session: &mut Session) {
@@ -1280,6 +1282,39 @@ mod tests {
         assert!(ui.activate("mobile.flip", &mut session));
         assert!(ui.flip);
         assert!(!ui.activate("mobile.editor.model", &mut session));
+    }
+
+    #[test]
+    fn the_generator_sheet_shows_the_kinds_options() {
+        let ctx = egui::Context::default();
+        let mut session = Session::new();
+        session.tool = Tool::Generator;
+        session.set_op_arg("generate", "kind", Some("conifer".into()));
+        for _ in 0..3 {
+            session.ui_regions.clear();
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(390.0, 844.0),
+                )),
+                ..Default::default()
+            };
+            ctx.run_ui(input, |ui| options_sheet(ui, &mut session, 600.0))
+                .textures_delta
+                .clear();
+        }
+        // Every conifer option is on the sheet, labelled from the schema.
+        for id in [
+            "op.generate.axis.z",
+            "slider.conifer-tiers",
+            "slider.conifer-needle",
+            "slider.conifer-seed",
+        ] {
+            assert!(
+                session.ui_regions.iter().any(|region| region.id == id),
+                "{id} is not on the phone's Generator sheet"
+            );
+        }
     }
 
     #[test]

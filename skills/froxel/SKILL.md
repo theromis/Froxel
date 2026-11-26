@@ -424,7 +424,10 @@ image. `views` writes extra angles in one call. The camera fits the visible
 cells in the frame at any angle; `zoom` magnifies, `target` (an object index,
 `active`, or a `{min, max}` cell box) frames one part, and giving only `width`
 makes the height follow the model (up to 4096 per side). `model_view` takes
-`pixelsPerVoxel` to size the picture to the model. Unknown arguments are
+`pixelsPerVoxel` to size the picture to the model. The Render panel's light
+is arguments too (`sunElevation`, `sunAzimuth`, `sunDisc`, `sunColor`,
+`sunIntensity`, `skyIntensity`, `horizon`, ...) and holds for that still
+only. Unknown arguments, and numbers outside an argument's stated range, are
 refused.
 
 ## Export
@@ -469,10 +472,11 @@ refused.
 
 When the server runs with `--connect`, edits appear in the open editor.
 `set_view` moves its camera, `screenshot_viewport` captures it, and
-`ui_inspect` with `ui_click` drive the controls: a listed control (a tool,
-a slider, a Tube toggle such as `op.fill_tube.caps`) is activated directly,
-and any other point gets a real pointer click, so checkboxes and combo boxes
-work too. In a headless session these tools fail; use `preview`, `render`,
+`ui_inspect` with `ui_click` drive the controls: click a listed control (a
+tool, a slider, a Tube toggle such as `op.fill_tube.caps`) by its `id`
+(`{"id": "tool.generator"}`, a slider with `value`), which no redraw can
+send astray; any other point gets a real pointer click, so checkboxes and
+combo boxes work too, and an open drop-down's items are listed by id. In a headless session these tools fail; use `preview`, `render`,
 and `model_view` instead.
 
 ## Mistakes to avoid

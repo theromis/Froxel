@@ -3396,3 +3396,26 @@ fn every_tool_is_described_wherever_the_parity_rule_asks() {
         );
     }
 }
+
+#[test]
+fn set_view_sets_how_the_window_renders() {
+    let mut head = Headless::new();
+    let reply = head.ok(
+        "set_view",
+        json!({"frame": false, "oneFrame": true, "temporalSmooth": 0.25}),
+    );
+    assert_eq!(reply["oneFrame"], true);
+    assert!(head.session.render_one_frame);
+    assert!((head.session.ema_floor - 0.25).abs() < 1e-6);
+    // Outside its range it is refused, naming it.
+    let error = crate::remote::apply(&mut head.session, "view.set", &json!({"temporalSmooth": 2}))
+        .unwrap_err();
+    assert!(error.contains("temporalSmooth"), "{error}");
+    let error = crate::remote::apply(
+        &mut head.session,
+        "render",
+        &json!({"path": "/nonexistent/x.png", "sunElevation": 120}),
+    )
+    .unwrap_err();
+    assert!(error.contains("sunElevation"), "{error}");
+}

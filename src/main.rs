@@ -329,6 +329,7 @@ fn main(
                 viewport_rect: egui::Rect::NOTHING,
                 mobile: mobile::MobileUi::default(),
                 pointer_clicks: VecDeque::new(),
+                close_popups: false,
                 #[cfg(target_os = "macos")]
                 native_menu: None,
             }))
@@ -382,6 +383,8 @@ struct Shell {
     /// press and release fed to egui by `raw_input_hook`, so any widget
     /// (a checkbox, a combo box) can be clicked.
     pointer_clicks: VecDeque<PointerClick>,
+    /// Close every open popup next frame (`ui_click` picked an item in one).
+    close_popups: bool,
     #[cfg(target_os = "macos")]
     native_menu: Option<native_menu::NativeMenu>,
 }
@@ -436,6 +439,9 @@ impl eframe::App for Shell {
         let ctx = &ui.ctx().clone();
         #[cfg(target_os = "android")]
         maintain_system_bars(ctx);
+        if std::mem::take(&mut self.close_popups) {
+            egui::Popup::close_all(ctx);
+        }
         if let Some(control) = &self.control {
             control.bind_context(ctx);
         }
@@ -569,23 +575,19 @@ impl Shell {
     }
 
     fn click_ui(&mut self, params: &Value) -> Result<Value, String> {
-        let x = params
-            .get("x")
-            .and_then(Value::as_f64)
-            .ok_or("missing number x")? as f32;
-        let y = params
-            .get("y")
-            .and_then(Value::as_f64)
-            .ok_or("missing number y")? as f32;
-        let Some(region) = self.session.ui_target(x, y) else {
+        let Some((region, (x, y))) = self.session.ui_click_target(params)? else {
             // No listed control: press and release the pointer there, as a
             // mouse would, for the widgets ui_inspect does not list.
+            let x = params.get("x").and_then(Value::as_f64).unwrap_or(0.0) as f32;
+            let y = params.get("y").and_then(Value::as_f64).unwrap_or(0.0) as f32;
             self.pointer_clicks.push_back(PointerClick {
                 at: egui::pos2(x, y),
                 pressed: false,
             });
             return Ok(serde_json::json!({"pointer": [x, y]}));
         };
+        // An item picked in an open drop-down closes it, as a mouse click does.
+        self.close_popups |= region.popup;
         if self.mobile.activate(&region.id, &mut self.session) {
             return Ok(serde_json::json!({"id": region.id, "label": region.label}));
         }

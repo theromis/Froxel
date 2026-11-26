@@ -246,12 +246,12 @@ pub(super) fn render(ui: &mut Ui, session: &mut Session) {
     });
     op_slider(ui, session, SliderTarget::MaxSamples);
     ui.horizontal_wrapped(|ui| {
-        ui.checkbox(&mut session.render_one_frame, "One frame").on_hover_text(
-            "Do not start over on every step of an orbit or edit: the edit view shows while the view changes, and a new frame starts once it holds still. Off renders live.",
-        );
+        prop_check(ui, "set_view", "oneFrame", &mut session.render_one_frame);
         if ui
             .add_enabled(session.render_one_frame, egui::Button::new("Render frame"))
-            .on_hover_text("Trace a new frame of the view as it is now, without waiting for it to hold still")
+            .on_hover_text(
+                "Trace a new frame of the view as it is now, without waiting for it to hold still",
+            )
             .clicked()
         {
             session.request_render_frame();
@@ -517,71 +517,31 @@ pub(super) fn light(ui: &mut Ui, session: &mut Session) {
     section(ui, "Path tracer");
     op_slider(ui, session, SliderTarget::MaxBounces);
     ui.add_enabled_ui(session.stochastic_gi, |ui| {
-        ui.checkbox(&mut session.power_weighted_nee, "Power-weighted NEE");
-        slider_i32(ui, session, "RIS samples", SliderTarget::NeeRis, 1..=32);
+        prop_check(ui, "render", "nee", &mut session.power_weighted_nee);
+        op_slider(ui, session, SliderTarget::NeeRis);
     });
-    slider_f32(
-        ui,
-        session,
-        "Indirect clamp",
-        SliderTarget::IndirectClamp,
-        0.0..=32.0,
-        1,
-    );
-    slider_f32(
-        ui,
-        session,
-        "Temporal smooth",
-        SliderTarget::EmaFloor,
-        0.0..=1.0,
-        3,
-    );
+    op_slider(ui, session, SliderTarget::IndirectClamp);
+    op_slider(ui, session, SliderTarget::EmaFloor);
 
     section(ui, "Sky");
     prop_check(ui, "render", "atmospheric", &mut session.atmospheric_sky);
     op_slider(ui, session, SliderTarget::SkyIntensity);
     ui.add_enabled_ui(!session.atmospheric_sky, |ui| {
-        slider_f32(
-            ui,
-            session,
-            "Horizon",
-            SliderTarget::HorizonSoftness,
-            0.0..=15.0,
-            1,
-        );
+        op_slider(ui, session, SliderTarget::HorizonSoftness);
     });
 
     section(ui, "Sun");
-    slider_f32(
-        ui,
-        session,
-        "Elevation",
-        SliderTarget::SunElevation,
-        -90.0..=90.0,
-        0,
-    );
-    slider_f32(
-        ui,
-        session,
-        "Azimuth",
-        SliderTarget::SunAzimuth,
-        0.0..=360.0,
-        0,
-    );
-    slider_f32(
-        ui,
-        session,
-        "Disc size",
-        SliderTarget::SunDisc,
-        0.1..=30.0,
-        1,
-    );
+    op_slider(ui, session, SliderTarget::SunElevation);
+    op_slider(ui, session, SliderTarget::SunAzimuth);
+    op_slider(ui, session, SliderTarget::SunDisc);
     op_slider(ui, session, SliderTarget::SunIntensity);
     ui.horizontal_wrapped(|ui| {
+        let color = crate::ops::prop_ui("render", "sunColor");
         ui.add_sized(
             [96.0, 16.0],
-            egui::Label::new(RichText::new("Color").small().color(DIM)),
-        );
+            egui::Label::new(RichText::new(color.label).small().color(DIM)),
+        )
+        .on_hover_text(color.tooltip());
         let mut rgb = [
             (session.sun_color[0] * 255.0) as u8,
             (session.sun_color[1] * 255.0) as u8,

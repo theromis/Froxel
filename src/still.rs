@@ -35,6 +35,22 @@ pub struct Still {
     pub margin: f32,
     /// Orthographic scale instead of the fitted distance.
     pub pixels_per_voxel: Option<f32>,
+    /// The window's light settings this still overrides.
+    pub light: Light,
+}
+
+/// The Render panel's light settings a still may set; `None` keeps the
+/// session's.
+#[derive(Clone, Copy, Default)]
+pub struct Light {
+    pub nee: Option<bool>,
+    pub ris: Option<i32>,
+    pub indirect_clamp: Option<f32>,
+    pub horizon: Option<f32>,
+    pub sun_elevation: Option<f32>,
+    pub sun_azimuth: Option<f32>,
+    pub sun_disc: Option<f32>,
+    pub sun_color: Option<[f32; 3]>,
 }
 
 pub(crate) struct Saved {
@@ -54,6 +70,14 @@ pub(crate) struct Saved {
     glass_mode: GlassMode,
     stochastic_gi: bool,
     orthographic: bool,
+    power_weighted_nee: bool,
+    nee_ris: i32,
+    indirect_clamp: f32,
+    horizon_softness: f32,
+    sun_elevation: f32,
+    sun_azimuth: f32,
+    sun_disc: f32,
+    sun_color: [f32; 3],
 }
 
 fn apply(session: &mut Session, still: &Still) -> Saved {
@@ -74,7 +98,24 @@ fn apply(session: &mut Session, still: &Still) -> Saved {
         glass_mode: session.glass_mode,
         stochastic_gi: session.stochastic_gi,
         orthographic: session.orthographic,
+        power_weighted_nee: session.power_weighted_nee,
+        nee_ris: session.nee_ris,
+        indirect_clamp: session.indirect_clamp,
+        horizon_softness: session.horizon_softness,
+        sun_elevation: session.sun_elevation,
+        sun_azimuth: session.sun_azimuth,
+        sun_disc: session.sun_disc,
+        sun_color: session.sun_color,
     };
+    let light = still.light;
+    session.power_weighted_nee = light.nee.unwrap_or(session.power_weighted_nee);
+    session.nee_ris = light.ris.unwrap_or(session.nee_ris);
+    session.indirect_clamp = light.indirect_clamp.unwrap_or(session.indirect_clamp);
+    session.horizon_softness = light.horizon.unwrap_or(session.horizon_softness);
+    session.sun_elevation = light.sun_elevation.unwrap_or(session.sun_elevation);
+    session.sun_azimuth = light.sun_azimuth.unwrap_or(session.sun_azimuth);
+    session.sun_disc = light.sun_disc.unwrap_or(session.sun_disc);
+    session.sun_color = light.sun_color.unwrap_or(session.sun_color);
     session.yaw = still.yaw.to_radians();
     session.pitch = still.pitch.to_radians();
     session.max_bounces = still.bounces;
@@ -172,6 +213,14 @@ fn restore(session: &mut Session, saved: Saved) {
     session.glass_mode = saved.glass_mode;
     session.stochastic_gi = saved.stochastic_gi;
     session.orthographic = saved.orthographic;
+    session.power_weighted_nee = saved.power_weighted_nee;
+    session.nee_ris = saved.nee_ris;
+    session.indirect_clamp = saved.indirect_clamp;
+    session.horizon_softness = saved.horizon_softness;
+    session.sun_elevation = saved.sun_elevation;
+    session.sun_azimuth = saved.sun_azimuth;
+    session.sun_disc = saved.sun_disc;
+    session.sun_color = saved.sun_color;
 }
 
 #[cfg(test)]

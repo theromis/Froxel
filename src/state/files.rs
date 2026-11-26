@@ -1286,6 +1286,57 @@ impl Session {
         hit(true).or_else(|| hit(false)).cloned()
     }
 
+    /// The control and the point an MCP `ui_click` names: by `id` (the
+    /// latest region noted with it, at `x`, `y` if given, else at a
+    /// slider's `value` along its track, else its centre), or the topmost
+    /// control at `x`, `y`. `Ok(None)` is a point on no listed control.
+    pub fn ui_click_target(
+        &self,
+        params: &serde_json::Value,
+    ) -> Result<Option<(UiRegion, (f32, f32))>, String> {
+        let number = |key: &str| params.get(key).and_then(serde_json::Value::as_f64);
+        let point = match (number("x"), number("y")) {
+            (Some(x), Some(y)) => Some((x as f32, y as f32)),
+            (None, None) => None,
+            _ => return Err("pass both x and y, or neither with id".into()),
+        };
+        let Some(id) = params.get("id").and_then(serde_json::Value::as_str) else {
+            if number("value").is_some() {
+                return Err("value needs the id of a slider".into());
+            }
+            let (x, y) = point.ok_or("pass id, or x and y")?;
+            return Ok(self.ui_target(x, y).map(|region| (region, (x, y))));
+        };
+        let region = self
+            .ui_regions
+            .iter()
+            .rev()
+            .find(|region| region.id == id && listed_control(region))
+            .cloned()
+            .ok_or_else(|| {
+                format!("no control `{id}` is on screen; ui_inspect lists the ones that are")
+            })?;
+        let centre = (region.x + region.w / 2.0, region.y + region.h / 2.0);
+        let at = match (point, number("value")) {
+            (Some(_), Some(_)) => return Err("pass x and y or value, not both".into()),
+            (Some(point), None) => point,
+            (None, Some(value)) => {
+                let UiAction::Slider(spec) = region.action else {
+                    return Err(format!("`{id}` is not a slider; value is a slider's"));
+                };
+                let span = spec.max - spec.min;
+                let t = if span.abs() <= f32::EPSILON {
+                    0.0
+                } else {
+                    ((value as f32 - spec.min) / span).clamp(0.0, 1.0)
+                };
+                (region.x + region.w * t, centre.1)
+            }
+            (None, None) => centre,
+        };
+        Ok(Some((region, at)))
+    }
+
     pub fn activate_ui(&mut self, region: &UiRegion, at: Option<(f32, f32)>) -> Result<(), String> {
         match region.action {
             UiAction::None | UiAction::Viewport => {}
@@ -1423,14 +1474,14 @@ impl Session {
                 self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
             }
             SliderTarget::MaxBounces => self.max_bounces = whole,
-            SliderTarget::NeeRis => self.nee_ris = whole.clamp(1, 32),
-            SliderTarget::IndirectClamp => self.indirect_clamp = value.clamp(0.0, 32.0),
-            SliderTarget::EmaFloor => self.ema_floor = value.clamp(0.0, 1.0),
+            SliderTarget::NeeRis => self.nee_ris = whole,
+            SliderTarget::IndirectClamp => self.indirect_clamp = value,
+            SliderTarget::EmaFloor => self.ema_floor = value,
             SliderTarget::SkyIntensity => self.sky_intensity = value,
-            SliderTarget::HorizonSoftness => self.horizon_softness = value.clamp(0.0, 15.0),
-            SliderTarget::SunElevation => self.sun_elevation = value.clamp(-90.0, 90.0),
-            SliderTarget::SunAzimuth => self.sun_azimuth = value.clamp(0.0, 360.0),
-            SliderTarget::SunDisc => self.sun_disc = value.clamp(0.1, 30.0),
+            SliderTarget::HorizonSoftness => self.horizon_softness = value,
+            SliderTarget::SunElevation => self.sun_elevation = value,
+            SliderTarget::SunAzimuth => self.sun_azimuth = value,
+            SliderTarget::SunDisc => self.sun_disc = value,
             SliderTarget::SunIntensity => self.sun_intensity = value,
             SliderTarget::TubeStart => self.tube_start = value,
             SliderTarget::TubeEnd => self.tube_end = value,

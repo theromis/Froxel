@@ -136,6 +136,13 @@ impl SliderTarget {
             SliderTarget::MaxBounces => ("render", "bounces"),
             SliderTarget::SkyIntensity => ("render", "skyIntensity"),
             SliderTarget::SunIntensity => ("render", "sunIntensity"),
+            SliderTarget::NeeRis => ("render", "ris"),
+            SliderTarget::IndirectClamp => ("render", "indirectClamp"),
+            SliderTarget::HorizonSoftness => ("render", "horizon"),
+            SliderTarget::SunElevation => ("render", "sunElevation"),
+            SliderTarget::SunAzimuth => ("render", "sunAzimuth"),
+            SliderTarget::SunDisc => ("render", "sunDisc"),
+            SliderTarget::EmaFloor => ("set_view", "temporalSmooth"),
             _ => return None,
         })
     }
