@@ -275,34 +275,25 @@ fn viewport_mirror(ui: &mut Ui, field: &mut crate::state::MirrorField) {
 /// start radius to the end radius. With Chain each drag adds a point to one
 /// tube, smoothed through all of them, until Finish. Remove carves it.
 fn tube(ui: &mut Ui, session: &mut Session) {
-    slider_f32(ui, session, "Start", SliderTarget::TubeStart, 0.5..=32.0, 1);
-    slider_f32(ui, session, "End", SliderTarget::TubeEnd, 0.5..=32.0, 1);
-    slider_f32(
+    // Labels, ranges, and tooltips are fill_tube's schema (ops::prop_ui).
+    let tool = "fill_tube";
+    op_slider_as(
         ui,
         session,
-        "Flatten",
-        SliderTarget::TubeAspect,
-        0.05..=1.0,
-        2,
+        tool,
+        "radius",
+        "Start",
+        SliderTarget::TubeStart,
     );
-    slider_f32(
-        ui,
-        session,
-        "Roll",
-        SliderTarget::TubeRoll,
-        -180.0..=180.0,
-        0,
-    );
+    op_slider_as(ui, session, tool, "radius", "End", SliderTarget::TubeEnd);
+    op_slider(ui, session, tool, "aspect", SliderTarget::TubeAspect);
+    op_slider(ui, session, tool, "roll", SliderTarget::TubeRoll);
     row(ui, |ui| {
-        ui.toggle_value(&mut session.tube_blade, "Blade")
-            .on_hover_text("A wedge: full thickness at one edge, one cell at the other");
-        ui.toggle_value(&mut session.tube_flat_caps, "Flat ends").on_hover_text(
-            "Cut the tube square at its first and last points instead of rounding them, for pipes, discs, rims, and wheels (MCP fill_tube caps flat)",
-        );
+        op_toggle(ui, tool, "profile", &mut session.tube_blade);
+        op_toggle(ui, tool, "caps", &mut session.tube_flat_caps);
     });
     row(ui, |ui| {
-        ui.toggle_value(&mut session.tube_smooth, "Smooth")
-            .on_hover_text("A curve through the chain's points instead of straight segments");
+        op_toggle(ui, tool, "curve", &mut session.tube_smooth);
         let chain = session.tube_chain;
         ui.toggle_value(&mut session.tube_chain, "Chain")
             .on_hover_text("Each drag adds a point to one tube");
@@ -339,17 +330,8 @@ fn tube(ui: &mut Ui, session: &mut Session) {
         );
     }
     match session.tube_colors {
-        TubeColors::Rings => slider_f32(
-            ui,
-            session,
-            "Period",
-            SliderTarget::TubePeriod,
-            1.0..=16.0,
-            1,
-        ),
-        TubeColors::Stripes => {
-            slider_i32(ui, session, "Sectors", SliderTarget::TubeSectors, 1..=32)
-        }
+        TubeColors::Rings => op_slider(ui, session, tool, "period", SliderTarget::TubePeriod),
+        TubeColors::Stripes => op_slider(ui, session, tool, "sectors", SliderTarget::TubeSectors),
         _ => {}
     }
 }

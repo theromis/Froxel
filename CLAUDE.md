@@ -33,7 +33,11 @@ fixtures and their generator in `tests/fixtures/mesh`). `preview.rs` is the fast
 `preview` and `froxel run preview` (`docs/preview.md`). `export/` writes glTF. `native_menu.rs` is the macOS menu. `skills/froxel` is the agent skill for the MCP tools. `ops/` is the
 operation registry: `OPS` in `ops/mod.rs` names every MCP tool, its
 `remote::apply` method, its annotation hints, and whether it takes `batch`,
-`space`, and `mirror`; `ops/schema.rs` is each tool's argument schema. MCP
+`space`, and `mirror`; `ops/schema.rs` is each tool's argument schema, including a property's
+panel label, hint, hard and soft range, and toggle item (`ui`, `hard`,
+`soft`, `toggle`; `docs/op-properties.md`): `panels/props.rs` (`op_slider`,
+`op_toggle`) draws a widget from it, and `ops::rhai_options` derives a Rhai
+function's option list from it. MCP
 `tools/list`, the tool-to-method map, `control.methods`, `froxel run`
 (any tool from the command line, with `--list` and `<tool> --help`), and the argument
 check at the top of `remote::apply` (for MCP, the control port, the CLI,

@@ -16,6 +16,100 @@ fn with_default(mut prop: Value, value: Value) -> Value {
     prop
 }
 
+/// `prop` as a panel shows it, Blender RNA's `name` and short
+/// `description`: `label` is its JSON Schema `title` and the panel label,
+/// `hint` (one clause, no full stop) the panel tooltip and the short line of
+/// `froxel run <tool> --help`. The long `description` stays MCP's help.
+/// [`super::prop_ui`] reads it; `docs/op-properties.md` is the design.
+fn ui(mut prop: Value, label: &str, hint: &str) -> Value {
+    prop["title"] = label.into();
+    prop[UI]["hint"] = hint.into();
+    prop
+}
+
+/// The range a number must be in, JSON Schema `minimum` and `maximum`
+/// (Blender's `min` and `max`); `remote::apply` refuses a value outside it.
+fn hard(mut prop: Value, min: f64, max: f64) -> Value {
+    prop["minimum"] = min.into();
+    prop["maximum"] = max.into();
+    prop
+}
+
+/// The slider range and shown digits of a number (Blender's `soft_min`,
+/// `soft_max`, and `precision`); a call may still pass a value outside it.
+fn soft(mut prop: Value, min: f64, max: f64, digits: u64) -> Value {
+    prop[UI]["soft"] = json!([min, max]);
+    prop[UI]["digits"] = digits.into();
+    prop
+}
+
+/// An enum option a panel draws as one toggle: on is `on`, off leaves the
+/// option out (its default).
+fn toggle(mut prop: Value, on: &str) -> Value {
+    prop[UI]["on"] = on.into();
+    prop
+}
+
+/// The key of a property's panel metadata. Left out of MCP `tools/list`.
+pub(crate) const UI: &str = "x-ui";
+
+/// Every tool's `tools/list` entry as MCP lists it: [`tools`] without the
+/// panel metadata (`x-ui`), which no MCP client reads.
+pub(crate) fn mcp_tools() -> &'static [Value] {
+    static TOOLS: OnceLock<Vec<Value>> = OnceLock::new();
+    TOOLS.get_or_init(|| {
+        let mut tools = tools().to_vec();
+        for tool in &mut tools {
+            if let Some(properties) = tool["inputSchema"]["properties"].as_object_mut() {
+                for property in properties.values_mut() {
+                    if let Some(property) = property.as_object_mut() {
+                        property.remove(UI);
+                    }
+                }
+            }
+        }
+        tools
+    })
+}
+
+/// The cross-section and end options `fill_tube` and `carve` `tube` share,
+/// and so do Rhai `fill_tube` and `carve_tube`.
+pub(crate) const TUBE_SHAPE_KEYS: [&str; 5] = ["curve", "caps", "aspect", "roll", "profile"];
+
+/// The properties of [`TUBE_SHAPE_KEYS`], as `fill_tube` describes them.
+fn tube_shape_props() -> [(&'static str, Value); 5] {
+    let props = [
+        toggle(ui(json!({"type": "string", "enum": ["polyline", "smooth"], "description": "polyline (default) or smooth."}), "Smooth", "A curve through the points instead of straight segments"), "smooth"),
+        toggle(ui(json!({"type": "string", "enum": ["round", "flat"], "description": "round (default): half balls past the end points. flat: cut square at the first and last points, across the path there; a cell is in only when its centre is between those planes."}), "Flat ends", "Cut the tube square at its first and last points instead of rounding them, for pipes, discs, rims, and wheels"), "flat"),
+        soft(ui(hard(num_prop("Flatten: thickness over width, 0.05..=1. 1 (default) is round. The thickness is at least one cell and runs up for a level tube, so a flat tube lies flat."), 0.05, 1.0), "Flatten", "Thickness over width; 1 is round"), 0.05, 1.0, 2),
+        soft(ui(num_prop("Degrees to turn a flat or blade cross-section about the axis. 90 stands a level shard on its edge."), "Roll", "Degrees to turn a flat or blade cross-section about the axis"), -180.0, 180.0, 0),
+        toggle(ui(json!({"type": "string", "enum": ["round", "blade"], "description": "blade tapers the thickness across the width to one cell at one edge: a wedge, for splinters and broken plank ends. Defaults to round."}), "Blade", "A wedge: full thickness at one edge, one cell at the other"), "blade"),
+    ];
+    let mut out = TUBE_SHAPE_KEYS.map(|key| (key, Value::Null));
+    for ((_, slot), prop) in out.iter_mut().zip(props) {
+        *slot = prop;
+    }
+    out
+}
+
+/// `fill_tube` `radius`: the default radius of its points.
+fn tube_radius_prop(description: &str) -> Value {
+    soft(
+        ui(
+            hard(
+                num_prop(description),
+                crate::tools::MIN_TUBE_RADIUS,
+                crate::tools::MAX_TUBE_RADIUS,
+            ),
+            "Radius",
+            "Tube radius in cells; 0.5 is one cell thick",
+        ),
+        0.5,
+        32.0,
+        1,
+    )
+}
+
 /// Every tool's `tools/list` entry, in [`super::OPS`] order.
 pub(crate) fn tools() -> &'static [Value] {
     static TOOLS: OnceLock<Vec<Value>> = OnceLock::new();
@@ -123,22 +217,23 @@ fn build() -> Vec<Value> {
             "radius": num_prop("Edge bevel in voxels. 0 fills the box."),
             "mode": fill_mode_prop()
         }), &["x0", "y0", "z0", "x1", "y1", "z1", "radius"]),
-        define("fill_tube", "Fill a round tube through 2..=1024 local points, for limbs, roots, branches, and twigs. Each point has its own radius, so the tube tapers; joints are round. caps round (default) ends it in half balls that run radius cells past the first and last points; caps flat cuts it square there, by the planes through those points across the path, for pipes, discs, rims, barrels, and wheels (points [0, 0, 0] and [0, 13, 0] at radius 12 fill y 0..=13 only; then the same tube at palette 0 and radius 11 hollows a pipe with a one-cell wall; two points half a cell apart are a disc one cell thick; flat caps refuse points that are all in one place). A whole-number point is the centre of that cell, and a cell is filled when its centre is within the radius of the axis. curve smooth passes a Catmull-Rom curve through the points; polyline (default) joins them straight. aspect, roll, and profile blade make it flat or a wedge, for shards, splinters, and plank ends. Colour with palette, or with palettes and a pattern: rings bands along the length every period cells, stripes divides the circumference into sectors (grooves along the tube), random picks per cell from seed. At most 2000000 cells; refused before any cell is written. One undo step.", json!({
+        define("fill_tube", "Fill a round tube through 2..=1024 local points, for limbs, roots, branches, and twigs. Each point has its own radius, so the tube tapers; joints are round. caps round (default) ends it in half balls that run radius cells past the first and last points; caps flat cuts it square there, by the planes through those points across the path, for pipes, discs, rims, barrels, and wheels (points [0, 0, 0] and [0, 13, 0] at radius 12 fill y 0..=13 only; then the same tube at palette 0 and radius 11 hollows a pipe with a one-cell wall; two points half a cell apart are a disc one cell thick; flat caps refuse points that are all in one place). A whole-number point is the centre of that cell, and a cell is filled when its centre is within the radius of the axis. curve smooth passes a Catmull-Rom curve through the points; polyline (default) joins them straight. aspect, roll, and profile blade make it flat or a wedge, for shards, splinters, and plank ends. Colour with palette, or with palettes and a pattern: rings bands along the length every period cells, stripes divides the circumference into sectors (grooves along the tube), random picks per cell from seed. At most 2000000 cells; refused before any cell is written. One undo step.", {
+            let mut p = json!({
             "points": {"type": "array", "description": "Each item is [x, y, z], [x, y, z, radius], or {x, y, z, radius?} in the active object's local cells. Numbers may be fractional."},
-            "radius": num_prop("Radius for points that give none, 0.5..=128. 0.5 is one cell thick."),
-            "curve": {"type": "string", "enum": ["polyline", "smooth"], "description": "polyline (default) or smooth."},
-            "caps": {"type": "string", "enum": ["round", "flat"], "description": "round (default): half balls past the end points. flat: cut square at the first and last points, across the path there; a cell is in only when its centre is between those planes."},
+            "radius": tube_radius_prop("Radius for points that give none, 0.5..=128. 0.5 is one cell thick."),
             "palette": int_prop("Palette index. 0 erases. Pass this or palettes."),
             "palettes": {"type": "array", "items": {"type": "integer"}, "description": "1..=64 palette indices cycled by pattern. Repeat an index to weight it."},
             "pattern": {"type": "string", "enum": ["rings", "stripes", "random"], "description": "How palettes are laid out. Defaults to rings."},
-            "period": num_prop("rings: band length along the tube in cells. Defaults to 2."),
-            "sectors": int_prop("stripes: sectors around the tube, 1..=256. Defaults to the number of palettes."),
+            "period": soft(ui(num_prop("rings: band length along the tube in cells. Defaults to 2."), "Period", "Band length along the tube in cells"), 1.0, 16.0, 1),
+            "sectors": soft(ui(hard(int_prop("stripes: sectors around the tube, 1..=256. Defaults to the number of palettes."), 1.0, 256.0), "Sectors", "Stripes around the tube"), 1.0, 32.0, 0),
             "seed": int_prop("random: seed. Defaults to 0."),
-            "aspect": num_prop("Flatten: thickness over width, 0.05..=1. 1 (default) is round. The thickness is at least one cell and runs up for a level tube, so a flat tube lies flat."),
-            "roll": num_prop("Degrees to turn a flat or blade cross-section about the axis. 90 stands a level shard on its edge."),
-            "profile": {"type": "string", "enum": ["round", "blade"], "description": "blade tapers the thickness across the width to one cell at one edge: a wedge, for splinters and broken plank ends. Defaults to round."},
             "mode": fill_mode_prop()
-        }), &["points"]),
+            });
+            for (key, prop) in tube_shape_props() {
+                p[key] = prop;
+            }
+            p
+        }, &["points"]),
         define("recolor", "Replace palette slot from with slot to (or every pair of a map) in the active object's solid cells, in an inclusive box or the whole object, with no shape change: a blockout slot becomes the shell slot, two shades merge, a belly is re-tinted. Cells of other slots and empty cells stay. to 0 erases those cells. A slot is mapped once; the map is applied to the cells as they were, so 3 to 4 and 4 to 3 swap. One undo step. Replies with matched (cells of a mapped slot), changed, and voxels.", json!({
             "from": int_prop("Palette slot to replace, 1..255. Pass from and to, or map."),
             "to": int_prop("Palette slot it becomes, 0..255. 0 erases."),
@@ -218,7 +313,8 @@ fn build() -> Vec<Value> {
             "reach": num_prop("How far a sample may be from the surface cell it snaps to, 0..=64. Defaults to 8."),
             "only": {"type": ["integer", "array"], "items": {"type": "integer"}, "description": "Only cells of these slots change, such as the shell slots, so a seam stops at the skin."}
         }), &["points", "palette"]),
-        define("carve", "Remove the solid cells inside a box, ellipsoid, rounded_box, or tube of the active object, for hollows, tunnels, and pits (to cut a polygon or rounded rectangle along a path, closed or open, call sweep with palette 0; to remove everything outside a surface, call trim_outline). box, ellipsoid, and rounded_box take x0..z1 (and radius for rounded_box) exactly as their fill tools; tube takes points, radius, curve, and caps as fill_tube. Same 2000000-cell limits, checked before any cell changes; a tube also has at most 512000000 cells in the boxes around its segments, and a closed path counts like an open one. One undo step. Replies with removed.", json!({
+        define("carve", "Remove the solid cells inside a box, ellipsoid, rounded_box, or tube of the active object, for hollows, tunnels, and pits (to cut a polygon or rounded rectangle along a path, closed or open, call sweep with palette 0; to remove everything outside a surface, call trim_outline). box, ellipsoid, and rounded_box take x0..z1 (and radius for rounded_box) exactly as their fill tools; tube takes points, radius, curve, and caps as fill_tube. Same 2000000-cell limits, checked before any cell changes; a tube also has at most 512000000 cells in the boxes around its segments, and a closed path counts like an open one. One undo step. Replies with removed.", {
+            let mut p = json!({
             "shape": {"type": "string", "enum": ["box", "ellipsoid", "rounded_box", "tube"], "description": "Shape to remove."},
             "x0": int_prop("box, ellipsoid, rounded_box: inclusive corner"),
             "y0": int_prop("Inclusive corner"),
@@ -227,13 +323,15 @@ fn build() -> Vec<Value> {
             "y1": int_prop("Inclusive corner"),
             "z1": int_prop("Inclusive corner"),
             "radius": num_prop("rounded_box: edge bevel. tube: radius for points that give none."),
-            "points": {"type": "array", "description": "tube: points as in fill_tube."},
-            "caps": {"type": "string", "enum": ["round", "flat"], "description": "tube: round (default) or flat ends, as fill_tube."},
-            "curve": {"type": "string", "enum": ["polyline", "smooth"], "description": "tube: polyline (default) or smooth."},
-            "aspect": num_prop("tube: flatten, as fill_tube."),
-            "roll": num_prop("tube: roll in degrees, as fill_tube."),
-            "profile": {"type": "string", "enum": ["round", "blade"], "description": "tube: as fill_tube."}
-        }), &["shape"]),
+            "points": {"type": "array", "description": "tube: points as in fill_tube."}
+            });
+            for (key, mut prop) in tube_shape_props() {
+                let description = prop["description"].as_str().unwrap_or("");
+                prop["description"] = format!("tube: {description}").into();
+                p[key] = prop;
+            }
+            p
+        }, &["shape"]),
         define("smooth", "Soften a blocky region of the active object with a majority filter over each cell's 26 neighbours, inside an inclusive local box of at most 2000000 cells. An empty cell with at least fillAt solid neighbours is filled with the colour most of them hold; a solid cell with at most removeAt solid neighbours is removed. The defaults fill single-cell pits and inside corners and remove single-cell spikes and outside corners, and keep flat faces and edges. It also removes features one cell thick (twigs, thin walls), so leave those out of the box. Cells outside the box are read, never changed. One undo step. Replies with filled, removed, and the passes run.", {
             let mut p = json!({});
             for key in ["x0", "y0", "z0", "x1", "y1", "z1"] {

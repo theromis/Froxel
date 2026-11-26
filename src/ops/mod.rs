@@ -305,6 +305,94 @@ pub(crate) fn default_bool(tool: &str, key: &str) -> bool {
     default(tool, key).as_bool().expect("a boolean default")
 }
 
+/// How a panel shows one tool argument, read from its schema property (the
+/// way Blender's `layout.prop` reads an RNA property): see
+/// `docs/op-properties.md`.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PropUi {
+    pub tool: &'static str,
+    pub key: &'static str,
+    /// The panel label, the property's `title`.
+    pub label: &'static str,
+    /// The tooltip and short help.
+    pub hint: &'static str,
+    /// The slider range (`x-ui.soft`), for a number.
+    pub soft: Option<(f64, f64)>,
+    /// Digits a slider shows; 0 for an integer.
+    pub digits: usize,
+    /// An enum option drawn as a toggle: the item it means when on.
+    pub on: Option<&'static str>,
+    /// The JSON Schema type is `integer`.
+    pub integer: bool,
+    /// The `enum` items, for a string option.
+    pub items: Vec<&'static str>,
+}
+
+impl PropUi {
+    /// The tooltip: the hint, then the MCP argument it sets.
+    pub(crate) fn tooltip(&self) -> String {
+        match self.on {
+            Some(on) => format!("{} (MCP {} {} {on})", self.hint, self.tool, self.key),
+            None => format!("{} (MCP {} {})", self.hint, self.tool, self.key),
+        }
+    }
+}
+
+/// The panel metadata of a tool's argument. Panics when the property has no
+/// `title` and hint (`schema::ui`), as [`default`] does on a missing
+/// default, so a panel cannot draw an option the schema does not describe.
+pub(crate) fn prop_ui(tool: &str, key: &str) -> PropUi {
+    let (tool, property) = by_tool(tool)
+        .and_then(|op| {
+            let (key, property) = schema::properties(op.tool)?.get_key_value(key)?;
+            Some((op.tool, (key.as_str(), property)))
+        })
+        .unwrap_or_else(|| panic!("`{tool}` has no argument `{key}` in ops::schema"));
+    let (key, property) = property;
+    let meta = &property[schema::UI];
+    let label = property["title"].as_str();
+    let hint = meta["hint"].as_str();
+    let (Some(label), Some(hint)) = (label, hint) else {
+        panic!("`{tool}` argument `{key}` has no label and hint (schema::ui)");
+    };
+    let integer = property["type"] == "integer";
+    PropUi {
+        tool,
+        key,
+        label,
+        hint,
+        soft: meta["soft"]
+            .as_array()
+            .and_then(|range| Some((range.first()?.as_f64()?, range.get(1)?.as_f64()?))),
+        digits: meta["digits"].as_u64().unwrap_or(0) as usize,
+        on: meta["on"].as_str(),
+        integer,
+        items: property["enum"]
+            .as_array()
+            .map(|items| items.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default(),
+    }
+}
+
+/// The options map keys of a Rhai function that runs MCP `tool`: every
+/// argument except the ones it takes positionally, so a new schema argument
+/// is a new Rhai option with no edit in `src/script`.
+pub(crate) fn rhai_options(tool: &str, positional: &[&str]) -> Vec<&'static str> {
+    let properties =
+        schema::properties(tool).unwrap_or_else(|| panic!("`{tool}` is not in ops::schema"));
+    for key in positional {
+        assert!(
+            properties.contains_key(*key),
+            "`{tool}` has no argument `{key}` to take positionally"
+        );
+    }
+    properties
+        .keys()
+        .map(String::as_str)
+        .filter(|key| !positional.contains(key))
+        .collect()
+}
+
 /// Add every schema `default` the caller left out, for the tool `tool`.
 pub(crate) fn fill_tool_defaults(tool: &str, args: &mut serde_json::Map<String, Value>) {
     let Some(properties) = schema::properties(tool) else {

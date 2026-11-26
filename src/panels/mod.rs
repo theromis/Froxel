@@ -719,8 +719,11 @@ mod import;
 mod organic;
 mod outliner;
 mod palette;
+mod props;
 mod render;
 mod script;
 mod silhouette;
 mod stone;
 mod tools;
+
+use props::{op_slider, op_slider_as, op_toggle};

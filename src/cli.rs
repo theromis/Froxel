@@ -509,10 +509,15 @@ pub fn run_tool(args: &[String]) -> i32 {
                 } else {
                     ""
                 };
-                println!(
-                    "  {key} [{kind}]{need}\n      {}",
-                    property["description"].as_str().unwrap_or("")
-                );
+                println!("  {key} [{kind}]{need}");
+                // The panel's label and hint are the short help.
+                if let (Some(label), Some(hint)) = (
+                    property["title"].as_str(),
+                    property[crate::ops::schema::UI]["hint"].as_str(),
+                ) {
+                    println!("      {label}: {hint}");
+                }
+                println!("      {}", property["description"].as_str().unwrap_or(""));
             }
         }
         return 0;

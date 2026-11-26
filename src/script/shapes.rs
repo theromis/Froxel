@@ -20,13 +20,6 @@ use crate::remote::{self, Sculpt};
 
 const FILL: &[&str] = &["mode", "space", "mirror"];
 const CARVE: &[&str] = &["space"];
-const TUBE_SHAPE: &[&str] = &[
-    "radius", "curve", "caps", "aspect", "roll", "profile", "space",
-];
-const TUBE: &[&str] = &[
-    "mode", "radius", "curve", "caps", "aspect", "roll", "profile", "pattern", "period", "sectors",
-    "seed", "space", "mirror",
-];
 const TERRACE: &[&str] = &[
     "mode",
     "size",
@@ -194,8 +187,10 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     );
     for with_opts in [false, true] {
         let state = scratch.clone();
+        // Every fill_tube argument but the positional ones, from the schema.
+        let allowed = crate::ops::rhai_options("fill_tube", &["points", "palette", "palettes"]);
         let run = move |points: Array, palette: Dynamic, opts: &Map| -> Fallible<INT> {
-            let mut args = options(opts, TUBE, "fill_tube")?;
+            let mut args = options(opts, &allowed, "fill_tube")?;
             args.insert("points".into(), json(&Dynamic::from_array(points))?);
             if palette.is_array() {
                 args.insert("palettes".into(), json(&palette)?);
@@ -347,8 +342,13 @@ pub(super) fn register(engine: &mut Engine, scratch: &Rc<RefCell<Scratch>>) {
     }
     for with_opts in [false, true] {
         let state = scratch.clone();
+        // carve with shape tube: its radius, space, and the tube shape keys.
+        let allowed: Vec<&str> = ["radius", "space"]
+            .into_iter()
+            .chain(crate::ops::schema::TUBE_SHAPE_KEYS)
+            .collect();
         let run = move |points: Array, opts: &Map| -> Fallible<INT> {
-            let mut args = options(opts, TUBE_SHAPE, "carve_tube")?;
+            let mut args = options(opts, &allowed, "carve_tube")?;
             args.insert("shape".into(), "tube".into());
             args.insert("points".into(), json(&Dynamic::from_array(points))?);
             state.borrow_mut().carve(args).map_err(runtime)

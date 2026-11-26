@@ -109,7 +109,7 @@ pub use scatter::{scatter, PieceKind, ScatterSpec, Scattered, MAX_PIECES};
 pub use sculpt::{smooth, tube, tube_shaped};
 pub use sculpt::{
     smooth_checked, tube_capped, Smoothed, TubeCell, TubePattern, TubePoint, TubeShape,
-    MAX_SMOOTH_ITERATIONS,
+    MAX_SMOOTH_ITERATIONS, MAX_TUBE_RADIUS, MIN_TUBE_RADIUS,
 };
 pub use shapes::{
     bresenham, circle, cube, extrude, flood_empty, flood_face, rounded_inside, rounded_radius,

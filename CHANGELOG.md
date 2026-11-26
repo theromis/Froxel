@@ -24,6 +24,14 @@
 - Scripts have `range(a, b)`, `range(a, b, step)`, `atan(x)`, `atan(y, x)`,
   `asin`, and `acos`; `atan2` takes integers too.
 
+### Changed
+
+- MCP `fill_tube` and `carve` list a `title` for the Tube tool's options and
+  `minimum`/`maximum` for `radius`, `aspect`, and `sectors`; `froxel run
+  fill_tube --help` prints each option's short hint. The Tube tool's labels,
+  slider ranges, and tooltips come from the same schema, so its tooltips now
+  name the MCP argument they set.
+
 ## 0.4.0 – 2026-11-25
 
 ### Removed

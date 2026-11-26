@@ -244,3 +244,152 @@ fn a_left_out_argument_takes_the_schema_default_and_panels_start_from_it() {
         default_f32("foliage", "flatten")
     );
 }
+
+/// Every property with panel metadata (`schema::ui`): a label and a hint,
+/// a soft range inside the hard one, and a toggle item that is an item of
+/// the enum and not its default.
+#[test]
+fn panel_metadata_is_complete_and_inside_the_schema() {
+    let mut checked = 0;
+    for op in OPS {
+        let properties = schema::properties(op.tool).unwrap();
+        for (key, property) in properties {
+            if property.get(schema::UI).is_none() && property.get("title").is_none() {
+                continue;
+            }
+            checked += 1;
+            let prop = prop_ui(op.tool, key);
+            assert!(!prop.label.is_empty(), "{} `{key}`", op.tool);
+            assert!(
+                !prop.hint.is_empty() && !prop.hint.ends_with('.'),
+                "{} `{key}`: a hint is one clause with no full stop",
+                op.tool
+            );
+            if let Some((low, high)) = prop.soft {
+                assert!(low < high, "{} `{key}` soft range", op.tool);
+                let min = property["minimum"].as_f64().unwrap_or(f64::NEG_INFINITY);
+                let max = property["maximum"].as_f64().unwrap_or(f64::INFINITY);
+                assert!(
+                    min <= low && high <= max,
+                    "{} `{key}`: soft {low}..{high} is outside {min}..{max}",
+                    op.tool
+                );
+                assert!(
+                    matches!(property["type"].as_str(), Some("number" | "integer")),
+                    "{} `{key}` has a soft range but is not a number",
+                    op.tool
+                );
+            }
+            if let Some(on) = prop.on {
+                assert!(prop.items.contains(&on), "{} `{key}` on `{on}`", op.tool);
+                let description = property["description"].as_str().unwrap_or("");
+                assert!(
+                    !description.contains(&format!("{on} (default)")),
+                    "{} `{key}`: on `{on}` is the default, so off would be the same",
+                    op.tool
+                );
+            }
+        }
+    }
+    assert!(
+        checked >= 8,
+        "only {checked} properties have panel metadata"
+    );
+}
+
+#[test]
+fn mcp_lists_the_schema_without_the_panel_metadata() {
+    let listed = schema::mcp_tools();
+    assert_eq!(listed.len(), schema::tools().len());
+    let text = serde_json::to_string(listed).unwrap();
+    assert!(!text.contains(schema::UI));
+    let caps = &listed
+        .iter()
+        .find(|tool| tool["name"] == "fill_tube")
+        .unwrap()["inputSchema"]["properties"]["caps"];
+    assert_eq!(caps["title"], "Flat ends");
+    assert_eq!(caps["enum"], json!(["round", "flat"]));
+}
+
+#[test]
+fn a_hard_range_is_refused_just_outside_it() {
+    // fill_tube's minimum and maximum are the checks remote::apply makes.
+    let properties = schema::properties("fill_tube").unwrap();
+    let mut checked = 0;
+    for (key, property) in properties {
+        let (Some(min), Some(max)) = (property["minimum"].as_f64(), property["maximum"].as_f64())
+        else {
+            continue;
+        };
+        let step = if property["type"] == "integer" {
+            1.0
+        } else {
+            0.01
+        };
+        for (value, ok) in [
+            (min, true),
+            (max, true),
+            (min - step, false),
+            (max + step, false),
+        ] {
+            let mut session = crate::state::Session::new();
+            session.replace_empty();
+            let mut args = json!({"points": [[0, 0, 0], [0, 4, 0]], "radius": 1});
+            if key == "sectors" {
+                args["palettes"] = json!([2, 3]);
+                args["pattern"] = json!("stripes");
+            } else {
+                args["palette"] = json!(2);
+            }
+            args[key] = if property["type"] == "integer" {
+                json!(value as i64)
+            } else {
+                json!(value)
+            };
+            let result = crate::remote::apply(&mut session, "voxel.tube", &args);
+            // At the edge of the range another limit may still refuse it
+            // (radius 128 is too many cells), but not the range itself.
+            let refused_for_it = result.as_ref().is_err_and(|err| err.contains(key.as_str()));
+            assert_eq!(refused_for_it, !ok, "fill_tube {key} {value}: {result:?}");
+        }
+        checked += 1;
+    }
+    assert_eq!(checked, 3, "radius, aspect, and sectors have a hard range");
+}
+
+#[test]
+fn rhai_fill_tube_options_are_its_schema_less_the_positional_ones() {
+    let options = rhai_options("fill_tube", &["points", "palette", "palettes"]);
+    for key in [
+        "mode", "radius", "curve", "caps", "aspect", "roll", "profile", "pattern", "period",
+        "sectors", "seed", "space", "mirror",
+    ] {
+        assert!(options.contains(&key), "{key}");
+    }
+    assert!(!options.contains(&"points"));
+    // carve_tube takes carve's tube keys; each is an argument of carve.
+    let carve = schema::properties("carve").unwrap();
+    for key in schema::TUBE_SHAPE_KEYS {
+        assert!(carve.contains_key(key), "{key}");
+        assert_eq!(
+            carve[key]["enum"],
+            schema::properties("fill_tube").unwrap()[key]["enum"]
+        );
+    }
+}
+
+#[test]
+fn the_tube_panel_draws_from_the_fill_tube_schema() {
+    // The arguments panels/tools.rs `tube` draws with op_slider/op_toggle.
+    for key in [
+        "radius", "aspect", "roll", "profile", "caps", "curve", "period", "sectors",
+    ] {
+        let prop = prop_ui("fill_tube", key);
+        assert!(prop.tooltip().ends_with(")"), "{key}");
+    }
+    let caps = prop_ui("fill_tube", "caps");
+    assert_eq!(caps.label, "Flat ends");
+    assert_eq!(caps.on, Some("flat"));
+    assert!(caps.tooltip().contains("(MCP fill_tube caps flat)"));
+    assert_eq!(prop_ui("fill_tube", "sectors").soft, Some((1.0, 32.0)));
+}

@@ -525,7 +525,7 @@ fn call_listed(
 /// unsupported option is an error rather than silently ignored.
 /// Every tool's `tools/list` entry, from the registry.
 fn tools() -> &'static [Value] {
-    crate::ops::schema::tools()
+    crate::ops::schema::mcp_tools()
 }
 
 fn known_arguments(name: &str, args: &Value) -> Result<(), String> {
