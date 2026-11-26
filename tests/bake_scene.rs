@@ -104,6 +104,7 @@ fn one_placement_at_the_origin_is_the_per_asset_bake() {
         ao_radius: 3,
         ao_target: AoTarget::Auto,
         bake: Bake::parse(Some(&bake)).unwrap(),
+        game_view: None,
     };
     export_with(&session, &asset, &options).unwrap();
     let scene_path = temp("scene.glb");

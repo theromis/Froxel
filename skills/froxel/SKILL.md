@@ -434,6 +434,11 @@ refused.
   `vertex` (the default without) writes `COLOR_0` and leaves faces that shade
   differently unmerged; `both` writes the two. The reply lists the nodes, meshes, skin, and
   animations: check it before you report success.
+- `gameView` `{yaw, pitch, spread?, occlusion?, solid?}` leaves out the faces a
+  game's one fixed camera never sees (back faces, undersides, faces the model
+  or `solid` neighbour boxes hide), for fewer triangles and a smaller atlas;
+  yaw and pitch are the camera's in the asset's frame, as `preview` takes them.
+  Check the result with `preview` at the game camera.
 - `bake` (with `colorAtlas`) paints light into the atlas by real rays, for a
   game to draw unshaded instead of lighting the mesh: `occlusion`, `distance`
   in cells, `rays`, and a `preset` such as `old_pond` or `sunDirection`,

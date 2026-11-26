@@ -78,6 +78,7 @@ pub(super) fn build(session: &Session) -> Built {
             ao_radius: 0,
             ao_target: AoTarget::Auto,
             bake: None,
+            game_view: None,
         },
     )
 }
@@ -107,6 +108,7 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
     let with_motion = session.has_motion();
     let atlas = options.color_atlas;
     let occlusion = Occlusion::new(session, options);
+    let culler = super::view::Culler::new(session, options);
     let (vertex_ao, texel_ao) = options.ao_targets();
     // With the colour atlas a quad's `slot` is its merge class (motion and
     // opacity) plus one, and `colors` keeps each cell's real slot for painting.
@@ -168,7 +170,18 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
         let shaded = corners
             .as_ref()
             .map(|corners| corners as &dyn Fn(usize, Cell) -> [u8; 4]);
-        for mut quad in merged_quads_shaded(cells, options.merge || atlas, shaded) {
+        let kept = culler.as_ref().map(|culler| {
+            move |face: usize, cell: Cell| {
+                culler.keep(
+                    face,
+                    (cell.0 + offset.0, cell.1 + offset.1, cell.2 + offset.2),
+                )
+            }
+        });
+        let kept = kept
+            .as_ref()
+            .map(|kept| kept as &dyn Fn(usize, Cell) -> bool);
+        for mut quad in merged_quads_shaded(cells, options.merge || atlas, shaded, kept) {
             quad.cell = (
                 quad.cell.0 + object.translation.0,
                 quad.cell.1 + object.translation.1,
@@ -353,7 +366,7 @@ pub(super) fn atlas_quads(
                 );
             }
         }
-        for mut quad in merged_quads_shaded(&classed, true, None) {
+        for mut quad in merged_quads_shaded(&classed, true, None, None) {
             quad.cell = (
                 quad.cell.0 + offset.0,
                 quad.cell.1 + offset.1,
@@ -635,7 +648,7 @@ pub(super) fn merged_quads(
     cells: &std::collections::HashMap<Cell, u8>,
     merge: bool,
 ) -> Vec<GreedyQuad> {
-    merged_quads_shaded(cells, merge, None)
+    merged_quads_shaded(cells, merge, None, None)
 }
 
 /// The quads an unmerged export has: the faces of each exported object's
@@ -675,6 +688,7 @@ pub(super) fn merged_quads_shaded(
     cells: &std::collections::HashMap<Cell, u8>,
     merge: bool,
     shade: Option<&dyn Fn(usize, Cell) -> [u8; 4]>,
+    keep: Option<&dyn Fn(usize, Cell) -> bool>,
 ) -> Vec<GreedyQuad> {
     let mut slices: BTreeMap<(u8, i32), BTreeMap<(i32, i32), (u8, [u8; 4])>> = BTreeMap::new();
     for (cell, slot) in cells {
@@ -685,6 +699,9 @@ pub(super) fn merged_quads_shaded(
             let offset = OFFSETS[face];
             let neighbor = (cell.0 + offset.0, cell.1 + offset.1, cell.2 + offset.2);
             if cells.contains_key(&neighbor) {
+                continue;
+            }
+            if keep.is_some_and(|keep| !keep(face, *cell)) {
                 continue;
             }
             let (plane_axis, u_axis, v_axis) = face_axes(face);

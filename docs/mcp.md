@@ -408,7 +408,7 @@ tracer. A file with no scene graph still loads its first model.
 | `collision_from_voxels` | — | Collision box markers from an object's solid cells, keeping hollows open: `prefix` (default `<object>_collider`), `holeSize` (default 3), `layer` or `zBands`, `minFeature`, `only`, `exclude` (slots), `maxBoxes`, `object`. A rerun replaces that prefix's boxes on the object. One undo step. Replies with `boxes`, `coveredPercent`, `emptyFilledCells`, `emptyFilledPercent`, `dropped`, and the cell counts |
 | `export_mesh` | `path` | Write a glTF 2.0 `.glb` of every object. `merge` defaults to false. `vertexColors` defaults to false. `exportHidden` and `splitObjects` default to false. A slot with motion adds `TEXCOORD_1`. Clips become glTF animations. Markers become nodes. The reply includes `quads`, `triangles` (every triangle in the glb), `structure`, and `markers` counted by kind (`{"box": 22, "connector": 2}`); `reply: "full"` lists each marker as `list_markers` does. `bake` (with `colorAtlas`) paints ray-traced occlusion and a sun with shadows into the atlas, to draw unshaded |
 | `export_variants` | `variants`, `dir` | Bake the scripted document once per parameter set `{name?, params}` and write `<name>.vox` and `<name>.glb` into `dir` with the `export_mesh` options, then merge them by name into a manifest (default `dir/variants.json`) of each set's parameters, markers, and bounds; the reply names the entries `added`, `replaced`, and `kept` and sums up each set exported now (files, `bounds`, `voxels`, `quads`, markers counted by kind); `reply: "full"` returns the whole manifest. Optional `manifest`, `replace` (a fresh manifest), `vox`, `reply`, `timeoutSeconds`. The document and its undo history stay as they were |
-| `export_models` | `models` | Write 1 to 16 `.glb` files. Each item is `{path, source?, merge?, vertexColors?, exportHidden?, splitObjects?, colorAtlas?, aoStrength?, aoRadius?, aoTarget?, bake?}`. `source` is a `.vox` opened in its own session, so the open document stays. Each file's reply has `quads`, `triangles`, `structure` (nodes, meshes, skins, animations, and warnings), and `markers` counted by kind; `reply: "full"` lists each marker |
+| `export_models` | `models` | Write 1 to 16 `.glb` files. Each item is `{path, source?, merge?, vertexColors?, exportHidden?, splitObjects?, colorAtlas?, aoStrength?, aoRadius?, aoTarget?, bake?, gameView?}`. `source` is a `.vox` opened in its own session, so the open document stays. Each file's reply has `quads`, `triangles`, `structure` (nodes, meshes, skins, animations, and warnings), and `markers` counted by kind; `reply: "full"` lists each marker |
 | `bake_scene` | `scene`, `path` | Bake a placement of many `.vox` files together into one `.glb` with one colour atlas, each shaded by its neighbours and by ground, to draw unshaded. Optional `bake`. Replies with `triangles`, `vertices`, `atlas`, `texels`, `bytes`, `memory`, `bake`, and `structure` |
 | `set_script` | `source`, optional `object` | Store a Rhai script and read its parameters. One undo step. Does not rebuild voxels |
 | `get_script` | optional `object` | Source, auto flag, and parameters |
@@ -1732,6 +1732,37 @@ gives the same bytes: every face uses one fixed pattern of rays, so there is no
 seed and no noise. To look at the result, `preview` with `glb` (`froxel run preview
 --glb file.glb --path look.png`) draws the written file unlit.
 
+#### Faces the game camera never sees
+
+`gameView` leaves out of the mesh the faces a game with one fixed view never
+shows, for fewer triangles and a smaller colour atlas, with the picture from
+that camera unchanged. `export_mesh`, `export_models`, `export_variants`, the
+`export` of `preview`, and `froxel run export_mesh` take it. Absent or `false`
+is off and writes every exposed face, as before.
+
+```json
+{"gameView": {"yaw": -90, "pitch": 32, "spread": [25, 14], "occlusion": true,
+  "solid": [[-40, 0, 3, -4, 120, 50]]}}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `yaw`, `pitch` | required | The camera's direction in degrees in the asset's own frame, as `preview` takes them (0 is +X, -90 the front, -Y; pitch 90 looks straight down). Take a level's turn of the asset off: a camera at yaw -135 over an asset turned 45 degrees is yaw -180 here |
+| `spread` | `[25, 14]` | Half-angles in degrees about up and up or down, 0 to 80, or one number for both: every direction a perspective lens and the camera's pan can see the asset from |
+| `occlusion` | `true` | Also leave out faces hidden behind the model's own cells or the `solid` boxes |
+| `solid` | none | Up to 256 inclusive boxes `[x0, y0, z0, x1, y1, z1]` of cells in the document's frame that hide like cells and are not written: where a neighbour piece stands against this one. Shrink them a few cells, so the neighbour's joints and chips stay open |
+
+A face is kept when one of the directions within the spread (sampled at most
+5 degrees apart about up and 7 up or down) sees its front, so back faces and
+undersides go; with `occlusion`, it is kept only when a ray from it toward the
+camera along one of those directions, from its centre or a corner, leaves the
+model without passing through an opaque cell or a `solid` box. The faces go
+before the greedy merge, so what stays merges as before. Occlusion
+(`aoStrength`) and `bake` still read every cell, so the faces that stay shade
+as before. The mesh is open where faces went: seen from another side, or
+lighting by a sun behind the asset in a game that casts shadows from back
+faces, shows holes. Check the result at the game's camera.
+
 #### Baking a scene
 
 `bake_scene` (`froxel run bake_scene`, Export section's Bake scene…) bakes one
@@ -2964,7 +2995,7 @@ case). For each set the parameters are applied and every script runs, as
 `regenerate` does, inside a scratch run: afterwards the document, its
 parameters, and its undo history are as before. `<name>.glb` is written
 with the `export_mesh` options (`merge`, `colorAtlas`, `aoStrength`,
-`aoRadius`, `aoTarget`, `bake`, `vertexColors`, `exportHidden`, `splitObjects`) and
+`aoRadius`, `aoTarget`, `bake`, `gameView`, `vertexColors`, `exportHidden`, `splitObjects`) and
 `<name>.vox` unless `vox` is false. The manifest JSON lists, per set,
 `requested` (the values given), `params` (every parameter after clamping,
 keyed `object/name`), `markers` (as `list_markers`), `bounds` (`voxel` mesh

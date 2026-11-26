@@ -14,6 +14,13 @@
 
 ### Added
 
+- `export_mesh`, `export_models`, `export_variants`, and `preview`'s `export`
+  take `gameView` `{yaw, pitch, spread?, occlusion?, solid?}`: the faces a
+  game's fixed camera never sees are left out of the mesh and the colour
+  atlas (back faces, undersides, and faces the model's own cells or the
+  `solid` boxes of its neighbours hide from every direction within the
+  spread). A wall kit for a fixed-camera game lost about half its triangles
+  and two thirds of its atlas texels with the picture unchanged.
 - `fill_tube` (MCP, Rhai, and `carve` `tube`) takes `caps`: `round` (the
   default, as before) or `flat`, which cuts the tube square at its first and
   last points, so two points make an exact cylinder and a flat tube hollowed

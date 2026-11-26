@@ -24,6 +24,7 @@ fn options(bake: Option<Bake>) -> MeshExport {
         ao_radius: crate::bridge::DEFAULT_AO_RADIUS,
         ao_target: AoTarget::Auto,
         bake,
+        game_view: None,
     }
 }
 

@@ -19,6 +19,7 @@ pub mod bake;
 pub mod occlusion;
 mod quads;
 pub mod scene;
+pub mod view;
 
 use quads::build_with;
 
@@ -51,6 +52,10 @@ pub struct MeshExport {
     /// Light baked by rays into the colour atlas texels, to draw unshaded.
     /// `None` leaves the export unchanged. Needs `color_atlas`.
     pub bake: Option<bake::Bake>,
+    /// Leave out the faces a fixed game camera never sees: back faces,
+    /// undersides, and, with its occlusion, faces the model's own cells
+    /// hide from it (MCP `gameView`). `None` writes every exposed face.
+    pub game_view: Option<view::View>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -164,7 +169,7 @@ pub fn counts(session: &Session, options: &MeshExport) -> Result<Counts, String>
     check(session, options)?;
     // The bake changes texels, not triangles, and it is the slow part.
     let options = &without_bake(options);
-    if !options.merge && !options.color_atlas {
+    if !options.merge && !options.color_atlas && options.game_view.is_none() {
         // Unmerged, every exposed face is one quad of its own whatever the
         // other options, so counting faces is enough and much faster.
         let quads = quads::unmerged_faces(session, options.export_hidden);

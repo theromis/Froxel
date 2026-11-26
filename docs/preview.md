@@ -217,6 +217,7 @@ two apart:
 - `export` is what `export_mesh` or `export_models` writes with the options
   in the `export` argument: `merge`, `colorAtlas`, `vertexColors`,
   `exportHidden`, `splitObjects`, `aoStrength`, `aoRadius`, `aoTarget`, `bake`,
+  `gameView`,
   with `export_mesh`'s defaults (all off) for what is not given. It replies
   `triangles` (every triangle the glb's index buffers hold), `quads`
   (`export_mesh`'s own `quads`: index count / 6; with the colour atlas a

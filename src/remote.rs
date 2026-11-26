@@ -662,7 +662,7 @@ pub(crate) fn preview_export(params: &Value) -> Result<Option<crate::export::Mes
         None | Some(Value::Null) | Some(Value::Bool(true)) => Ok(Some(mesh_options(&json!({}))?)),
         Some(Value::Bool(false)) => Ok(None),
         Some(options @ Value::Object(map)) => {
-            const KEYS: [&str; 9] = [
+            const KEYS: [&str; 10] = [
                 "merge",
                 "vertexColors",
                 "exportHidden",
@@ -672,6 +672,7 @@ pub(crate) fn preview_export(params: &Value) -> Result<Option<crate::export::Mes
                 "aoRadius",
                 "aoTarget",
                 "bake",
+                "gameView",
             ];
             if let Some(key) = map.keys().find(|key| !KEYS.contains(&key.as_str())) {
                 return Err(format!(
@@ -1625,6 +1626,9 @@ pub fn mesh_params(options: &crate::export::MeshExport) -> Value {
     if let Some(bake) = &options.bake {
         params["bake"] = bake.json();
     }
+    if let Some(view) = &options.game_view {
+        params["gameView"] = view.json();
+    }
     params
 }
 
@@ -1659,6 +1663,7 @@ pub(crate) fn mesh_options(params: &Value) -> Result<crate::export::MeshExport, 
                 .ok_or_else(|| format!("aoTarget must be {}", crate::export::AoTarget::NAMES))?,
         },
         bake: crate::export::bake::Bake::parse(params.get("bake"))?,
+        game_view: crate::export::view::View::parse(params.get("gameView"))?,
     })
 }
 
