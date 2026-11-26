@@ -5,6 +5,7 @@
 
 use egui::{RichText, Ui};
 
+use super::{prop_drag, prop_label, prop_slider};
 use super::{section, DIM};
 use crate::state::{
     EditorMode, MarkerKind, Plant, Session, BARK_ALONG, DIRECTIONS, FACINGS, RADIAL_AXES,
@@ -101,20 +102,23 @@ pub(super) fn joints(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Pattern", "Columns: vertical columns of random widths with bed joints. Courses: running bond blocks. Cracks: an irregular crack network.");
+                prop_label(ui, "joints", "pattern");
                 ui.horizontal_wrapped(|ui| {
                     for (pattern, name) in [
                         (JointPattern::Columns, "Columns"),
                         (JointPattern::Courses, "Courses"),
                         (JointPattern::Cracks, "Cracks"),
                     ] {
-                        if ui.selectable_label(panel.pattern == pattern, name).clicked() {
+                        if ui
+                            .selectable_label(panel.pattern == pattern, name)
+                            .clicked()
+                        {
                             panel.set_pattern(pattern);
                         }
                     }
                 });
                 ui.end_row();
-                label(ui, "Spacing", "Stone width range in cells: column width, block length, or crack piece size.");
+                prop_label(ui, "joints", "spacing");
                 range_f32(ui, &mut panel.spacing, 2.0..=128.0);
                 ui.end_row();
                 if panel.pattern != JointPattern::Cracks {
@@ -127,29 +131,31 @@ pub(super) fn joints(ui: &mut Ui, session: &mut Session) {
                     range_i32(ui, &mut panel.course, 1..=128);
                     ui.end_row();
                 } else {
-                    label(ui, "Density", "Share of piece boundaries that crack.");
-                    ui.add(egui::Slider::new(&mut panel.density, 0.0..=1.0).max_decimals(2));
+                    prop_label(ui, "joints", "density");
+                    prop_slider(ui, "joints", "density", &mut panel.density);
                     ui.end_row();
                 }
-                label(ui, "Width", "Gap width in cells.");
-                ui.add(egui::Slider::new(&mut panel.width, 1..=3));
+                prop_label(ui, "joints", "width");
+                prop_slider(ui, "joints", "width", &mut panel.width);
                 ui.end_row();
-                label(ui, "Depth", "Gap depth under the surface, in cells.");
-                ui.add(egui::Slider::new(&mut panel.depth, 1..=16));
+                prop_label(ui, "joints", "depth");
+                prop_slider(ui, "joints", "depth", &mut panel.depth);
                 ui.end_row();
-                label(ui, "Dirt", "Palette slot for the cell at the bottom of each gap. 0 keeps its colour.");
-                ui.add(egui::DragValue::new(&mut panel.dirt).range(0..=255));
+                prop_label(ui, "joints", "dirt");
+                prop_drag(ui, "joints", "dirt", &mut panel.dirt);
                 ui.end_row();
-                label(ui, "Only", "Cut only these palette slots, such as the stone; empty cuts every slot.");
+                prop_label(ui, "joints", "only");
                 slots_field(ui, &mut panel.only, "every slot");
                 ui.end_row();
-                label(ui, "Seed", "Same seed, same joints.");
-                ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
+                prop_label(ui, "joints", "seed");
+                prop_drag(ui, "joints", "seed", &mut panel.seed);
                 ui.end_row();
             });
         if ui
             .button(scope(session, "Cut joints in"))
-            .on_hover_text("MCP joints over the selection's box, or the whole object. One undo step.")
+            .on_hover_text(
+                "MCP joints over the selection's box, or the whole object. One undo step.",
+            )
             .clicked()
         {
             session.joints_from_panel();
@@ -167,7 +173,7 @@ pub(super) fn relief(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Facing", "The face's outward direction. The face is found in the cells, so a swept, curved wall works.");
+                prop_label(ui, "column_relief", "facing");
                 ui.horizontal_wrapped(|ui| {
                     for (index, (name, _)) in RELIEF_FACINGS.iter().enumerate() {
                         if ui.selectable_label(panel.facing == index, *name).clicked() {
@@ -179,10 +185,10 @@ pub(super) fn relief(ui: &mut Ui, session: &mut Session) {
                 label(ui, "Palette", "Slot of the columns, usually the stone. 0 is the active slot.");
                 ui.add(egui::DragValue::new(&mut panel.palette).range(0..=255));
                 ui.end_row();
-                label(ui, "Width", "Column width range along the face, in cells.");
+                prop_label(ui, "column_relief", "width");
                 range_i32(ui, &mut panel.width, 1..=64);
                 ui.end_row();
-                label(ui, "Out", "How far a column stands out of the face, in cells.");
+                prop_label(ui, "column_relief", "out");
                 ui.horizontal_wrapped(|ui| {
                     for value in panel.out.iter_mut() {
                         ui.add(egui::DragValue::new(value).range(0..=16));
@@ -198,21 +204,21 @@ pub(super) fn relief(ui: &mut Ui, session: &mut Session) {
                     );
                 });
                 ui.end_row();
-                label(ui, "Top", "Column top range relative to the crown: negative ends short of it, positive rises above it.");
+                prop_label(ui, "column_relief", "top");
                 ui.horizontal_wrapped(|ui| {
                     for value in panel.top.iter_mut() {
                         ui.add(egui::DragValue::new(value).range(-256..=256));
                     }
                 });
                 ui.end_row();
-                label(ui, "Lower", "A column ending below the crown cuts the wall above it, so the crown is uneven. Off: columns only add cells.");
+                prop_label(ui, "column_relief", "lower");
                 ui.checkbox(&mut panel.lower, "");
                 ui.end_row();
-                label(ui, "Depth", "How far a column reaches back into the face, and how deep the cut above a short column goes.");
-                ui.add(egui::Slider::new(&mut panel.depth, 1..=16));
+                prop_label(ui, "column_relief", "depth");
+                prop_slider(ui, "column_relief", "depth", &mut panel.depth);
                 ui.end_row();
-                label(ui, "Seed", "Same seed, same columns.");
-                ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
+                prop_label(ui, "column_relief", "seed");
+                prop_drag(ui, "column_relief", "seed", &mut panel.seed);
                 ui.end_row();
             });
         if ui
@@ -235,40 +241,42 @@ pub(super) fn weather(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Chip", "Chance that an edge cell loses a chip; corners are likelier.");
-                ui.add(egui::Slider::new(&mut panel.chip, 0.0..=1.0).max_decimals(2));
+                prop_label(ui, "weather", "chip");
+                prop_slider(ui, "weather", "chip", &mut panel.chip);
                 ui.end_row();
-                label(ui, "Chip size", "Most cells one chip takes.");
-                ui.add(egui::Slider::new(&mut panel.chip_size, 1..=8));
+                prop_label(ui, "weather", "chipSize");
+                prop_slider(ui, "weather", "chipSize", &mut panel.chip_size);
                 ui.end_row();
-                label(ui, "Pits", "Chance that a flat face cell is dented.");
-                ui.add(egui::Slider::new(&mut panel.pits, 0.0..=1.0).max_decimals(3));
+                prop_label(ui, "weather", "pits");
+                prop_slider(ui, "weather", "pits", &mut panel.pits);
                 ui.end_row();
-                label(ui, "Pit depth", "Deepest pit in cells.");
-                ui.add(egui::Slider::new(&mut panel.pit_depth, 1..=4));
+                prop_label(ui, "weather", "pitDepth");
+                prop_slider(ui, "weather", "pitDepth", &mut panel.pit_depth);
                 ui.end_row();
-                label(ui, "Broken", "Palette slot for the faces a chip or pit uncovers, a slightly darker stone. 0 keeps their colour.");
-                ui.add(egui::DragValue::new(&mut panel.broken).range(0..=255));
+                prop_label(ui, "weather", "broken");
+                prop_drag(ui, "weather", "broken", &mut panel.broken);
                 ui.end_row();
-                label(ui, "Noise", "Palette slots of the subtle colour noise; empty adds none.");
+                prop_label(ui, "weather", "noise");
                 slots_field(ui, &mut panel.noise, "no noise");
                 ui.end_row();
-                label(ui, "Density", "Share of the exposed cells the noise recolours.");
-                ui.add(egui::Slider::new(&mut panel.noise_density, 0.0..=1.0).max_decimals(2));
+                prop_label(ui, "weather", "noiseDensity");
+                prop_slider(ui, "weather", "noiseDensity", &mut panel.noise_density);
                 ui.end_row();
-                label(ui, "Patch", "Noise patch size in cells.");
-                ui.add(egui::Slider::new(&mut panel.noise_scale, 1.0..=32.0).max_decimals(1));
+                prop_label(ui, "weather", "noiseScale");
+                prop_slider(ui, "weather", "noiseScale", &mut panel.noise_scale);
                 ui.end_row();
-                label(ui, "Only", "Act only on these palette slots; empty acts on every slot.");
+                prop_label(ui, "weather", "only");
                 slots_field(ui, &mut panel.only, "every slot");
                 ui.end_row();
-                label(ui, "Seed", "Same seed, same weathering.");
-                ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
+                prop_label(ui, "weather", "seed");
+                prop_drag(ui, "weather", "seed", &mut panel.seed);
                 ui.end_row();
             });
         if ui
             .button(scope(session, "Weather"))
-            .on_hover_text("MCP weather over the selection's box, or the whole object. One undo step.")
+            .on_hover_text(
+                "MCP weather over the selection's box, or the whole object. One undo step.",
+            )
             .clicked()
         {
             session.weather_from_panel();
@@ -295,14 +303,14 @@ pub(super) fn bark(ui: &mut Ui, session: &mut Session) {
                 });
                 ui.end_row();
                 if panel.along == BARK_ALONG.len() - 1 {
-                    label(ui, "Points", "The wood's path in local cells, one point per line: x y z (a tube's radius or a sweep's twist and scale after them are ignored).");
+                    prop_label(ui, "bark", "points");
                     ui.add(
                         egui::TextEdit::multiline(&mut panel.points)
                             .desired_rows(3)
                             .desired_width(150.0),
                     );
                     ui.end_row();
-                    label(ui, "Curve", "Smooth follows a curve through the points, as a smooth tube does.");
+                    prop_label(ui, "bark", "curve");
                     ui.horizontal_wrapped(|ui| {
                         ui.checkbox(&mut panel.smooth, "Smooth");
                         from_sweep = ui
@@ -315,26 +323,26 @@ pub(super) fn bark(ui: &mut Ui, session: &mut Session) {
                 label(ui, "Palettes", "Plate slots, a few bark tones; each plate takes one, so the tone changes plate by plate, not in stripes. Empty is the active slot.");
                 slots_field(ui, &mut panel.palettes, "active slot");
                 ui.end_row();
-                label(ui, "Dirt", "Palette slot of the cell at the bottom of each fissure, a dark brown. 0 keeps its colour.");
-                ui.add(egui::DragValue::new(&mut panel.dirt).range(0..=255));
+                prop_label(ui, "bark", "dirt");
+                prop_drag(ui, "bark", "dirt", &mut panel.dirt);
                 ui.end_row();
-                label(ui, "Width", "Plate width range in cells around the wood, or across a flat plate such as a deck.");
+                prop_label(ui, "bark", "width");
                 range_f32(ui, &mut panel.width, 1.0..=64.0);
                 ui.end_row();
-                label(ui, "Length", "Plate length range in cells along the grain.");
+                prop_label(ui, "bark", "length");
                 range_f32(ui, &mut panel.length, 2.0..=256.0);
                 ui.end_row();
-                label(ui, "Depth", "Fissure depth range in cells; plate ends and cracks take the smaller.");
+                prop_label(ui, "bark", "depth");
                 range_i32(ui, &mut panel.depth, 1..=4);
                 ui.end_row();
-                label(ui, "Cracks", "Share of plates with a crack part way across.");
-                ui.add(egui::Slider::new(&mut panel.cracks, 0.0..=1.0).max_decimals(2));
+                prop_label(ui, "bark", "cracks");
+                prop_slider(ui, "bark", "cracks", &mut panel.cracks);
                 ui.end_row();
-                label(ui, "Only", "Act only on these palette slots, the wood; empty acts on every slot.");
+                prop_label(ui, "bark", "only");
                 slots_field(ui, &mut panel.only, "every slot");
                 ui.end_row();
-                label(ui, "Seed", "Same seed, same plates.");
-                ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
+                prop_label(ui, "bark", "seed");
+                prop_drag(ui, "bark", "seed", &mut panel.seed);
                 ui.end_row();
             });
         if ui
@@ -360,7 +368,7 @@ pub(super) fn planks(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Along", "The way the boards run.");
+                prop_label(ui, "planks", "axis");
                 ui.horizontal_wrapped(|ui| {
                     for (index, name) in ["X", "Y"].into_iter().enumerate() {
                         ui.selectable_value(&mut panel.axis, index, name);
@@ -376,41 +384,41 @@ pub(super) fn planks(ui: &mut Ui, session: &mut Session) {
                     );
                 });
                 ui.end_row();
-                label(ui, "Palettes", "Board tones, at least two different slots; each board takes one, never that of the board before it, so the boards never read as one stripe.");
+                prop_label(ui, "planks", "palettes");
                 slots_field(ui, &mut panel.palettes, "3 4 5");
                 ui.end_row();
-                label(ui, "Dirt", "Palette slot of the cell under each gap, a dark brown. 0 leaves that cell as it is.");
-                ui.add(egui::DragValue::new(&mut panel.dirt).range(0..=255));
+                prop_label(ui, "planks", "dirt");
+                prop_drag(ui, "planks", "dirt", &mut panel.dirt);
                 ui.end_row();
-                label(ui, "Width", "Board width range across the axis, in cells.");
+                prop_label(ui, "planks", "width");
                 range_i32(ui, &mut panel.width, 1..=64);
                 ui.end_row();
-                label(ui, "Length", "Board length range along the axis, in cells. End joints keep clear of those of the neighbouring rows, and a row's first and last boards are sawn to fit.");
+                prop_label(ui, "planks", "length");
                 range_i32(ui, &mut panel.length, 2..=256);
                 ui.end_row();
-                label(ui, "Gap", "Gap range between boards, in cells: empty down through the boards to the dirt.");
+                prop_label(ui, "planks", "gap");
                 range_i32(ui, &mut panel.gap, 1..=8);
                 ui.end_row();
-                label(ui, "Thickness", "Layers of board under the top; the gaps run through them all.");
-                ui.add(egui::Slider::new(&mut panel.thickness, 1..=16));
+                prop_label(ui, "planks", "thickness");
+                prop_slider(ui, "planks", "thickness", &mut panel.thickness);
                 ui.end_row();
-                label(ui, "Ragged", "Chance per cell across a board's end that it is cut back 1 or 2 cells: about 0.3 for old wood, 0 for square ends.");
-                ui.add(egui::Slider::new(&mut panel.ragged, 0.0..=1.0).max_decimals(2));
+                prop_label(ui, "planks", "ragged");
+                prop_slider(ui, "planks", "ragged", &mut panel.ragged);
                 ui.end_row();
-                label(ui, "Dark", "Palette slot of nails and knots. 0 lays neither.");
-                ui.add(egui::DragValue::new(&mut panel.dark).range(0..=255));
+                prop_label(ui, "planks", "dark");
+                prop_drag(ui, "planks", "dark", &mut panel.dark);
                 ui.end_row();
-                label(ui, "Nails", "Share of boards with a nail near each end, with Dark.");
-                ui.add(egui::Slider::new(&mut panel.nails, 0.0..=1.0).max_decimals(2));
+                prop_label(ui, "planks", "nails");
+                prop_slider(ui, "planks", "nails", &mut panel.nails);
                 ui.end_row();
-                label(ui, "Knots", "Share of boards with a knot along the middle, with Dark.");
-                ui.add(egui::Slider::new(&mut panel.knots, 0.0..=1.0).max_decimals(2));
+                prop_label(ui, "planks", "knots");
+                prop_slider(ui, "planks", "knots", &mut panel.knots);
                 ui.end_row();
-                label(ui, "Only", "Act only on solid cells of these palette slots, such as a deck filled to a curved outline; empty lays boards over the whole rectangle.");
+                prop_label(ui, "planks", "only");
                 slots_field(ui, &mut panel.only, "whole rectangle");
                 ui.end_row();
-                label(ui, "Seed", "Same seed, same boards.");
-                ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
+                prop_label(ui, "planks", "seed");
+                prop_drag(ui, "planks", "seed", &mut panel.seed);
                 ui.end_row();
             });
         if ui
@@ -444,13 +452,13 @@ pub(super) fn radial(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Kind", "flutes: grooves along a column, vase, or barrel side, spaced along its outline. gores: a dome's segments dished between proud meridian ribs.");
+                prop_label(ui, "radial_relief", "kind");
                 choice(ui, &mut panel.kind, &RADIAL_KINDS);
                 ui.end_row();
-                label(ui, "Count", "Recesses evenly round the axis. A square shaft of side s has 4 (s - 1) surface cells round, so 2 (s - 1) flutes alternate flute and ridge.");
-                ui.add(egui::DragValue::new(&mut panel.count).range(1..=256));
+                prop_label(ui, "radial_relief", "count");
+                prop_drag(ui, "radial_relief", "count", &mut panel.count);
                 ui.end_row();
-                label(ui, "Axis", "The axis the recesses repeat round.");
+                prop_label(ui, "radial_relief", "axis");
                 choice(ui, &mut panel.axis, &RADIAL_AXES);
                 ui.end_row();
                 label(ui, "Center", "The axis across it, the two other coordinates in x, y, z order. Off: the middle of the solid.");
@@ -464,8 +472,8 @@ pub(super) fn radial(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
-                label(ui, "Phase", "Turns the pattern, in degrees: for flutes a share of the outline's length, for gores an angle. 0 puts a ridge or rib at 0.");
-                ui.add(egui::DragValue::new(&mut panel.phase).range(-360.0..=360.0).speed(0.5));
+                prop_label(ui, "radial_relief", "phase");
+                prop_drag(ui, "radial_relief", "phase", &mut panel.phase);
                 ui.end_row();
                 label(ui, "Width", "Flutes: cells across each flute. Off: 0.6 of the pitch.");
                 ui.horizontal_wrapped(|ui| {
@@ -487,7 +495,7 @@ pub(super) fn radial(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
-                label(ui, "Ends", "How a recess fades out over Fade cells: round (a cupped end), taper, or square.");
+                prop_label(ui, "radial_relief", "ends");
                 choice(ui, &mut panel.ends, &RADIAL_ENDS);
                 ui.end_row();
                 label(ui, "Fade", "Cells over which a recess fades in from its ends (flutes) or the foot (gores, which also fade toward the crown). Off: the width (at least 2) for flutes, 6 for gores.");
@@ -499,35 +507,35 @@ pub(super) fn radial(ui: &mut Ui, session: &mut Session) {
                     );
                 });
                 ui.end_row();
-                label(ui, "Profile", "Section across a recess: u round-bottomed, v straight sides, flat a flat floor with sloped sides.");
+                prop_label(ui, "radial_relief", "profile");
                 choice(ui, &mut panel.profile, &RADIAL_PROFILES);
                 ui.end_row();
-                label(ui, "Depth", "Deepest point of a recess, in cells in from the outer surface.");
-                ui.add(egui::Slider::new(&mut panel.depth, 0.5..=4.0).max_decimals(1));
+                prop_label(ui, "radial_relief", "depth");
+                prop_slider(ui, "radial_relief", "depth", &mut panel.depth);
                 ui.end_row();
-                label(ui, "Shade", "Tone the floor cells in the middle of each recess. Slot 0 makes a darker shade of each cell's own slot.");
+                prop_label(ui, "radial_relief", "shade");
                 ui.horizontal_wrapped(|ui| {
                     ui.checkbox(&mut panel.shade_on, "");
                     ui.add_enabled(panel.shade_on, egui::DragValue::new(&mut panel.shade).range(0..=255));
                 });
                 ui.end_row();
-                label(ui, "Light", "Tone the slope cells by the ridges. Slot 0 makes a lighter shade of each cell's own slot.");
+                prop_label(ui, "radial_relief", "light");
                 ui.horizontal_wrapped(|ui| {
                     ui.checkbox(&mut panel.light_on, "");
                     ui.add_enabled(panel.light_on, egui::DragValue::new(&mut panel.light).range(0..=255));
                 });
                 ui.end_row();
-                label(ui, "Ribs", "Slot of the lines between recesses (a dome's ribs, a column's fillets), their width for gores, and cells to raise them by. Slot 0 leaves them alone.");
+                prop_label(ui, "radial_relief", "ribs");
                 ui.horizontal_wrapped(|ui| {
                     ui.add(egui::DragValue::new(&mut panel.ribs).range(0..=255));
                     ui.add(egui::DragValue::new(&mut panel.rib_width).range(0.0..=16.0).speed(0.1));
                     ui.add(egui::DragValue::new(&mut panel.rib_height).range(0..=4));
                 });
                 ui.end_row();
-                label(ui, "Only", "Act only on these palette slots; empty acts on every slot.");
+                prop_label(ui, "radial_relief", "only");
                 slots_field(ui, &mut panel.only, "every slot");
                 ui.end_row();
-                label(ui, "Jitter", "Random change in each recess's depth and place, from Seed. 0 keeps it regular.");
+                prop_label(ui, "radial_relief", "jitter");
                 ui.horizontal_wrapped(|ui| {
                     ui.add(egui::DragValue::new(&mut panel.jitter).range(0.0..=1.0).speed(0.01));
                     ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
@@ -554,13 +562,13 @@ pub(super) fn cavity(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Radius", "Radius of the ball of neighbours counted around each cell; larger finds broader hollows.");
-                ui.add(egui::Slider::new(&mut panel.radius, 1..=4));
+                prop_label(ui, "cavity_tint", "radius");
+                prop_slider(ui, "cavity_tint", "radius", &mut panel.radius);
                 ui.end_row();
-                label(ui, "Dark", "How concave a cell must be to darken: 0 a flat face, 1 a closed pocket.");
-                ui.add(egui::Slider::new(&mut panel.dark, 0.0..=1.0).max_decimals(2));
+                prop_label(ui, "cavity_tint", "dark");
+                prop_slider(ui, "cavity_tint", "dark", &mut panel.dark);
                 ui.end_row();
-                label(ui, "Lighten", "Also lighten exposed ridges and corners more convex than this: 0 a flat face, 1 a lone spike.");
+                prop_label(ui, "cavity_tint", "lighten");
                 ui.horizontal_wrapped(|ui| {
                     ui.checkbox(&mut panel.lighten, "");
                     ui.add_enabled(
@@ -572,13 +580,13 @@ pub(super) fn cavity(ui: &mut Ui, session: &mut Session) {
                 label(ui, "Pairs", "slot darker [lighter] per slot, separated by semicolons; slots without a pair stay. Empty makes shades of each slot's own colour in free palette slots.");
                 slots_field(ui, &mut panel.pairs, "make shades");
                 ui.end_row();
-                label(ui, "Shades", "Without pairs: the darker and lighter shade as factors of the slot's colour.");
+                prop_label(ui, "cavity_tint", "darken");
                 ui.horizontal_wrapped(|ui| {
                     ui.add(egui::DragValue::new(&mut panel.darken).range(0.05..=0.99).speed(0.01));
                     ui.add(egui::DragValue::new(&mut panel.brighten).range(1.01..=4.0).speed(0.01));
                 });
                 ui.end_row();
-                label(ui, "Only", "Act only on these palette slots; empty acts on every slot.");
+                prop_label(ui, "cavity_tint", "only");
                 slots_field(ui, &mut panel.only, "every slot");
                 ui.end_row();
             });
@@ -642,8 +650,8 @@ pub(super) fn growth(ui: &mut Ui, session: &mut Session) {
                 label(ui, "Amount", tip);
                 ui.add(egui::Slider::new(&mut panel.amount, 0.0..=1.0).max_decimals(2));
                 ui.end_row();
-                label(ui, "Noise", "0 grows in smooth patches, 1 in ragged speckle.");
-                ui.add(egui::Slider::new(&mut panel.noise, 0.0..=1.0).max_decimals(2));
+                prop_label(ui, "moss", "noise");
+                prop_slider(ui, "moss", "noise", &mut panel.noise);
                 ui.end_row();
                 label(ui, "Faces", "Which faces it grows on. Bottom takes undersides, such as the dark underside of a tree crown.");
                 ui.horizontal_wrapped(|ui| {
@@ -675,33 +683,33 @@ pub(super) fn growth(ui: &mut Ui, session: &mut Session) {
                     });
                 });
                 ui.end_row();
-                label(ui, "Only", "Grow only on these palette slots, such as the stone; empty grows on every slot.");
+                prop_label(ui, "moss", "only");
                 slots_field(ui, &mut panel.only, "every slot");
                 ui.end_row();
                 if panel.plant != Plant::Vines {
-                    label(ui, "Paint", "Recolour the surface instead of adding a layer on it.");
+                    prop_label(ui, "moss", "layer");
                     ui.checkbox(&mut panel.paint, "");
                     ui.end_row();
                 }
                 if panel.plant == Plant::Moss && panel.cushions {
-                    label(ui, "Size", "Cushion radius range in cells.");
+                    prop_label(ui, "moss", "size");
                     range_i32(ui, &mut panel.size, 1..=16);
                     ui.end_row();
-                    label(ui, "Gap", "Fewest cells between two cushions.");
-                    ui.add(egui::Slider::new(&mut panel.gap, 1..=8));
+                    prop_label(ui, "moss", "gap");
+                    prop_slider(ui, "moss", "gap", &mut panel.gap);
                     ui.end_row();
-                    label(ui, "Exposure", "How far a cell must face up (or Facing) to take moss: 0 the upper half of a log, 0.7 only its crown.");
-                    ui.add(egui::Slider::new(&mut panel.exposure, -1.0..=1.0).max_decimals(2));
+                    prop_label(ui, "moss", "exposure");
+                    prop_slider(ui, "moss", "exposure", &mut panel.exposure);
                     ui.end_row();
-                    label(ui, "Drapes", "Share of cushion edges over a drop that a drape hangs from.");
-                    ui.add(egui::Slider::new(&mut panel.drapes, 0.0..=1.0).max_decimals(2));
+                    prop_label(ui, "moss", "drapes");
+                    prop_slider(ui, "moss", "drapes", &mut panel.drapes);
                     ui.end_row();
-                    label(ui, "Thickness", "Thickness at a cushion's middle.");
-                    ui.add(egui::Slider::new(&mut panel.thickness, 1..=4));
+                    prop_label(ui, "moss", "thickness");
+                    prop_slider(ui, "moss", "thickness", &mut panel.thickness);
                     ui.end_row();
                 } else if panel.plant == Plant::Moss {
-                    label(ui, "Curtains", "Share of top edges a curtain runs down from.");
-                    ui.add(egui::Slider::new(&mut panel.curtains, 0.0..=1.0).max_decimals(2));
+                    prop_label(ui, "moss", "curtains");
+                    prop_slider(ui, "moss", "curtains", &mut panel.curtains);
                     ui.end_row();
                     label(ui, "Thickness", "Cushion thickness on tops.");
                     ui.add(egui::Slider::new(&mut panel.thickness, 1..=3));
@@ -720,15 +728,15 @@ pub(super) fn growth(ui: &mut Ui, session: &mut Session) {
                     ui.end_row();
                 }
                 if panel.plant == Plant::Vines {
-                    label(ui, "Blooms", "Bloom slots beside the strands; empty grows none.");
+                    prop_label(ui, "vines", "blooms");
                     slots_field(ui, &mut panel.blooms, "none");
                     ui.end_row();
-                    label(ui, "Bloom chance", "Chance of a bloom beside each strand cell.");
-                    ui.add(egui::Slider::new(&mut panel.bloom_chance, 0.0..=1.0).max_decimals(2));
+                    prop_label(ui, "vines", "bloomChance");
+                    prop_slider(ui, "vines", "bloomChance", &mut panel.bloom_chance);
                     ui.end_row();
                 }
-                label(ui, "Seed", "Same seed, same growth.");
-                ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
+                prop_label(ui, "moss", "seed");
+                prop_drag(ui, "moss", "seed", &mut panel.seed);
                 ui.end_row();
             });
         let verb = match session.stone.growth.plant {
@@ -756,14 +764,14 @@ pub(super) fn sweep(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Points", "Path points in local cells, one per line: x y z, then optional twist (degrees) and scale.");
+                prop_label(ui, "sweep", "points");
                 ui.add(
                     egui::TextEdit::multiline(&mut panel.points)
                         .desired_rows(3)
                         .desired_width(150.0),
                 );
                 ui.end_row();
-                label(ui, "Curve", "Smooth passes a curve through the points; off joins them with straight runs.");
+                prop_label(ui, "sweep", "curve");
                 ui.checkbox(&mut panel.smooth, "Smooth");
                 ui.end_row();
                 label(ui, "Profile", "A rounded rectangle standing on the path, or a polygon of u v points (u to the left of the path, v up). A cell is in when its centre is inside the profile at the nearest point of the path.");
@@ -773,7 +781,7 @@ pub(super) fn sweep(ui: &mut Ui, session: &mut Session) {
                 });
                 ui.end_row();
                 if panel.polygon {
-                    label(ui, "Polygon", "u v pairs separated by semicolons.");
+                    prop_label(ui, "sweep", "profile");
                     slots_field(ui, &mut panel.profile, "-3 0; 3 0; 0 8");
                     ui.end_row();
                 } else {
@@ -783,8 +791,8 @@ pub(super) fn sweep(ui: &mut Ui, session: &mut Session) {
                     label(ui, "Height", "Up from the path.");
                     ui.add(egui::DragValue::new(&mut panel.height).range(0.5..=512.0).speed(0.1));
                     ui.end_row();
-                    label(ui, "Radius", "Corner rounding.");
-                    ui.add(egui::DragValue::new(&mut panel.radius).range(0.0..=256.0).speed(0.1));
+                    prop_label(ui, "sweep", "radius");
+                    prop_drag(ui, "sweep", "radius", &mut panel.radius);
                     ui.end_row();
                 }
                 label(ui, "Erase", "Remove the solid cells the sweep covers instead of filling: a slanted cut along a closed or curved outline. Palettes, Pattern, Period, Mode, and Seed do not apply.");
@@ -800,8 +808,8 @@ pub(super) fn sweep(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
-                label(ui, "Period", "Band or ring size in cells.");
-                ui.add(egui::DragValue::new(&mut panel.period).range(0.5..=512.0).speed(0.1));
+                prop_label(ui, "sweep", "period");
+                prop_drag(ui, "sweep", "period", &mut panel.period);
                 ui.end_row();
                 label(ui, "Mode", "Replace writes every cell; Empty adds only into empty cells; Paint recolours solid cells.");
                 ui.horizontal_wrapped(|ui| {
@@ -810,8 +818,8 @@ pub(super) fn sweep(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
-                label(ui, "Seed", "Seed of the random pattern.");
-                ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
+                prop_label(ui, "sweep", "seed");
+                prop_drag(ui, "sweep", "seed", &mut panel.seed);
                 ui.end_row();
             });
         ui.horizontal_wrapped(|ui| {
@@ -845,14 +853,14 @@ pub(super) fn trim(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Outline", "The closed plan outline in local cells, one point per line: x y. Every solid cell outside the surface goes, such as a hull's sides narrowing toward its keel.");
+                prop_label(ui, "trim_outline", "outline");
                 ui.add(
                     egui::TextEdit::multiline(&mut panel.outline)
                         .desired_rows(3)
                         .desired_width(150.0),
                 );
                 ui.end_row();
-                label(ui, "Curve", "Smooth passes a closed curve through the points; off joins them with straight runs.");
+                prop_label(ui, "trim_outline", "curve");
                 ui.checkbox(&mut panel.smooth, "Smooth");
                 ui.end_row();
                 label(ui, "Inset", "How far inward the surface stands at each height, one pair per line: z inset. Linear between pairs, the end value beyond them, and a negative inset is outside the outline. One number is the same at every height.");
@@ -862,7 +870,7 @@ pub(super) fn trim(ui: &mut Ui, session: &mut Session) {
                         .desired_width(150.0),
                 );
                 ui.end_row();
-                label(ui, "Only", "Palette slots the cut and the skin may touch; empty is every slot.");
+                prop_label(ui, "trim_outline", "only");
                 slots_field(ui, &mut panel.only, "every slot");
                 ui.end_row();
                 label(ui, "Skin", "Lay a new skin along the surface where the cut reached: solid cells next to it are recoloured, and a hollow the cut opened is sealed.");
@@ -872,8 +880,8 @@ pub(super) fn trim(ui: &mut Ui, session: &mut Session) {
                     label(ui, "Slot", "The skin's palette slot; 0 is the active slot.");
                     ui.add(egui::DragValue::new(&mut panel.slot).range(0..=255));
                     ui.end_row();
-                    label(ui, "Thickness", "The skin's thickness inward from the surface, in cells.");
-                    ui.add(egui::DragValue::new(&mut panel.thickness).range(1.0..=64.0).speed(0.1));
+                    prop_label(ui, "trim_outline", "thickness");
+                    prop_drag(ui, "trim_outline", "thickness", &mut panel.thickness);
                     ui.end_row();
                 }
             });
@@ -994,17 +1002,17 @@ fn collision_section(ui: &mut Ui, session: &mut Session) {
             label(ui, "Prefix", "Boxes are named prefix_1, prefix_2, and so on. Building again replaces this prefix's boxes on the object. Empty is the object's name plus _collider.");
             ui.add(egui::TextEdit::singleline(&mut panel.collision_prefix).hint_text("object_collider").desired_width(120.0));
             ui.end_row();
-            label(ui, "Layer", "Horizontal cuts between boxes lie on planes this many cells apart, unless only another height opens a hollow. 1 is any height. Z bands replace it.");
-            ui.add(egui::Slider::new(&mut panel.collision_layer, 1..=16));
+            prop_label(ui, "collision_from_voxels", "layer");
+            prop_slider(ui, "collision_from_voxels", "layer", &mut panel.collision_layer);
             ui.end_row();
             label(ui, "Z bands", "Z planes for the horizontal cuts instead of Layer, ascending, such as 0 3 8 12. Put one on each deck and walking level.");
             ui.add(egui::TextEdit::singleline(&mut panel.collision_bands).hint_text("use Layer").desired_width(120.0));
             ui.end_row();
-            label(ui, "Min feature", "Ignore details thin on two axes, such as vines and rope: a cell needs a full square this wide in an axis plane. A deck or a wall thin on one axis stays. 1 keeps everything.");
-            ui.add(egui::Slider::new(&mut panel.collision_min_feature, 1..=8));
+            prop_label(ui, "collision_from_voxels", "minFeature");
+            prop_slider(ui, "collision_from_voxels", "minFeature", &mut panel.collision_min_feature);
             ui.end_row();
-            label(ui, "Hole size", "The tolerance: no box holds an empty block this wide on each axis, so a hold, a hatch, or a hole at least this wide stays open. Larger means fewer boxes and more empty volume filled; 1 fills nothing.");
-            ui.add(egui::Slider::new(&mut panel.collision_hole_size, 1..=16));
+            prop_label(ui, "collision_from_voxels", "holeSize");
+            prop_slider(ui, "collision_from_voxels", "holeSize", &mut panel.collision_hole_size);
             ui.end_row();
             label(ui, "Only", "Cover only these slots. Empty is every slot.");
             slots_field(ui, &mut panel.collision_only, "all slots");
@@ -1012,8 +1020,8 @@ fn collision_section(ui: &mut Ui, session: &mut Session) {
             label(ui, "Leave out", "Slots to ignore, such as moss, vines, and rope.");
             slots_field(ui, &mut panel.collision_exclude, "none");
             ui.end_row();
-            label(ui, "Max boxes", "Most boxes. Spare boxes split the emptiest further; too many merge, cheapest added volume first, and if Hole size stops that the boxes with the least solid are dropped and the status says so. 0 splits only until no box holds a hollow.");
-            ui.add(egui::DragValue::new(&mut panel.collision_max_boxes).range(0..=4096));
+            prop_label(ui, "collision_from_voxels", "maxBoxes");
+            prop_drag(ui, "collision_from_voxels", "maxBoxes", &mut panel.collision_max_boxes);
             ui.end_row();
         });
     if ui

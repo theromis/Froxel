@@ -712,9 +712,9 @@ pub(super) fn smooth(ui: &mut Ui, session: &mut Session) {
     let enabled = session.voxel_count() > 0 && session.editor_mode == EditorMode::Model;
     ui.add_enabled_ui(enabled, |ui| {
         section(ui, "Smooth");
-        slider_i32(ui, session, "Passes", SliderTarget::SmoothIterations, 1..=8);
-        slider_i32(ui, session, "Fill at", SliderTarget::SmoothFillAt, 1..=27);
-        slider_i32(ui, session, "Remove at", SliderTarget::SmoothRemoveAt, -1..=25);
+        op_slider(ui, session, "smooth", "iterations", SliderTarget::SmoothIterations);
+        op_slider(ui, session, "smooth", "fillAt", SliderTarget::SmoothFillAt);
+        op_slider(ui, session, "smooth", "removeAt", SliderTarget::SmoothRemoveAt);
         let scope = if session.picked.is_empty() {
             "Smooth object"
         } else {
@@ -781,11 +781,11 @@ pub(super) fn break_end(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
-                label(ui, "Depth");
-                ui.add(egui::Slider::new(&mut panel.depth, 0.0..=32.0).max_decimals(1));
+                prop_label(ui, "break_end", "depth");
+                prop_slider(ui, "break_end", "depth", &mut panel.depth);
                 ui.end_row();
-                label(ui, "Splinters");
-                ui.add(egui::Slider::new(&mut panel.splinters, 0..=512));
+                prop_label(ui, "break_end", "splinters");
+                prop_slider(ui, "break_end", "splinters", &mut panel.splinters);
                 ui.end_row();
                 label(ui, "Length");
                 ui.horizontal_wrapped(|ui| {
@@ -801,18 +801,17 @@ pub(super) fn break_end(ui: &mut Ui, session: &mut Session) {
                     );
                 });
                 ui.end_row();
-                label(ui, "Thickness");
-                ui.add(egui::Slider::new(&mut panel.thickness, 0.5..=4.0).max_decimals(1));
+                prop_label(ui, "break_end", "thickness");
+                prop_slider(ui, "break_end", "thickness", &mut panel.thickness);
                 ui.end_row();
-                label(ui, "Taper");
-                ui.add(egui::Slider::new(&mut panel.taper, 0.0..=1.0).max_decimals(2));
+                prop_label(ui, "break_end", "taper");
+                prop_slider(ui, "break_end", "taper", &mut panel.taper);
                 ui.end_row();
-                label(ui, "Rim bias");
-                ui.add(egui::Slider::new(&mut panel.rim_bias, 0.0..=1.0).max_decimals(2));
+                prop_label(ui, "break_end", "rimBias");
+                prop_slider(ui, "break_end", "rimBias", &mut panel.rim_bias);
                 ui.end_row();
-                label(ui, "Bark slot");
-                ui.add(egui::DragValue::new(&mut panel.bark).range(0..=255))
-                    .on_hover_text("0 keeps the cells' colour");
+                prop_label(ui, "break_end", "bark");
+                prop_drag(ui, "break_end", "bark", &mut panel.bark);
                 ui.end_row();
                 label(ui, "Sapwood");
                 ui.add(
@@ -821,12 +820,11 @@ pub(super) fn break_end(ui: &mut Ui, session: &mut Session) {
                         .desired_width(120.0),
                 );
                 ui.end_row();
-                label(ui, "Tip slot");
-                ui.add(egui::DragValue::new(&mut panel.tips).range(0..=255))
-                    .on_hover_text("0 uses the sapwood");
+                prop_label(ui, "break_end", "tips");
+                prop_drag(ui, "break_end", "tips", &mut panel.tips);
                 ui.end_row();
-                label(ui, "Seed");
-                ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
+                prop_label(ui, "break_end", "seed");
+                prop_drag(ui, "break_end", "seed", &mut panel.seed);
                 ui.end_row();
             });
         ui.horizontal_wrapped(|ui| {
@@ -853,8 +851,8 @@ pub(super) fn scatter(ui: &mut Ui, session: &mut Session) {
                 let label = |ui: &mut Ui, text: &str| {
                     ui.label(RichText::new(text).small().color(DIM));
                 };
-                label(ui, "Pieces");
-                ui.add(egui::Slider::new(&mut panel.count, 0..=2000));
+                prop_label(ui, "scatter", "count");
+                prop_slider(ui, "scatter", "count", &mut panel.count);
                 ui.end_row();
                 label(ui, "Kinds");
                 ui.horizontal_wrapped(|ui| {
@@ -880,11 +878,11 @@ pub(super) fn scatter(ui: &mut Ui, session: &mut Session) {
                         .desired_width(120.0),
                 );
                 ui.end_row();
-                label(ui, "Clump");
-                ui.add(egui::Slider::new(&mut panel.clump, 0.0..=1.0).max_decimals(2));
+                prop_label(ui, "scatter", "clump");
+                prop_slider(ui, "scatter", "clump", &mut panel.clump);
                 ui.end_row();
-                label(ui, "Seed");
-                ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
+                prop_label(ui, "scatter", "seed");
+                prop_drag(ui, "scatter", "seed", &mut panel.seed);
                 ui.end_row();
             });
         let scope = if session.picked.is_empty() {

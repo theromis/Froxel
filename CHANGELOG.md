@@ -33,6 +33,11 @@
   name the MCP argument they set.
 - The Tube tool keeps its options as `fill_tube` arguments and runs them
   through the same argument check and parser as MCP `fill_tube`.
+- Every tool panel (Foliage, Stone, Organic, Silhouette, Import, the edit
+  sections, Break, Scatter, Smooth, and the Sculpt brush) takes its labels,
+  tooltips, and slider ranges from the tool schema; the tooltips end with the
+  MCP argument they set. Rhai functions take every option their MCP tool
+  lists, from the same schema.
 
 ## 0.4.0 – 2026-11-25
 

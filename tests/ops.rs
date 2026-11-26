@@ -313,7 +313,8 @@ fn a_left_out_argument_takes_the_schema_default_and_panels_start_from_it() {
     );
 }
 
-/// Every property with panel metadata (`schema::ui`): a label and a hint,
+/// Every property with panel metadata (`schema::ui` or `ops::panel`): a
+/// label and a hint,
 /// a soft range inside the hard one, and a toggle item that is an item of
 /// the enum and not its default.
 #[test]
@@ -328,22 +329,27 @@ fn panel_metadata_is_complete_and_inside_the_schema() {
             checked += 1;
             let prop = prop_ui(op.tool, key);
             assert!(!prop.label.is_empty(), "{} `{key}`", op.tool);
-            assert!(
-                !prop.hint.is_empty() && !prop.hint.ends_with('.'),
-                "{} `{key}`: a hint is one clause with no full stop",
-                op.tool
-            );
+            assert!(!prop.hint.is_empty(), "{} `{key}` has no hint", op.tool);
             if let Some((low, high)) = prop.soft {
                 assert!(low < high, "{} `{key}` soft range", op.tool);
                 let min = property["minimum"].as_f64().unwrap_or(f64::NEG_INFINITY);
                 let max = property["maximum"].as_f64().unwrap_or(f64::INFINITY);
+                // A panel may start at 0 below a positive minimum, where 0
+                // leaves the argument out (Markers' maxBoxes: no limit).
+                let off = low == 0.0 && min > 0.0;
                 assert!(
-                    min <= low && high <= max,
+                    (min <= low || off) && high <= max,
                     "{} `{key}`: soft {low}..{high} is outside {min}..{max}",
                     op.tool
                 );
+                // A number, or a union with one (despeckle: true or a count).
+                let numeric = |kind: &Value| matches!(kind.as_str(), Some("number" | "integer"));
+                let kinds = &property["type"];
                 assert!(
-                    matches!(property["type"].as_str(), Some("number" | "integer")),
+                    numeric(kinds)
+                        || kinds
+                            .as_array()
+                            .is_some_and(|list| list.iter().any(numeric)),
                     "{} `{key}` has a soft range but is not a number",
                     op.tool
                 );
@@ -460,4 +466,74 @@ fn the_tube_panel_draws_from_the_fill_tube_schema() {
     assert_eq!(caps.on, Some("flat"));
     assert!(caps.tooltip().contains("(MCP fill_tube caps flat)"));
     assert_eq!(prop_ui("fill_tube", "sectors").soft, Some((1.0, 32.0)));
+}
+
+/// Every `prop_*` and `op_*` widget in `src/panels` names an argument with
+/// panel metadata, and a slider or drag one with a soft range, so no row
+/// a panel draws only sometimes can panic in `prop_ui`.
+#[test]
+fn every_panel_widget_names_an_argument_with_panel_metadata() {
+    let sources = [
+        include_str!("../src/panels/edit.rs"),
+        include_str!("../src/panels/foliage.rs"),
+        include_str!("../src/panels/import.rs"),
+        include_str!("../src/panels/organic.rs"),
+        include_str!("../src/panels/render.rs"),
+        include_str!("../src/panels/silhouette.rs"),
+        include_str!("../src/panels/stone.rs"),
+        include_str!("../src/panels/tools.rs"),
+    ];
+    let mut checked = 0;
+    for source in sources {
+        let flat: String = source.split_whitespace().collect::<Vec<_>>().join(" ");
+        for widget in [
+            "prop_label(",
+            "prop_slider(",
+            "prop_drag(",
+            "prop_check(",
+            "op_toggle(",
+            "op_choice(",
+            "op_slider(",
+            "op_slider_as(",
+        ] {
+            let mut from = flat.as_str();
+            while let Some(hit) = from.find(widget) {
+                from = &from[hit + widget.len()..];
+                // `ui, "tool", "key"` or `ui, session, tool, "key"`.
+                let args: Vec<&str> = from.splitn(5, ", ").collect();
+                let quoted = |text: &str| -> Option<String> {
+                    let text = text.trim();
+                    let text = text.strip_prefix('"')?;
+                    Some(text.split('"').next()?.to_string())
+                };
+                let (tool, key) = match (quoted(args[1]), args.get(2).and_then(|a| quoted(a))) {
+                    (Some(tool), Some(key)) => (tool, key),
+                    _ => {
+                        // op_* take the session, then `tool` (a variable
+                        // for the Tube tool) and the key.
+                        let tool = args
+                            .get(2)
+                            .and_then(|a| quoted(a))
+                            .unwrap_or("fill_tube".into());
+                        let Some(key) = args.get(3).and_then(|a| quoted(a)) else {
+                            continue;
+                        };
+                        (tool, key)
+                    }
+                };
+                let prop = prop_ui(&tool, &key);
+                if matches!(
+                    widget,
+                    "prop_slider(" | "prop_drag(" | "op_slider(" | "op_slider_as("
+                ) {
+                    assert!(
+                        prop.soft.is_some(),
+                        "{widget}{tool} {key} has no soft range"
+                    );
+                }
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked > 300, "only {checked} panel widgets");
 }

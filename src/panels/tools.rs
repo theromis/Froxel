@@ -340,15 +340,12 @@ fn sculpt(ui: &mut Ui, session: &mut Session) {
     });
     let brush = &mut session.sculpt;
     row(ui, |ui| {
-        ui.label(RichText::new("Radius").small().color(DIM))
-            .on_hover_text("Dab radius in cells (MCP brush radius)");
-        ui.add(egui::Slider::new(&mut brush.radius, 0.5..=32.0).max_decimals(1));
+        prop_label(ui, "brush", "radius");
+        prop_slider(ui, "brush", "radius", &mut brush.radius);
     });
     row(ui, |ui| {
-        ui.label(RichText::new("Strength").small().color(DIM)).on_hover_text(
-            "0..1. Inflate and deflate push up to strength × radius / 2 cells per dab; grab moves the full drag at 1",
-        );
-        ui.add(egui::Slider::new(&mut brush.strength, 0.0..=1.0).max_decimals(2));
+        prop_label(ui, "brush", "strength");
+        prop_slider(ui, "brush", "strength", &mut brush.strength);
     });
     row(ui, |ui| {
         ui.label(RichText::new("Falloff").small().color(DIM))

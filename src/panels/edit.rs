@@ -7,6 +7,7 @@
 
 use egui::{RichText, Ui};
 
+use super::{prop_check, prop_drag, prop_label};
 use super::{section, DIM};
 use crate::state::{EditorMode, Session, INTERSECT_SHAPES};
 
@@ -78,7 +79,7 @@ pub(super) fn split(ui: &mut Ui, session: &mut Session) {
                         .desired_width(90.0),
                 );
                 ui.end_row();
-                label(ui, "Take", "Invert takes every cell the boxes and slots do not select. Copy leaves the cells in the active object too.");
+                prop_label(ui, "split_object", "invert");
                 ui.horizontal_wrapped(|ui| {
                     ui.checkbox(&mut panel.invert, "Invert");
                     ui.checkbox(&mut panel.copy, "Copy");
@@ -102,7 +103,7 @@ pub(super) fn split(ui: &mut Ui, session: &mut Session) {
                     });
                 ui.end_row();
                 if panel.into.is_none() {
-                    label(ui, "Name", "Name of the new object.");
+                    prop_label(ui, "split_object", "name");
                     ui.add(egui::TextEdit::singleline(&mut panel.name).desired_width(120.0));
                     ui.end_row();
                 }
@@ -223,16 +224,16 @@ pub(super) fn stroke(ui: &mut Ui, session: &mut Session) {
                     });
                 });
                 ui.end_row();
-                label(ui, "Path", "Smooth passes a curve through the points; off joins them straight.");
+                prop_label(ui, "surface_stroke", "curve");
                 ui.checkbox(&mut panel.smooth, "Smooth");
                 ui.end_row();
-                label(ui, "Width", "Width across the surface in cells; 1 is a one-cell line.");
+                prop_label(ui, "surface_stroke", "width");
                 ui.add(egui::DragValue::new(&mut panel.width).range(0.5..=crate::tools::MAX_STROKE_WIDTH as f32).speed(0.1));
                 ui.end_row();
-                label(ui, "Depth", "Cells into the solid; 1 is the surface alone.");
+                prop_label(ui, "surface_stroke", "depth");
                 ui.add(egui::DragValue::new(&mut panel.depth).range(1..=crate::tools::MAX_STROKE_DEPTH as i32));
                 ui.end_row();
-                label(ui, "Reach", "How far a point may be from the surface it snaps to, in cells.");
+                prop_label(ui, "surface_stroke", "reach");
                 ui.add(egui::DragValue::new(&mut panel.reach).range(0.0..=crate::tools::MAX_STROKE_REACH as f32).speed(0.1));
                 ui.end_row();
                 label(ui, "Only", "Slots that may change, such as 3 4; others keep theirs. Empty is every slot.");
@@ -242,7 +243,7 @@ pub(super) fn stroke(ui: &mut Ui, session: &mut Session) {
                         .desired_width(90.0),
                 );
                 ui.end_row();
-                label(ui, "Groove", "Erase the stroke's cells instead of painting the active slot: a seam cut Depth cells deep.");
+                prop_label(ui, "surface_stroke", "palette");
                 ui.checkbox(&mut panel.groove, "Groove");
                 ui.end_row();
                 mirror_row(ui, "stroke-mirror", &mut panel.mirror);
@@ -272,7 +273,7 @@ pub(super) fn components(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Joined by", "Which neighbours join cells into one part: faces (6), faces and edges (18), or faces, edges, and corners (26).");
+                prop_label(ui, "components", "connectivity");
                 egui::ComboBox::from_id_salt("components-connectivity")
                     .width(110.0)
                     .selected_text(match panel.connectivity {
@@ -286,11 +287,11 @@ pub(super) fn components(ui: &mut Ui, session: &mut Session) {
                         ui.selectable_value(&mut panel.connectivity, 26, "Corners (26)");
                     });
                 ui.end_row();
-                label(ui, "Keep", "Keep largest leaves this many of the largest parts.");
-                ui.add(egui::DragValue::new(&mut panel.keep).range(1..=1024));
+                prop_label(ui, "components", "keep");
+                prop_drag(ui, "components", "keep", &mut panel.keep);
                 ui.end_row();
-                label(ui, "Min cells", "Remove small erases every part with fewer cells: floaters, foam bits.");
-                ui.add(egui::DragValue::new(&mut panel.min_cells).range(1..=1_000_000));
+                prop_label(ui, "components", "minCells");
+                prop_drag(ui, "components", "minCells", &mut panel.min_cells);
                 ui.end_row();
                 label(ui, "Seed", "A cell x y z of the part Delete, Move, and Split act on, in local cells; it snaps to the nearest solid cell.");
                 ui.horizontal_wrapped(|ui| {
@@ -308,14 +309,14 @@ pub(super) fn components(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
-                label(ui, "Offset", "Move shifts the part by these whole cells.");
+                prop_label(ui, "components", "offset");
                 ui.horizontal_wrapped(|ui| {
                     for value in panel.offset.iter_mut() {
                         ui.add(egui::DragValue::new(value).range(-256..=256));
                     }
                 });
                 ui.end_row();
-                label(ui, "Name", "Name of the object Split makes; empty is <object>_part.");
+                prop_label(ui, "components", "name");
                 ui.add(egui::TextEdit::singleline(&mut panel.name).desired_width(120.0));
                 ui.end_row();
             });
@@ -367,7 +368,7 @@ pub(super) fn plates(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Layout", "Rings cuts each ring into sectors, staggered ring to ring; Voronoi gives each cell the nearest of seeds laid out in the rings, for rounder, irregular plates.");
+                prop_label(ui, "shell_plates", "layout");
                 ui.horizontal_wrapped(|ui| {
                     ui.selectable_value(&mut panel.layout, 0, "Rings");
                     ui.selectable_value(&mut panel.layout, 1, "Voronoi");
@@ -376,18 +377,18 @@ pub(super) fn plates(ui: &mut Ui, session: &mut Session) {
                 label(ui, "Rings", "Plates per ring from the centre out, such as 5 9.");
                 slots(ui, &mut panel.rings, "6");
                 ui.end_row();
-                label(ui, "Central", "Share of the dome's radius the central plate spans; 0 for none.");
-                ui.add(egui::DragValue::new(&mut panel.central).range(0.0..=0.9).speed(0.005));
+                prop_label(ui, "shell_plates", "central");
+                prop_drag(ui, "shell_plates", "central", &mut panel.central);
                 ui.end_row();
-                label(ui, "Band", "Share of the radius the outer band spans, and its plates (0 is one unbroken band).");
+                prop_label(ui, "shell_plates", "band");
                 ui.horizontal_wrapped(|ui| {
                     ui.add(egui::DragValue::new(&mut panel.band).range(0.0..=0.6).speed(0.005));
                     ui.add(egui::DragValue::new(&mut panel.band_count).range(0..=crate::tools::MAX_PLATES_PER_RING as i32))
                         .on_hover_text("Plates in the band.");
                 });
                 ui.end_row();
-                label(ui, "Rim", "Rim width in cells along the surface at the dome's edge; 0 for none.");
-                ui.add(egui::DragValue::new(&mut panel.rim).range(0.0..=32.0).speed(0.1));
+                prop_label(ui, "shell_plates", "rim");
+                prop_drag(ui, "shell_plates", "rim", &mut panel.rim);
                 ui.end_row();
                 label(ui, "Plate slots", "Slots per kind, such as 3 4 5: each plate picks one by Seed. Empty ring slots paint the active slot; empty central and band take the ring's, an empty rim the band's.");
                 ui.vertical(|ui| {
@@ -403,22 +404,22 @@ pub(super) fn plates(ui: &mut Ui, session: &mut Session) {
                     ui.checkbox(&mut panel.groove, "Groove");
                 });
                 ui.end_row();
-                label(ui, "Seam size", "Width in cells and depth into the solid.");
+                prop_label(ui, "shell_plates", "seamWidth");
                 ui.horizontal_wrapped(|ui| {
                     ui.add(egui::DragValue::new(&mut panel.seam_width).range(0.5..=crate::tools::MAX_SEAM_WIDTH as f32).speed(0.05));
                     ui.add(egui::DragValue::new(&mut panel.seam_depth).range(1..=crate::tools::MAX_PLATE_DEPTH as i32));
                 });
                 ui.end_row();
-                label(ui, "Depth", "Cells a plate's slot reaches in along the normal.");
+                prop_label(ui, "shell_plates", "depth");
                 ui.add(egui::DragValue::new(&mut panel.depth).range(1..=crate::tools::MAX_PLATE_DEPTH as i32));
                 ui.end_row();
-                label(ui, "Facing", "Degrees from straight up a surface may face and still take the pattern; the selection's box limits it too.");
+                prop_label(ui, "shell_plates", "facing");
                 ui.add(egui::DragValue::new(&mut panel.facing).range(0.0..=180.0).speed(0.5).suffix("°"));
                 ui.end_row();
                 label(ui, "Only", "Only cells of these slots take the pattern, such as 2. Empty is every slot.");
                 slots(ui, &mut panel.only, "all slots");
                 ui.end_row();
-                label(ui, "Variation", "Jitter moves boundaries and seeds; Symmetric mirrors them left to right; Seed changes them and the slot picks.");
+                prop_label(ui, "shell_plates", "jitter");
                 ui.horizontal_wrapped(|ui| {
                     ui.add(egui::DragValue::new(&mut panel.jitter).range(0.0..=1.0).speed(0.01));
                     ui.checkbox(&mut panel.symmetric, "Symmetric");
@@ -453,24 +454,24 @@ pub(super) fn deterrace(ui: &mut Ui, session: &mut Session) {
                 });
                 ui.end_row();
                 if panel.mode == 0 {
-                    label(ui, "Size", "The cube side in cells.");
-                    ui.add(egui::DragValue::new(&mut panel.size).range(2..=4));
+                    prop_label(ui, "deterrace", "size");
+                    prop_drag(ui, "deterrace", "size", &mut panel.size);
                     ui.end_row();
-                    label(ui, "Fill", "The share of a cube's cells that makes it solid.");
-                    ui.add(egui::DragValue::new(&mut panel.fill).range(0.05..=1.0).speed(0.01));
+                    prop_label(ui, "deterrace", "fill");
+                    prop_drag(ui, "deterrace", "fill", &mut panel.fill);
                     ui.end_row();
-                    label(ui, "Tolerance", "Cubes whose decision would move the surface further than this many cells stay as they are, so thin parts survive.");
-                    ui.add(egui::DragValue::new(&mut panel.tolerance).range(0..=16));
+                    prop_label(ui, "deterrace", "tolerance");
+                    prop_drag(ui, "deterrace", "tolerance", &mut panel.tolerance);
                     ui.end_row();
                 } else {
-                    label(ui, "Run", "The length of a tooth along a step, in cells.");
-                    ui.add(egui::DragValue::new(&mut panel.run).range(1..=16));
+                    prop_label(ui, "deterrace", "run");
+                    prop_drag(ui, "deterrace", "run", &mut panel.run);
                     ui.end_row();
-                    label(ui, "Jitter", "The share of teeth flipped from the alternating pattern.");
-                    ui.add(egui::DragValue::new(&mut panel.jitter).range(0.0..=1.0).speed(0.01));
+                    prop_label(ui, "deterrace", "jitter");
+                    prop_drag(ui, "deterrace", "jitter", &mut panel.jitter);
                     ui.end_row();
-                    label(ui, "Seed", "Another seed flips other teeth.");
-                    ui.add(egui::DragValue::new(&mut panel.seed).range(0..=1_000_000));
+                    prop_label(ui, "deterrace", "seed");
+                    prop_drag(ui, "deterrace", "seed", &mut panel.seed);
                     ui.end_row();
                 }
             });
@@ -503,11 +504,10 @@ pub(super) fn reduce(ui: &mut Ui, session: &mut Session) {
                 });
                 ui.end_row();
                 if panel.mode == 0 {
-                    label(ui, "Colors", "How many colours the object keeps, plus accents.");
+                    prop_label(ui, "reduce_palette", "colors");
                     ui.horizontal_wrapped(|ui| {
                         ui.add(egui::DragValue::new(&mut panel.colors).range(1..=64));
-                        ui.checkbox(&mut panel.accents, "Keep accents")
-                            .on_hover_text("Small distinct colours (eyes, a mouth) keep a slot of their own.");
+                        prop_check(ui, "reduce_palette", "accents", &mut panel.accents);
                     });
                     ui.end_row();
                 } else if panel.mode == 1 {
@@ -515,11 +515,11 @@ pub(super) fn reduce(ui: &mut Ui, session: &mut Session) {
                     ui.add(egui::TextEdit::singleline(&mut panel.palette).hint_text("3 4 #e8822a").desired_width(120.0));
                     ui.end_row();
                 }
-                label(ui, "Despeckle", "Passes of the majority filter: a surface cell whose slot fewer than Min same of its surface neighbours share takes the slot most of them hold. 0 is off.");
-                ui.add(egui::DragValue::new(&mut panel.despeckle).range(0..=16));
+                prop_label(ui, "reduce_palette", "despeckle");
+                prop_drag(ui, "reduce_palette", "despeckle", &mut panel.despeckle);
                 ui.end_row();
-                label(ui, "Min same", "A surface cell keeps its slot when at least this many surface neighbours share it, so lines and patches stay.");
-                ui.add(egui::DragValue::new(&mut panel.min_same).range(0..=26));
+                prop_label(ui, "reduce_palette", "minSame");
+                prop_drag(ui, "reduce_palette", "minSame", &mut panel.min_same);
                 ui.end_row();
                 label(ui, "Protect", "Slots both passes leave alone, such as the eyes.");
                 ui.add(egui::TextEdit::singleline(&mut panel.protect).hint_text("none").desired_width(90.0));
@@ -563,13 +563,13 @@ pub(super) fn parts(ui: &mut Ui, session: &mut Session) {
                     });
                 });
                 ui.end_row();
-                label(ui, "Distance", "Geodesic: each cell goes to the seed nearest through the solid, so a jaw does not take the cheek across the mouth. Off: straight-line distance.");
+                prop_label(ui, "split_parts", "metric");
                 ui.checkbox(&mut panel.geodesic, "Through the solid");
                 ui.end_row();
-                label(ui, "Source", "Remove the emptied object afterwards (a part named like it keeps it).");
+                prop_label(ui, "split_parts", "removeSource");
                 ui.checkbox(&mut panel.remove_source, "Remove");
                 ui.end_row();
-                label(ui, "Bind", "Bind each part to the bone of its name when there is one.");
+                prop_label(ui, "split_parts", "bind");
                 ui.checkbox(&mut panel.bind, "To bones");
                 ui.end_row();
             });

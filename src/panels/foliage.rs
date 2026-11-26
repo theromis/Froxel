@@ -2,6 +2,7 @@
 
 use egui::{RichText, Ui};
 
+use super::{prop_drag, prop_label, prop_slider};
 use super::{section, DIM};
 use crate::state::{EditorMode, Session, FOLIAGE_SOURCES};
 
@@ -57,10 +58,10 @@ pub(super) fn foliage(ui: &mut Ui, session: &mut Session) {
                 label(ui, "Palettes", "Leaf slots from the darkest to the lightest: shade, mid, light, sunlit tips. Each clump is shaded as one piece, top light and underside dark. Empty is the active slot.");
                 slots_field(ui, &mut panel.palettes, "active slot");
                 ui.end_row();
-                label(ui, "Core", "Slot of the dark inside seen in the gaps between clumps. 0 is the first of the palettes.");
-                ui.add(egui::DragValue::new(&mut panel.core).range(0..=255));
+                prop_label(ui, "foliage", "core");
+                prop_drag(ui, "foliage", "core", &mut panel.core);
                 ui.end_row();
-                label(ui, "Size", "Clump radius range in cells.");
+                prop_label(ui, "foliage", "size");
                 ui.horizontal_wrapped(|ui| {
                     for value in panel.size.iter_mut() {
                         ui.add(
@@ -72,32 +73,32 @@ pub(super) fn foliage(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
-                label(ui, "Gap", "Extra cells between neighbouring clumps; larger shows more dark core.");
-                ui.add(egui::Slider::new(&mut panel.gap, 0.0..=8.0).max_decimals(1));
+                prop_label(ui, "foliage", "gap");
+                prop_slider(ui, "foliage", "gap", &mut panel.gap);
                 ui.end_row();
-                label(ui, "Flatten", "Clump height over width; below 1 clumps are wider than tall.");
-                ui.add(egui::Slider::new(&mut panel.flatten, 0.2..=1.5).max_decimals(2));
+                prop_label(ui, "foliage", "flatten");
+                prop_slider(ui, "foliage", "flatten", &mut panel.flatten);
                 ui.end_row();
-                label(ui, "Ragged", "Leafy outline noise of each clump; 0 is a smooth ellipsoid.");
-                ui.add(egui::Slider::new(&mut panel.ragged, 0.0..=1.0).max_decimals(2));
+                prop_label(ui, "foliage", "ragged");
+                prop_slider(ui, "foliage", "ragged", &mut panel.ragged);
                 ui.end_row();
-                label(ui, "Light", "How strongly sunlit tops lighten toward the last palette.");
-                ui.add(egui::Slider::new(&mut panel.light, 0.0..=2.0).max_decimals(2));
+                prop_label(ui, "foliage", "light");
+                prop_slider(ui, "foliage", "light", &mut panel.light);
                 ui.end_row();
-                label(ui, "Dark", "How strongly undersides and seams darken toward the first palette.");
-                ui.add(egui::Slider::new(&mut panel.dark, 0.0..=2.0).max_decimals(2));
+                prop_label(ui, "foliage", "dark");
+                prop_slider(ui, "foliage", "dark", &mut panel.dark);
                 ui.end_row();
-                label(ui, "Masses", "Lobes the clumps are grouped into, split by deeper grooves; 0 is none.");
-                ui.add(egui::Slider::new(&mut panel.masses, 0..=16));
+                prop_label(ui, "foliage", "masses");
+                prop_slider(ui, "foliage", "masses", &mut panel.masses);
                 ui.end_row();
-                label(ui, "Groove", "With masses: how many cells deeper the grooves between lobes go.");
-                ui.add(egui::Slider::new(&mut panel.groove, 0..=8));
+                prop_label(ui, "foliage", "groove");
+                prop_slider(ui, "foliage", "groove", &mut panel.groove);
                 ui.end_row();
                 label(ui, "Keep", "Slots never written even if they are crown slots. Any slot outside Palettes, Core, and From (the wood) is kept already.");
                 slots_field(ui, &mut panel.protect, "none");
                 ui.end_row();
-                label(ui, "Seed", "Same seed, same clumps.");
-                ui.add(egui::DragValue::new(&mut panel.seed).range(0..=999_999));
+                prop_label(ui, "foliage", "seed");
+                prop_drag(ui, "foliage", "seed", &mut panel.seed);
                 ui.end_row();
             });
         let verb = if session.picked.is_empty() {

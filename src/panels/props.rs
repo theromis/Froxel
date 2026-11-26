@@ -145,3 +145,59 @@ fn slider(ui: &mut Ui, session: &mut Session, label: &str, prop: &PropUi, target
         ui.monospace(format!("{value:.digits$}"));
     });
 }
+
+/// A grid row's label for a tool argument a panel struct edits: the
+/// schema `title`, small and dim, with the hint as its tooltip.
+pub(super) fn prop_label(ui: &mut Ui, tool: &str, key: &str) {
+    let prop = prop_ui(tool, key);
+    ui.label(RichText::new(prop.label).small().color(DIM))
+        .on_hover_text(prop.tooltip());
+}
+
+/// A slider over the argument's soft range, with its decimals.
+pub(super) fn prop_slider<N: egui::emath::Numeric>(
+    ui: &mut Ui,
+    tool: &str,
+    key: &str,
+    value: &mut N,
+) -> egui::Response {
+    let prop = prop_ui(tool, key);
+    let (min, max) = soft_range(&prop);
+    let mut slider = Slider::new(value, N::from_f64(min)..=N::from_f64(max));
+    if let Some(decimals) = prop.decimals {
+        slider = slider.max_decimals(decimals);
+    }
+    ui.add(slider)
+}
+
+/// A drag value kept inside the argument's soft range, with its speed and
+/// decimals.
+pub(super) fn prop_drag<N: egui::emath::Numeric>(
+    ui: &mut Ui,
+    tool: &str,
+    key: &str,
+    value: &mut N,
+) -> egui::Response {
+    let prop = prop_ui(tool, key);
+    let (min, max) = soft_range(&prop);
+    let mut drag = egui::DragValue::new(value).range(min..=max);
+    if let Some(speed) = prop.speed {
+        drag = drag.speed(speed);
+    }
+    if let Some(decimals) = prop.decimals {
+        drag = drag.max_decimals(decimals);
+    }
+    ui.add(drag)
+}
+
+/// A checkbox for a flag a panel struct keeps, labelled and explained by
+/// the argument it sets.
+pub(super) fn prop_check(ui: &mut Ui, tool: &str, key: &str, value: &mut bool) -> egui::Response {
+    let prop = prop_ui(tool, key);
+    ui.checkbox(value, prop.label).on_hover_text(prop.tooltip())
+}
+
+fn soft_range(prop: &PropUi) -> (f64, f64) {
+    prop.soft
+        .unwrap_or_else(|| panic!("`{}` argument `{}` has no soft range", prop.tool, prop.key))
+}

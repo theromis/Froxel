@@ -102,6 +102,29 @@ field.
 
 The helpers go through `row`, so `tests/panels.rs` holds.
 
+## Panel structs
+
+The other sections (Foliage, Stone, Organic, Silhouette, Import, the edit
+sections, Break, Scatter, Smooth, and the Sculpt brush) already ran their tool
+through `remote::apply`: a typed panel struct (`FoliagePanel`, ...) builds the
+arguments in `args()`, and the MCP handler checks and runs them. Their storage
+stays typed; what moved is the metadata. `src/ops/panel.rs` is a table of rows
+`(tool, key, label, hint, soft range, digits, speed)` that
+`schema::tools` merges into the properties as `ui` and `soft` would inline,
+and the panel draws:
+
+- `prop_label(ui, tool, key)`: a grid row's label with the hint as tooltip;
+- `prop_slider(ui, tool, key, &mut value)` and `prop_drag(...)`: over the soft
+  range with the schema's decimals and drag speed, for any numeric field;
+- `prop_check(ui, tool, key, &mut bool)`: a checkbox labelled by the argument.
+
+The rows were generated from the panels as they were, so labels, tooltips,
+and ranges are the same (tooltips now end with the MCP argument). A panel may
+start a soft range at 0 below a positive minimum where 0 leaves the argument
+out (Markers' max boxes). Rows whose field is not one argument (a parsed slot
+list, an enum index, an `_on` flag for an optional value, a pair of numbers
+for one argument) keep their hand-written label.
+
 ## Migrated
 
 - `fill_tube` (and `carve` `tube`): the Tube tool's Flatten, Roll, Blade,
@@ -112,15 +135,17 @@ The helpers go through `row`, so `tests/panels.rs` holds.
   the second of `palettes`) and stay session fields. Rhai `fill_tube` and
   `carve_tube` options are derived.
 
-## Still to migrate
+## Still hand-written
 
-Rhai option lists are all derived. Panels, tool by tool:
+Rhai option lists and the panel metadata of every tool panel are derived.
+What is left:
 
-- Panels: Smooth (`SliderTarget::Smooth*`), Sculpt brush
-  (`panels/tools.rs`, plain `egui::Slider`s with their own hints), Foliage,
-  Organic (loft/deform/blend), Stone, Silhouette (views tools), Import,
-  Export and Bake (`panels/render.rs`, `SliderTarget::Export*`/`Bake*`).
-- Each migration moves the panel's session fields into `op_args[tool]`,
-  maps its sliders in `SliderTarget::op_arg`, and runs the tool through
-  `Session::op_call`.
-- Then: generate the positional Rhai bindings.
+- Panel rows that are not one argument (see Panel structs): parsed slot
+  lists, enum segments over panel indices, optional values behind an `_on`
+  flag, pairs. `op_choice` can draw an enum once its panel stores the item.
+- Rows whose label or tooltip differ between two panels for the same argument
+  (Growth and Moss `thickness`, the two Deform `angle` rows): the first panel's
+  wording is in the table, the second stays hand-written.
+- The Render, Export, and Bake sliders (`panels/render.rs`), which set render
+  and export settings, not tool arguments, and the generator form.
+- Positional Rhai bindings, written by hand around `tool_options`.

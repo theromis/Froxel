@@ -726,4 +726,6 @@ mod silhouette;
 mod stone;
 mod tools;
 
-use props::{op_choice, op_slider, op_slider_as, op_toggle};
+use props::{
+    op_choice, op_slider, op_slider_as, op_toggle, prop_check, prop_drag, prop_label, prop_slider,
+};

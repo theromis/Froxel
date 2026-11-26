@@ -7,6 +7,7 @@
 
 use egui::{RichText, Ui};
 
+use super::{prop_check, prop_drag, prop_label};
 use super::{section, DIM};
 use crate::state::{EditorMode, Session, CAMERAS, SIDES};
 
@@ -105,7 +106,7 @@ pub(super) fn pixelate(ui: &mut Ui, session: &mut Session) {
         .num_columns(2)
         .spacing([8.0, 4.0])
         .show(ui, |ui| {
-            label(ui, "Sheet", "A views sheet PNG (front, side, top, back in two rows and two columns), read as Measure sheet reads it. Empty takes the views of Carve from views.");
+            prop_label(ui, "pixelate_views", "path");
             ui.horizontal_wrapped(|ui| {
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.path)
@@ -127,10 +128,10 @@ pub(super) fn pixelate(ui: &mut Ui, session: &mut Session) {
                     .desired_width(90.0),
             );
             ui.end_row();
-            label(ui, "Colours", "Clusters of the palette every view shares (k-means in Oklab), plus kept accents such as eyes.");
-            ui.add(egui::DragValue::new(&mut panel.colors).range(1..=32));
+            prop_label(ui, "pixelate_views", "colors");
+            prop_drag(ui, "pixelate_views", "colors", &mut panel.colors);
             ui.end_row();
-            label(ui, "Keep", "Features: every small region that stands out from its surroundings (eyes, pupils, teeth, nostrils, spots) keeps at least a cell. Thin: a cell on the midline of a part thinner than a cell (a fin, a leg) stays inked. Despeckle: passes of a majority filter over lone cells.");
+            prop_label(ui, "pixelate_views", "features");
             ui.horizontal_wrapped(|ui| {
                 ui.checkbox(&mut panel.features, "Features");
                 ui.checkbox(&mut panel.thin, "Thin");
@@ -146,7 +147,7 @@ pub(super) fn pixelate(ui: &mut Ui, session: &mut Session) {
                 ui.checkbox(&mut panel.fill_holes, "Fill holes");
             });
             ui.end_row();
-            label(ui, "PNG", "Where the pixelated views are written, side by side, 8 pixels a cell.");
+            prop_label(ui, "pixelate_views", "png");
             ui.horizontal_wrapped(|ui| {
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.png)
@@ -236,12 +237,8 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Cells / px", "Cells per image pixel, such as 0.25 for 4 pixels a cell. Used for every view when Size is empty.");
-                ui.add(
-                    egui::DragValue::new(&mut panel.cells_per_pixel)
-                        .range(0.01..=8.0)
-                        .speed(0.005),
-                );
+                prop_label(ui, "carve_from_views", "cellsPerPixel");
+                prop_drag(ui, "carve_from_views", "cellsPerPixel", &mut panel.cells_per_pixel);
                 ui.end_row();
                 label(ui, "Size", "The box x y z in cells; each view is stretched to it. Empty takes the views at Cells / px.");
                 ui.add(
@@ -250,7 +247,7 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
                         .desired_width(90.0),
                 );
                 ui.end_row();
-                label(ui, "Origin", "Cell of the box's minimum corner: local to the active object, or a world cell with World.");
+                prop_label(ui, "carve_from_views", "origin");
                 ui.horizontal_wrapped(|ui| {
                     for value in &mut panel.origin {
                         ui.add(egui::DragValue::new(value).range(-1024..=1023));
@@ -265,10 +262,10 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
                 label(ui, "Colour", "From the views: each cell takes the pixel of the view whose surface is nearest, quantised to the palette. Off fills the active slot.");
                 ui.checkbox(&mut panel.colour_views, "From views");
                 ui.end_row();
-                label(ui, "Shell", "Keep only cells within this many cells of the outside. 0 is solid.");
+                prop_label(ui, "carve_from_views", "shell");
                 ui.add(egui::DragValue::new(&mut panel.shell).range(0..=crate::tools::MAX_CARVE_PASSES as i32));
                 ui.end_row();
-                label(ui, "Smooth", "Smooth passes over the hull.");
+                prop_label(ui, "carve_from_views", "smooth");
                 ui.add(egui::DragValue::new(&mut panel.smooth).range(0..=crate::tools::MAX_CARVE_PASSES as i32));
                 ui.end_row();
                 label(ui, "Depth", "How the depth maps are read. Hull places each image row's nearest pixel where the silhouettes are nearest in that row; Box spreads the map over the box, for a relief. Invert: black is near. Back: mirror the surface for the far side, when the opposite view has no map. Tolerance: cells in front of the surface that stay.");
@@ -364,7 +361,7 @@ pub(super) fn paint(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "View", "The side the image looks from, for a model facing −Y: Top looks down with image down toward −Y; Left (side) looks from +X with the model's front on the image's left.");
+                prop_label(ui, "project_paint", "view");
                 ui.horizontal_wrapped(|ui| {
                     egui::ComboBox::from_id_salt("paint-side")
                         .width(90.0)
@@ -374,11 +371,10 @@ pub(super) fn paint(ui: &mut Ui, session: &mut Session) {
                                 ui.selectable_value(&mut panel.side, index, *name);
                             }
                         });
-                    ui.checkbox(&mut panel.flip, "Flip")
-                        .on_hover_text("Mirror the image left to right.");
+                    prop_check(ui, "project_paint", "flip", &mut panel.flip);
                 });
                 ui.end_row();
-                label(ui, "Image", "The PNG to paint: a pattern, or a crop of the turnaround sheet. Background pixels leave the surface alone.");
+                prop_label(ui, "project_paint", "path");
                 ui.horizontal_wrapped(|ui| {
                     ui.add(
                         egui::TextEdit::singleline(&mut panel.path)
@@ -428,10 +424,10 @@ pub(super) fn paint(ui: &mut Ui, session: &mut Session) {
                         .on_hover_text("MCP space world: the origin is a world cell, and the object's position is subtracted first.");
                 });
                 ui.end_row();
-                label(ui, "Depth", "Solid cells painted below the visible surface along each ray; 1 is the surface alone.");
+                prop_label(ui, "project_paint", "depth");
                 ui.add(egui::DragValue::new(&mut panel.depth).range(1..=crate::tools::MAX_PAINT_DEPTH as i32));
                 ui.end_row();
-                label(ui, "Normal limit", "Degrees: a surface turned further than this from the view is left alone, so steep sides get no streaks. 90 is no limit.");
+                prop_label(ui, "project_paint", "normalLimit");
                 ui.add(
                     egui::DragValue::new(&mut panel.normal_limit)
                         .range(0.0..=90.0)
@@ -475,7 +471,7 @@ pub(super) fn decal(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Image", "The picture to lay on the surface: an eye, a mouth, a marking. Background pixels leave the surface alone.");
+                prop_label(ui, "decal", "path");
                 ui.horizontal_wrapped(|ui| {
                     ui.add(
                         egui::TextEdit::singleline(&mut panel.path)
@@ -485,8 +481,7 @@ pub(super) fn decal(ui: &mut Ui, session: &mut Session) {
                     if ui.button("…").on_hover_text("Choose the PNG.").clicked() {
                         pick = true;
                     }
-                    ui.checkbox(&mut panel.flip, "Flip")
-                        .on_hover_text("Mirror the picture left to right.");
+                    prop_check(ui, "decal", "flip", &mut panel.flip);
                 });
                 ui.end_row();
                 label(ui, "Crop", "The image's rectangle in pixels: x y width height. Empty is the whole image.");
@@ -499,7 +494,7 @@ pub(super) fn decal(ui: &mut Ui, session: &mut Session) {
                 label(ui, "Background", "Which pixels of the image are background.");
                 background(ui, "decal-background", &mut panel.background);
                 ui.end_row();
-                label(ui, "Point", "x y z near the surface, in the active object's local cells (or world cells with World): the decal centres on the nearest surface cell.");
+                prop_label(ui, "decal", "point");
                 ui.horizontal_wrapped(|ui| {
                     ui.add(
                         egui::TextEdit::singleline(&mut panel.point)
@@ -512,23 +507,23 @@ pub(super) fn decal(ui: &mut Ui, session: &mut Session) {
                     ui.checkbox(&mut panel.world, "World");
                 });
                 ui.end_row();
-                label(ui, "Up", "x y z: the picture's up, laid onto the surface at the point. 0 0 1 keeps a face upright.");
+                prop_label(ui, "decal", "up");
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.up)
                         .hint_text("0 0 1")
                         .desired_width(90.0),
                 );
                 ui.end_row();
-                label(ui, "Size", "Cells across along the surface; the height follows the picture.");
+                prop_label(ui, "decal", "size");
                 ui.add(egui::DragValue::new(&mut panel.size).range(1.0..=crate::tools::MAX_DECAL_SIZE as f32).speed(0.1));
                 ui.end_row();
-                label(ui, "Depth", "Cells painted into the solid along the normal; 1 is the surface alone.");
+                prop_label(ui, "decal", "depth");
                 ui.add(egui::DragValue::new(&mut panel.depth).range(1..=crate::tools::MAX_DECAL_DEPTH as i32));
                 ui.end_row();
-                label(ui, "Reach", "How far the point may be from the surface, in cells.");
+                prop_label(ui, "decal", "reach");
                 ui.add(egui::DragValue::new(&mut panel.reach).range(0.0..=crate::tools::MAX_DECAL_REACH as f32).speed(0.1));
                 ui.end_row();
-                label(ui, "Normal limit", "Degrees: the decal stops where the surface turns further than this from the point's normal, so it never wraps round a thin part.");
+                prop_label(ui, "decal", "normalLimit");
                 ui.add(
                     egui::DragValue::new(&mut panel.normal_limit)
                         .range(1.0..=180.0)
@@ -589,7 +584,7 @@ pub(super) fn fit(ui: &mut Ui, session: &mut Session) {
                         }
                     });
                 ui.end_row();
-                label(ui, "Moves", "Shape adds and removes cells along the view rays (excess rays cleared, missing ones filled, rough cells tidied); Colour gives every cell a view sees the slot nearest the sheet's colours.");
+                prop_label(ui, "fit_to_views", "shape");
                 ui.horizontal_wrapped(|ui| {
                     ui.checkbox(&mut panel.shape, "Shape");
                     ui.checkbox(&mut panel.recolor, "Colour");
@@ -603,7 +598,7 @@ pub(super) fn fit(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
-                label(ui, "Normal limit", "Degrees: a view recolours only cells whose surface faces it within this angle; a seen cell no view faces takes the view facing it most. 90 is no limit.");
+                prop_label(ui, "fit_to_views", "normalLimit");
                 ui.add(
                     egui::DragValue::new(&mut panel.normal_limit)
                         .range(0.0..=90.0)
@@ -618,7 +613,7 @@ pub(super) fn fit(ui: &mut Ui, session: &mut Session) {
                         .desired_width(90.0),
                 );
                 ui.end_row();
-                label(ui, "Rounding", "Weight and superellipse exponent of the rounding prior. Three axis views cannot see a round head's diagonal corners; cells outside the superellipse inscribed in each cross-section (or outside the Reference) go wherever no silhouette needs them. Weight 0 keeps the box-like hull; exponent 2 is an ellipse, larger is squarer.");
+                prop_label(ui, "fit_to_views", "roundWeight");
                 ui.horizontal_wrapped(|ui| {
                     ui.add(egui::DragValue::new(&mut panel.round_weight).range(0.0..=100.0).speed(0.01))
                         .on_hover_text("Round weight");
@@ -632,10 +627,10 @@ pub(super) fn fit(ui: &mut Ui, session: &mut Session) {
                     .on_hover_text("Axes whose cross-sections are rounded: y front sections, z the plan, x side sections (through a neck).");
                 });
                 ui.end_row();
-                label(ui, "Sweeps", "Most shape sweeps; the fit stops sooner when a sweep keeps no move. 0 only recolours.");
+                prop_label(ui, "fit_to_views", "iterations");
                 ui.add(egui::DragValue::new(&mut panel.iterations).range(0..=crate::tools::MAX_FIT_ITERATIONS as i32));
                 ui.end_row();
-                label(ui, "Seed", "Shuffles the order rays are visited in; the same seed gives the same result.");
+                prop_label(ui, "fit_to_views", "seed");
                 ui.add(egui::DragValue::new(&mut panel.seed).range(0..=i32::MAX));
                 ui.end_row();
                 label(ui, "Slots", "Palette slots the colours may take, such as 3 4 7. Empty is the slots the object already holds.");
@@ -652,10 +647,10 @@ pub(super) fn fit(ui: &mut Ui, session: &mut Session) {
                         .desired_width(90.0),
                 );
                 ui.end_row();
-                label(ui, "Isolate", "Off: other visible objects cover and hide in the views but never change. On: the active object is fitted alone.");
+                prop_label(ui, "fit_to_views", "isolate");
                 ui.checkbox(&mut panel.isolate, "Active object only");
                 ui.end_row();
-                label(ui, "Weights", "Mask: a missing or excess view pixel. Colour: the first visible cell against the sheet (up to 1 at 255 RGB apart). Depth: up to 1 at 8 cells from the reference. Smooth: each exposed cell face.");
+                prop_label(ui, "fit_to_views", "maskWeight");
                 ui.horizontal_wrapped(|ui| {
                     for (value, tip) in [
                         (&mut panel.mask_weight, "Mask weight"),
@@ -695,7 +690,7 @@ pub(super) fn optimize(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Moves", "Shape: clear excess rays and add one cell on a missing ray (touching the body, inside every other view), kept only when the views agree better. Colour: every surface cell takes the slot the views that see it agree on, weighted by how squarely each faces it, smoothed into patches. Carve: a cell on an edge two views paint differently goes when both still meet the body behind it and agree better.");
+                prop_label(ui, "optimize_to_views", "shape");
                 ui.horizontal_wrapped(|ui| {
                     ui.checkbox(&mut panel.shape, "Shape");
                     ui.checkbox(&mut panel.recolor, "Colour");
@@ -713,22 +708,22 @@ pub(super) fn optimize(ui: &mut Ui, session: &mut Session) {
                 label(ui, "Colours", "Colours of the pixelation shared by every view (pixelate_views colors), eyes and pupils kept as accents.");
                 ui.add(egui::DragValue::new(&mut panel.colors).range(1..=32));
                 ui.end_row();
-                label(ui, "Passes", "Most shape passes; the solver stops sooner when a pass keeps no move. 0 only recolours.");
+                prop_label(ui, "optimize_to_views", "iterations");
                 ui.add(egui::DragValue::new(&mut panel.iterations).range(0..=crate::tools::MAX_OPTIMIZE_ITERATIONS as i32));
                 ui.end_row();
-                label(ui, "Band", "Cells from the starting surface that may be added outside or removed inside.");
+                prop_label(ui, "optimize_to_views", "band");
                 ui.add(egui::DragValue::new(&mut panel.band).range(0..=crate::tools::MAX_OPTIMIZE_BAND as i32));
                 ui.end_row();
-                label(ui, "Min feature", "No removal leaves a cell thinner than this many cells (its shortest run along x, y, or z) unless it already was. 1 is off; 2 keeps legs and fins at least two cells.");
+                prop_label(ui, "optimize_to_views", "minFeature");
                 ui.add(egui::DragValue::new(&mut panel.min_feature).range(1..=crate::tools::MAX_MIN_FEATURE as i32));
                 ui.end_row();
-                label(ui, "Smooth", "Weight of the neighbours against the views' vote: higher merges colour patches more and drops specks.");
-                ui.add(egui::DragValue::new(&mut panel.smooth).range(0.0..=4.0).speed(0.01));
+                prop_label(ui, "optimize_to_views", "smooth");
+                prop_drag(ui, "optimize_to_views", "smooth", &mut panel.smooth);
                 ui.end_row();
-                label(ui, "Sharpness", "Exponent of a view's facing weight: higher lets the view facing a cell most squarely decide alone.");
-                ui.add(egui::DragValue::new(&mut panel.sharpness).range(0.0..=16.0).speed(0.05));
+                prop_label(ui, "optimize_to_views", "sharpness");
+                prop_drag(ui, "optimize_to_views", "sharpness", &mut panel.sharpness);
                 ui.end_row();
-                label(ui, "Accents", "A colour under this share of the views' pixels (eyes, pupils, nostrils) keeps its cells, and no cell takes it unless a view paints it there.");
+                prop_label(ui, "optimize_to_views", "accents");
                 ui.horizontal_wrapped(|ui| {
                     ui.checkbox(&mut panel.accents, "Guard");
                     ui.add_enabled(
@@ -839,7 +834,7 @@ pub(super) fn compare(ui: &mut Ui, session: &mut Session) {
         .num_columns(2)
         .spacing([8.0, 4.0])
         .show(ui, |ui| {
-            label(ui, "Concept", "The concept PNG: a turnaround sheet or one view.");
+            prop_label(ui, "compare_silhouette", "concept");
             ui.horizontal_wrapped(|ui| {
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.path)
@@ -861,7 +856,7 @@ pub(super) fn compare(ui: &mut Ui, session: &mut Session) {
             label(ui, "Background", "Which pixels of the concept are background.");
             background(ui, "compare-background", &mut panel.background);
             ui.end_row();
-            label(ui, "Flip", "Mirror the concept left to right.");
+            prop_label(ui, "compare_silhouette", "flip");
             ui.checkbox(&mut panel.flip, "");
             ui.end_row();
             label(ui, "Exclude", "Colours whose pixels are background too, such as water and splashes: #rrggbb separated by spaces, with their RGB tolerance (MCP excludeColors, excludeTolerance).");
@@ -974,7 +969,7 @@ pub(super) fn paint_views(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Sheet", "A views sheet PNG (front, side, top, back in two rows and two columns), read as Measure sheet reads it. Empty takes the views of Carve from views.");
+                prop_label(ui, "paint_from_views", "path");
                 ui.horizontal_wrapped(|ui| {
                     ui.add(
                         egui::TextEdit::singleline(&mut panel.path)
@@ -1002,7 +997,7 @@ pub(super) fn paint_views(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
-                label(ui, "Mirror", "Make a missing right view from the left one mirrored (and the other way), for a symmetric creature.");
+                prop_label(ui, "paint_from_views", "mirror");
                 ui.checkbox(&mut panel.mirror, "Missing side");
                 ui.end_row();
                 label(ui, "Colours", "Used: the slots the object already uses. New: up to N new colours clustered from the sheet's, in free slots, with eyes and mouths kept their own. Slots: the listed slots.");
@@ -1013,11 +1008,10 @@ pub(super) fn paint_views(ui: &mut Ui, session: &mut Session) {
                 });
                 ui.end_row();
                 if panel.colours == 1 {
-                    label(ui, "New slots", "How many new colours, plus kept accents.");
+                    prop_label(ui, "paint_from_views", "newSlots");
                     ui.horizontal_wrapped(|ui| {
                         ui.add(egui::DragValue::new(&mut panel.new_slots).range(1..=64));
-                        ui.checkbox(&mut panel.accents, "Keep accents")
-                            .on_hover_text("Small distinct colours (eyes, a mouth) get a slot of their own instead of melting into a big cluster.");
+                        prop_check(ui, "paint_from_views", "accents", &mut panel.accents);
                     });
                     ui.end_row();
                 } else if panel.colours == 2 {
@@ -1035,11 +1029,11 @@ pub(super) fn paint_views(ui: &mut Ui, session: &mut Session) {
                     .on_hover_text("Colours of the shared palette, plus kept accents such as eyes.");
                 });
                 ui.end_row();
-                label(ui, "Inset", "Pixels inside each silhouette's edge colours are read from, so anti-aliased background never lands on the model.");
-                ui.add(egui::DragValue::new(&mut panel.inset).range(0..=16));
+                prop_label(ui, "paint_from_views", "inset");
+                prop_drag(ui, "paint_from_views", "inset", &mut panel.inset);
                 ui.end_row();
-                label(ui, "Reach", "Cells: a surface cell off a view's ink takes the nearest ink within this.");
-                ui.add(egui::DragValue::new(&mut panel.reach).range(0.0..=64.0).speed(0.1));
+                prop_label(ui, "paint_from_views", "reach");
+                prop_drag(ui, "paint_from_views", "reach", &mut panel.reach);
                 ui.end_row();
                 label(ui, "Only", "Slots that may be repainted, such as 3 4. Empty is every slot.");
                 ui.add(egui::TextEdit::singleline(&mut panel.only).hint_text("all slots").desired_width(90.0));

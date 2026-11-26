@@ -113,7 +113,47 @@ fn tube_radius_prop(description: &str) -> Value {
 /// Every tool's `tools/list` entry, in [`super::OPS`] order.
 pub(crate) fn tools() -> &'static [Value] {
     static TOOLS: OnceLock<Vec<Value>> = OnceLock::new();
-    TOOLS.get_or_init(build)
+    TOOLS.get_or_init(|| {
+        let mut tools = build();
+        with_panel_props(&mut tools);
+        tools
+    })
+}
+
+/// Merge [`super::panel::PANEL`] into the properties it names, as
+/// [`ui`] and [`soft`] write them inline.
+fn with_panel_props(tools: &mut [Value]) {
+    for row in super::panel::PANEL {
+        let tool = tools
+            .iter_mut()
+            .find(|tool| tool["name"] == row.tool)
+            .unwrap_or_else(|| panic!("ops::panel names `{}`, which is not a tool", row.tool));
+        let property = tool["inputSchema"]["properties"]
+            .get_mut(row.key)
+            .unwrap_or_else(|| {
+                panic!(
+                    "ops::panel names `{}` `{}`, which it does not take",
+                    row.tool, row.key
+                )
+            });
+        assert!(
+            property.get("title").is_none(),
+            "`{}` `{}` has its panel metadata inline and in ops::panel",
+            row.tool,
+            row.key
+        );
+        let mut merged = ui(property.take(), row.label, row.hint);
+        if let Some((min, max)) = row.soft {
+            merged[UI]["soft"] = json!([min, max]);
+        }
+        if let Some(digits) = row.digits {
+            merged[UI]["digits"] = digits.into();
+        }
+        if let Some(speed) = row.speed {
+            merged[UI]["speed"] = speed.into();
+        }
+        *property = merged;
+    }
 }
 
 /// The `tools/list` entry of one tool.

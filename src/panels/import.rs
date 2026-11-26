@@ -2,6 +2,7 @@
 
 use egui::{RichText, Ui};
 
+use super::{prop_drag, prop_label};
 use super::{section, DIM};
 use crate::state::{EditorMode, Session};
 
@@ -21,7 +22,7 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "File", "A .glb, .gltf, or .obj (with its .mtl and textures). Every primitive of the default glTF scene is read under its node transforms.");
+                prop_label(ui, "import_mesh", "path");
                 ui.horizontal_wrapped(|ui| {
                     ui.add(
                         egui::TextEdit::singleline(&mut panel.path)
@@ -40,30 +41,30 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                 ui.end_row();
                 match panel.fit {
                     1 => {
-                        label(ui, "Voxel size", "Metres per cell.");
+                        prop_label(ui, "import_mesh", "voxelSize");
                         ui.add(egui::DragValue::new(&mut panel.voxel_size).range(0.001..=100.0).speed(0.001).suffix(" m"));
                     }
                     2 => {
-                        label(ui, "Scale", "Cells per file unit.");
-                        ui.add(egui::DragValue::new(&mut panel.scale).range(0.01..=10_000.0).speed(0.1));
+                        prop_label(ui, "import_mesh", "scale");
+                        prop_drag(ui, "import_mesh", "scale", &mut panel.scale);
                     }
                     _ => {
-                        label(ui, "Size", "Cells along the longest axis, at most 256.");
-                        ui.add(egui::DragValue::new(&mut panel.size).range(1..=256));
+                        prop_label(ui, "import_mesh", "size");
+                        prop_drag(ui, "import_mesh", "size", &mut panel.size);
                     }
                 }
                 ui.end_row();
-                label(ui, "Z up", "Off turns the file's Y-up (glTF and most OBJ) to Z-up; on keeps its axes.");
+                prop_label(ui, "import_mesh", "upAxis");
                 ui.checkbox(&mut panel.z_up, "File is Z-up");
                 ui.end_row();
-                label(ui, "Rotation", "Degrees about X, then Y, then Z, after the up axis.");
+                prop_label(ui, "import_mesh", "rotation");
                 ui.horizontal_wrapped(|ui| {
                     for value in panel.rotation.iter_mut() {
                         ui.add(egui::DragValue::new(value).range(-360.0..=360.0).speed(1.0).suffix("°"));
                     }
                 });
                 ui.end_row();
-                label(ui, "Position", "Where the anchor lands, in the active object's cells; with New object, the new object's world position.");
+                prop_label(ui, "import_mesh", "position");
                 ui.horizontal_wrapped(|ui| {
                     for value in panel.position.iter_mut() {
                         ui.add(egui::DragValue::new(value).range(-1024..=1023));
@@ -84,7 +85,7 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
-                label(ui, "Colour", "Texture: the base-colour texture times its factor times vertex colours, at the nearest point of the surface. Vertex: vertex colours only.");
+                prop_label(ui, "import_mesh", "colors");
                 ui.horizontal_wrapped(|ui| {
                     ui.selectable_value(&mut panel.vertex_only, false, "Texture");
                     ui.selectable_value(&mut panel.vertex_only, true, "Vertex");
@@ -97,11 +98,11 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                         .desired_width(120.0),
                 );
                 ui.end_row();
-                label(ui, "New slots", "Most palette slots written with new colours, taken from 255 down among slots no cell uses. 0 maps to the nearest existing slots.");
-                ui.add(egui::DragValue::new(&mut panel.max_new).range(0..=255));
+                prop_label(ui, "import_mesh", "maxNewSlots");
+                prop_drag(ui, "import_mesh", "maxNewSlots", &mut panel.max_new);
                 ui.end_row();
-                label(ui, "Tolerance", "sRGB distance under which a colour reuses an existing slot.");
-                ui.add(egui::DragValue::new(&mut panel.tolerance).range(0.0..=442.0).speed(0.5));
+                prop_label(ui, "import_mesh", "tolerance");
+                prop_drag(ui, "import_mesh", "tolerance", &mut panel.tolerance);
                 ui.end_row();
                 label(ui, "Mode", "Replace writes every cell; Empty adds only into empty cells; Paint recolours solid cells, to project a texture onto a form.");
                 ui.horizontal_wrapped(|ui| {
@@ -110,7 +111,7 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
-                label(ui, "Target", "Import into a new object, or into the active one.");
+                prop_label(ui, "import_mesh", "newObject");
                 ui.checkbox(&mut panel.new_object, "New object");
                 ui.end_row();
                 label(ui, "Orient", "MCP import_mesh orient, before voxelizing. Upright: stand a tilted mesh level from its shape (thinnest principal axis up, narrowing upward, the taller end of its long axis toward −Y), tilting up at most Max tilt. Views: the axis-aligned turn and fine yaw whose silhouettes best match the views of Carve from views (with the Orient to views options). Both: upright, then the views' yaw.");

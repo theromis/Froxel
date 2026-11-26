@@ -6,6 +6,7 @@
 //! one table, so they cannot drift apart. The argument schemas are in
 //! [`schema`].
 
+mod panel;
 pub(crate) mod schema;
 
 use serde_json::{json, Value};
@@ -320,6 +321,10 @@ pub(crate) struct PropUi {
     pub soft: Option<(f64, f64)>,
     /// Digits a slider shows; 0 for an integer.
     pub digits: usize,
+    /// Decimals a slider or drag shows when the schema sets them.
+    pub decimals: Option<usize>,
+    /// Drag speed per point, when the schema sets it.
+    pub speed: Option<f64>,
     /// An enum option drawn as a toggle: the item it means when on.
     pub on: Option<&'static str>,
     /// The JSON Schema type is `integer`.
@@ -365,6 +370,8 @@ pub(crate) fn prop_ui(tool: &str, key: &str) -> PropUi {
             .as_array()
             .and_then(|range| Some((range.first()?.as_f64()?, range.get(1)?.as_f64()?))),
         digits: meta["digits"].as_u64().unwrap_or(0) as usize,
+        decimals: meta["digits"].as_u64().map(|digits| digits as usize),
+        speed: meta["speed"].as_f64(),
         on: meta["on"].as_str(),
         integer,
         items: property["enum"]
