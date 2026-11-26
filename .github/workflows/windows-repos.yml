@@ -151,6 +151,19 @@ jobs:
             Write-Output '::notice::winget: WINGET_TOKEN is not set; skipped'
             exit 0
           }
+          # wingetcreate stops when the token's fork of winget-pkgs is behind
+          # upstream and cannot sync it. Sync it first; upstream commits that
+          # touch workflows need the token's `workflow` scope, so without it this
+          # only warns, and the fork is synced by hand (docs/releasing.md).
+          $headers = @{ Authorization = "Bearer $env:WINGET_TOKEN"; Accept = 'application/vnd.github+json' }
+          try {
+            $login = (Invoke-RestMethod -Headers $headers https://api.github.com/user).login
+            Invoke-RestMethod -Method Post -Headers $headers -ContentType 'application/json' `
+              -Body '{"branch":"master"}' "https://api.github.com/repos/$login/winget-pkgs/merge-upstream" | Out-Null
+            Write-Output "winget: synced $login/winget-pkgs with microsoft/winget-pkgs"
+          } catch {
+            Write-Output "::warning::winget: could not sync the fork of microsoft/winget-pkgs ($($_.Exception.Message)). Press Sync fork on it, or give WINGET_TOKEN the workflow scope; see docs/releasing.md, winget."
+          }
           Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
           ./wingetcreate.exe submit --token $env:WINGET_TOKEN `
             --prtitle "New version: Lonje.Froxel version $env:VERSION" `

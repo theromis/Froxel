@@ -622,7 +622,29 @@ Set up on 2026-11-20: a classic token of `theromis` with `public_repo`,
 expiring 2027-11-20 (renew it then; a copy is in `secrets/microsoft`). The
 first pull request, for 0.3.4 (microsoft/winget-pkgs#485518), was closed in
 favour of the 0.3.5 one, microsoft/winget-pkgs#485839, so the new package has
-one pull request in review.
+one pull request in review. 0.4.0 is microsoft/winget-pkgs#489695.
+
+Rules for the fork, [theromis/winget-pkgs](https://github.com/theromis/winget-pkgs):
+
+- wingetcreate opens the pull request from the token's fork and stops with
+  "The repository could not be synced with the upstream commits. Sync your
+  fork manually and try again" when the fork is behind `microsoft/winget-pkgs`
+  and it cannot fast-forward it. It falls behind by thousands of commits
+  between releases (2,810 by 0.4.0).
+- The job syncs the fork itself before `wingetcreate submit`. Upstream
+  commits that change `.github/workflows` need the `workflow` scope to merge,
+  which a `public_repo` token lacks: then the job warns and goes on, and the
+  submit fails as above. Give `WINGET_TOKEN` the `workflow` scope when it is
+  renewed, and the sync needs no hand.
+- Until then, sync it by hand before publishing a release: **Sync fork** >
+  **Update branch** on the fork's page, or `gh repo sync theromis/winget-pkgs`
+  with a `gh` login that has the `workflow` scope (`gh auth refresh -s
+  workflow`). The fork has no commits of its own, so a sync only
+  fast-forwards it.
+- After a failed submit: sync the fork, then rerun only the `winget` job
+  (`gh run rerun <run id> --job <job id>`), or
+  `gh workflow run windows-repos.yml -f tag=v<version> -f dry-run=false -f channel=winget`.
+  Either opens one pull request; do not run both.
 
 ### Scoop
 
@@ -650,6 +672,11 @@ or arm64 on an ARM64 Windows) and checks its SHA-256; Chocolatey shims
 
 Every version waits in the community moderation queue (automatic checks,
 then a human for new packages) before `choco install froxel` finds it.
+
+While the package's first version is still in moderation, a push of a newer
+one is refused with `403 (Forbidden)` (0.4.0 on 2026-11-26, with 0.3.4 not yet
+approved). It is not the API key. After the first version is approved,
+publish the release's package again with `-f channel=chocolatey` (above).
 
 ## Registries
 

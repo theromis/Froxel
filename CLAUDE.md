@@ -193,7 +193,8 @@ until all of these exist. (User decision, 2026-11-02.)
 ## Releases
 
 Before dispatching `release.yml`, set `version` in `Cargo.toml` (and the
-`froxel` entry in `Cargo.lock`) to the release version, move the `Unreleased`
+`froxel` entry in `Cargo.lock`) to the release version, sync the winget fork
+(`docs/releasing.md`, winget), move the `Unreleased`
 entries of `CHANGELOG.md` under that version, add its `<release>` to
 `packaging/linux/com.lonje.Froxel.metainfo.xml`, set `version_code` and its
 F-Droid changelog, run `python3 tools/sync_versions.py`, commit, and push. Then run
