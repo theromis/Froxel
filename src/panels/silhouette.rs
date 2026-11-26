@@ -52,22 +52,26 @@ pub(super) fn measure(ui: &mut Ui, session: &mut Session) {
         .num_columns(2)
         .spacing([8.0, 4.0])
         .show(ui, |ui| {
-            label(ui, "Sheet", "A views sheet PNG: front, side, top, and back in two rows and two columns on a key background.");
+            prop_label(ui, "measure_sheet", "path");
             ui.horizontal_wrapped(|ui| {
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.path)
                         .hint_text("views.png")
                         .desired_width(150.0),
                 );
-                if ui.button("…").on_hover_text("Choose the sheet PNG.").clicked() {
+                if ui
+                    .button("…")
+                    .on_hover_text("Choose the sheet PNG.")
+                    .clicked()
+                {
                     pick = true;
                 }
             });
             ui.end_row();
-            label(ui, "Background", "Which pixels of the sheet are background.");
+            prop_label(ui, "measure_sheet", "background");
             background(ui, "measure-background", &mut panel.background);
             ui.end_row();
-            label(ui, "Count parts", "Count the parts sticking out of the top view's body (flippers, legs, head, tail), to catch a top view with too many.");
+            prop_label(ui, "measure_sheet", "parts");
             ui.checkbox(&mut panel.parts, "");
             ui.end_row();
         });
@@ -113,15 +117,19 @@ pub(super) fn pixelate(ui: &mut Ui, session: &mut Session) {
                         .hint_text("Carve's views")
                         .desired_width(150.0),
                 );
-                if ui.button("…").on_hover_text("Choose the sheet PNG.").clicked() {
+                if ui
+                    .button("…")
+                    .on_hover_text("Choose the sheet PNG.")
+                    .clicked()
+                {
                     pick = true;
                 }
             });
             ui.end_row();
-            label(ui, "Background", "Which pixels of the sheet are background.");
+            prop_label(ui, "pixelate_views", "background");
             background(ui, "pixelate-background", &mut panel.background);
             ui.end_row();
-            label(ui, "Size", "The box x y z in cells; 0 follows the views' proportions, so 0 20 0 is a creature 20 cells long.");
+            prop_label(ui, "pixelate_views", "size");
             ui.add(
                 egui::TextEdit::singleline(&mut panel.size)
                     .hint_text("0 20 0")
@@ -139,11 +147,17 @@ pub(super) fn pixelate(ui: &mut Ui, session: &mut Session) {
                     .on_hover_text("Despeckle passes.");
             });
             ui.end_row();
-            label(ui, "Lines", "Lines: a drawn line thinner than a cell (an eye's ring, a mouth) keeps a line of cells in its colour instead of losing every cell's vote to the fill (MCP lines). Outline: the outline along the silhouette is kept too, as a rim of cells (MCP outline; off, its pixels vote only where nothing else does). Merge: stroke colours near the commonest one, such as an outline blended into a shadow, become one outline colour (MCP mergeLines). Fill holes: white eyes and teeth on a white sheet, keyed out as background, are inked again in their own colour (MCP fillHoles).");
+            prop_label(ui, "pixelate_views", "lines");
             ui.horizontal_wrapped(|ui| {
                 ui.checkbox(&mut panel.draw_lines, "Lines");
-                ui.add_enabled(panel.draw_lines, egui::Checkbox::new(&mut panel.outline, "Outline"));
-                ui.add_enabled(panel.draw_lines, egui::Checkbox::new(&mut panel.merge_lines, "Merge"));
+                ui.add_enabled(
+                    panel.draw_lines,
+                    egui::Checkbox::new(&mut panel.outline, "Outline"),
+                );
+                ui.add_enabled(
+                    panel.draw_lines,
+                    egui::Checkbox::new(&mut panel.merge_lines, "Merge"),
+                );
                 ui.checkbox(&mut panel.fill_holes, "Fill holes");
             });
             ui.end_row();
@@ -154,7 +168,11 @@ pub(super) fn pixelate(ui: &mut Ui, session: &mut Session) {
                         .hint_text("pixelated.png")
                         .desired_width(150.0),
                 );
-                if ui.button("…").on_hover_text("Choose where to write the PNG.").clicked() {
+                if ui
+                    .button("…")
+                    .on_hover_text("Choose where to write the PNG.")
+                    .clicked()
+                {
                     pick_png = true;
                 }
             });
@@ -240,7 +258,7 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
                 prop_label(ui, "carve_from_views", "cellsPerPixel");
                 prop_drag(ui, "carve_from_views", "cellsPerPixel", &mut panel.cells_per_pixel);
                 ui.end_row();
-                label(ui, "Size", "The box x y z in cells; each view is stretched to it. Empty takes the views at Cells / px.");
+                prop_label(ui, "carve_from_views", "size");
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.size)
                         .hint_text("x y z")
@@ -256,7 +274,7 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
                         .on_hover_text("MCP space world: the origin is a world cell, and the object's position is subtracted first.");
                 });
                 ui.end_row();
-                label(ui, "Background", "Which pixels of every view are background.");
+                prop_label(ui, "carve_from_views", "background");
                 background(ui, "carve-background", &mut panel.background);
                 ui.end_row();
                 label(ui, "Colour", "From the views: each cell takes the pixel of the view whose surface is nearest, quantised to the palette. Off fills the active slot.");
@@ -317,7 +335,7 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
-                label(ui, "Pixel art", "MCP downscale: pixelate every view at the box first (Size, an axis of 0 following the views' proportions), as Pixelate views does, so a creature 20 to 60 cells long keeps its eyes, teeth, spots, and thin legs. Not with depth maps.");
+                prop_label(ui, "carve_from_views", "downscale");
                 ui.horizontal_wrapped(|ui| {
                     ui.checkbox(&mut panel.pixel_art, "Downscale");
                     ui.add_enabled(
@@ -327,7 +345,7 @@ pub(super) fn carve(ui: &mut Ui, session: &mut Session) {
                     .on_hover_text("Colours of the shared palette, plus kept accents such as eyes.");
                 });
                 ui.end_row();
-                label(ui, "Intersect", "MCP mode intersect: keep only the active object's cells inside the hull, as they are, and erase the rest, instead of filling the hull.");
+                prop_label(ui, "carve_from_views", "mode");
                 ui.checkbox(&mut panel.intersect, "Keep inside only");
                 ui.end_row();
             });
@@ -386,14 +404,14 @@ pub(super) fn paint(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
-                label(ui, "Crop", "The image's rectangle in pixels: x y width height. Empty is the whole image.");
+                prop_label(ui, "project_paint", "crop");
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.crop)
                         .hint_text("x y w h")
                         .desired_width(90.0),
                 );
                 ui.end_row();
-                label(ui, "Background", "Which pixels of the image are background. Alpha on an opaque image paints every pixel.");
+                prop_label(ui, "project_paint", "background");
                 background(ui, "paint-background", &mut panel.background);
                 ui.end_row();
                 label(ui, "Scale", "Fit stretches the image over the box as seen from the view; off places it at Cells / px, centred and standing on the box's bottom, as Carve from views does.");
@@ -408,7 +426,7 @@ pub(super) fn paint(ui: &mut Ui, session: &mut Session) {
                     .on_hover_text("Cells per image pixel.");
                 });
                 ui.end_row();
-                label(ui, "Box", "Origin x y z and size x y z of the cells that may be painted. Empty is the object's bounds.");
+                prop_label(ui, "project_paint", "origin");
                 ui.horizontal_wrapped(|ui| {
                     ui.add(
                         egui::TextEdit::singleline(&mut panel.origin)
@@ -435,7 +453,7 @@ pub(super) fn paint(ui: &mut Ui, session: &mut Session) {
                         .suffix("°"),
                 );
                 ui.end_row();
-                label(ui, "Only", "Slots that may be repainted, such as 3 4; other cells keep theirs. Empty is every slot.");
+                prop_label(ui, "project_paint", "only");
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.only)
                         .hint_text("all slots")
@@ -484,14 +502,14 @@ pub(super) fn decal(ui: &mut Ui, session: &mut Session) {
                     prop_check(ui, "decal", "flip", &mut panel.flip);
                 });
                 ui.end_row();
-                label(ui, "Crop", "The image's rectangle in pixels: x y width height. Empty is the whole image.");
+                prop_label(ui, "decal", "crop");
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.crop)
                         .hint_text("x y w h")
                         .desired_width(90.0),
                 );
                 ui.end_row();
-                label(ui, "Background", "Which pixels of the image are background.");
+                prop_label(ui, "decal", "background");
                 background(ui, "decal-background", &mut panel.background);
                 ui.end_row();
                 prop_label(ui, "decal", "point");
@@ -531,7 +549,7 @@ pub(super) fn decal(ui: &mut Ui, session: &mut Session) {
                         .suffix("°"),
                 );
                 ui.end_row();
-                label(ui, "Only", "Slots that may be repainted, such as 3 4; other cells keep theirs. Empty is every slot.");
+                prop_label(ui, "decal", "only");
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.only)
                         .hint_text("all slots")
@@ -575,7 +593,7 @@ pub(super) fn fit(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Align", "How each view's crop is placed over the object's projection, once, before the fit: Fit finds the scale and offset with the most overlap; Height and Width match that extent, bottoms and centres lined up.");
+                prop_label(ui, "fit_to_views", "align");
                 egui::ComboBox::from_id_salt("fit-align")
                     .selected_text(["Fit", "Height", "Width"][panel.align.min(2)])
                     .show_ui(ui, |ui| {
@@ -590,7 +608,7 @@ pub(super) fn fit(ui: &mut Ui, session: &mut Session) {
                     ui.checkbox(&mut panel.recolor, "Colour");
                 });
                 ui.end_row();
-                label(ui, "Colour from", "Which views of Carve from views (in their row order) recolour cells; a view turned off here still shapes the object. Turn the side view off when its features would land beside the front view's (a face's eyes).");
+                prop_label(ui, "fit_to_views", "recolor");
                 ui.horizontal_wrapped(|ui| {
                     for (index, paints) in panel.paint_views.iter_mut().enumerate() {
                         ui.checkbox(paints, format!("{}", index + 1))
@@ -606,7 +624,7 @@ pub(super) fn fit(ui: &mut Ui, session: &mut Session) {
                         .suffix("°"),
                 );
                 ui.end_row();
-                label(ui, "Keep", "Slots whose cells the fit never removes or recolours, such as hand-set eyes 9 10. They still cover and hide.");
+                prop_label(ui, "fit_to_views", "keep");
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.keep)
                         .hint_text("none")
@@ -633,14 +651,14 @@ pub(super) fn fit(ui: &mut Ui, session: &mut Session) {
                 prop_label(ui, "fit_to_views", "seed");
                 ui.add(egui::DragValue::new(&mut panel.seed).range(0..=i32::MAX));
                 ui.end_row();
-                label(ui, "Slots", "Palette slots the colours may take, such as 3 4 7. Empty is the slots the object already holds.");
+                prop_label(ui, "fit_to_views", "slots");
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.slots)
                         .hint_text("object's slots")
                         .desired_width(90.0),
                 );
                 ui.end_row();
-                label(ui, "Reference", "An object index or name, such as a mesh imported with import_mesh into a new object, whose front surface each view's rays should meet: the depth target. Empty is none.");
+                prop_label(ui, "fit_to_views", "reference");
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.reference)
                         .hint_text("none")
@@ -697,7 +715,7 @@ pub(super) fn optimize(ui: &mut Ui, session: &mut Session) {
                     ui.checkbox(&mut panel.color_carve, "Carve");
                 });
                 ui.end_row();
-                label(ui, "Colour from", "Which views of Carve from views (in their row order) vote on colours; a view turned off here still shapes the object.");
+                prop_label(ui, "optimize_to_views", "recolor");
                 ui.horizontal_wrapped(|ui| {
                     for (index, paints) in panel.paint_views.iter_mut().enumerate() {
                         ui.checkbox(paints, format!("{}", index + 1))
@@ -732,14 +750,14 @@ pub(super) fn optimize(ui: &mut Ui, session: &mut Session) {
                     );
                 });
                 ui.end_row();
-                label(ui, "Slots", "Palette slots the view colours land in, nearest first, such as 3 4 7. Empty makes a slot per view colour.");
+                prop_label(ui, "optimize_to_views", "slots");
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.slots)
                         .hint_text("view colours")
                         .desired_width(90.0),
                 );
                 ui.end_row();
-                label(ui, "Keep", "Slots whose cells are never removed or recoloured, such as hand-set eyes 9 10.");
+                prop_label(ui, "optimize_to_views", "keep");
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.keep)
                         .hint_text("none")
@@ -789,20 +807,20 @@ pub(super) fn orient(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Turns", "All tries the 24 axis-aligned turns; Upright only the 4 about up, for an object already standing on its base.");
+                prop_label(ui, "orient_to_views", "turns");
                 ui.horizontal_wrapped(|ui| {
                     ui.selectable_value(&mut panel.upright, false, "All 24");
                     ui.selectable_value(&mut panel.upright, true, "Upright");
                 });
                 ui.end_row();
-                label(ui, "Fine steps", "Degrees between fine steps about up around the best turn, and how far they go each way. 0 turns them off. Tilt also steps about X and Y.");
+                prop_label(ui, "orient_to_views", "yawStep");
                 ui.horizontal_wrapped(|ui| {
                     ui.add(egui::DragValue::new(&mut panel.yaw_step).range(0.0..=90.0).speed(0.5).suffix("°"));
                     ui.add(egui::DragValue::new(&mut panel.yaw_range).range(0.0..=180.0).speed(1.0).prefix("±").suffix("°"));
                     ui.checkbox(&mut panel.tilt, "Tilt");
                 });
                 ui.end_row();
-                label(ui, "Size", "Keep the scale, or scale to these cells on the longest axis or up.");
+                prop_label(ui, "orient_to_views", "size");
                 ui.horizontal_wrapped(|ui| {
                     for (index, name) in ["Keep", "Longest", "Height"].into_iter().enumerate() {
                         ui.selectable_value(&mut panel.size_mode, index, name);
@@ -841,25 +859,29 @@ pub(super) fn compare(ui: &mut Ui, session: &mut Session) {
                         .hint_text("concept.png")
                         .desired_width(150.0),
                 );
-                if ui.button("…").on_hover_text("Choose the concept PNG.").clicked() {
+                if ui
+                    .button("…")
+                    .on_hover_text("Choose the concept PNG.")
+                    .clicked()
+                {
                     pick = true;
                 }
             });
             ui.end_row();
-            label(ui, "Crop", "The view's rectangle in the concept, in pixels: x y width height. Empty is the whole image.");
+            prop_label(ui, "compare_silhouette", "crop");
             ui.add(
                 egui::TextEdit::singleline(&mut panel.crop)
                     .hint_text("x y w h")
                     .desired_width(90.0),
             );
             ui.end_row();
-            label(ui, "Background", "Which pixels of the concept are background.");
+            prop_label(ui, "compare_silhouette", "background");
             background(ui, "compare-background", &mut panel.background);
             ui.end_row();
             prop_label(ui, "compare_silhouette", "flip");
             ui.checkbox(&mut panel.flip, "");
             ui.end_row();
-            label(ui, "Exclude", "Colours whose pixels are background too, such as water and splashes: #rrggbb separated by spaces, with their RGB tolerance (MCP excludeColors, excludeTolerance).");
+            prop_label(ui, "compare_silhouette", "excludeColors");
             ui.horizontal_wrapped(|ui| {
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.exclude)
@@ -869,7 +891,7 @@ pub(super) fn compare(ui: &mut Ui, session: &mut Session) {
                 ui.add(egui::DragValue::new(&mut panel.exclude_tolerance).range(0.0..=442.0));
             });
             ui.end_row();
-            label(ui, "Flood", "Flood the background from the crop's border, stepping to neighbours within this RGB distance, for a photo-like or gradient background (MCP flood).");
+            prop_label(ui, "compare_silhouette", "flood");
             ui.horizontal_wrapped(|ui| {
                 ui.checkbox(&mut panel.flood, "");
                 ui.add_enabled(
@@ -878,20 +900,24 @@ pub(super) fn compare(ui: &mut Ui, session: &mut Session) {
                 );
             });
             ui.end_row();
-            label(ui, "Mask", "A mask PNG: only the concept's pixels under its ink stay (transparent or the border colour is empty, so white on black works); Invert drops them instead (MCP mask).");
+            prop_label(ui, "compare_silhouette", "mask");
             ui.horizontal_wrapped(|ui| {
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.mask)
                         .hint_text("mask.png")
                         .desired_width(110.0),
                 );
-                if ui.button("…").on_hover_text("Choose the mask PNG.").clicked() {
+                if ui
+                    .button("…")
+                    .on_hover_text("Choose the mask PNG.")
+                    .clicked()
+                {
                     pick_mask = true;
                 }
                 ui.checkbox(&mut panel.invert_mask, "Invert");
             });
             ui.end_row();
-            label(ui, "Erase", "Rectangles to drop, such as a rider: x y width height per line, in image pixels like Crop (MCP erase).");
+            prop_label(ui, "compare_silhouette", "erase");
             ui.add(
                 egui::TextEdit::multiline(&mut panel.erase)
                     .hint_text("x y w h")
@@ -899,13 +925,13 @@ pub(super) fn compare(ui: &mut Ui, session: &mut Session) {
                     .desired_width(150.0),
             );
             ui.end_row();
-            label(ui, "Largest only", "Keep only the largest connected region of the concept, dropping specks and a separate splash (MCP keepLargest).");
+            prop_label(ui, "compare_silhouette", "keepLargest");
             ui.checkbox(&mut panel.keep_largest, "");
             ui.end_row();
-            label(ui, "Fill holes", "Ink again, in the image's own colour, the background regions the concept encloses (up to a tenth of its ink): white eyes and teeth on a white sheet, which the background rule keys out (MCP fillHoles).");
+            prop_label(ui, "compare_silhouette", "fillHoles");
             ui.checkbox(&mut panel.fill_holes, "");
             ui.end_row();
-            label(ui, "Camera", "Viewport is the window's camera now; Game is the gameplay preset, with the Camera section's Camera presets… and Placement turn; Front, Left, and Top are orthographic views like a turnaround sheet.");
+            prop_label(ui, "compare_silhouette", "preset");
             egui::ComboBox::from_id_salt("compare-camera")
                 .selected_text(CAMERAS[panel.camera.min(CAMERAS.len() - 1)])
                 .show_ui(ui, |ui| {
@@ -914,7 +940,7 @@ pub(super) fn compare(ui: &mut Ui, session: &mut Session) {
                     }
                 });
             ui.end_row();
-            label(ui, "Align", "Fit finds the one scale and offset with the most overlap; Height and Width match that extent. Proportions are kept.");
+            prop_label(ui, "compare_silhouette", "align");
             ui.horizontal_wrapped(|ui| {
                 for (index, name) in ["Fit", "Height", "Width"].into_iter().enumerate() {
                     ui.selectable_value(&mut panel.align, index, name);
@@ -981,10 +1007,10 @@ pub(super) fn paint_views(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
-                label(ui, "Background", "Which pixels of the sheet are background.");
+                prop_label(ui, "paint_from_views", "background");
                 background(ui, "paint-views-background", &mut panel.background);
                 ui.end_row();
-                label(ui, "Blend", "Nearest: each surface cell takes the view its normal faces most, blending the two best within Seam degrees of their boundary. Soft: every view that sees the cell, weighted by how much it faces it.");
+                prop_label(ui, "paint_from_views", "blend");
                 ui.horizontal_wrapped(|ui| {
                     ui.selectable_value(&mut panel.blend, 0, "Nearest");
                     ui.selectable_value(&mut panel.blend, 1, "Soft");
@@ -1015,11 +1041,11 @@ pub(super) fn paint_views(ui: &mut Ui, session: &mut Session) {
                     });
                     ui.end_row();
                 } else if panel.colours == 2 {
-                    label(ui, "Slots", "The slots colours quantise into, such as 3 4 7.");
+                    prop_label(ui, "paint_from_views", "slots");
                     ui.add(egui::TextEdit::singleline(&mut panel.slots).hint_text("3 4 7").desired_width(90.0));
                     ui.end_row();
                 }
-                label(ui, "Pixel art", "MCP downscale: pixelate every view at the object's box first, as Pixelate views does, so a small creature's eyes, pupils, and spots land as whole cells instead of smears. Inset and Fit do not apply then.");
+                prop_label(ui, "paint_from_views", "downscale");
                 ui.horizontal_wrapped(|ui| {
                     ui.checkbox(&mut panel.pixel_art, "Downscale");
                     ui.add_enabled(
@@ -1035,10 +1061,10 @@ pub(super) fn paint_views(ui: &mut Ui, session: &mut Session) {
                 prop_label(ui, "paint_from_views", "reach");
                 prop_drag(ui, "paint_from_views", "reach", &mut panel.reach);
                 ui.end_row();
-                label(ui, "Only", "Slots that may be repainted, such as 3 4. Empty is every slot.");
+                prop_label(ui, "paint_from_views", "only");
                 ui.add(egui::TextEdit::singleline(&mut panel.only).hint_text("all slots").desired_width(90.0));
                 ui.end_row();
-                label(ui, "Objects", "Paint every visible object together (rig parts hide each other from the views), instead of the active one.");
+                prop_label(ui, "paint_from_views", "objects");
                 ui.checkbox(&mut panel.all_objects, "All visible");
                 ui.end_row();
             });

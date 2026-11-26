@@ -60,7 +60,7 @@ pub(super) fn split(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Boxes", "Inclusive boxes x0 y0 z0 x1 y1 z1, one per line, in the active object's local cells or, with World, in world cells. A cell inside any of them is taken. Empty takes by slot alone.");
+                prop_label(ui, "split_object", "boxes");
                 ui.vertical(|ui| {
                     ui.add(
                         egui::TextEdit::multiline(&mut panel.boxes)
@@ -72,7 +72,7 @@ pub(super) fn split(ui: &mut Ui, session: &mut Session) {
                         .on_hover_text("MCP space world: the boxes are world cells, and the object's position is subtracted first.");
                 });
                 ui.end_row();
-                label(ui, "Slots", "Only cells of these slots, such as 3 4. Empty is every slot.");
+                prop_label(ui, "split_object", "slots");
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.slots)
                         .hint_text("all slots")
@@ -85,7 +85,7 @@ pub(super) fn split(ui: &mut Ui, session: &mut Session) {
                     ui.checkbox(&mut panel.copy, "Copy");
                 });
                 ui.end_row();
-                label(ui, "Into", "A new object at the active object's position, or an existing one. The cells keep their world positions either way.");
+                prop_label(ui, "split_object", "into");
                 let selected = match panel.into {
                     Some(target) => names[target].clone(),
                     None => "New object".into(),
@@ -127,7 +127,7 @@ pub(super) fn recolor(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Slots", "Pairs from>to, such as 3>5 4>6: every cell of slot 3 becomes 5. 0 as the target erases. The pairs apply at once, so 3>4 4>3 swaps.");
+                prop_label(ui, "recolor", "map");
                 ui.add(
                     egui::TextEdit::singleline(&mut session.edit.recolor.map)
                         .hint_text("3>5")
@@ -182,7 +182,7 @@ pub(super) fn intersect(ui: &mut Ui, session: &mut Session) {
                     });
                 ui.end_row();
                 if panel.shape == 2 {
-                    label(ui, "Radius", "Edge bevel of the rounded box in cells.");
+                    prop_label(ui, "fill_rounded_box", "radius");
                     ui.add(egui::DragValue::new(&mut panel.radius).range(0.0..=64.0).speed(0.1));
                     ui.end_row();
                 }
@@ -208,7 +208,7 @@ pub(super) fn stroke(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Points", "One point x y z per line, in the active object's local cells (or world cells with World). They may float above or sink below the surface: each sample snaps to the nearest surface cell.");
+                prop_label(ui, "surface_stroke", "points");
                 ui.vertical(|ui| {
                     ui.add(
                         egui::TextEdit::multiline(&mut panel.points)
@@ -236,7 +236,7 @@ pub(super) fn stroke(ui: &mut Ui, session: &mut Session) {
                 prop_label(ui, "surface_stroke", "reach");
                 ui.add(egui::DragValue::new(&mut panel.reach).range(0.0..=crate::tools::MAX_STROKE_REACH as f32).speed(0.1));
                 ui.end_row();
-                label(ui, "Only", "Slots that may change, such as 3 4; others keep theirs. Empty is every slot.");
+                prop_label(ui, "surface_stroke", "only");
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.only)
                         .hint_text("all slots")
@@ -293,7 +293,7 @@ pub(super) fn components(ui: &mut Ui, session: &mut Session) {
                 prop_label(ui, "components", "minCells");
                 prop_drag(ui, "components", "minCells", &mut panel.min_cells);
                 ui.end_row();
-                label(ui, "Seed", "A cell x y z of the part Delete, Move, and Split act on, in local cells; it snaps to the nearest solid cell.");
+                prop_label(ui, "components", "seed");
                 ui.horizontal_wrapped(|ui| {
                     ui.add(egui::TextEdit::singleline(&mut panel.seed).hint_text("x y z").desired_width(90.0));
                     if ui.button("At selection").on_hover_text("The selection's centre.").clicked() {
@@ -301,7 +301,7 @@ pub(super) fn components(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
-                label(ui, "Anchor", "Optional: a cell of the part that stays. The seed's part is first cut from it at the thinnest neck between them, so a rider touching a shell comes off. Empty: no cut.");
+                prop_label(ui, "components", "anchor");
                 ui.horizontal_wrapped(|ui| {
                     ui.add(egui::TextEdit::singleline(&mut panel.anchor).hint_text("none").desired_width(90.0));
                     if ui.button("At selection").on_hover_text("The selection's centre.").clicked() {
@@ -374,7 +374,7 @@ pub(super) fn plates(ui: &mut Ui, session: &mut Session) {
                     ui.selectable_value(&mut panel.layout, 1, "Voronoi");
                 });
                 ui.end_row();
-                label(ui, "Rings", "Plates per ring from the centre out, such as 5 9.");
+                prop_label(ui, "shell_plates", "rings");
                 slots(ui, &mut panel.rings, "6");
                 ui.end_row();
                 prop_label(ui, "shell_plates", "central");
@@ -390,7 +390,7 @@ pub(super) fn plates(ui: &mut Ui, session: &mut Session) {
                 prop_label(ui, "shell_plates", "rim");
                 prop_drag(ui, "shell_plates", "rim", &mut panel.rim);
                 ui.end_row();
-                label(ui, "Plate slots", "Slots per kind, such as 3 4 5: each plate picks one by Seed. Empty ring slots paint the active slot; empty central and band take the ring's, an empty rim the band's.");
+                prop_label(ui, "shell_plates", "palettes");
                 ui.vertical(|ui| {
                     slots(ui, &mut panel.ring_slots, "ring: active");
                     slots(ui, &mut panel.central_slots, "central");
@@ -416,7 +416,7 @@ pub(super) fn plates(ui: &mut Ui, session: &mut Session) {
                 prop_label(ui, "shell_plates", "facing");
                 ui.add(egui::DragValue::new(&mut panel.facing).range(0.0..=180.0).speed(0.5).suffix("°"));
                 ui.end_row();
-                label(ui, "Only", "Only cells of these slots take the pattern, such as 2. Empty is every slot.");
+                prop_label(ui, "shell_plates", "only");
                 slots(ui, &mut panel.only, "all slots");
                 ui.end_row();
                 prop_label(ui, "shell_plates", "jitter");
@@ -447,7 +447,7 @@ pub(super) fn deterrace(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Mode", "Blocks re-quantizes the form into cubes of Size cells, so every step is Size tall (the chunky concept-cube look). Stagger moves the edges of one-cell steps on the top surface in teeth, so they do not run in long even contours.");
+                prop_label(ui, "deterrace", "mode");
                 ui.horizontal_wrapped(|ui| {
                     ui.selectable_value(&mut panel.mode, 0, "Blocks");
                     ui.selectable_value(&mut panel.mode, 1, "Stagger");
@@ -477,7 +477,9 @@ pub(super) fn deterrace(ui: &mut Ui, session: &mut Session) {
             });
         if ui
             .button("De-terrace")
-            .on_hover_text("MCP deterrace over the selection's box, or the whole object. One undo step.")
+            .on_hover_text(
+                "MCP deterrace over the selection's box, or the whole object. One undo step.",
+            )
             .clicked()
         {
             session.deterrace_from_panel();
@@ -511,7 +513,7 @@ pub(super) fn reduce(ui: &mut Ui, session: &mut Session) {
                     });
                     ui.end_row();
                 } else if panel.mode == 1 {
-                    label(ui, "Palette", "Slots or #rrggbb colours to snap to, such as 3 4 #e8822a.");
+                    prop_label(ui, "reduce_palette", "palette");
                     ui.add(egui::TextEdit::singleline(&mut panel.palette).hint_text("3 4 #e8822a").desired_width(120.0));
                     ui.end_row();
                 }
@@ -521,7 +523,7 @@ pub(super) fn reduce(ui: &mut Ui, session: &mut Session) {
                 prop_label(ui, "reduce_palette", "minSame");
                 prop_drag(ui, "reduce_palette", "minSame", &mut panel.min_same);
                 ui.end_row();
-                label(ui, "Protect", "Slots both passes leave alone, such as the eyes.");
+                prop_label(ui, "reduce_palette", "protect");
                 ui.add(egui::TextEdit::singleline(&mut panel.protect).hint_text("none").desired_width(90.0));
                 ui.end_row();
             });
@@ -546,7 +548,7 @@ pub(super) fn parts(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Parts", "One part per line: name x y z (a seed cell; more triples for more seeds of the part), name bone=NAME (that bone's pivot), or name marker=NAME. Add | nx ny nz ax ay az for a cutting plane the part keeps the normal's side of.");
+                prop_label(ui, "split_parts", "parts");
                 ui.vertical(|ui| {
                     ui.add(
                         egui::TextEdit::multiline(&mut panel.parts)

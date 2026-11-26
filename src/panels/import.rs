@@ -71,14 +71,14 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
-                label(ui, "Anchor", "The point of the mesh's box placed at Position: the low corner, the centre, or the centre of the bottom.");
+                prop_label(ui, "import_mesh", "anchor");
                 ui.horizontal_wrapped(|ui| {
                     for (index, name) in ["Min", "Center", "Bottom"].into_iter().enumerate() {
                         ui.selectable_value(&mut panel.anchor, index, name);
                     }
                 });
                 ui.end_row();
-                label(ui, "Fill", "Solid fills everything a flood from the box border cannot reach, so a hollow or double-walled mesh comes out solid; an open mesh (holes, seams, an open underside) first has its openings sealed at their rims. Parity is the older vote of ray parity along X, Y, and Z. Shell writes only the cells the surface touches.");
+                prop_label(ui, "import_mesh", "fill");
                 ui.horizontal_wrapped(|ui| {
                     for (index, name) in ["Solid", "Parity", "Shell"].into_iter().enumerate() {
                         ui.selectable_value(&mut panel.fill, index, name);
@@ -91,7 +91,7 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                     ui.selectable_value(&mut panel.vertex_only, true, "Vertex");
                 });
                 ui.end_row();
-                label(ui, "Slots", "Map colours only to these palette indices, leaving the palette alone. Empty quantizes into the palette.");
+                prop_label(ui, "import_mesh", "slots");
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.slots)
                         .hint_text("quantize")
@@ -104,7 +104,7 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                 prop_label(ui, "import_mesh", "tolerance");
                 prop_drag(ui, "import_mesh", "tolerance", &mut panel.tolerance);
                 ui.end_row();
-                label(ui, "Mode", "Replace writes every cell; Empty adds only into empty cells; Paint recolours solid cells, to project a texture onto a form.");
+                prop_label(ui, "import_mesh", "mode");
                 ui.horizontal_wrapped(|ui| {
                     for (index, name) in ["Replace", "Empty", "Paint"].into_iter().enumerate() {
                         ui.selectable_value(&mut panel.mode, index, name);
@@ -114,7 +114,7 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                 prop_label(ui, "import_mesh", "newObject");
                 ui.checkbox(&mut panel.new_object, "New object");
                 ui.end_row();
-                label(ui, "Orient", "MCP import_mesh orient, before voxelizing. Upright: stand a tilted mesh level from its shape (thinnest principal axis up, narrowing upward, the taller end of its long axis toward −Y), tilting up at most Max tilt. Views: the axis-aligned turn and fine yaw whose silhouettes best match the views of Carve from views (with the Orient to views options). Both: upright, then the views' yaw.");
+                prop_label(ui, "import_mesh", "orient");
                 ui.horizontal_wrapped(|ui| {
                     for (index, name) in ["Off", "Upright", "Views", "Both"].into_iter().enumerate() {
                         ui.selectable_value(&mut panel.orient, index, name);
@@ -126,10 +126,10 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                     ui.add(egui::DragValue::new(&mut panel.max_tilt).range(0.0..=180.0).speed(1.0).suffix("°"));
                     ui.end_row();
                 }
-                label(ui, "Clean", "MCP import_mesh clean: reduce the imported colours and despeckle them with the Reduce palette section's options before they are written.");
+                prop_label(ui, "import_mesh", "clean");
                 ui.checkbox(&mut panel.clean, "Reduce palette");
                 ui.end_row();
-                label(ui, "Coverage", "MCP coverage: keep a cell only when this share of it is solid (measured 2 to 4 times finer) instead of every cell the surface touches, so a small creature's legs and fins do not merge into lumps. Keep thin: a part thinner than a cell (a fin, an ear, a leg) keeps the one cell its midline crosses instead of vanishing.");
+                prop_label(ui, "import_mesh", "coverage");
                 ui.horizontal_wrapped(|ui| {
                     ui.checkbox(&mut panel.coverage, "");
                     ui.add_enabled(
@@ -139,7 +139,7 @@ pub(super) fn import(ui: &mut Ui, session: &mut Session) {
                     ui.add_enabled(panel.coverage, egui::Checkbox::new(&mut panel.keep_thin, "Keep thin"));
                 });
                 ui.end_row();
-                label(ui, "Min feature", "MCP minFeature: report the imported parts thinner than this many cells. 0 is off.");
+                prop_label(ui, "import_mesh", "minFeature");
                 ui.add(egui::DragValue::new(&mut panel.min_feature).range(0..=16));
                 ui.end_row();
             });

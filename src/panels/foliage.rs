@@ -38,7 +38,7 @@ pub(super) fn foliage(ui: &mut Ui, session: &mut Session) {
                 });
                 ui.end_row();
                 if panel.source == 0 {
-                    label(ui, "Ellipsoids", "One per line in local cells: x y z radius, or x y z rx ry rz.");
+                    prop_label(ui, "foliage", "ellipsoids");
                     ui.vertical(|ui| {
                         ui.add(
                             egui::TextEdit::multiline(&mut panel.ellipsoids)
@@ -51,11 +51,11 @@ pub(super) fn foliage(ui: &mut Ui, session: &mut Session) {
                             .clicked();
                     });
                 } else {
-                    label(ui, "From", "Slots of the existing crown, the leaves.");
+                    prop_label(ui, "foliage", "from");
                     slots_field(ui, &mut panel.from, "leaf slots");
                 }
                 ui.end_row();
-                label(ui, "Palettes", "Leaf slots from the darkest to the lightest: shade, mid, light, sunlit tips. Each clump is shaded as one piece, top light and underside dark. Empty is the active slot.");
+                prop_label(ui, "foliage", "palettes");
                 slots_field(ui, &mut panel.palettes, "active slot");
                 ui.end_row();
                 prop_label(ui, "foliage", "core");
@@ -94,7 +94,7 @@ pub(super) fn foliage(ui: &mut Ui, session: &mut Session) {
                 prop_label(ui, "foliage", "groove");
                 prop_slider(ui, "foliage", "groove", &mut panel.groove);
                 ui.end_row();
-                label(ui, "Keep", "Slots never written even if they are crown slots. Any slot outside Palettes, Core, and From (the wood) is kept already.");
+                prop_label(ui, "foliage", "protect");
                 slots_field(ui, &mut panel.protect, "none");
                 ui.end_row();
                 prop_label(ui, "foliage", "seed");

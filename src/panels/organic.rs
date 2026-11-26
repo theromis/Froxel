@@ -63,10 +63,10 @@ pub(super) fn deform(ui: &mut Ui, session: &mut Session) {
                         }
                     });
                     ui.end_row();
-                    label(ui, "Origin", "Where along the axis it starts, in local cells. Off: the cells' lowest.");
+                    prop_label(ui, "deform", "origin");
                     optional(ui, &mut panel.origin, 0.0, "Give the origin");
                     ui.end_row();
-                    label(ui, "Length", "How far along the axis it runs. Off: the cells' extent.");
+                    prop_label(ui, "deform", "length");
                     optional(ui, &mut panel.length, 16.0, "Give the length");
                     ui.end_row();
                 }
@@ -167,7 +167,7 @@ pub(super) fn loft(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Points", "One per line: x y z, then optional rx ry roll flatTop noise frequency. A value left out takes the defaults below.");
+                prop_label(ui, "loft", "points");
                 ui.add(
                     egui::TextEdit::multiline(&mut panel.points)
                         .desired_rows(3)
@@ -198,7 +198,7 @@ pub(super) fn loft(ui: &mut Ui, session: &mut Session) {
                 prop_label(ui, "loft", "frequency");
                 number(ui, &mut panel.frequency, 0.0..=64.0, 0.05);
                 ui.end_row();
-                label(ui, "Palettes", "Slots laid out by the pattern; empty is the active slot.");
+                prop_label(ui, "loft", "palettes");
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.palettes)
                         .hint_text("active slot")
@@ -229,7 +229,9 @@ pub(super) fn loft(ui: &mut Ui, session: &mut Session) {
         ui.horizontal_wrapped(|ui| {
             if ui
                 .button("Point at selection")
-                .on_hover_text("Add the selection's centre as the next point, with the default radii.")
+                .on_hover_text(
+                    "Add the selection's centre as the next point, with the default radii.",
+                )
                 .clicked()
             {
                 session.loft_point_at_selection();
@@ -255,7 +257,7 @@ pub(super) fn blend(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                label(ui, "Shapes", "One per line, in order: sphere x y z r, ellipsoid x y z rx ry rz, box x y z sx sy sz [round], capsule x0 y0 z0 x1 y1 z1 r0 [r1], torus x y z radius thickness. Then optional words: sub (carve it softly) or int (keep only inside it), k=N (this shape's smoothing), slot=N (its colour; the active slot by default), rot=x,y,z (degrees). A whole number is a cell centre.");
+                prop_label(ui, "blend_shapes", "shapes");
                 ui.add(
                     egui::TextEdit::multiline(&mut panel.shapes)
                         .desired_rows(4)
@@ -288,7 +290,7 @@ pub(super) fn blend(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
-                label(ui, "Mirror", "Blend the shapes again mirrored across x about the object's centre.");
+                prop_label(ui, "blend_shapes", "mirror");
                 ui.checkbox(&mut panel.mirror, "Mirror x");
                 ui.end_row();
             });

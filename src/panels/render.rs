@@ -743,17 +743,14 @@ pub(super) fn break_end(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                let label = |ui: &mut Ui, text: &str| {
-                    ui.label(RichText::new(text).small().color(DIM));
-                };
-                label(ui, "Point");
+                prop_label(ui, "break_end", "point");
                 ui.horizontal_wrapped(|ui| {
                     for value in &mut panel.point {
                         ui.add(egui::DragValue::new(value).speed(0.25).max_decimals(1));
                     }
                 });
                 ui.end_row();
-                label(ui, "Normal");
+                prop_label(ui, "break_end", "normal");
                 ui.horizontal_wrapped(|ui| {
                     for value in &mut panel.normal {
                         ui.add(
@@ -787,7 +784,7 @@ pub(super) fn break_end(ui: &mut Ui, session: &mut Session) {
                 prop_label(ui, "break_end", "splinters");
                 prop_slider(ui, "break_end", "splinters", &mut panel.splinters);
                 ui.end_row();
-                label(ui, "Length");
+                prop_label(ui, "break_end", "length");
                 ui.horizontal_wrapped(|ui| {
                     ui.add(
                         egui::DragValue::new(&mut panel.length[0])
@@ -813,7 +810,7 @@ pub(super) fn break_end(ui: &mut Ui, session: &mut Session) {
                 prop_label(ui, "break_end", "bark");
                 prop_drag(ui, "break_end", "bark", &mut panel.bark);
                 ui.end_row();
-                label(ui, "Sapwood");
+                prop_label(ui, "break_end", "sapwood");
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.sapwood)
                         .hint_text("e.g. 11, 12")
@@ -848,13 +845,10 @@ pub(super) fn scatter(ui: &mut Ui, session: &mut Session) {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                let label = |ui: &mut Ui, text: &str| {
-                    ui.label(RichText::new(text).small().color(DIM));
-                };
                 prop_label(ui, "scatter", "count");
                 prop_slider(ui, "scatter", "count", &mut panel.count);
                 ui.end_row();
-                label(ui, "Kinds");
+                prop_label(ui, "scatter", "kinds");
                 ui.horizontal_wrapped(|ui| {
                     for (on, name) in panel
                         .kinds
@@ -865,13 +859,13 @@ pub(super) fn scatter(ui: &mut Ui, session: &mut Session) {
                     }
                 });
                 ui.end_row();
-                label(ui, "Size");
+                prop_label(ui, "scatter", "size");
                 ui.horizontal_wrapped(|ui| {
                     ui.add(egui::DragValue::new(&mut panel.size[0]).range(1..=16));
                     ui.add(egui::DragValue::new(&mut panel.size[1]).range(1..=16));
                 });
                 ui.end_row();
-                label(ui, "Palettes");
+                prop_label(ui, "scatter", "palettes");
                 ui.add(
                     egui::TextEdit::singleline(&mut panel.palettes)
                         .hint_text("active slot")
