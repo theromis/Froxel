@@ -449,3 +449,18 @@ fn the_exported_glb_has_the_preview_silhouette() {
         "{differ} of {covered} pixels differ"
     );
 }
+
+#[test]
+fn the_sedge_tuft_example_grows_its_leaves() {
+    let mut session = Session::new();
+    session
+        .set_script(0, include_str!("fixtures/examples/sedge_tuft.rhai"))
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    let object = &session.objects[0];
+    assert_eq!(object.strands.len(), 11);
+    assert!(!object.cells.is_empty());
+    assert!(object.strands.iter().all(|s| s.slots == vec![2, 3, 4]));
+    session.regenerate_script(0).unwrap();
+    assert_eq!(session.objects[0].strands.len(), 11);
+}

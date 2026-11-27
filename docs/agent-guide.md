@@ -144,6 +144,16 @@ read at 20 to 60 cells; `minFeature` reports parts thinner than N cells);
 path of points to refine the silhouette
 (`tests/fixtures/examples/fallen_tree.rhai`).
 
+Thin bent parts (sedge and reed leaves, water weeds, barbels, fin rays) and
+detail finer than a cell should not step on the grid: `add_strand` lays a
+chain of cubes along a curve on an object, each turned along the path, with
+`width`, `thickness`, and `step` down to 0.125 cells, a `twist` and `scale`
+per point, and `palettes` as a base-to-tip `gradient`. A strand stays
+editable (`edit_strand`, `list_strands`, `remove_strand`), moves with its
+object, bone, and pose, and `preview`, `render`, `model_view`, and
+`export_mesh` all draw the same turned boxes; `bake_strands` writes a grid
+copy for MagicaVoxel (`tests/fixtures/examples/sedge_tuft.rhai`).
+
 ## Surfaces
 
 Stone surfaces: `column_relief` breaks a cliff face into columns of uneven

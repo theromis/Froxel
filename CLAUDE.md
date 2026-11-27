@@ -9,8 +9,10 @@ The binary is `froxel`.
 camera), `files` (open and save), `objects` (bones, the preview pose, clips,
 and undo), `joints` (MCP `place_joints`, pivots at the joints between rig
 parts), `pointer`,
-`selection`, `drag`, `pick`, `geom`, and `vox/` (`.vox` read, write, the
-`MVRG` rig chunk, and the `MVAN` clip chunk). `viewport.rs` is orbit and pointer input. `panels/` is the side
+`selection`, `drag`, `pick`, `geom`, `strands` (the world boxes of an
+object's strands), `strand_tool` (the Strand tool), and `vox/` (`.vox` read,
+write, the `MVRG` rig chunk, the `MVAN` clip chunk, and the `MVST` strand
+chunk). `viewport.rs` is orbit and pointer input. `panels/` is the side
 UI. `tools/` is brush shapes, generators (`generate.rs`: MCP `generate`,
 the Generator tool), and the MCP sculpt shapes
 (`sculpt.rs`: `fill_tube`, `carve`, `smooth`; `loft.rs`, `deform.rs`, and
@@ -24,8 +26,11 @@ cube pitch, checks, and parts; `mask_edit.rs`: the mask edits of `compare_silhou
 the `downscale` of `carve_from_views` and `paint_from_views`;
 `reduce.rs`: MCP `reduce_palette` and `import_mesh` `clean`; `colors.rs`: Oklab, median cut,
 k-means, and the accent guard they share; `rig_split.rs`: MCP `split_parts`, the geodesic
-split into rig parts; `upright.rs`: `import_mesh` `orient: "upright"`, the PCA stand-up). `mesh.rs` and `gpu.rs` draw the
-edit-mode mesh. `trace/` is the CPU path tracer. `trace_gpu.rs` plus
+split into rig parts; `upright.rs`: `import_mesh` `orient: "upright"`, the PCA stand-up;
+`strand.rs`: strands, chains of turned cubes along a curve, MCP
+`add_strand` and the rest, `remote/strands.rs`). `mesh.rs` and `gpu.rs` draw the
+edit-mode mesh. `trace/` is the CPU path tracer (`trace/boxes.rs` is the BVH of strand
+boxes it and `trace.wgsl` walk beside the grid). `trace_gpu.rs` plus
 `trace.wgsl` and `blit.wgsl` are the wgpu tracer used by Render mode.
 `import/` reads `.glb`, `.gltf`, and `.obj` meshes and voxelizes them (every touched
 cell, or by `coverage` on a finer pass with `keepThin`)
@@ -102,7 +107,9 @@ uses one fixed ray pattern so there is no noise, and off leaves the file byte
 for byte. `export/scene.rs` is MCP `bake_scene` and `froxel run bake_scene`: placed
 `.vox` files, in the frame of the glb they export to, plus occluders, into one
 merged mesh and atlas; rays enter a placement through its inverse transform, over
-one grid per source and a BVH. Clips are glTF
+one grid per source and a BVH. Strands
+(`export/strands.rs`) export as six faces per turned box, never merged with
+cell faces, one atlas texel per face. Clips are glTF
 animations on the joint nodes. The preview pose is not the bind pose:
 it is a local quaternion per bone, and an empty pose leaves the mesh and
 the tracer unchanged. A bone's `rest` is a saved local turn between the
@@ -134,9 +141,9 @@ or tonemap. MCP `set_view` moves the window camera; its `orthographic` also
 switches the edit viewport.
 
 Every tool has a key (`Tool::key`, also its strip tooltip): **V** **L** **C**
-**Q** **B** **F** **N** **P** **S** **U** **M** **K** **W** select brush, line,
-circle, square, box, face, generator, tube, sculpt, mutator, marquee, box
-select, and flood select. **T** **R** **G** select Add, Remove, and Paint, in Model mode only.
+**Q** **B** **F** **N** **P** **H** **S** **U** **M** **K** **W** select brush,
+line, circle, square, box, face, generator, tube, strand, sculpt, mutator,
+marquee, box select, and flood select. **T** **R** **G** select Add, Remove, and Paint, in Model mode only.
 **Tab** switches Model and Object mode. In Object mode **X** **Y** **Z** rotate
 and Shift flips.
 

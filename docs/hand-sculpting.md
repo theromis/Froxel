@@ -590,6 +590,33 @@ brush("grab", [[0.0, 0.0, r * 2.4, r * 1.2]], #{vector: [-2.0, 0.0, 1.0]});
 Loft the main forms first, displace them while they are thick, and brush
 last, on the forms as they will stay.
 
+## Strands
+
+A leaf, a reed, a water weed, a catfish barbel, or a fin ray is thinner than
+a cell along one or two axes and bends: on the grid it becomes a staircase.
+Build it as a strand instead: `add_strand` with the path's points in the
+object's local cells, a section (`width` across, `thickness` up, down to
+0.125 cells), and `step`, the length of each cube along the path. Every cube
+is turned along the curve, so the leaf arches smoothly, and a `twist` per
+point turns the section about the path. `scale` per point tapers it toward
+the tip, and `palettes` with `pattern` `gradient` shades it from base to tip.
+
+```json
+{"points": [[0, 0, 2, 0, 1], [1.5, 0, 9, 20, 0.85], [6, 0, 14, 40, 0.35]],
+ "width": 1, "thickness": 0.3, "step": 0.8, "palettes": [2, 3, 4]}
+```
+
+Start a leaf a little inside the surface it grows from, so no gap shows at
+the base. Check it with `preview` or `render`: they draw the turned boxes as
+they are, as does `export_mesh`. Adjust with `edit_strand`: `point` and `at`
+move one point, `insert` adds one, `move` shifts the whole leaf. In the
+window the Strand tool (**H**) does the same by hand: click points, press
+Enter, then drag a point or the leaf. A strand moves with its object, its
+bone, and the pose. Only MagicaVoxel ignores strands (it shows the cells);
+`bake_strands` writes their cells when a grid copy is wanted. A Rhai
+generator grows a tuft with `add_strand` in a loop
+(`tests/fixtures/examples/sedge_tuft.rhai`).
+
 ## Tips
 
 **One object per rig part, at world `[0, 0, 0]`.** Build the head, jaw, body

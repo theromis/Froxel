@@ -46,7 +46,7 @@ server is still running. A server started with `--watch` reloads by itself.
   set as `[[x, y], …]` through `set_params`, not one float per coordinate.
   Scripts have the MCP tools too, by the same names, with optional
   arguments in a trailing map such as `#{mode: "empty"}`: the sculpt tools
-  (`fill_tube`, `generate`, `carve_*`, `recolor`, `surface_stroke`, `shell_plates`, `components`, `deterrace`, `reduce_palette`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `radial_relief`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `blend_shapes`, `deform`, `brush`, `carve_from_views` and `optimize_to_views` with views as rows and a legend, `project_paint` and `decal` with the image as rows and a legend, `paint_from_views` with views as rows and a legend, `pixelate_views` (views as rows; returns pixel art rows), `fit_to_views` and `orient_to_views` with views as rows and a legend, and `marker`,
+  (`fill_tube`, `add_strand`, `generate`, `carve_*`, `recolor`, `surface_stroke`, `shell_plates`, `components`, `deterrace`, `reduce_palette`, `smooth`, `break_end`, `scatter`, `column_relief`, `joints`, `weather`, `bark`, `planks`, `cavity_tint`, `radial_relief`, `foliage`, `moss`, `algae`, `vines`, `sweep`, `trim_outline`, `loft`, `blend_shapes`, `deform`, `brush`, `carve_from_views` and `optimize_to_views` with views as rows and a legend, `project_paint` and `decal` with the image as rows and a legend, `paint_from_views` with views as rows and a legend, `pixelate_views` (views as rows; returns pixel art rows), `fit_to_views` and `orient_to_views` with views as rows and a legend, and `marker`,
   `collision_box`, `connector`, `collision_from_voxels`),
   `get_voxels`/`set_voxels`, and the object, bone, pose, clip, and palette
   tools (`mirror_object`, `split_object`, `split_parts`, `clear_object`, `add_bone`, `bind_object`, `set_clip_keys`,
@@ -60,6 +60,18 @@ server is still running. A server started with `--watch` reloads by itself.
   `tests/fixtures/examples/hollow_log.rhai`, `tests/fixtures/examples/barked_trunk.rhai`, and
   `tests/fixtures/examples/plank_dock.rhai`.
 
+- **Strands** for thin bent parts and detail finer than the grid: sedge and
+  reed leaves, water weeds, barbels, fin rays, antennae. `add_strand` lays a
+  chain of cubes along a curve through local `points` (`[x, y, z, twist,
+  scale]`, a whole number is a cell centre), each cube turned along the path,
+  with `width`, `thickness`, and `step` down to 0.125 cells and `palettes`
+  as a base-to-tip `gradient`. A strand stays editable (`edit_strand` moves a
+  point, inserts one, or shifts it; `list_strands`, `remove_strand`), moves
+  with its object, bone, and pose, and is drawn, traced, and exported as the
+  same turned boxes, so `preview`, `render`, and the glb all show it as
+  modelled. MagicaVoxel shows only cells: `bake_strands` writes a grid copy
+  when one is needed. A script's `add_strand` replaces its strands on rerun
+  (`tests/fixtures/examples/sedge_tuft.rhai`).
 - **Markers** for game data: `set_marker` names a ledge point, a collision
   `box`, or a `connector` (a joining end) on an object; scripts call
   `marker`, `collision_box`, and `connector`. They are saved in the `.vox`,

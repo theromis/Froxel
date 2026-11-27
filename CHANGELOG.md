@@ -11,6 +11,8 @@
   (`docs/hand-sculpting.md` is `froxel://hand-sculpting`).
 - `carve_from_views`' tool description was over the same 4096-character
   limit; its depth-map options are now described under `views`.
+- Moving an object with `set_object` (or the Position fields) left its cells
+  drawn at the old place in the viewport until another edit touched them.
 - A control-port request the window does not take within 5 seconds, because
   it draws no frames (hidden, minimised, or covered), is withdrawn with
   `state` `not-run` instead of waiting a minute and running whenever the
@@ -32,6 +34,16 @@
 
 ### Added
 
+- Strands: chains of cubes along a curve, each cube turned along the path,
+  for leaves, reeds, weeds, barbels, and fin rays that bend instead of
+  stepping, and detail finer than a cell. A strand is stored as its
+  definition on its object (the `.vox` keeps it in an `MVST` chunk), moves
+  with the object, its bone, and the pose, and is drawn, traced (CPU and
+  GPU), and exported as the same turned boxes. MCP and Rhai `add_strand`,
+  `edit_strand`, `remove_strand`, `list_strands`, and `bake_strands`; the
+  Strand tool (**H**) places, selects, and drags them in the window, and the
+  Strands section lists, removes, and bakes them. `mirror_object` mirrors
+  strands and `clear_object` clears them.
 - MCP `set_palette` (and Rhai `set_palette`) sets a slot's Render material:
   `material` (`diffuse`, `metal`, `emissive`, `glass`), `roughness`,
   `metallic`, `transparency`, `ior`, `emission`, and `power`, with the colour
