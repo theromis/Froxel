@@ -8,6 +8,7 @@ use super::geom::*;
 use super::*;
 
 mod read;
+mod skin;
 mod strands;
 mod write;
 

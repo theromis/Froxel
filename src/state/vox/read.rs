@@ -30,6 +30,7 @@ pub(crate) fn load_vox(bytes: &[u8]) -> Result<Loaded, String> {
     let mut clips = None;
     let mut scripts = None;
     let mut strands = None;
+    let mut skins = None;
     let mut markers = None;
     let mut scene_shift = None;
     let mut warnings = Vec::new();
@@ -165,6 +166,11 @@ pub(crate) fn load_vox(bytes: &[u8]) -> Result<Loaded, String> {
                 return Err("duplicate MVST chunk".into());
             }
             strands = Some(super::strands::decode(body)?);
+        } else if &id == b"MVSK" {
+            if skins.is_some() {
+                return Err("duplicate MVSK chunk".into());
+            }
+            skins = Some(super::skin::decode(body)?);
         }
         p += content + children;
     }
@@ -175,7 +181,9 @@ pub(crate) fn load_vox(bytes: &[u8]) -> Result<Loaded, String> {
     // Only Froxel writes script and marker chunks. A file with one but no
     // MVOR predates that chunk, and its node positions are the frame its
     // manifest and glb were written in, so it is not centred as an import.
-    if scene_shift.is_none() && (scripts.is_some() || markers.is_some() || strands.is_some()) {
+    if scene_shift.is_none()
+        && (scripts.is_some() || markers.is_some() || strands.is_some() || skins.is_some())
+    {
         scene_shift = Some([0, 0, 0]);
     }
     let (mut objects, shift) = place_models(&models, &nodes, scene_shift)?;
@@ -267,6 +275,9 @@ pub(crate) fn load_vox(bytes: &[u8]) -> Result<Loaded, String> {
     if let Some(stored) = strands {
         super::strands::install(&mut objects, stored);
     }
+    if let Some(stored) = skins {
+        super::skin::install(&mut objects, stored);
+    }
     let graph = if order.is_empty() && layers.is_empty() {
         None
     } else {
@@ -298,12 +309,13 @@ pub(crate) fn load_vox(bytes: &[u8]) -> Result<Loaded, String> {
 /// The newest version of each Froxel chunk this build reads. `MVOR` is not
 /// here: without it the objects would be centred as an import and land in
 /// the wrong place, so a newer one still refuses the file.
-pub(crate) const CHUNK_VERSIONS: [(&[u8; 4], u32); 5] = [
+pub(crate) const CHUNK_VERSIONS: [(&[u8; 4], u32); 6] = [
     (b"MVRG", 2),
     (b"MVAN", 3),
     (b"MVSC", 2),
     (b"MVMK", 1),
     (b"MVST", super::strands::MVST_VERSION),
+    (b"MVSK", super::skin::MVSK_VERSION),
 ];
 
 /// A warning when `id` is a Froxel chunk whose version is newer than this

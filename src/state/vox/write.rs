@@ -248,6 +248,9 @@ pub(crate) fn save_graph(
     if let Some(body) = super::strands::encode(objects) {
         push_chunk(&mut children, b"MVST", &body);
     }
+    if let Some(body) = super::skin::encode(objects) {
+        push_chunk(&mut children, b"MVSK", &body);
+    }
     Ok(wrap_vox(children))
 }
 
@@ -725,6 +728,9 @@ pub(crate) fn save_scene(
     }
     if let Some(body) = super::strands::encode(objects) {
         push_chunk(&mut children, b"MVST", &body);
+    }
+    if let Some(body) = super::skin::encode(objects) {
+        push_chunk(&mut children, b"MVSK", &body);
     }
     Ok(wrap_vox(children))
 }

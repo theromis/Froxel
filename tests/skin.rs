@@ -343,3 +343,48 @@ fn clearing_an_object_drops_its_skin_and_undo_brings_it_back() {
     assert_eq!(session.objects[0].skin, Some(Skin::default()));
     assert!(!session.skin_boxes(0).is_empty());
 }
+
+#[test]
+fn a_saved_skin_reopens_with_the_same_bricks() {
+    use serde_json::json;
+    let mut session = crate::state::Session::new();
+    session.objects[0].name = "Fish".into();
+    session.objects[0].cells = ball(7, 3).into();
+    session.objects[0].translation = (4, -2, 9);
+    let skin = Skin {
+        axis: SkinAxis::Y,
+        length: [1.5, 2.5],
+        bare: vec![9, 12],
+        seed: 77,
+        ..Skin::default()
+    };
+    session.objects[0].skin = Some(skin.clone());
+    let path = std::env::temp_dir().join("froxel-skin-round-trip.vox");
+    let _ = std::fs::remove_file(&path);
+    let save = json!({"path": path.to_string_lossy()});
+    crate::remote::apply(&mut session, "document.save", &save).unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    assert!(bytes.windows(4).any(|w| w == b"MVSK"));
+    let mut reopened = crate::state::Session::new();
+    crate::remote::apply(&mut reopened, "document.open", &save).unwrap();
+    let _ = std::fs::remove_file(&path);
+    let fish = reopened
+        .objects
+        .iter()
+        .position(|o| o.name == "Fish")
+        .unwrap();
+    assert_eq!(reopened.objects[fish].skin, Some(skin));
+    let centres = |s: &crate::state::Session, i: usize| -> Vec<[i64; 3]> {
+        let mut out: Vec<[i64; 3]> = s
+            .strand_world_boxes(i)
+            .iter()
+            .map(|b| {
+                let c = b.matrix.transform_point3(Vec3::ZERO);
+                [c.x, c.y, c.z].map(|v| (v * 1000.0).round() as i64)
+            })
+            .collect();
+        out.sort_unstable();
+        out
+    };
+    assert_eq!(centres(&session, 0), centres(&reopened, fish));
+}
