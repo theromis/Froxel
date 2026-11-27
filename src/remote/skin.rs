@@ -65,21 +65,23 @@ pub(crate) fn skin_arg(params: &Value) -> Result<Option<Skin>, String> {
     Ok(Some(skin))
 }
 
-/// A skin as the tool takes it.
+/// A skin as the tool takes it, each number as written (0.12, not the f32
+/// widened to 0.119999997).
 pub(crate) fn skin_json(skin: &Skin) -> Value {
+    let short = |v: f32| -> f64 { v.to_string().parse().unwrap_or(v as f64) };
     json!({
         "axis": skin.axis.name(),
-        "length": skin.length,
-        "width": skin.width,
-        "height": skin.height,
-        "depth": skin.depth,
-        "stagger": skin.stagger,
-        "relief": skin.relief,
-        "tilt": skin.tilt,
-        "follow": skin.follow,
-        "gap": skin.gap,
-        "smooth": skin.smooth,
-        "thin": skin.thin,
+        "length": skin.length.map(short),
+        "width": short(skin.width),
+        "height": short(skin.height),
+        "depth": short(skin.depth),
+        "stagger": short(skin.stagger),
+        "relief": short(skin.relief),
+        "tilt": short(skin.tilt),
+        "follow": short(skin.follow),
+        "gap": short(skin.gap),
+        "smooth": short(skin.smooth),
+        "thin": short(skin.thin),
         "bare": skin.bare,
         "seed": skin.seed,
     })

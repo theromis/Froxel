@@ -20,6 +20,7 @@ fn skin_sets_the_whole_skin_and_off_removes_it_each_one_undo_step() {
     let reply = apply(&mut session, "skin.set", &json!({"axis": "x", "seed": 4})).unwrap();
     assert!(reply["bricks"].as_u64().unwrap() > 50, "{reply}");
     assert_eq!(reply["skin"]["axis"], "x");
+    assert_eq!(reply["skin"]["gap"], 0.12);
     assert_eq!(
         session.objects[0].skin,
         Some(Skin {
