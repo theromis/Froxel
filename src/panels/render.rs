@@ -84,6 +84,37 @@ pub(super) fn export(ui: &mut Ui, session: &mut Session) {
             UiAction::Export(flag),
         );
     }
+    op_slider(ui, session, SliderTarget::ExportBevel);
+    ui.horizontal_wrapped(|ui| {
+        let prop = crate::ops::prop_ui("export_mesh", "bevelMode");
+        ui.add_sized(
+            [64.0, 16.0],
+            egui::Label::new(RichText::new(prop.label).small().color(DIM)),
+        )
+        .on_hover_text(prop.tooltip());
+        let before = session.bevel_mode;
+        for (mode, label, tip) in [
+            (
+                crate::bevel::BevelMode::Cubes,
+                "Cubes",
+                "Every cube rounded, grooves between them",
+            ),
+            (
+                crate::bevel::BevelMode::Edges,
+                "Edges",
+                "Only the shape's outer edges rounded",
+            ),
+        ] {
+            ui.selectable_value(&mut session.bevel_mode, mode, label)
+                .on_hover_text(tip);
+        }
+        if session.bevel_mode != before {
+            if let Some(bevel) = session.export.bevel.as_mut() {
+                bevel.mode = session.bevel_mode;
+            }
+            session.mesh_epoch = session.mesh_epoch.wrapping_add(1);
+        }
+    });
     op_slider(ui, session, SliderTarget::ExportAo);
     ui.add_enabled_ui(session.export.ao_strength > 0.0, |ui| {
         op_slider(ui, session, SliderTarget::ExportAoRadius);

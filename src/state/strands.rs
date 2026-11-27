@@ -80,6 +80,16 @@ impl WorldBox {
 }
 
 impl Session {
+    /// The bevel the viewport draws: the Export section's, while the
+    /// viewport's Bevel box is on in the edit view.
+    pub fn view_bevel(&self) -> Option<crate::bevel::Bevel> {
+        if self.bevel_preview && self.render_mode == RenderMode::Edit {
+            self.export.bevel
+        } else {
+            None
+        }
+    }
+
     /// Local boxes of one object's strands, in its local geometric frame.
     pub fn strand_boxes(&self, index: usize) -> Vec<StrandBox> {
         self.objects

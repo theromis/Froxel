@@ -660,6 +660,8 @@ pub enum UiAction {
     RemoveClip,
     ShowBones,
     Export(ExportFlag),
+    /// The viewport's Bevel box.
+    BevelPreview,
     Viewport,
     Palette(u8),
     Slider(SliderSpec),
@@ -753,6 +755,7 @@ pub enum SliderTarget {
     SmoothFillAt,
     SmoothRemoveAt,
     ExportAo,
+    ExportBevel,
     ExportAoRadius,
     BakeOcclusion,
     BakeDistance,
@@ -826,6 +829,7 @@ impl SliderTarget {
             SliderTarget::SmoothFillAt => "slider.smooth-fill-at",
             SliderTarget::SmoothRemoveAt => "slider.smooth-remove-at",
             SliderTarget::ExportAo => "slider.export-ao",
+            SliderTarget::ExportBevel => "slider.export-bevel",
             SliderTarget::ExportAoRadius => "slider.export-ao-radius",
             SliderTarget::BakeOcclusion => "slider.bake-occlusion",
             SliderTarget::BakeDistance => "slider.bake-distance",
@@ -1085,6 +1089,10 @@ pub struct Session {
     pub denoise: bool,
     /// Viewport-only sway and bob. Off leaves the mesh still. Not saved.
     pub motion_preview: bool,
+    /// The viewport draws the Export section's bevel.
+    pub bevel_preview: bool,
+    /// The Export section's bevel mode, kept while its Bevel is 0.
+    pub bevel_mode: crate::bevel::BevelMode,
     /// Last script error for the panel. Not part of undo.
     pub script_error: String,
     /// `(object index, time)` when an auto-regenerate should run.

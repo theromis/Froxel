@@ -266,6 +266,7 @@ impl SceneGpu {
                 continue;
             }
             let delta = session.skin_delta(index);
+            let bevel = session.view_bevel();
             // One pass puts each cell in its chunk; the hashes and the
             // remesh below read only those lists.
             let mut buckets: HashMap<(i32, i32, i32), Vec<(crate::state::Cell, u8)>> =
@@ -305,6 +306,18 @@ impl SceneGpu {
                             .wrapping_mul(0x9E37_79B1)
                             .wrapping_add(base as u32 as u64);
                     }
+                    if let Some(bevel) = bevel {
+                        // A bevelled chunk reads its neighbours' cells too.
+                        hash = hash
+                            .wrapping_mul(0x9E37_79B1)
+                            .wrapping_add(
+                                u64::from(bevel.size.to_bits()) ^ (bevel.mode as u64) << 40,
+                            )
+                            .wrapping_add(mesh::occupancy_hash(&neighbourhood(
+                                &object.cells,
+                                *key,
+                            )));
+                    }
                     // The mesh is placed at the object's translation, so a
                     // move rebuilds it.
                     for value in [
@@ -339,13 +352,24 @@ impl SceneGpu {
                 let full = (index, key.0, key.1, key.2);
                 match next.get(&key).copied() {
                     Some(hash) => {
-                        let mut built = mesh::mesh_listed(
-                            &object.cells,
-                            buckets.get(&key).map(Vec::as_slice).unwrap_or(&[]),
-                            base,
-                            |slot| session.color(slot),
-                            |slot| session.motion_uv(slot),
-                        );
+                        let listed = buckets.get(&key).map(Vec::as_slice).unwrap_or(&[]);
+                        let mut built = match bevel {
+                            Some(bevel) => mesh::bevel_listed(
+                                &object.cells,
+                                listed,
+                                bevel,
+                                base,
+                                |slot| session.color(slot),
+                                |slot| session.motion_uv(slot),
+                            ),
+                            None => mesh::mesh_listed(
+                                &object.cells,
+                                listed,
+                                base,
+                                |slot| session.color(slot),
+                                |slot| session.motion_uv(slot),
+                            ),
+                        };
                         mesh::translate_mesh(&mut built, object.translation);
                         if let Some(delta) = delta {
                             for vert in &mut built.verts {
@@ -404,6 +428,9 @@ impl SceneGpu {
                 mix(uv[0].to_bits() as u64 | (uv[1].to_bits() as u64) << 32);
             }
             mix(base as u32 as u64);
+            if let Some(bevel) = session.view_bevel() {
+                mix(u64::from(bevel.size.to_bits()) | 1 << 40);
+            }
             for v in [
                 object.translation.0,
                 object.translation.1,
@@ -424,12 +451,21 @@ impl SceneGpu {
             {
                 continue;
             }
-            let mut built = mesh::strand_mesh(
-                &boxes,
-                base,
-                |slot| session.color(slot),
-                |slot| session.motion_uv(slot),
-            );
+            let mut built = match session.view_bevel() {
+                Some(bevel) => mesh::bevel_strands(
+                    &boxes,
+                    bevel.size,
+                    base,
+                    |slot| session.color(slot),
+                    |slot| session.motion_uv(slot),
+                ),
+                None => mesh::strand_mesh(
+                    &boxes,
+                    base,
+                    |slot| session.color(slot),
+                    |slot| session.motion_uv(slot),
+                ),
+            };
             mesh::translate_mesh(&mut built, object.translation);
             if let Some(delta) = delta {
                 mesh::transform_mesh(&mut built, delta);
@@ -567,6 +603,35 @@ impl SceneGpu {
             draw(&mut pass, handles);
         }
     }
+}
+
+/// The cells one cell around a chunk outside it, whose changes reshape its
+/// bevel.
+fn neighbourhood(
+    cells: &HashMap<crate::state::Cell, u8>,
+    key: (i32, i32, i32),
+) -> Vec<(crate::state::Cell, [u8; 3])> {
+    let lo = (
+        key.0 * mesh::CHUNK - 1,
+        key.1 * mesh::CHUNK - 1,
+        key.2 * mesh::CHUNK - 1,
+    );
+    let hi = (
+        lo.0 + mesh::CHUNK + 1,
+        lo.1 + mesh::CHUNK + 1,
+        lo.2 + mesh::CHUNK + 1,
+    );
+    let inside = |v: i32, a: i32, b: i32| v >= a && v <= b;
+    cells
+        .iter()
+        .filter(|(cell, _)| {
+            inside(cell.0, lo.0, hi.0)
+                && inside(cell.1, lo.1, hi.1)
+                && inside(cell.2, lo.2, hi.2)
+                && mesh::chunk_key(**cell) != key
+        })
+        .map(|(cell, slot)| (*cell, [*slot, 0, 0]))
+        .collect()
 }
 
 fn bone_key(session: &Session) -> u64 {

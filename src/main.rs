@@ -21,6 +21,7 @@
 // This file is the desktop binary crate and, via `include!` from `src/lib.rs`,
 // the Android cdylib. Inner doc comments cannot be included that way.
 
+mod bevel;
 mod bridge;
 mod cli;
 mod control;

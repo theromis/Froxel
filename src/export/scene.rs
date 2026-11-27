@@ -20,8 +20,8 @@ use serde_json::{json, Value};
 #[cfg(test)]
 use super::bake::Grid;
 use super::bake::{self, Bake, Occluders, Patch, Rays};
+use super::polys::PolyFace;
 use super::quads::{self, axis_of, GreedyQuad};
-use super::strands::StrandFace;
 use super::*;
 
 /// Nothing is sized by it (indices are u32, the atlas has its own cap); it
@@ -681,7 +681,7 @@ fn placed_patch(place: &Place, face: usize, cell: Cell) -> Patch {
 struct Source {
     session: Session,
     /// Strand faces in the file's Z-up frame.
-    strands: Vec<StrandFace>,
+    strands: Vec<PolyFace>,
     /// What stops light in the file's frame: its cells and strand boxes.
     grid: Arc<bake::Solid>,
     quads: Vec<GreedyQuad>,
@@ -700,7 +700,7 @@ fn load_source(path: &Path, export_hidden: bool) -> Result<Source, String> {
     }
     let grid = Arc::new(bake::Solid::of_session(&session, export_hidden));
     let (quads, colors, classes) = quads::atlas_quads(&session, export_hidden);
-    let strands = super::strands::faces(&session, export_hidden, None);
+    let strands = super::polys::strand_faces(&session, export_hidden, None, None);
     Ok(Source {
         strands,
         session,
@@ -723,8 +723,8 @@ fn world_of(scene: &SceneBake, sources: &[Source], which: &[usize]) -> Result<Wo
 }
 
 /// A strand face of a placed source, as a bake patch in the scene's frame.
-fn placed_strand_patch(place: &Place, face: &StrandFace) -> Patch {
-    let patch = super::strands::patch(face);
+fn placed_strand_patch(place: &Place, face: &PolyFace) -> Patch {
+    let patch = super::polys::patch(face);
     let turned = |v: [f64; 3]| place.rotate(y_up(v));
     Patch {
         corner: place.point(y_up(patch.corner)),
@@ -774,7 +774,7 @@ pub fn bake_scene(scene: &SceneBake, output: &Path) -> Result<Value, String> {
     }
     let (width, quad_height, blocks) = quads::pack(&all_quads);
     // One texel per strand face of every instance, below the quads' blocks.
-    let (strand_texels, height) = super::strands::atlas_rows(width, quad_height, strand_count);
+    let (strand_texels, width, height) = super::polys::atlas_rows(width, quad_height, strand_count);
     if width > MAX_ATLAS || height > MAX_ATLAS {
         return Err(format!(
             "the atlas would be {width}x{height}, over {MAX_ATLAS} a side: split the scene"
@@ -795,10 +795,10 @@ pub fn bake_scene(scene: &SceneBake, output: &Path) -> Result<Value, String> {
         let patch = placed_patch(place, face, cell);
         rays.light(&scene.bake, &world, &patch, LIFT * place.scale)
     });
-    let mut strand_faces: Vec<(usize, StrandFace)> = Vec::with_capacity(strand_count);
+    let mut strand_faces: Vec<(usize, PolyFace)> = Vec::with_capacity(strand_count);
     for (instance, source) in which.iter().enumerate() {
         for face in &sources[*source].strands {
-            strand_faces.push((instance, *face));
+            strand_faces.push((instance, face.clone()));
         }
     }
     let strand_light = bake::parallel_map(strand_faces.len(), |index| {
@@ -941,7 +941,7 @@ fn append_instance(
         any_motion,
         None,
     );
-    super::strands::emit_atlas(
+    super::polys::emit_atlas(
         &mut own,
         &source.session,
         &source.strands,

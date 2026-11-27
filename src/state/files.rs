@@ -1371,6 +1371,12 @@ impl Session {
             }
             UiAction::RemoveClip => self.remove_selected_clip()?,
             UiAction::ShowBones => self.show_bones = !self.show_bones,
+            UiAction::BevelPreview => {
+                if self.export.bevel.is_some() && self.render_mode == RenderMode::Edit {
+                    self.bevel_preview = !self.bevel_preview;
+                    self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+                }
+            }
             UiAction::Export(flag) => {
                 if flag == ExportFlag::Bake {
                     self.export.bake = match self.export.bake {
@@ -1495,6 +1501,13 @@ impl Session {
             SliderTarget::SmoothFillAt => self.smooth_fill_at = whole,
             SliderTarget::SmoothRemoveAt => self.smooth_remove_at = whole,
             SliderTarget::ExportAo => self.export.ao_strength = value,
+            SliderTarget::ExportBevel => {
+                self.export.bevel = (value > 0.0).then_some(crate::bevel::Bevel {
+                    size: value,
+                    mode: self.bevel_mode,
+                });
+                self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+            }
             SliderTarget::ExportAoRadius => {
                 self.export.ao_radius =
                     whole.clamp(0, crate::export::occlusion::MAX_RADIUS as i32) as u32;

@@ -79,6 +79,7 @@ pub(super) fn build(session: &Session) -> Built {
             ao_target: AoTarget::Auto,
             bake: None,
             game_view: None,
+            bevel: None,
         },
     )
 }
@@ -119,12 +120,27 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
     };
     let mut colors: HashMap<Cell, u8> = HashMap::new();
     let mut quads = Vec::new();
-    let strand_faces = super::strands::faces(session, options.export_hidden, only);
+    // Faces outside the greedy merge: strand boxes, and with a bevel every
+    // cell, whose quads are then not built.
+    let mut strand_faces =
+        super::polys::strand_faces(session, options.export_hidden, only, options.bevel);
+    if let Some(bevel) = options.bevel {
+        strand_faces.extend(super::polys::cell_faces(
+            session,
+            options.export_hidden,
+            only,
+            bevel,
+        ));
+    }
     for (index, object) in session.objects.iter().enumerate() {
         if only.is_some_and(|only| only != index) {
             continue;
         }
         if object.hidden && !options.export_hidden {
+            continue;
+        }
+        if options.bevel.is_some() {
+            // Bevelled cells are polygons of their own, built above.
             continue;
         }
         let bone = if session.skeleton.bones.is_empty() {
@@ -198,14 +214,14 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
     if atlas {
         let (width, quad_height, blocks) = pack(&quads);
         // Each strand face gets one texel, in rows below the quads' blocks.
-        let (strand_texels, height) =
-            super::strands::atlas_rows(width, quad_height, strand_faces.len());
+        let (strand_texels, width, height) =
+            super::polys::atlas_rows(width, quad_height, strand_faces.len());
         let mut pixels = vec![0u8; (width * height * 4) as usize];
         // One light per texel, in the order the loop below paints them.
         let (baked, strand_light) = match options.bake.as_ref() {
             Some(bake) => {
                 let faces = atlas_faces(&quads);
-                let patches: Vec<_> = strand_faces.iter().map(super::strands::patch).collect();
+                let patches: Vec<_> = strand_faces.iter().map(super::polys::patch).collect();
                 let (cells, strands) =
                     super::bake::session_light(session, options, bake, &faces, &patches);
                 (Some(cells), Some(strands))
@@ -257,11 +273,11 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
             }
             if let Some(occlusion) = occlusion.as_ref().filter(|_| texel_ao) {
                 let shade = face
-                    .corners
+                    .points
                     .iter()
-                    .map(|c| super::strands::corner_shade(occlusion, *c, face.normal))
+                    .map(|c| super::polys::corner_shade(occlusion, *c, face.normal))
                     .sum::<f32>()
-                    / 4.0;
+                    / face.points.len() as f32;
                 for channel in &mut rgba[..3] {
                     *channel = srgb(linear(*channel) * shade);
                 }
@@ -284,7 +300,7 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
             with_motion,
             occlusion.as_ref().filter(|_| vertex_ao),
         );
-        super::strands::emit_atlas(
+        super::polys::emit_atlas(
             &mut built,
             session,
             &strand_faces,
@@ -372,7 +388,7 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
             .indices
             .extend_from_slice(&[index[0], index[1], index[2], index[0], index[2], index[3]]);
     }
-    super::strands::emit_plain(
+    super::polys::emit_plain(
         &mut built,
         session,
         options,
@@ -727,7 +743,7 @@ pub(super) fn unmerged_faces(session: &Session, export_hidden: bool) -> usize {
                 .sum::<usize>()
         })
         .sum::<usize>()
-        + super::strands::face_count(session, export_hidden)
+        + super::polys::strand_face_count(session, export_hidden)
 }
 
 /// [`merged_quads`] with baked occlusion. `shade` gives a face's corner

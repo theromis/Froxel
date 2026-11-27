@@ -17,9 +17,9 @@ use crate::state::{Cell, Session};
 
 pub mod bake;
 pub mod occlusion;
+mod polys;
 mod quads;
 pub mod scene;
-mod strands;
 pub mod view;
 
 use quads::build_with;
@@ -57,6 +57,9 @@ pub struct MeshExport {
     /// undersides, and, with its occlusion, faces the model's own cells
     /// hide from it (MCP `gameView`). `None` writes every exposed face.
     pub game_view: Option<view::View>,
+    /// Bevelled cells (`bevel.rs`) instead of merged faces: every cell's
+    /// polygons, with no greedy merge. Strand boxes are bevelled too.
+    pub bevel: Option<crate::bevel::Bevel>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -170,7 +173,11 @@ pub fn counts(session: &Session, options: &MeshExport) -> Result<Counts, String>
     check(session, options)?;
     // The bake changes texels, not triangles, and it is the slow part.
     let options = &without_bake(options);
-    if !options.merge && !options.color_atlas && options.game_view.is_none() {
+    if !options.merge
+        && !options.color_atlas
+        && options.game_view.is_none()
+        && options.bevel.is_none()
+    {
         // Unmerged, every exposed face is one quad of its own whatever the
         // other options, so counting faces is enough and much faster.
         let quads = quads::unmerged_faces(session, options.export_hidden);
@@ -191,7 +198,7 @@ pub fn counts(session: &Session, options: &MeshExport) -> Result<Counts, String>
         (0..session.objects.len())
             .filter(|&index| {
                 let object = &session.objects[index];
-                strands::has_geometry(object) && (!object.hidden || options.export_hidden)
+                polys::has_geometry(object) && (!object.hidden || options.export_hidden)
             })
             .map(|index| quads::build_one(session, options, index).indices.len() / 3)
             .sum()
@@ -461,7 +468,7 @@ fn rigid_glb(
 
 fn encode_skinned(session: &Session, options: &MeshExport) -> Result<Vec<u8>, String> {
     for object in &session.objects {
-        if !strands::has_geometry(object) {
+        if !polys::has_geometry(object) {
             continue;
         }
         if object.hidden && !options.export_hidden {
@@ -707,7 +714,7 @@ fn encode_split(session: &Session, options: &MeshExport) -> Result<Vec<u8>, Stri
     let mut parts = Vec::new();
     for index in 0..session.objects.len() {
         let object = &session.objects[index];
-        if !strands::has_geometry(object) {
+        if !polys::has_geometry(object) {
             continue;
         }
         if object.hidden && !options.export_hidden {

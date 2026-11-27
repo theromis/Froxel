@@ -583,6 +583,7 @@ pub(super) fn slider_value(session: &Session, target: SliderTarget) -> f32 {
         SliderTarget::SmoothFillAt => session.smooth_fill_at as f32,
         SliderTarget::SmoothRemoveAt => session.smooth_remove_at as f32,
         SliderTarget::ExportAo => session.export.ao_strength,
+        SliderTarget::ExportBevel => session.export.bevel.map_or(0.0, |b| b.size),
         SliderTarget::ExportAoRadius => session.export.ao_radius as f32,
         SliderTarget::BakeOcclusion
         | SliderTarget::BakeDistance

@@ -25,6 +25,7 @@ fn options(bake: Option<Bake>) -> MeshExport {
         ao_target: AoTarget::Auto,
         bake,
         game_view: None,
+        bevel: None,
     }
 }
 

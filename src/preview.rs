@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use glam::Vec3;
 
 use crate::mesh::{self, Mesh};
-use crate::state::Session;
+use crate::state::{Cell, Session};
 
 /// The viewport's perspective field of view, vertical, in degrees.
 pub const VIEWPORT_FOV: f32 = 50.0;
@@ -204,15 +204,36 @@ fn meshes(session: &Session, preview: &Preview) -> Vec<(Mesh, bool)> {
         if cells.is_empty() && object.strands.is_empty() {
             continue;
         }
-        let mut built = mesh::mesh_cells(&cells, |slot| session.color(slot), |_| [0.0, 0.0]);
+        // The export's bevel, when its options have one: the preview shows
+        // the cells and strands as that export writes them.
+        let bevel = preview.export.as_ref().and_then(|export| export.bevel);
+        let mut built = match bevel {
+            Some(bevel) => {
+                let listed: Vec<(Cell, u8)> = cells.iter().map(|(c, s)| (*c, *s)).collect();
+                mesh::bevel_listed(
+                    &cells,
+                    &listed,
+                    bevel,
+                    0,
+                    |slot| session.color(slot),
+                    |_| [0.0, 0.0],
+                )
+            }
+            None => mesh::mesh_cells(&cells, |slot| session.color(slot), |_| [0.0, 0.0]),
+        };
         if !object.strands.is_empty() {
             // Strands are drawn as the turned boxes they are, as the viewport draws them.
-            let strands = mesh::strand_mesh(
-                &session.strand_boxes(index),
-                0,
-                |slot| session.color(slot),
-                |_| [0.0, 0.0],
-            );
+            let boxes = session.strand_boxes(index);
+            let strands = match bevel {
+                Some(bevel) => mesh::bevel_strands(
+                    &boxes,
+                    bevel.size,
+                    0,
+                    |slot| session.color(slot),
+                    |_| [0.0, 0.0],
+                ),
+                None => mesh::strand_mesh(&boxes, 0, |slot| session.color(slot), |_| [0.0, 0.0]),
+            };
             let offset = built.verts.len() as u32;
             built.verts.extend(strands.verts);
             built
@@ -888,7 +909,9 @@ fn raster_with(
             }
             let z = wa * a[2] + wb * b[2] + wc * c[2];
             let index = row + x as usize;
-            if z > depth[index] {
+            // Coplanar faces (overlapping objects, a bevelled face split
+            // another way) keep what was drawn first instead of speckling.
+            if z > depth[index] + 1.0e-5 * (z.abs() + 1.0) {
                 depth[index] = z;
                 color[index] = lit([wa, wb, wc]);
             }

@@ -687,7 +687,9 @@ pub(crate) fn preview_export(params: &Value) -> Result<Option<crate::export::Mes
         None | Some(Value::Null) | Some(Value::Bool(true)) => Ok(Some(mesh_options(&json!({}))?)),
         Some(Value::Bool(false)) => Ok(None),
         Some(options @ Value::Object(map)) => {
-            const KEYS: [&str; 10] = [
+            const KEYS: [&str; 12] = [
+                "bevel",
+                "bevelMode",
                 "merge",
                 "vertexColors",
                 "exportHidden",
@@ -1747,6 +1749,10 @@ pub fn mesh_params(options: &crate::export::MeshExport) -> Value {
         "aoRadius": options.ao_radius,
         "aoTarget": options.ao_target.name(),
     });
+    if let Some(bevel) = &options.bevel {
+        params["bevel"] = json!(bevel.size);
+        params["bevelMode"] = json!(bevel.mode.name());
+    }
     if let Some(bake) = &options.bake {
         params["bake"] = bake.json();
     }
@@ -1788,7 +1794,28 @@ pub(crate) fn mesh_options(params: &Value) -> Result<crate::export::MeshExport, 
         },
         bake: crate::export::bake::Bake::parse(params.get("bake"))?,
         game_view: crate::export::view::View::parse(params.get("gameView"))?,
+        bevel: bevel_option(params)?,
     })
+}
+
+/// `bevel` and `bevelMode` of the export options: none at 0 or left out.
+pub(crate) fn bevel_option(params: &Value) -> Result<Option<crate::bevel::Bevel>, String> {
+    let size = opt_f64(params, "bevel")?.unwrap_or(0.0);
+    if !(0.0..=f64::from(crate::bevel::MAX_BEVEL)).contains(&size) {
+        return Err(format!(
+            "bevel must be 0..={} cells",
+            crate::bevel::MAX_BEVEL
+        ));
+    }
+    let mode = match opt_str(params, "bevelMode")? {
+        None => crate::bevel::BevelMode::Cubes,
+        Some(name) => crate::bevel::BevelMode::parse(&name)
+            .ok_or_else(|| format!("bevelMode must be {}", crate::bevel::BevelMode::NAMES))?,
+    };
+    Ok((size > 0.0).then_some(crate::bevel::Bevel {
+        size: size as f32,
+        mode,
+    }))
 }
 
 /// Object names listed by the `document.open` summary before it gives a count.

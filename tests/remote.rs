@@ -137,6 +137,7 @@ fn mesh_params_round_trip_through_the_export_options() {
         ao_target: crate::export::AoTarget::Both,
         bake: None,
         game_view: None,
+        bevel: None,
     };
     let back = mesh_options(&mesh_params(&options)).unwrap();
     assert_eq!(mesh_params(&back), mesh_params(&options));

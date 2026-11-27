@@ -507,6 +507,7 @@ fn evaluate_within(
             ao_target: session.export.ao_target,
             bake: session.export.bake.clone(),
             game_view: session.export.game_view.clone(),
+            bevel: session.export.bevel,
         };
         crate::export::export_with(session, &path, &options)
     })?;

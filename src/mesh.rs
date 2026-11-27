@@ -209,6 +209,74 @@ pub fn strand_mesh(
     mesh
 }
 
+/// Bevelled polygons (`bevel.rs`) as a mesh, each a triangle fan with its
+/// own normal.
+pub fn poly_mesh(
+    polys: &[crate::bevel::Poly],
+    base: i32,
+    color: impl Fn(u8) -> [u8; 3],
+    motion: impl Fn(u8) -> [f32; 2],
+) -> Mesh {
+    let base = base as f32;
+    let mut mesh = Mesh::default();
+    for poly in polys {
+        let rgb = color(poly.slot);
+        let color = [
+            rgb[0] as f32 / 255.0,
+            rgb[1] as f32 / 255.0,
+            rgb[2] as f32 / 255.0,
+        ];
+        let motion = motion(poly.slot);
+        let start = mesh.verts.len() as u32;
+        for p in &poly.points {
+            mesh.verts.push(Vert {
+                pos: p.to_array(),
+                normal: poly.normal.to_array(),
+                color,
+                motion: [motion[0], motion[1], p.y - base, 0.0],
+            });
+        }
+        for k in 1..poly.points.len() as u32 - 1 {
+            mesh.indices.extend([start, start + k, start + k + 1]);
+        }
+    }
+    mesh
+}
+
+/// The bevelled mesh of the `listed` cells against every cell of `cells`.
+pub fn bevel_listed(
+    cells: &HashMap<Cell, u8>,
+    listed: &[(Cell, u8)],
+    bevel: crate::bevel::Bevel,
+    base: i32,
+    color: impl Fn(u8) -> [u8; 3],
+    motion: impl Fn(u8) -> [f32; 2],
+) -> Mesh {
+    let mut polys = Vec::new();
+    crate::bevel::cell_polys(
+        |c| cells.get(&c).is_some_and(|slot| *slot != 0),
+        listed,
+        bevel,
+        &mut polys,
+    );
+    poly_mesh(&polys, base, color, motion)
+}
+
+/// Strand boxes bevelled, as [`strand_mesh`] draws them square.
+pub fn bevel_strands(
+    boxes: &[crate::tools::StrandBox],
+    size: f32,
+    base: i32,
+    color: impl Fn(u8) -> [u8; 3],
+    motion: impl Fn(u8) -> [f32; 2],
+) -> Mesh {
+    let mut polys = Vec::new();
+    for b in boxes {
+        crate::bevel::box_polys(b, size, &mut polys);
+    }
+    poly_mesh(&polys, base, color, motion)
+}
+
 /// Boundary of a selection: faces that touch air or an unselected cell.
 pub fn selection_shell(cells: &HashMap<Cell, u8>, picked: &HashSet<Cell>) -> Mesh {
     let mut mesh = Mesh::default();

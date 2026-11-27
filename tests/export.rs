@@ -52,6 +52,7 @@ fn vertex_colors_keep_a_linear_color_attribute() {
             ao_target: AoTarget::Auto,
             bake: None,
             game_view: None,
+            bevel: None,
         },
     )
     .unwrap();
@@ -82,6 +83,7 @@ fn unmerged_row_keeps_one_quad_per_face() {
             ao_target: AoTarget::Auto,
             bake: None,
             game_view: None,
+            bevel: None,
         },
     );
     assert_eq!(built.indices.len() / 6, 10);
@@ -229,6 +231,7 @@ fn still_export_omits_texcoord_1_and_stays_stable() {
         ao_target: AoTarget::Auto,
         bake: None,
         game_view: None,
+        bevel: None,
     };
     let first = super::encode(&session, &options).unwrap();
     let second = super::encode(&session, &options).unwrap();
@@ -249,6 +252,7 @@ fn still_export_omits_texcoord_1_and_stays_stable() {
             ao_target: AoTarget::Auto,
             bake: None,
             game_view: None,
+            bevel: None,
         },
     )
     .unwrap();
@@ -279,6 +283,7 @@ fn motion_writes_texcoord_1_for_each_slot() {
         ao_target: AoTarget::Auto,
         bake: None,
         game_view: None,
+        bevel: None,
     };
     let bytes = super::encode(&session, &options).unwrap();
     let uvs = texcoord_1(&bytes);
@@ -299,6 +304,7 @@ fn motion_writes_texcoord_1_for_each_slot() {
             ao_target: AoTarget::Auto,
             bake: None,
             game_view: None,
+            bevel: None,
         },
     )
     .unwrap();
@@ -337,6 +343,7 @@ fn different_motion_stays_on_separate_quads() {
             ao_target: AoTarget::Auto,
             bake: None,
             game_view: None,
+            bevel: None,
         },
     );
     assert_eq!(built.indices.len() / 6, 10);
@@ -382,6 +389,7 @@ fn a_clip_is_a_gltf_animation_and_hidden_parts_can_be_their_own_nodes() {
         ao_target: AoTarget::Auto,
         bake: None,
         game_view: None,
+        bevel: None,
     };
     let bytes = super::encode(&session, &options).unwrap();
     let json = glb_json(&bytes);
@@ -401,6 +409,7 @@ fn a_clip_is_a_gltf_animation_and_hidden_parts_can_be_their_own_nodes() {
         ao_target: AoTarget::Auto,
         bake: None,
         game_view: None,
+        bevel: None,
     };
     let bytes = super::encode(&session, &split).unwrap();
     let text = serde_json::to_string(&glb_json(&bytes)).unwrap();
@@ -426,6 +435,7 @@ fn neighbouring_quads_share_corners_of_one_slot_and_face() {
         ao_target: AoTarget::Auto,
         bake: None,
         game_view: None,
+        bevel: None,
     };
     let built = build_with(&session, &options);
     // Ten faces; the four long sides each share two corners between the two
@@ -471,6 +481,7 @@ fn split_export() -> MeshExport {
         ao_target: AoTarget::Auto,
         bake: None,
         game_view: None,
+        bevel: None,
     }
 }
 
@@ -640,6 +651,7 @@ fn atlas_export() -> MeshExport {
         ao_target: AoTarget::Auto,
         bake: None,
         game_view: None,
+        bevel: None,
     }
 }
 
@@ -826,6 +838,7 @@ fn ao_export(strength: f32, radius: u32) -> MeshExport {
         ao_target: AoTarget::Auto,
         bake: None,
         game_view: None,
+        bevel: None,
     }
 }
 
@@ -1129,6 +1142,7 @@ fn counts_are_the_triangles_and_quads_the_glb_has() {
         ao_target: AoTarget::Auto,
         bake: None,
         game_view: None,
+        bevel: None,
     };
     let mut seen = Vec::new();
     for (merge, atlas, split, hidden, ao) in [

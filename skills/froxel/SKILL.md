@@ -456,6 +456,11 @@ refused.
 
 ## Export
 
+- `bevel` on `export_mesh` (0..0.4 cells; 0.15 to 0.25 reads well) exports
+  bevelled cells: `bevelMode` `cubes` (default) rounds every cube with grooves
+  between them, like the toy-block concepts; `edges` softens only the
+  shape's outer edges. Check it with `preview` and `export: {bevel: 0.2}` before
+  exporting; it costs three to four times the triangles and no merge.
 - `export_mesh` writes a `.glb` (glTF 2.0, Y-up). `merge` is off unless you set
   it; turn it on for game assets to merge coplanar faces. `exportHidden` and
   `splitObjects` default to false. `aoStrength` (0..1, off by default) bakes

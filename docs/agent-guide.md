@@ -64,6 +64,11 @@ server started with `--connect`.
 
 ## Export and baking
 
+Export's `bevel` (0..0.4 cells) writes every cell bevelled: `bevelMode` `cubes`
+rounds each cube with grooves between neighbours (the toy-block look of a
+low-resolution concept), `edges` rounds only the shape's outer edges. Look at
+it first with `preview` and `export: {bevel, bevelMode}`; faces are not merged.
+
 Export's `bake` option (with `colorAtlas`) paints ray-traced occlusion and a sun
 with shadows into the atlas, for a game to draw unshaded. `bake_scene` bakes a
 placement of many .vox files together, shaded by each other and by ground,

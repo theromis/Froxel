@@ -269,6 +269,7 @@ fn options() -> crate::export::MeshExport {
         ao_target: crate::export::AoTarget::Auto,
         bake: None,
         game_view: None,
+        bevel: None,
     }
 }
 

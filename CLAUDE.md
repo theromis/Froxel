@@ -108,8 +108,13 @@ for byte. `export/scene.rs` is MCP `bake_scene` and `froxel run bake_scene`: pla
 `.vox` files, in the frame of the glb they export to, plus occluders, into one
 merged mesh and atlas; rays enter a placement through its inverse transform, over
 one grid per source and a BVH. Strands
-(`export/strands.rs`) export as six faces per turned box, never merged with
-cell faces, one atlas texel per face. Clips are glTF
+(`export/polys.rs`) export as six faces per turned box, never merged with
+cell faces, one atlas texel per face. `bevel` (`bevel.rs`, shared with
+`preview` and the viewport's Bevel box) replaces the greedy quads with each
+cell's cube cut along its edges: `cubes` cuts every edge touching open space,
+`edges` only the outward ones, and the corners a neighbour's cut uncovers on a
+shared face are closed with triangles; `tests/bevel.rs` checks it closed by
+ray parity. Clips are glTF
 animations on the joint nodes. The preview pose is not the bind pose:
 it is a local quaternion per bone, and an empty pose leaves the mesh and
 the tracer unchanged. A bone's `rest` is a saved local turn between the

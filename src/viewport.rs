@@ -79,6 +79,8 @@ pub fn show(
         egui::Rect::from_min_size(rect.min + egui::vec2(10.0, 10.0), egui::vec2(168.0, 32.0));
     let motion_chip =
         egui::Rect::from_min_size(rect.min + egui::vec2(10.0, 48.0), egui::vec2(118.0, 28.0));
+    let bevel_chip =
+        egui::Rect::from_min_size(rect.min + egui::vec2(10.0, 82.0), egui::vec2(118.0, 28.0));
     let right = egui::Rect::from_min_size(
         egui::pos2(rect.right() - 178.0, rect.top() + 10.0),
         egui::vec2(168.0, 32.0),
@@ -88,9 +90,12 @@ pub fn show(
     let blocked = pointed.is_some_and(|p| block.iter().any(|area| area.contains(p)));
     let on_hud = blocked
         || (hud
-            && pointer
-                .hover_pos()
-                .is_some_and(|p| left.contains(p) || right.contains(p) || motion_chip.contains(p)));
+            && pointer.hover_pos().is_some_and(|p| {
+                left.contains(p)
+                    || right.contains(p)
+                    || motion_chip.contains(p)
+                    || bevel_chip.contains(p)
+            }));
     let hover = pointer.hover_pos().filter(|p| rect.contains(*p) && !on_hud);
     let space = ctx.input(|i| i.key_down(egui::Key::Space));
     let scroll = if hover.is_some() {
@@ -295,6 +300,28 @@ pub fn show(
             .on_disabled_hover_text(
                 "Motion previews in the edit view only. Render traces a still scene.",
             );
+        });
+    });
+    ui.scope_builder(egui::UiBuilder::new().max_rect(bevel_chip), |ui| {
+        hud_frame(ui, |ui| {
+            let can = session.render_mode == RenderMode::Edit && session.export.bevel.is_some();
+            let before = session.bevel_preview;
+            let response = ui
+                .add_enabled(
+                    can,
+                    egui::Checkbox::new(&mut session.bevel_preview, "Bevel"),
+                )
+                .on_hover_text(
+                    "Draw the cells and strands bevelled as the Export section's Bevel writes them",
+                )
+                .on_disabled_hover_text(
+                    "Set Bevel in the Export section to preview it here, in the edit view.",
+                );
+            let rect = response.rect;
+            session.note_ui("viewport.bevel", "Bevel", rect, UiAction::BevelPreview);
+            if before != session.bevel_preview {
+                session.mesh_epoch = session.mesh_epoch.wrapping_add(1);
+            }
         });
     });
     ui.scope_builder(egui::UiBuilder::new().max_rect(left), |ui| {

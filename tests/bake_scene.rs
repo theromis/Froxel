@@ -105,6 +105,7 @@ fn one_placement_at_the_origin_is_the_per_asset_bake() {
         ao_target: AoTarget::Auto,
         bake: Bake::parse(Some(&bake)).unwrap(),
         game_view: None,
+        bevel: None,
     };
     export_with(&session, &asset, &options).unwrap();
     let scene_path = temp("scene.glb");
@@ -833,6 +834,7 @@ fn a_placed_source_bakes_its_strands_as_the_asset_does() {
         ao_target: AoTarget::Auto,
         bake: Bake::parse(Some(&bake)).unwrap(),
         game_view: None,
+        bevel: None,
     };
     export_with(&session, &asset, &options).unwrap();
     let scene_path = temp("strands-scene.glb");

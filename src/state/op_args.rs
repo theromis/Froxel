@@ -123,6 +123,7 @@ impl SliderTarget {
             SliderTarget::SmoothFillAt => ("smooth", "fillAt"),
             SliderTarget::SmoothRemoveAt => ("smooth", "removeAt"),
             SliderTarget::ExportAo => ("export_mesh", "aoStrength"),
+            SliderTarget::ExportBevel => ("export_mesh", "bevel"),
             SliderTarget::ExportAoRadius => ("export_mesh", "aoRadius"),
             SliderTarget::BakeOcclusion => ("export_mesh", "bake.occlusion"),
             SliderTarget::BakeDistance => ("export_mesh", "bake.distance"),

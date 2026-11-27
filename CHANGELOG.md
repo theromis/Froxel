@@ -34,6 +34,14 @@
 
 ### Added
 
+- Bevelled export: `export_mesh` `bevel` (0..0.4 cells) and `bevelMode`
+  (`cubes`, every cube rounded with grooves between them; `edges`, only the
+  shape's outer edges) write cut cube edges instead of flat faces, with every
+  export option (vertex colours, colour atlas, occlusion, bake, split,
+  skinned) and strand boxes bevelled too. `preview` draws it with
+  `export: {bevel}`, the Export section has Bevel and Bevel mode, and the
+  viewport's Bevel box shows it while editing. Also on `export_models` and
+  `export_variants`.
 - Strands: chains of cubes along a curve, each cube turned along the path,
   for leaves, reeds, weeds, barbels, and fin rays that bend instead of
   stepping, and detail finer than a cell. A strand is stored as its
