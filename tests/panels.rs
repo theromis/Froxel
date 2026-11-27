@@ -13,10 +13,18 @@ fn sessions() -> Vec<(&'static str, Session)> {
     baked.export.bake = Some(crate::export::bake::Bake::default());
     let mut object = Session::new();
     object.editor_mode = EditorMode::Object;
+    // The Skin section with every row shown and bare slots listed.
+    let mut skinned = Session::new();
+    skinned.objects[0].cells = [((0, 0, 0), 1u8), ((1, 0, 0), 1)].into_iter().collect();
+    skinned.objects[0].skin = Some(crate::tools::Skin {
+        bare: vec![12, 140, 255],
+        ..crate::tools::Skin::default()
+    });
     vec![
         ("default", plain),
         ("bake light", baked),
         ("object mode", object),
+        ("skin", skinned),
     ]
 }
 

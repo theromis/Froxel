@@ -122,7 +122,7 @@ pub use silhouette::{
     carve_from_views, mask_from_rgba, mask_from_rows, Background, CarveSpec, Colour, Crop, Ink,
     Mask, Scale, Side, View, MAX_CARVE_PASSES,
 };
-pub use skin::{skin_boxes, Skin, SkinAxis, MAX_SKIN_BRICKS, MAX_SKIN_CELLS};
+pub use skin::{skin_boxes, Skin, SkinAxis};
 pub use strand::{
     box_cells, check_object as check_strands, object_boxes as strand_object_boxes, ray_box,
     strand_cells, Strand, StrandBox, StrandPattern, StrandPoint, MAX_STRANDS, MAX_STRAND_POINTS,

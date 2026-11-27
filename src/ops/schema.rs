@@ -1097,7 +1097,7 @@ fn build() -> Vec<Value> {
             "object": {"type": ["integer", "string"], "description": "Object index or name. Defaults to the active object."},
             "off": bool_prop("Remove the object's skin. Defaults to false."),
             "axis": ui(with_default(json!({"type": "string", "enum": ["auto", "x", "y", "z"], "description": "The flow the rows run along: a body's length. auto takes the longest spread of the object's cells. Defaults to auto."}), json!("auto")), "Axis", "The flow the rows run along"),
-            "length": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2, "description": "Shortest and longest brick along the flow, in cells, 0.25..=64: [2, 4] when omitted."},
+            "length": ui(json!({"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2, "description": "Shortest and longest brick along the flow, in cells, 0.25..=64: [2, 4] when omitted."}), "Length", "Shortest and longest brick, in cells"),
             "width": soft(ui(hard(with_default(num_prop("Row spacing around the body, in cells, 0.25..=64. Defaults to 1.5."), json!(1.5)), 0.25, 64.0), "Width", "Row spacing around the body, in cells"), 0.5, 8.0, 2),
             "height": soft(ui(hard(with_default(num_prop("How far a brick stands out past the cells under it, in cells, 0..=8. Defaults to 0.4."), json!(0.4)), 0.0, 8.0), "Height", "How far a brick stands out, in cells"), 0.0, 2.0, 2),
             "depth": soft(ui(hard(with_default(num_prop("How deep a brick reaches into the body, in cells, 0..=8. Defaults to 0.75."), json!(0.75)), 0.0, 8.0), "Depth", "How deep a brick reaches in, in cells"), 0.0, 2.0, 2),
@@ -1108,8 +1108,8 @@ fn build() -> Vec<Value> {
             "gap": soft(ui(hard(with_default(num_prop("Groove between bricks, in cells, 0..=1. Defaults to 0.12."), json!(0.12)), 0.0, 1.0), "Gap", "Groove between bricks, in cells"), 0.0, 0.5, 2),
             "smooth": soft(ui(hard(with_default(num_prop("Blur radius of the surface the bricks follow, in cells, 0.5..=8. Defaults to 2."), json!(2.0)), 0.5, 8.0), "Smooth", "Blur of the surface the bricks follow"), 0.5, 4.0, 1),
             "thin": soft(ui(hard(with_default(num_prop("Parts thinner than about this many cells keep their cells bare (fins, whiskers), 0..=64; 0 covers everything. Defaults to 3."), json!(3.0)), 0.0, 64.0), "Thin", "Thinner parts keep their cells"), 0.0, 8.0, 1),
-            "bare": {"type": "array", "items": {"type": "integer"}, "description": "Palette indices never covered: eyes, teeth, markings to keep. Omit for none."},
-            "seed": with_default(int_prop("The layout's seed. Defaults to 0."), json!(0))
+            "bare": ui(json!({"type": "array", "items": {"type": "integer"}, "description": "Palette indices never covered: eyes, teeth, markings to keep. Omit for none."}), "Bare", "Slots the skin never covers"),
+            "seed": soft(ui(with_default(int_prop("The layout's seed. Defaults to 0."), json!(0)), "Seed", "Another seed lays the bricks out anew"), 0.0, 999.0, 0)
         }), &[]),
         define("split_object", "Move (or copy) an object's cells in boxes, of some slots, or both, into a new or existing object at the same world positions: cut a carve_from_views blockout into rig parts (head, flippers, tail) instead of a carve per part plus complement erases. A new object takes the source's position (same local cells); an existing target (into) takes them at its own offset, replacing what it holds there. One undo step. Replies with target, name, created, cells (taken), replaced, position, sourceVoxels, targetVoxels, and bounds (target local).", json!({
             "index": {"type": ["integer", "string"], "description": "Source object index or name. Defaults to the active object."},

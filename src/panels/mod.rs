@@ -264,6 +264,7 @@ const INSPECTOR_SECTIONS: &[(&str, Section)] = &[
     ("edit::recolor", edit::recolor),
     ("edit::clear", edit::clear),
     ("edit::strands", edit::strands),
+    ("edit::skin", edit::skin),
     ("edit::intersect", edit::intersect),
     ("edit::stroke", edit::stroke),
     ("edit::plates", edit::plates),

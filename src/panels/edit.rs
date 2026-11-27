@@ -3,12 +3,13 @@
 //! `recolor`), Intersect (the fills' `mode: "intersect"`), Surface
 //! stroke (MCP `surface_stroke`), Shell plates (MCP `shell_plates`),
 //! Components (MCP `components`), De-terrace (MCP `deterrace`), Reduce
-//! palette (MCP `reduce_palette`), and Split parts (MCP `split_parts`).
+//! palette (MCP `reduce_palette`), Split parts (MCP `split_parts`), and Skin
+//! (MCP `skin`).
 
 use egui::{RichText, Ui};
 use serde_json::json;
 
-use super::{choice_label, prop_check, prop_drag, prop_label};
+use super::{choice_label, prop_check, prop_drag, prop_label, prop_slider};
 use super::{row, section, DIM};
 use crate::state::{EditorMode, Session, Tool, INTERSECT_SHAPES};
 
@@ -150,7 +151,7 @@ pub(super) fn clear(ui: &mut Ui, session: &mut Session) {
         section(ui, "Clear object");
         if ui
             .button("Clear")
-            .on_hover_text("MCP clear_object: remove every cell and strand of the active object, with no box limit. Its name, position, bone, script, and markers stay. One undo step.")
+            .on_hover_text("MCP clear_object: remove every cell, strand, and the skin of the active object, with no box limit. Its name, position, bone, script, and markers stay. One undo step.")
             .clicked()
         {
             session.clear_from_panel();
@@ -224,6 +225,135 @@ pub(super) fn strands(ui: &mut Ui, session: &mut Session) {
         } else if clear {
             session.select_strand(None);
             crate::remote::apply(session, "strand.remove", &json!({"object": object, "all": true})).map(|_| ())
+        } else {
+            Ok(())
+        };
+        if let Err(err) = result {
+            session.status = err;
+        }
+    });
+}
+
+/// MCP `skin` on the active object: on or off, every setting drawn from
+/// the schema, applied live (a drag is one undo step), and a bake.
+pub(super) fn skin(ui: &mut Ui, session: &mut Session) {
+    use crate::tools::{Skin, SkinAxis};
+    let enabled = session.editor_mode == EditorMode::Model && !session.active().cells.is_empty();
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Skin");
+        let current = session.active().skin.clone();
+        let mut on = current.is_some();
+        let mut next = current.clone().unwrap_or_default();
+        let mut started = false;
+        let mut bake = false;
+        row(ui, |ui| {
+            ui.checkbox(&mut on, "Bricks")
+                .on_hover_text("MCP skin: cover the active object's surface with irregular bricks in staggered rows along its body. Off (MCP skin off) removes them; the cells stay.");
+            if current.is_some() {
+                ui.label(
+                    RichText::new(format!("{} bricks", session.skin_boxes(session.selected).len()))
+                        .small()
+                        .color(DIM),
+                );
+            }
+        });
+        if current.is_some() {
+            egui::Grid::new("skin-panel")
+                .num_columns(2)
+                .spacing([8.0, 4.0])
+                .show(ui, |ui| {
+                    prop_label(ui, "skin", "axis");
+                    ui.horizontal_wrapped(|ui| {
+                        for axis in [SkinAxis::Auto, SkinAxis::X, SkinAxis::Y, SkinAxis::Z] {
+                            if ui.selectable_label(next.axis == axis, axis.name()).clicked() {
+                                next.axis = axis;
+                            }
+                        }
+                    });
+                    ui.end_row();
+                    prop_label(ui, "skin", "length");
+                    ui.horizontal_wrapped(|ui| {
+                        for end in 0..2 {
+                            let resp = ui.add(
+                                egui::DragValue::new(&mut next.length[end])
+                                    .range(0.25..=16.0)
+                                    .speed(0.05)
+                                    .max_decimals(2),
+                            );
+                            started |= resp.drag_started();
+                        }
+                    });
+                    if next.length[0] > next.length[1] {
+                        next.length.swap(0, 1);
+                    }
+                    ui.end_row();
+                    let fields: [(&str, fn(&mut Skin) -> &mut f32); 10] = [
+                        ("width", |s| &mut s.width),
+                        ("height", |s| &mut s.height),
+                        ("depth", |s| &mut s.depth),
+                        ("relief", |s| &mut s.relief),
+                        ("stagger", |s| &mut s.stagger),
+                        ("tilt", |s| &mut s.tilt),
+                        ("follow", |s| &mut s.follow),
+                        ("gap", |s| &mut s.gap),
+                        ("smooth", |s| &mut s.smooth),
+                        ("thin", |s| &mut s.thin),
+                    ];
+                    for (key, field) in fields {
+                        prop_label(ui, "skin", key);
+                        started |= prop_slider(ui, "skin", key, field(&mut next)).drag_started();
+                        ui.end_row();
+                    }
+                    prop_label(ui, "skin", "seed");
+                    started |= prop_drag(ui, "skin", "seed", &mut next.seed).drag_started();
+                    ui.end_row();
+                    prop_label(ui, "skin", "bare");
+                    ui.horizontal_wrapped(|ui| {
+                        let mut drop = None;
+                        for (n, slot) in next.bare.iter().enumerate() {
+                            if ui
+                                .small_button(format!("{slot} ✕"))
+                                .on_hover_text("Cover this slot again")
+                                .clicked()
+                            {
+                                drop = Some(n);
+                            }
+                        }
+                        if let Some(n) = drop {
+                            next.bare.remove(n);
+                        }
+                        let slot = session.active_slot;
+                        if slot != 0
+                            && !next.bare.contains(&slot)
+                            && ui
+                                .small_button(format!("+ {slot}"))
+                                .on_hover_text("Keep the active slot bare: eyes, teeth, markings")
+                                .clicked()
+                        {
+                            next.bare.push(slot);
+                        }
+                    });
+                    ui.end_row();
+                });
+            bake = ui
+                .button("Bake")
+                .on_hover_text("MCP bake_strands with skin: write the bricks into cells and remove the skin, for MagicaVoxel. One undo step.")
+                .clicked();
+        }
+        let object = session.selected;
+        let wanted = if on { Some(next) } else { None };
+        let result = if bake {
+            crate::remote::apply(session, "strand.bake", &json!({"object": object, "skin": true})).map(|_| ())
+        } else if wanted != current {
+            if started {
+                session.begin_gesture();
+            }
+            let mut args = match &wanted {
+                Some(skin) => crate::remote::skin_json(skin),
+                None => json!({"off": true}),
+            };
+            args["object"] = json!(object);
+            crate::remote::apply(session, "skin.set", &args).map(|_| ())
         } else {
             Ok(())
         };
