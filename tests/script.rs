@@ -1646,6 +1646,8 @@ fn every_binding_is_declared_against_its_tool_schema() {
         super::document::BINDINGS,
         super::markers::BINDINGS,
         super::import::BINDINGS,
+        super::strands::BINDINGS,
+        super::skin::BINDINGS,
     ]
     .concat();
     assert!(all.len() >= 45, "only {} bindings", all.len());

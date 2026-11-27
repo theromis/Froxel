@@ -491,28 +491,36 @@ pub fn strand_cells(
     strands: &[Strand],
     which: &[usize],
 ) -> std::collections::HashMap<crate::state::Cell, u8> {
+    let boxes = strands
+        .iter()
+        .enumerate()
+        .filter(|(n, _)| which.is_empty() || which.contains(n))
+        .flat_map(|(_, strand)| strand.boxes());
+    box_cells(boxes)
+}
+
+/// Cells whose centre lies inside any of `boxes`, each with its box's slot
+/// (a later box over an earlier one).
+pub fn box_cells(
+    boxes: impl IntoIterator<Item = StrandBox>,
+) -> std::collections::HashMap<crate::state::Cell, u8> {
     let mut cells = std::collections::HashMap::new();
-    for (n, strand) in strands.iter().enumerate() {
-        if !which.is_empty() && !which.contains(&n) {
-            continue;
+    for b in boxes {
+        let inverse = b.matrix().inverse();
+        let mut min = glam::Vec3::splat(f32::MAX);
+        let mut max = glam::Vec3::splat(f32::MIN);
+        for corner in b.corners() {
+            let c = glam::Vec3::from_array(corner);
+            min = min.min(c);
+            max = max.max(c);
         }
-        for b in strand.boxes() {
-            let inverse = b.matrix().inverse();
-            let mut min = glam::Vec3::splat(f32::MAX);
-            let mut max = glam::Vec3::splat(f32::MIN);
-            for corner in b.corners() {
-                let c = glam::Vec3::from_array(corner);
-                min = min.min(c);
-                max = max.max(c);
-            }
-            for z in min.z.floor() as i32..=max.z.ceil() as i32 {
-                for y in min.y.floor() as i32..=max.y.ceil() as i32 {
-                    for x in min.x.floor() as i32..=max.x.ceil() as i32 {
-                        let centre = glam::Vec3::new(x as f32, y as f32, z as f32) + 0.5;
-                        let unit = inverse.transform_point3(centre);
-                        if unit.abs().max_element() <= 1.0 + 1.0e-5 {
-                            cells.insert((x, y, z), b.slot);
-                        }
+        for z in min.z.floor() as i32..=max.z.ceil() as i32 {
+            for y in min.y.floor() as i32..=max.y.ceil() as i32 {
+                for x in min.x.floor() as i32..=max.x.ceil() as i32 {
+                    let centre = glam::Vec3::new(x as f32, y as f32, z as f32) + 0.5;
+                    let unit = inverse.transform_point3(centre);
+                    if unit.abs().max_element() <= 1.0 + 1.0e-5 {
+                        cells.insert((x, y, z), b.slot);
                     }
                 }
             }

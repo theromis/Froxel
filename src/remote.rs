@@ -16,6 +16,7 @@ mod import;
 mod markers;
 mod organic;
 mod silhouette;
+mod skin;
 mod space;
 mod stone;
 mod strands;
@@ -35,6 +36,7 @@ pub(crate) use silhouette::{
     decal_writes, fit_writes, hull_writes, optimize_writes, orient_writes, paint_writes,
     pixelate_writes, session_palette, views_paint_writes,
 };
+pub(crate) use skin::{skin_arg, skin_json};
 pub(crate) use space::{is_world, space_prop, to_local, to_world_reply};
 pub(crate) use stone::{cavity_writes, radial_writes, stone_writes, ShadedWrites, Stone};
 pub(crate) use strands::{
@@ -1356,6 +1358,7 @@ fn apply_unguarded(session: &mut Session, method: &str, params: &Value) -> Resul
         "strand.remove" => strands::remove_strand(session, &params),
         "strand.list" => strands::list_strands(session, &params),
         "strand.bake" => strands::bake_strands(session, &params),
+        "skin.set" => skin::set_skin(session, &params),
         "object.mirror" => {
             let index = req_i32(&params, "index")?;
             if index < 0 {
@@ -1874,6 +1877,8 @@ fn inspect(session: &Session, params: &Value) -> Result<Value, String> {
                 "position": [object.translation.0, object.translation.1, object.translation.2],
                 "translation": [object.translation.0, object.translation.1, object.translation.2],
                 "bone": object.bone,
+                "skin": object.skin.as_ref().map(skin_json),
+                "bricks": if object.skin.is_some() { session.skin_boxes(index).len() } else { 0 },
             })
         })
         .collect();

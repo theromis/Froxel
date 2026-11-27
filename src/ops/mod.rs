@@ -185,6 +185,7 @@ pub(crate) const OPS: &[Op] = &[
     op("remove_strand", "strand.remove", Replace, BATCH),
     op("list_strands", "strand.list", Read, 0),
     op("bake_strands", "strand.bake", Replace, BATCH),
+    op("skin", "skin.set", Write, BATCH),
     op("split_object", "object.split", Replace, SPACE),
     op("add_bone", "rig.add", Add, 0),
     op("set_bone", "rig.set", Write, 0),

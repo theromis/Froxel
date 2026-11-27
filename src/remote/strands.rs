@@ -324,7 +324,7 @@ pub(crate) fn bake_choice(
             .collect::<Result<_, _>>()?,
         Some(_) => return Err("strands must be a list of strand indices".into()),
     };
-    if which.is_empty() {
+    if which.is_empty() && !opt_bool(params, "skin")?.unwrap_or(false) {
         return Err("there are no strands to bake".into());
     }
     Ok((which, opt_bool(params, "keep")?.unwrap_or(false)))
@@ -381,8 +381,26 @@ pub(super) fn list_strands(session: &Session, params: &Value) -> Result<Value, S
 pub(super) fn bake_strands(session: &mut Session, params: &Value) -> Result<Value, String> {
     let object = target(session, params)?;
     let (which, keep) = bake_choice(&session.objects[object].strands, params)?;
-    let cells = crate::tools::strand_cells(&session.objects[object].strands, &which);
-    let written = session.bake_strand_cells(object, &cells, if keep { &[] } else { &which });
+    let skin = opt_bool(params, "skin")?.unwrap_or(false);
+    if skin && session.objects[object].skin.is_none() {
+        return Err(format!("object {object} has no skin to bake"));
+    }
+    let mut cells = if which.is_empty() {
+        Default::default()
+    } else {
+        crate::tools::strand_cells(&session.objects[object].strands, &which)
+    };
+    if skin {
+        cells.extend(crate::tools::box_cells(
+            session.skin_boxes(object).iter().copied(),
+        ));
+    }
+    let written = session.bake_strand_cells(
+        object,
+        &cells,
+        if keep { &[] } else { &which },
+        skin && !keep,
+    );
     let mut out = reply(session, object, None, session.strand_boxes(object).len());
     out["cells"] = json!(cells.len());
     out["changed"] = json!(written);

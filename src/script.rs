@@ -27,6 +27,7 @@ mod math;
 mod organic;
 mod shapes;
 mod silhouette;
+mod skin;
 mod stone;
 mod strands;
 
@@ -184,6 +185,9 @@ struct Built {
     /// The strands the run gave this object, when it touched them at all: a
     /// run that adds or removes strands replaces the object's strands.
     strands: Option<Vec<crate::tools::Strand>>,
+    /// The skin the run set (`None` inside: removed), when it called `skin`
+    /// or `clear_skin` at all.
+    skin: Option<Option<crate::tools::Skin>>,
 }
 
 /// A script running on a worker thread for the editor.
@@ -227,6 +231,8 @@ pub(crate) struct Outcome {
     pub(crate) built: Vec<(BuiltKey, HashMap<Cell, u8>)>,
     /// Per built object, in the same order: its strands when the run touched them.
     pub(crate) strands: Vec<Option<Vec<crate::tools::Strand>>>,
+    /// Per built object: its skin when the run set or cleared it.
+    pub(crate) skins: Vec<Option<Option<crate::tools::Skin>>>,
     pub(crate) palette: Vec<(u8, [u8; 3])>,
     pub(crate) motion: Vec<(u8, Motion, f32)>,
     pub(crate) ops: Vec<DocOp>,
@@ -276,6 +282,7 @@ pub(crate) fn execute(
             key: BuiltKey::Index(host),
             cells: HashMap::new(),
             strands: None,
+            skin: None,
         }],
         stored: stored.to_vec(),
         params: Vec::new(),
@@ -317,6 +324,7 @@ pub(crate) fn execute(
     import::register(&mut engine, &scratch);
     markers::register(&mut engine, &scratch);
     strands::register(&mut engine, &scratch);
+    skin::register(&mut engine, &scratch);
     let mut scope = rhai::Scope::new();
     scope.push_constant("PI", std::f64::consts::PI);
     engine
@@ -334,6 +342,11 @@ pub(crate) fn execute(
             .built
             .iter()
             .map(|built| built.strands.clone())
+            .collect(),
+        skins: scratch
+            .built
+            .iter()
+            .map(|built| built.skin.clone())
             .collect(),
         palette: scratch.palette.clone(),
         motion: scratch.motion.clone(),
@@ -729,6 +742,7 @@ impl Scratch {
             key,
             cells: HashMap::new(),
             strands: None,
+            skin: None,
         });
         Ok(self.built.len() - 1)
     }
@@ -1331,14 +1345,19 @@ impl Session {
         }
         self.replace_script_markers(&built_names, outcome.markers);
         let mut strands = outcome.strands.into_iter();
+        let mut skins = outcome.skins.into_iter();
         for (key, cells) in outcome.built {
             let run_strands = strands.next().flatten();
+            let run_skin = skins.next().flatten();
             match key {
                 BuiltKey::Index(target) => {
                     if target < self.objects.len() {
                         *self.objects[target].cells = cells.into();
                         if let Some(list) = run_strands {
                             self.objects[target].strands = list;
+                        }
+                        if let Some(skin) = run_skin {
+                            self.objects[target].skin = skin;
                         }
                     }
                 }
@@ -1348,6 +1367,9 @@ impl Session {
                         *self.objects[found].cells = cells.into();
                         if let Some(list) = run_strands {
                             self.objects[found].strands = list;
+                        }
+                        if let Some(skin) = run_skin {
+                            self.objects[found].skin = skin;
                         }
                     } else {
                         let translation = beside_host(&self.objects[index]);
@@ -1365,7 +1387,7 @@ impl Session {
                             bone: None,
                             script: ObjectScript::default(),
                             strands: run_strands.unwrap_or_default(),
-                            skin: None,
+                            skin: run_skin.flatten(),
                         });
                     }
                 }

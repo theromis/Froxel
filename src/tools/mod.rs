@@ -124,8 +124,8 @@ pub use silhouette::{
 };
 pub use skin::{skin_boxes, Skin, SkinAxis, MAX_SKIN_BRICKS, MAX_SKIN_CELLS};
 pub use strand::{
-    check_object as check_strands, object_boxes as strand_object_boxes, ray_box, strand_cells,
-    Strand, StrandBox, StrandPattern, StrandPoint, MAX_STRANDS, MAX_STRAND_POINTS,
+    box_cells, check_object as check_strands, object_boxes as strand_object_boxes, ray_box,
+    strand_cells, Strand, StrandBox, StrandPattern, StrandPoint, MAX_STRANDS, MAX_STRAND_POINTS,
 };
 pub use stroke::{
     surface_stroke, StrokeSpec, MAX_STROKE_DEPTH, MAX_STROKE_REACH, MAX_STROKE_WIDTH,

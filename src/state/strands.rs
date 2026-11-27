@@ -235,14 +235,41 @@ impl Session {
 }
 
 impl Session {
+    /// Sets or removes one object's skin as one undo step, after checking it.
+    pub fn set_skin(
+        &mut self,
+        index: usize,
+        skin: Option<crate::tools::Skin>,
+    ) -> Result<(), String> {
+        let count = self.objects.len();
+        if index >= count {
+            return Err(format!(
+                "object index {index} is out of range ({count} objects)"
+            ));
+        }
+        if let Some(skin) = &skin {
+            skin.check()?;
+        }
+        if self.objects[index].skin == skin {
+            return Ok(());
+        }
+        self.commit();
+        self.checkpoint();
+        self.objects[index].skin = skin;
+        self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
+        self.commit();
+        Ok(())
+    }
+
     /// Writes `cells` into one object (over what is there) and removes the
-    /// strands listed in `remove`, as one undo step. Returns how many cells
-    /// changed.
+    /// strands listed in `remove` and, with `drop_skin`, its skin, as one
+    /// undo step. Returns how many cells changed.
     pub fn bake_strand_cells(
         &mut self,
         index: usize,
         cells: &HashMap<Cell, u8>,
         remove: &[usize],
+        drop_skin: bool,
     ) -> usize {
         if index >= self.objects.len() {
             return 0;
@@ -262,6 +289,9 @@ impl Session {
             n += 1;
             keep
         });
+        if drop_skin {
+            object.skin = None;
+        }
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
         self.commit();
         changed
