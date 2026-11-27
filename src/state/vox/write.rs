@@ -245,6 +245,9 @@ pub(crate) fn save_graph(
     if let Some(body) = crate::script::encode_chunk(objects) {
         push_chunk(&mut children, b"MVSC", &body);
     }
+    if let Some(body) = super::strands::encode(objects) {
+        push_chunk(&mut children, b"MVST", &body);
+    }
     Ok(wrap_vox(children))
 }
 
@@ -719,6 +722,9 @@ pub(crate) fn save_scene(
     push_anims(&mut children, clips)?;
     if let Some(body) = crate::script::encode_chunk(objects) {
         push_chunk(&mut children, b"MVSC", &body);
+    }
+    if let Some(body) = super::strands::encode(objects) {
+        push_chunk(&mut children, b"MVST", &body);
     }
     Ok(wrap_vox(children))
 }

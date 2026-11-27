@@ -564,6 +564,9 @@ pub struct Volume {
     /// Procedural generator. Empty source means this object has no script.
     /// Opening a file does not run it.
     pub script: crate::script::ObjectScript,
+    /// Chains of turned cubes along curves (`tools/strand.rs`), in local
+    /// cell coordinates. Drawn, traced, and exported as boxes, never as cells.
+    pub strands: Vec<crate::tools::Strand>,
 }
 
 /// Where a loaded object sits in the `.vox` graph.
@@ -869,7 +872,9 @@ mod pointer;
 mod selection;
 mod silhouette;
 mod stone;
+mod strands;
 mod vox;
+pub use strands::WorldBox;
 
 use vox::VoxGraph;
 

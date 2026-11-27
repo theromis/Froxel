@@ -18,6 +18,7 @@ mod organic;
 mod silhouette;
 mod space;
 mod stone;
+mod strands;
 pub(crate) use batch::{batch_items, batch_tool_names, MAX_BATCH_ITEMS};
 pub(crate) use blend::blend_writes as blend_shape_writes;
 pub(crate) use collision::{collision_build, finish_reply as collision_reply};
@@ -36,6 +37,10 @@ pub(crate) use silhouette::{
 };
 pub(crate) use space::{is_world, space_prop, to_local, to_world_reply};
 pub(crate) use stone::{cavity_writes, radial_writes, stone_writes, ShadedWrites, Stone};
+pub(crate) use strands::{
+    add_to as strand_add, bake_choice as strand_bake_choice, edit_in as strand_edit,
+    list_json as strand_list, remove_from as strand_remove,
+};
 
 use crate::state::{Cell, GlassMode, Session};
 
@@ -1344,6 +1349,11 @@ fn apply_unguarded(session: &mut Session, method: &str, params: &Value) -> Resul
         }
         "object.split" => edit::split_object(session, &params),
         "object.clear" => edit::clear_object(session, &params),
+        "strand.add" => strands::add_strand(session, &params),
+        "strand.edit" => strands::edit_strand(session, &params),
+        "strand.remove" => strands::remove_strand(session, &params),
+        "strand.list" => strands::list_strands(session, &params),
+        "strand.bake" => strands::bake_strands(session, &params),
         "object.mirror" => {
             let index = req_i32(&params, "index")?;
             if index < 0 {

@@ -28,6 +28,7 @@ mod organic;
 mod shapes;
 mod silhouette;
 mod stone;
+mod strands;
 
 pub(crate) use document::{DocOp, DocView};
 
@@ -180,6 +181,9 @@ impl Eq for ParamValue {}
 struct Built {
     key: BuiltKey,
     cells: HashMap<Cell, u8>,
+    /// The strands the run gave this object, when it touched them at all: a
+    /// run that adds or removes strands replaces the object's strands.
+    strands: Option<Vec<crate::tools::Strand>>,
 }
 
 /// A script running on a worker thread for the editor.
@@ -221,6 +225,8 @@ struct Scratch {
 pub(crate) struct Outcome {
     pub(crate) params: Vec<ScriptParam>,
     pub(crate) built: Vec<(BuiltKey, HashMap<Cell, u8>)>,
+    /// Per built object, in the same order: its strands when the run touched them.
+    pub(crate) strands: Vec<Option<Vec<crate::tools::Strand>>>,
     pub(crate) palette: Vec<(u8, [u8; 3])>,
     pub(crate) motion: Vec<(u8, Motion, f32)>,
     pub(crate) ops: Vec<DocOp>,
@@ -269,6 +275,7 @@ pub(crate) fn execute(
         built: vec![Built {
             key: BuiltKey::Index(host),
             cells: HashMap::new(),
+            strands: None,
         }],
         stored: stored.to_vec(),
         params: Vec::new(),
@@ -309,6 +316,7 @@ pub(crate) fn execute(
     silhouette::register(&mut engine, &scratch);
     import::register(&mut engine, &scratch);
     markers::register(&mut engine, &scratch);
+    strands::register(&mut engine, &scratch);
     let mut scope = rhai::Scope::new();
     scope.push_constant("PI", std::f64::consts::PI);
     engine
@@ -321,6 +329,11 @@ pub(crate) fn execute(
             .built
             .iter()
             .map(|built| (built.key.clone(), built.cells.clone()))
+            .collect(),
+        strands: scratch
+            .built
+            .iter()
+            .map(|built| built.strands.clone())
             .collect(),
         palette: scratch.palette.clone(),
         motion: scratch.motion.clone(),
@@ -715,6 +728,7 @@ impl Scratch {
         self.built.push(Built {
             key,
             cells: HashMap::new(),
+            strands: None,
         });
         Ok(self.built.len() - 1)
     }
@@ -1316,17 +1330,25 @@ impl Session {
             }
         }
         self.replace_script_markers(&built_names, outcome.markers);
+        let mut strands = outcome.strands.into_iter();
         for (key, cells) in outcome.built {
+            let run_strands = strands.next().flatten();
             match key {
                 BuiltKey::Index(target) => {
                     if target < self.objects.len() {
                         *self.objects[target].cells = cells.into();
+                        if let Some(list) = run_strands {
+                            self.objects[target].strands = list;
+                        }
                     }
                 }
                 BuiltKey::Name(name) => {
                     if let Some(found) = self.objects.iter().position(|object| object.name == name)
                     {
                         *self.objects[found].cells = cells.into();
+                        if let Some(list) = run_strands {
+                            self.objects[found].strands = list;
+                        }
                     } else {
                         let translation = beside_host(&self.objects[index]);
                         self.objects.push(Volume {
@@ -1342,6 +1364,7 @@ impl Session {
                             file: None,
                             bone: None,
                             script: ObjectScript::default(),
+                            strands: run_strands.unwrap_or_default(),
                         });
                     }
                 }

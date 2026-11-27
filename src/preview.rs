@@ -201,10 +201,24 @@ fn meshes(session: &Session, preview: &Preview) -> Vec<(Mesh, bool)> {
             .filter(|(_, slot)| **slot != 0)
             .map(|(cell, slot)| (*cell, *slot))
             .collect();
-        if cells.is_empty() {
+        if cells.is_empty() && object.strands.is_empty() {
             continue;
         }
         let mut built = mesh::mesh_cells(&cells, |slot| session.color(slot), |_| [0.0, 0.0]);
+        if !object.strands.is_empty() {
+            // Strands are drawn as the turned boxes they are, as the viewport draws them.
+            let strands = mesh::strand_mesh(
+                &session.strand_boxes(index),
+                0,
+                |slot| session.color(slot),
+                |_| [0.0, 0.0],
+            );
+            let offset = built.verts.len() as u32;
+            built.verts.extend(strands.verts);
+            built
+                .indices
+                .extend(strands.indices.iter().map(|i| i + offset));
+        }
         mesh::translate_mesh(&mut built, object.translation);
         if let Some(delta) = session.skin_delta(index) {
             for vert in &mut built.verts {

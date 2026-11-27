@@ -530,3 +530,71 @@ fn a_still_takes_the_render_panels_light_and_leaves_the_session_as_it_was() {
         before
     );
 }
+
+/// The tracer meets strands exactly where the viewport and preview mesh
+/// has its triangles: same geometry, nothing rasterized.
+#[test]
+fn the_tracer_hits_strands_where_the_mesh_has_them() {
+    let mut session = Session::new();
+    session.objects[0].cells.clear();
+    session.objects[0].translation = (3, -2, 1);
+    let strands = serde_json::json!({
+        "points": [[0, 0, 0, 0, 1.0], [2, 1, 6, 30, 0.8], [7, 1, 9, 70, 0.4]],
+        "width": 1.5, "thickness": 0.4, "step": 0.75, "palettes": [2, 3]
+    });
+    crate::remote::apply(&mut session, "strand.add", &strands).unwrap();
+    let world = build_world(&session);
+    let mut mesh = crate::mesh::strand_mesh(&session.strand_boxes(0), 0, |_| [0; 3], |_| [0.0; 2]);
+    crate::mesh::translate_mesh(&mut mesh, session.objects[0].translation);
+    let tri_hit = |o: Vec3, d: Vec3| -> Option<f32> {
+        let mut best: Option<f32> = None;
+        for tri in mesh.indices.chunks(3) {
+            let [a, b, c] = [0, 1, 2].map(|k| Vec3::from_array(mesh.verts[tri[k] as usize].pos));
+            let (e1, e2) = (b - a, c - a);
+            let p = d.cross(e2);
+            let det = e1.dot(p);
+            if det.abs() < 1.0e-9 {
+                continue;
+            }
+            let s = o - a;
+            let u = s.dot(p) / det;
+            let q = s.cross(e1);
+            let v = d.dot(q) / det;
+            let t = e2.dot(q) / det;
+            if u < -1.0e-5 || v < -1.0e-5 || u + v > 1.0 + 1.0e-5 || t <= 1.0e-4 {
+                continue;
+            }
+            best = Some(best.map_or(t, |b: f32| b.min(t)));
+        }
+        best
+    };
+    let centre = Vec3::new(7.0, 0.0, 6.0);
+    let mut hits = 0;
+    let mut bad = 0;
+    let mut state = 12345u32;
+    let mut rnd = || {
+        state = state.wrapping_mul(747796405).wrapping_add(2891336453);
+        (state >> 8) as f32 / 16777216.0
+    };
+    for _ in 0..1500 {
+        let from =
+            centre + Vec3::new(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).normalize_or_zero() * 30.0;
+        let aim = centre + Vec3::new(rnd() * 10.0 - 5.0, rnd() * 4.0 - 2.0, rnd() * 12.0 - 6.0);
+        let dir = (aim - from).normalize();
+        let traced = march(&world, from, dir).map(|hit| (hit.point - from).length());
+        let meshed = tri_hit(from, dir);
+        match (traced, meshed) {
+            (Some(a), Some(b)) => {
+                hits += 1;
+                assert!((a - b).abs() < 1.0e-2, "tracer {a} vs mesh {b}");
+            }
+            (None, None) => {}
+            other => {
+                bad += 1;
+                eprintln!("disagree {other:?} from {from} dir {dir}");
+            }
+        }
+    }
+    assert_eq!(bad, 0);
+    assert!(hits > 100, "{hits}");
+}

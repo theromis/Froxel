@@ -45,6 +45,8 @@ pub struct SceneGpu {
     bind_group: wgpu::BindGroup,
     uniforms: wgpu::Buffer,
     chunks: HashMap<(usize, i32, i32, i32), GpuMesh>,
+    /// Each object's strand boxes, keyed by object index.
+    strands: HashMap<usize, GpuMesh>,
     grid: Option<GpuMesh>,
     grid_key: Option<(i32, i32, i32, i32, i32, i32)>,
     hover: Option<GpuMesh>,
@@ -108,6 +110,7 @@ impl SceneGpu {
             bind_group,
             uniforms,
             chunks: HashMap::new(),
+            strands: HashMap::new(),
             grid: None,
             grid_key: None,
             hover: None,
@@ -150,6 +153,7 @@ impl SceneGpu {
     ) {
         if session.mesh_epoch != self.epoch {
             self.sync_chunks(device, session);
+            self.sync_strands(device, session);
             self.sync_grid(device, session);
             self.epoch = session.mesh_epoch;
         }
@@ -273,6 +277,79 @@ impl SceneGpu {
         self.chunks.retain(|key, _| live.contains(key));
     }
 
+    fn sync_strands(&mut self, device: &wgpu::Device, session: &Session) {
+        let mut live = std::collections::HashSet::new();
+        for (index, object) in session.objects.iter().enumerate() {
+            if object.hidden || object.strands.is_empty() {
+                continue;
+            }
+            let delta = session.skin_delta(index);
+            let base = mesh::motion_base(&object.cells);
+            let boxes = session.strand_boxes(index);
+            let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+            let mut mix = |bits: u64| {
+                hash = (hash ^ bits).wrapping_mul(0x0100_0000_01b3);
+            };
+            for b in &boxes {
+                for v in b
+                    .center
+                    .iter()
+                    .chain(b.half.iter())
+                    .chain(b.axes.iter().flatten())
+                {
+                    mix(v.to_bits() as u64);
+                }
+                let rgb = session.color(b.slot);
+                let uv = session.motion_uv(b.slot);
+                mix(u64::from(b.slot)
+                    | (rgb[0] as u64) << 8
+                    | (rgb[1] as u64) << 16
+                    | (rgb[2] as u64) << 24);
+                mix(uv[0].to_bits() as u64 | (uv[1].to_bits() as u64) << 32);
+            }
+            mix(base as u32 as u64);
+            for v in [
+                object.translation.0,
+                object.translation.1,
+                object.translation.2,
+            ] {
+                mix(v as u32 as u64);
+            }
+            if let Some(delta) = delta {
+                for value in delta.to_cols_array() {
+                    mix(value.to_bits() as u64);
+                }
+            }
+            live.insert(index);
+            if self
+                .strands
+                .get(&index)
+                .is_some_and(|m| m.occupancy == hash)
+            {
+                continue;
+            }
+            let mut built = mesh::strand_mesh(
+                &boxes,
+                base,
+                |slot| session.color(slot),
+                |slot| session.motion_uv(slot),
+            );
+            mesh::translate_mesh(&mut built, object.translation);
+            if let Some(delta) = delta {
+                mesh::transform_mesh(&mut built, delta);
+            }
+            match upload(device, &built, hash) {
+                Some(gpu) => {
+                    self.strands.insert(index, gpu);
+                }
+                None => {
+                    self.strands.remove(&index);
+                }
+            }
+        }
+        self.strands.retain(|key, _| live.contains(key));
+    }
+
     fn sync_grid(&mut self, device: &wgpu::Device, session: &Session) {
         let Some((min, max)) = session.world_bounds() else {
             self.grid = None;
@@ -367,6 +444,9 @@ impl SceneGpu {
         pass.set_bind_group(0, &self.bind_group, &[]);
         for chunk in self.chunks.values() {
             draw(&mut pass, chunk);
+        }
+        for strands in self.strands.values() {
+            draw(&mut pass, strands);
         }
         if let Some(grid) = &self.grid {
             draw(&mut pass, grid);

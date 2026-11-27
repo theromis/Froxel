@@ -8,6 +8,7 @@ use super::geom::*;
 use super::*;
 
 mod read;
+mod strands;
 mod write;
 
 pub(crate) use read::*;
@@ -26,6 +27,7 @@ pub(super) struct LoadedObject {
     pub(super) file: Option<FileLink>,
     pub(super) bone: Option<String>,
     pub(super) script: crate::script::ObjectScript,
+    pub(super) strands: Vec<crate::tools::Strand>,
 }
 
 pub(super) struct Loaded {

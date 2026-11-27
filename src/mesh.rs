@@ -172,6 +172,43 @@ pub fn mesh_listed(
     mesh
 }
 
+/// The six faces of every strand box, in the object's local geometric
+/// frame (callers translate and pose it like the cell chunks). Normals are
+/// the boxes' own, so turned faces shade as they face.
+pub fn strand_mesh(
+    boxes: &[crate::tools::StrandBox],
+    base: i32,
+    color: impl Fn(u8) -> [u8; 3],
+    motion: impl Fn(u8) -> [f32; 2],
+) -> Mesh {
+    let base = base as f32;
+    let mut mesh = Mesh::default();
+    for b in boxes {
+        let rgb = color(b.slot);
+        let color = [
+            rgb[0] as f32 / 255.0,
+            rgb[1] as f32 / 255.0,
+            rgb[2] as f32 / 255.0,
+        ];
+        let motion = motion(b.slot);
+        let world = crate::state::WorldBox::new(b.matrix(), b.slot);
+        for (corners, normal) in world.faces() {
+            let start = mesh.verts.len() as u32;
+            for corner in corners {
+                mesh.verts.push(Vert {
+                    pos: corner.to_array(),
+                    normal: normal.to_array(),
+                    color,
+                    motion: [motion[0], motion[1], corner.y - base, 0.0],
+                });
+            }
+            mesh.indices
+                .extend([start, start + 1, start + 2, start, start + 2, start + 3]);
+        }
+    }
+    mesh
+}
+
 /// Boundary of a selection: faces that touch air or an unselected cell.
 pub fn selection_shell(cells: &HashMap<Cell, u8>, picked: &HashSet<Cell>) -> Mesh {
     let mut mesh = Mesh::default();

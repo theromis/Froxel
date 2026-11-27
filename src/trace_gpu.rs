@@ -60,6 +60,8 @@ pub struct Tracer {
     palette: wgpu::Buffer,
     voxels: wgpu::Buffer,
     lights: wgpu::Buffer,
+    /// Strand BVH nodes and boxes (`trace::GpuScene::strands`).
+    strands: wgpu::Buffer,
     pixels: wgpu::Buffer,
     linear: wgpu::Texture,
     linear_view: wgpu::TextureView,
@@ -189,6 +191,7 @@ impl Tracer {
         let palette = zeros(device, "path-trace-palette", 256 * 16);
         let voxels = zeros(device, "path-trace-voxels", 4);
         let lights = zeros(device, "path-trace-lights", std::mem::size_of::<GpuLight>());
+        let strands = zeros(device, "path-trace-strands", 16);
         let pixels = pixel_buffer(device, PIXEL_STRIDE as usize);
         let (linear, linear_view) = linear_target(device, 1, 1);
         let (color, color_view) = color_target(device, 1, 1);
@@ -200,6 +203,7 @@ impl Tracer {
             &palette,
             &voxels,
             &lights,
+            &strands,
             &pixels,
             &linear_view,
         );
@@ -215,6 +219,7 @@ impl Tracer {
             palette,
             voxels,
             lights,
+            strands,
             pixels,
             linear,
             linear_view,
@@ -538,8 +543,22 @@ impl Tracer {
             contents: bytemuck::cast_slice(&lights),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
+        let strands = if scene.strands.is_empty() {
+            vec![[0.0f32; 4]]
+        } else {
+            scene.strands.clone()
+        };
+        self.strands = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("path-trace-strands"),
+            contents: bytemuck::cast_slice(&strands),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
         self.origin = scene.origin;
         self.dims = scene.dims;
+        // The free fourth lanes carry the strand layout: where the boxes
+        // start, and how many BVH nodes there are (0 for none).
+        self.origin[3] = scene.box_base as i32;
+        self.dims[3] = scene.nodes;
         self.light_count = scene.lights.len() as u32;
         self.rebind(device);
     }
@@ -567,6 +586,7 @@ impl Tracer {
             &self.palette,
             &self.voxels,
             &self.lights,
+            &self.strands,
             &self.pixels,
             &self.linear_view,
         );
@@ -903,6 +923,7 @@ fn bind_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
             storage(3, true),
             storage(4, true),
             storage(5, false),
+            storage(7, true),
             wgpu::BindGroupLayoutEntry {
                 binding: 6,
                 visibility: wgpu::ShaderStages::COMPUTE,
@@ -925,6 +946,7 @@ fn bind_group(
     palette: &wgpu::Buffer,
     voxels: &wgpu::Buffer,
     lights: &wgpu::Buffer,
+    strands: &wgpu::Buffer,
     pixels: &wgpu::Buffer,
     linear: &wgpu::TextureView,
 ) -> wgpu::BindGroup {
@@ -955,6 +977,10 @@ fn bind_group(
             wgpu::BindGroupEntry {
                 binding: 5,
                 resource: pixels.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 7,
+                resource: strands.as_entire_binding(),
             },
             wgpu::BindGroupEntry {
                 binding: 6,

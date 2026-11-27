@@ -395,8 +395,13 @@ tracer. A file with no scene graph still loads its first model.
 | `add_object` | — | Empty object. Optional `name`, world `position` `[x, y, z]` (default `[0, 0, 0]`), `size` `[x, y, z]` (capacity hint, each axis 1..=256), `makeActive` (default true; the older `make_active` still works). Returns the index. One undo step |
 | `set_object` | `index` | Optional `name`, world `position`, `hidden`. Moving changes the scene-graph translation, so voxels move in the world. One undo step |
 | `remove_object` | `index` | Remove the object and its voxels. Its bone stays; the binding goes. Later indices decrease by one. Refuses the last object. One undo step |
-| `mirror_object` | `index`, `axis`, `name` | Copy the object mirrored across `x`, `y`, or `z` through the origin. Optional world `position` and `mirrorBones` (default false). Replies with the copy's `index`, `name`, `bones`, and world `position`. One undo step |
-| `clear_object` | — | Empty an object (`index`, an index or a name; default the active one) of every cell, with no box limit. Its name, position, bone, script, and markers stay. Replies with `index`, `name`, `removed`, `voxels`. One undo step; an empty object adds none |
+| `mirror_object` | `index`, `axis`, `name` | Copy the object, with its strands, mirrored across `x`, `y`, or `z` through the origin. Optional world `position` and `mirrorBones` (default false). Replies with the copy's `index`, `name`, `bones`, and world `position`. One undo step |
+| `clear_object` | — | Empty an object (`index`, an index or a name; default the active one) of every cell and strand, with no box limit. Its name, position, bone, script, and markers stay. Replies with `index`, `name`, `removed`, `voxels`. One undo step; an empty object adds none |
+| `add_strand` | `points` | Add a strand to an object (`object`, default the active one): a chain of cubes along a curve through 2..=256 local `points` (`[x, y, z, twist?, scale?]`, a whole number is a cell centre), each cube turned along the path. `curve` `smooth` (default) or `polyline`; `width` (to the path's left), `thickness` (up), and `step` (cube length) in cells, 0.125..=64, default 1; `palette`, or `palettes` with `pattern` `gradient` (default), `rings` (`period`), or `random` (`seed`). Stored as its definition, drawn, traced, and exported as the same turned boxes everywhere; see [Strands](#strands). Replies with `object`, `name`, `strands`, `boxes`, `strand`. One undo step |
+| `edit_strand` | `index` | Change a strand: any `add_strand` field replaces it; `point` + `at` moves one point (a position alone keeps its twist and scale), `insert` + `at` adds one, `remove` deletes one, `move` `[dx, dy, dz]` shifts it whole. Replies as `add_strand`. One undo step |
+| `remove_strand` | `index` or `all` | Remove one strand, or every strand of the object. Replies with `removed`. One undo step |
+| `list_strands` | — | The object's strands with their definitions, `boxes`, and `length` |
+| `bake_strands` | — | Write a grid copy of strands (`strands`, default all) into the object's cells: every cell whose centre is inside a box. They are removed unless `keep`. Replies with `cells`, `changed`, `baked`. One undo step |
 | `split_object` | `boxes` or `slots` | Move (or `copy`) the cells of an object (`index`, an index or a name; default the active one) inside one or more inclusive local boxes, or of some `slots`, or both, into a new object (`name`) or an existing one (`into`), each cell keeping its world position. `invert` takes the rest. `makeActive` selects the target. Replies with `target`, `name`, `created`, `cells`, `replaced`, `position`, `sourceVoxels`, `targetVoxels`, `bounds`. One undo step |
 | `split_parts` | `parts` | Cut an object (`object`, default the active one) into its rig parts in one call: `parts` `[{name, point \| points \| bone \| marker, planes?}]`; every cell goes to the part whose seed is nearest through the solid (`metric` `geodesic`, `connectivity` 26 or 6; `euclidean` is the other metric and the fallback for unreached cells), on the kept side of its `planes` `[{normal, at}]`. Each part becomes its own object at world `[0, 0, 0]` with world cells; the source is removed unless a part has its name or `removeSource` is false; `bind` (default true) binds a part to the bone of its name. Optional `reach` (default 8), `space`. Replies with `parts` (`name`, `index`, `cells`, `seeds`, `bone`, `bounds`), `unreached`, `metric`, `sourceRemoved`, `objects`. One undo step. See [Splitting into rig parts](#splitting-into-rig-parts) |
 | `add_bone` | `name`, `pivot` | Add a bone. `pivot` is a fractional world coordinate `[x, y, z]`. Optional `parent` (omit or null for a root) and `rotation` quaternion `[x, y, z, w]` (default identity `[0, 0, 0, 1]`), and `rest`, the saved turn its parts sit at (see [Rest turn](#rest-turn)). One undo step |
@@ -3011,6 +3016,35 @@ hundreds of collision boxes does not fill an agent's context, and
 `reply: "full"` gives them as `list_markers` does. A script's `marker`,
 `collision_box`, and `connector` make the same markers on the objects it
 builds; a rerun replaces them and leaves markers placed by hand.
+
+### Strands
+
+A strand is a chain of cubes along a curve, each cube turned along the
+path: a sedge leaf, a reed, a water weed, a catfish barbel, a fin ray. On the
+grid such a shape steps; a strand bends. `add_strand` takes 2..=256 points
+in the object's local cells (a whole number is a cell centre, as `sweep`
+takes them), each with an optional `twist` (degrees counter-clockwise
+looking along the path) and `scale` (of the section, so a leaf tapers to its
+tip). `curve` `smooth` passes a Catmull-Rom curve through them. The section
+is `width` to the path's left (seen from above, walking along it) by
+`thickness` up, and the path is cut into the whole number of cubes nearest
+its length over `step`, so the last cube ends on the last point. All three
+go down to 0.125 cells, so a strand is also detail finer than the grid.
+Colours are one `palette` slot, or `palettes` laid out as a `gradient`
+from base to tip, `rings` every `period` cells, or `random` by `seed`.
+
+A strand is stored as that definition, on its object, in its local cells:
+it moves with the object, its bone, its rest turn, and the preview pose,
+undo covers it, and `edit_strand` changes it later (a field, one point, a
+new point, or a shift of the whole strand). It is never rasterized into
+cells on the way to the screen or a file: the viewport, `preview`,
+`model_view`, `render` (CPU and GPU), and `export_mesh` all draw the same
+turned boxes, consecutive cubes of one frame and slot merged into one box.
+The `.vox` keeps strands in an `MVST` chunk; MagicaVoxel skips it and shows
+only cells, so `bake_strands` writes a grid copy (every cell whose centre is
+inside a box) when one is wanted. An object holds at most 4096 strands and
+20000 boxes. A script's `add_strand` gives strands to the object it writes,
+and a rerun replaces them.
 
 ### Collision from voxels
 

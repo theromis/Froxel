@@ -173,6 +173,7 @@ impl Session {
             file: None,
             bone: None,
             script: Default::default(),
+            strands: Vec::new(),
         });
         session.frame_camera();
         session.mark_clean();
@@ -227,6 +228,18 @@ impl Session {
                 max.0 = max.0.max(world.0);
                 max.1 = max.1.max(world.1);
                 max.2 = max.2.max(world.2);
+            }
+        }
+        for index in 0..self.objects.len() {
+            for b in self.strand_world_boxes(index) {
+                let (lo, hi) = b.aabb();
+                any = true;
+                min.0 = min.0.min(lo.x.floor() as i32);
+                min.1 = min.1.min(lo.y.floor() as i32);
+                min.2 = min.2.min(lo.z.floor() as i32);
+                max.0 = max.0.max(hi.x.ceil() as i32 - 1);
+                max.1 = max.1.max(hi.y.ceil() as i32 - 1);
+                max.2 = max.2.max(hi.z.ceil() as i32 - 1);
             }
         }
         any.then_some((min, max))

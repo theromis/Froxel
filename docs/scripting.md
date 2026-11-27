@@ -1381,6 +1381,36 @@ and both ends. `tests/fixtures/examples/gorge_wall_variants.json` is a parameter
 for `export_variants` and `froxel run export_variants`; exporting a subset of it
 again updates the manifest by name and keeps the other entries.
 
+## Strands
+
+`add_strand(points)` and `add_strand(points, #{...})` add a strand to the
+object being written: a chain of cubes along a curve, each turned along the
+path (MCP `add_strand`, [Strands](mcp.md#strands)). Points are
+`[x, y, z]`, `[x, y, z, twist]`, or `[x, y, z, twist, scale]` in local cells.
+Options are the tool's: `curve`, `width`, `thickness`, `step`, `palette`,
+`palettes`, `pattern`, `period`, `seed`. It returns the strand's index.
+`edit_strand(index, #{...})`, `remove_strand(index)`,
+`remove_strand(#{all: true})`, `list_strands()`, and `bake_strands()` /
+`bake_strands(#{strands: [..], keep: true})` work on the strands of the
+object being written, which start empty like its cells. A run that touches
+strands replaces that object's strands when it is applied; a run that never
+does leaves them.
+
+```rhai
+// A sedge tuft: leaves fan out from the base, bend over, and taper.
+let r = rng(4);
+for i in 0..9 {
+    let a = i * 0.7;
+    let lean = r.float(3.0, 6.0);
+    let tall = r.float(8.0, 14.0);
+    add_strand([
+        [0, 0, 0, 0, 1.0],
+        [lean * 0.3 * cos(a), lean * 0.3 * sin(a), tall * 0.6, 20, 0.9],
+        [lean * cos(a), lean * sin(a), tall, 40, 0.4],
+    ], #{width: 1.0, thickness: 0.35, step: 1.0, palettes: [2, 3, 4]});
+}
+```
+
 ## Markers
 
 ```rhai

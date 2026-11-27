@@ -166,6 +166,8 @@ pub fn scene_key(session: &Session) -> u64 {
 
 struct World {
     grid: Grid,
+    /// Strand boxes, traced as the turned boxes they are.
+    boxes: boxes::Boxes,
     lights: Vec<Light>,
     min: [i32; 3],
     max: [i32; 3],
@@ -434,7 +436,8 @@ impl Frame {
     /// as the lattice corners of those cells.
     pub fn cells(session: &Session, only: Option<usize>) -> Option<Self> {
         let voxels = posed_voxels(session, only);
-        if voxels.is_empty() {
+        let strands = session.visible_strand_boxes(only);
+        if voxels.is_empty() && strands.is_empty() {
             return None;
         }
         let mut corners = std::collections::HashSet::new();
@@ -447,10 +450,13 @@ impl Frame {
                 ));
             }
         }
-        let points = corners
+        let mut points: Vec<Vec3> = corners
             .into_iter()
             .map(|corner| Vec3::new(corner.0 as f32, corner.1 as f32, corner.2 as f32))
             .collect();
+        for b in &strands {
+            points.extend(b.corners());
+        }
         Some(Self { points, pad: 0.0 })
     }
 
@@ -972,6 +978,7 @@ use shade::{
     aces, camera_basis, center_ray, denoise, first_guides, lens_ray, ortho_primary, primary_dir,
     radiance, to_srgb,
 };
+mod boxes;
 use world::{build_world, march, posed_voxels};
 pub use world::{gpu_scene, GpuLight, GpuScene};
 

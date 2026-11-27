@@ -47,8 +47,8 @@ pub struct Split {
 }
 
 impl Session {
-    /// Empty one object, whatever its size: no box limit. Its name,
-    /// position, bone, script, and markers stay. One undo step; an empty
+    /// Empty one object, whatever its size: no box limit. Its strands go
+    /// too; its name, position, bone, script, and markers stay. One undo step; an empty
     /// object is no step. Returns how many cells were removed.
     pub fn clear_object(&mut self, index: usize) -> Result<usize, String> {
         let count = self.objects.len();
@@ -57,12 +57,13 @@ impl Session {
             .get(index)
             .ok_or_else(|| format!("object index {index} is out of range ({count} objects)"))?;
         let removed = object.cells.len();
-        if removed == 0 {
+        if removed == 0 && object.strands.is_empty() {
             return Ok(0);
         }
         self.commit();
         self.checkpoint();
         self.objects[index].cells.clear();
+        self.objects[index].strands.clear();
         self.clear_picked();
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
         self.commit();
@@ -206,6 +207,7 @@ impl Session {
                     file: None,
                     bone: None,
                     script: Default::default(),
+                    strands: Vec::new(),
                 });
                 (self.objects.len() - 1, true)
             }

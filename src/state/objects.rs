@@ -44,6 +44,7 @@ impl Session {
             file: None,
             bone: None,
             script: Default::default(),
+            strands: Vec::new(),
         });
         let index = self.objects.len() - 1;
         if make_active {
@@ -192,6 +193,7 @@ impl Session {
             file: None,
             bone: None,
             script: Default::default(),
+            strands: Vec::new(),
         });
         self.selected = self.objects.len() - 1;
         self.focus_object();
@@ -226,6 +228,7 @@ impl Session {
             file: None,
             bone: source.bone.clone(),
             script: source.script.clone(),
+            strands: source.strands.clone(),
         };
         self.objects.insert(self.selected + 1, copy);
         self.selected += 1;
@@ -532,6 +535,17 @@ impl Session {
             }
         }
         let hidden = source.hidden;
+        // Strand points follow the cells: a cell centre x mirrors to -x - 1.
+        let shift = [
+            (source.translation.0 - origin[0]) as f32,
+            (source.translation.1 - origin[1]) as f32,
+            (source.translation.2 - origin[2]) as f32,
+        ];
+        let strands: Vec<crate::tools::Strand> = source
+            .strands
+            .iter()
+            .map(|s| s.shifted(shift).mirrored(axis, -0.5 - origin[axis] as f32))
+            .collect();
         let (skeleton, bone, added) = if mirror_bones {
             self.mirrored_bones(index, axis)?
         } else {
@@ -552,6 +566,7 @@ impl Session {
             file: None,
             bone,
             script: Default::default(),
+            strands,
         });
         let created = self.objects.len() - 1;
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
@@ -1207,6 +1222,7 @@ impl Session {
                 file: None,
                 bone: None,
                 script: Default::default(),
+                strands: Vec::new(),
             });
         }
         self.selected = self.selected.min(self.objects.len() - 1);

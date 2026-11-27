@@ -43,6 +43,7 @@ mod sculpt;
 mod shapes;
 mod sheet_measure;
 mod silhouette;
+mod strand;
 mod stroke;
 mod surface;
 mod sweep;
@@ -119,6 +120,10 @@ pub use sheet_measure::{luma_of, measure_sheet, PartsSpec, SheetSpec, SheetView}
 pub use silhouette::{
     carve_from_views, mask_from_rgba, mask_from_rows, Background, CarveSpec, Colour, Crop, Ink,
     Mask, Scale, Side, View, MAX_CARVE_PASSES,
+};
+pub use strand::{
+    check_object as check_strands, object_boxes as strand_object_boxes, ray_box, strand_cells,
+    Strand, StrandBox, StrandPattern, StrandPoint, MAX_STRANDS, MAX_STRAND_POINTS,
 };
 pub use stroke::{
     surface_stroke, StrokeSpec, MAX_STROKE_DEPTH, MAX_STROKE_REACH, MAX_STROKE_WIDTH,

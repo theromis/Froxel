@@ -63,6 +63,7 @@ pub(super) fn build_world(session: &Session) -> World {
     }
     World {
         grid: pack_grid(&voxels, min, max),
+        boxes: super::boxes::Boxes::new(&session.visible_strand_boxes(None)),
         lights,
         min,
         max,
@@ -181,6 +182,12 @@ pub struct GpuScene {
     pub dims: [u32; 4],
     pub cells: Vec<u32>,
     pub lights: Vec<GpuLight>,
+    /// Strand boxes for `trace.wgsl`: `nodes` BVH nodes of two vec4 each
+    /// (min and first, max and count, the integers as bits), then the boxes
+    /// from vec4 `box_base`, four vec4 each (three rows, then the slot).
+    pub strands: Vec<[f32; 4]>,
+    pub nodes: u32,
+    pub box_base: u32,
 }
 
 #[repr(C)]
@@ -217,15 +224,53 @@ pub fn gpu_scene(session: &Session) -> Option<GpuScene> {
             ],
         })
         .collect();
+    let mut strands = Vec::with_capacity(world.boxes.nodes.len() * 2 + world.boxes.boxes.len() * 4);
+    for node in &world.boxes.nodes {
+        strands.push([
+            node.min[0],
+            node.min[1],
+            node.min[2],
+            f32::from_bits(node.first),
+        ]);
+        strands.push([
+            node.max[0],
+            node.max[1],
+            node.max[2],
+            f32::from_bits(node.count),
+        ]);
+    }
+    let box_base = strands.len() as u32;
+    for b in &world.boxes.boxes {
+        strands.extend(b.rows);
+        strands.push([f32::from_bits(u32::from(b.slot)), 0.0, 0.0, 0.0]);
+    }
     Some(GpuScene {
         origin: [origin[0], origin[1], origin[2], 0],
         dims: [dims[0] as u32, dims[1] as u32, dims[2] as u32, 0],
         cells: cells.iter().map(|slot| u32::from(*slot)).collect(),
         lights,
+        nodes: world.boxes.nodes.len() as u32,
+        box_base,
+        strands,
     })
 }
 
+/// The first cell or strand box along a ray.
 pub(super) fn march(world: &World, origin: Vec3, dir: Vec3) -> Option<Hit> {
+    let grid = march_grid(world, origin, dir);
+    let limit = grid.as_ref().map_or(f32::MAX, |(_, t)| *t);
+    if let Some((t, normal, slot)) = world.boxes.hit(origin, dir, limit) {
+        return Some(Hit {
+            point: origin + dir * t,
+            normal,
+            slot,
+        });
+    }
+    grid.map(|(hit, _)| hit)
+}
+
+/// The first solid cell along a ray, and how far along `dir` the ray enters it.
+fn march_grid(world: &World, origin: Vec3, dir: Vec3) -> Option<(Hit, f32)> {
     if world.count == 0 || dir.length_squared() < 1.0e-8 {
         return None;
     }
@@ -277,7 +322,7 @@ pub(super) fn march(world: &World, origin: Vec3, dir: Vec3) -> Option<Hit> {
     }
     let mut normal = -dir.normalize_or_zero();
     if let Some(slot) = world.slot(cell[0], cell[1], cell[2]) {
-        return Some(hit_at(cell, normal, slot));
+        return Some((hit_at(cell, normal, slot), entry));
     }
     for _ in 0..MAX_STEPS {
         let axis = if tmax[0] <= tmax[1] && tmax[0] <= tmax[2] {
@@ -288,6 +333,7 @@ pub(super) fn march(world: &World, origin: Vec3, dir: Vec3) -> Option<Hit> {
             2
         };
         cell[axis] += step[axis];
+        let entered = entry + tmax[axis];
         tmax[axis] += delta[axis];
         normal = Vec3::ZERO;
         match axis {
@@ -299,7 +345,7 @@ pub(super) fn march(world: &World, origin: Vec3, dir: Vec3) -> Option<Hit> {
             return None;
         }
         if let Some(slot) = world.slot(cell[0], cell[1], cell[2]) {
-            return Some(hit_at(cell, normal, slot));
+            return Some((hit_at(cell, normal, slot), entered));
         }
     }
     None

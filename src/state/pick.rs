@@ -193,20 +193,65 @@ impl Session {
                 continue;
             }
             let (local, local_dir) = self.ray_to_local(index, origin, dir);
-            let Some(hit) = raycast(&object.cells, local, local_dir) else {
-                continue;
-            };
-            let center = self.object_to_world(index).transform_point3(Vec3::new(
-                hit.cell.0 as f32 + 0.5,
-                hit.cell.1 as f32 + 0.5,
-                hit.cell.2 as f32 + 0.5,
-            ));
-            let distance = (center - origin).length_squared();
-            if best.is_none_or(|(so_far, _, _)| distance < so_far) {
-                best = Some((distance, index, hit));
+            if let Some(hit) = raycast(&object.cells, local, local_dir) {
+                let center = self.object_to_world(index).transform_point3(Vec3::new(
+                    hit.cell.0 as f32 + 0.5,
+                    hit.cell.1 as f32 + 0.5,
+                    hit.cell.2 as f32 + 0.5,
+                ));
+                let distance = (center - origin).length_squared();
+                if best.is_none_or(|(so_far, _, _)| distance < so_far) {
+                    best = Some((distance, index, hit));
+                }
+            }
+            if let Some((distance, hit)) = self.pick_strand(index, origin, dir) {
+                if best.is_none_or(|(so_far, _, _)| distance < so_far) {
+                    best = Some((distance, index, hit));
+                }
             }
         }
         best.map(|(_, index, hit)| (index, hit))
+    }
+
+    /// The nearest strand box of one object under a world ray: the squared
+    /// distance to the hit and the local cell just inside the face it hit,
+    /// with that face's normal rounded to an axis.
+    pub(super) fn pick_strand(&self, index: usize, origin: Vec3, dir: Vec3) -> Option<(f32, Hit)> {
+        let dir = dir.normalize_or_zero();
+        let mut best: Option<(f32, Vec3)> = None;
+        for b in self.strand_world_boxes(index) {
+            if let Some((t, normal)) = crate::tools::ray_box(&b.inverse, &b.matrix, origin, dir) {
+                if t > 0.0 && best.is_none_or(|(so_far, _)| t < so_far) {
+                    best = Some((t, normal));
+                }
+            }
+        }
+        let (t, normal) = best?;
+        let point = origin + dir * t;
+        let to_local = self.object_to_world(index).inverse();
+        let local = to_local.transform_point3(point - normal * 1.0e-3);
+        let n = to_local.transform_vector3(normal);
+        let a = n.abs();
+        let axis = if a.x >= a.y && a.x >= a.z {
+            0
+        } else if a.y >= a.z {
+            1
+        } else {
+            2
+        };
+        let mut step = [0, 0, 0];
+        step[axis] = if n[axis] >= 0.0 { 1 } else { -1 };
+        Some((
+            t * t,
+            Hit {
+                cell: (
+                    local.x.floor() as i32,
+                    local.y.floor() as i32,
+                    local.z.floor() as i32,
+                ),
+                normal: (step[0], step[1], step[2]),
+            },
+        ))
     }
 
     /// Copy the palette index of the voxel under `ray` into the active slot.

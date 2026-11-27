@@ -294,6 +294,8 @@ pub fn resume(path: &Path, session: &mut Session) -> Result<Resumed, String> {
                         .drain()
                         .map(|(c, slot)| ((c.0 + d.0, c.1 + d.1, c.2 + d.2), slot))
                         .collect();
+                    let shift = [d.0 as f32, d.1 as f32, d.2 as f32];
+                    object.strands = object.strands.iter().map(|s| s.shifted(shift)).collect();
                     object.translation = t;
                 }
                 object.box_min = box_min;

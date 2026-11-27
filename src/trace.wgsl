@@ -51,6 +51,11 @@ struct Sample {
 @group(0) @binding(4) var<storage, read> lights: array<Light>;
 @group(0) @binding(5) var<storage, read_write> pixels: array<Pixel>;
 @group(0) @binding(6) var display_tex: texture_storage_2d<rgba16float, write>;
+// Strand boxes (src/trace/boxes.rs): u.dims.w BVH nodes of two vec4 (min and
+// first, max and count, the integers as bits), then from vec4 u.origin.w the
+// boxes, four vec4 each (three rows mapping the world into the unit cube,
+// then the slot as bits).
+@group(0) @binding(7) var<storage, read> strands: array<vec4<f32>>;
 
 const MAX_STEPS: i32 = 384;
 
@@ -108,7 +113,7 @@ fn box_t(origin: vec3<f32>, dir: vec3<f32>) -> f32 {
     return max(t0, 0.0);
 }
 
-fn march(origin_in: vec3<f32>, dir: vec3<f32>) -> Hit {
+fn march_grid(origin_in: vec3<f32>, dir: vec3<f32>, t_out: ptr<function, f32>) -> Hit {
     var miss: Hit;
     miss.found = false;
     miss.slot = 0u;
@@ -138,6 +143,7 @@ fn march(origin_in: vec3<f32>, dir: vec3<f32>) -> Hit {
     var normal = -safe_norm(dir);
     let first = slot_at(cell);
     if (first != 0u) {
+        *t_out = entry;
         var hit: Hit;
         hit.found = true;
         hit.slot = first;
@@ -150,6 +156,7 @@ fn march(origin_in: vec3<f32>, dir: vec3<f32>) -> Hit {
         if (tmax.y <= tmax.x && tmax.y <= tmax.z) { axis = 1; }
         if (tmax.z <= tmax.x && tmax.z <= tmax.y) { axis = 2; }
         cell[axis] = cell[axis] + step[axis];
+        let entered = entry + tmax[axis];
         tmax[axis] = tmax[axis] + delta[axis];
         normal = vec3<f32>(0.0);
         normal[axis] = -f32(step[axis]);
@@ -158,6 +165,7 @@ fn march(origin_in: vec3<f32>, dir: vec3<f32>) -> Hit {
         }
         let slot = slot_at(cell);
         if (slot != 0u) {
+            *t_out = entered;
             var hit: Hit;
             hit.found = true;
             hit.slot = slot;
@@ -167,6 +175,128 @@ fn march(origin_in: vec3<f32>, dir: vec3<f32>) -> Hit {
         }
     }
     return miss;
+}
+
+fn safe_inv(v: f32) -> f32 {
+    if (abs(v) < 1e-12) {
+        return select(1e12, -1e12, v < 0.0);
+    }
+    return 1.0 / v;
+}
+
+fn node_hit(origin: vec3<f32>, inv: vec3<f32>, lo: vec3<f32>, hi: vec3<f32>, limit: f32) -> bool {
+    let a = (lo - origin) * inv;
+    let b = (hi - origin) * inv;
+    let t0 = max(max(max(min(a.x, b.x), min(a.y, b.y)), min(a.z, b.z)), 0.0);
+    let t1 = min(min(min(max(a.x, b.x), max(a.y, b.y)), max(a.z, b.z)), limit);
+    return t0 <= t1;
+}
+
+const BOX_MIN_T: f32 = 1e-4;
+
+// The nearest strand box closer than `limit`, as the CPU tracer's
+// `Boxes::hit`: the hit carries the distance in its point's x.
+fn strand_hit(origin: vec3<f32>, dir: vec3<f32>, limit: f32) -> Hit {
+    var best: Hit;
+    best.found = false;
+    best.slot = 0u;
+    best.point = vec3<f32>(limit, 0.0, 0.0);
+    best.normal = vec3<f32>(0.0, 0.0, 1.0);
+    if (u.dims.w == 0u) { return best; }
+    let inv = vec3<f32>(safe_inv(dir.x), safe_inv(dir.y), safe_inv(dir.z));
+    var nearest = limit;
+    var stack: array<u32, 64>;
+    var top = 1u;
+    stack[0] = 0u;
+    let base = u32(u.origin.w);
+    loop {
+        if (top == 0u) { break; }
+        top = top - 1u;
+        let index = stack[top];
+        let a = strands[index * 2u];
+        let b = strands[index * 2u + 1u];
+        if (!node_hit(origin, inv, a.xyz, b.xyz, nearest)) { continue; }
+        let first = bitcast<u32>(a.w);
+        let count = bitcast<u32>(b.w);
+        if (count == 0u) {
+            if (top + 2u > 64u) { continue; }
+            stack[top] = first;
+            stack[top + 1u] = first + 1u;
+            top = top + 2u;
+            continue;
+        }
+        for (var k = 0u; k < count; k++) {
+            let at = base + (first + k) * 4u;
+            var near = -1e30;
+            var far = 1e30;
+            var near_axis = 0;
+            var far_axis = 0;
+            var near_sign = 1.0;
+            var far_sign = 1.0;
+            var missed = false;
+            for (var axis = 0; axis < 3; axis++) {
+                let row = strands[at + u32(axis)];
+                let o = dot(row.xyz, origin) + row.w;
+                let d = dot(row.xyz, dir);
+                if (abs(d) < 1e-12) {
+                    if (abs(o) > 1.0) { missed = true; }
+                    continue;
+                }
+                let t0 = (-1.0 - o) / d;
+                let t1 = (1.0 - o) / d;
+                var enter = t1;
+                var leave = t0;
+                var enter_sign = 1.0;
+                if (t0 < t1) {
+                    enter = t0;
+                    leave = t1;
+                    enter_sign = -1.0;
+                }
+                if (enter > near) {
+                    near = enter;
+                    near_axis = axis;
+                    near_sign = enter_sign;
+                }
+                if (leave < far) {
+                    far = leave;
+                    far_axis = axis;
+                    far_sign = -enter_sign;
+                }
+            }
+            if (missed || near > far || far < 0.0) { continue; }
+            var t = far;
+            var axis = far_axis;
+            var sign = far_sign;
+            if (near >= 0.0) {
+                t = near;
+                axis = near_axis;
+                sign = near_sign;
+            }
+            if (t >= BOX_MIN_T && t < nearest) {
+                nearest = t;
+                best.found = true;
+                best.slot = bitcast<u32>(strands[at + 3u].x);
+                best.normal = safe_norm(strands[at + u32(axis)].xyz * sign);
+                best.point = vec3<f32>(t, 0.0, 0.0);
+            }
+        }
+    }
+    return best;
+}
+
+// The first cell or strand box along a ray.
+fn march(origin: vec3<f32>, dir: vec3<f32>) -> Hit {
+    var limit = 1e30;
+    var hit = march_grid(origin, dir, &limit);
+    if (!hit.found) { limit = 1e30; }
+    let boxed = strand_hit(origin, dir, limit);
+    if (boxed.found) {
+        hit.found = true;
+        hit.slot = boxed.slot;
+        hit.normal = boxed.normal;
+        hit.point = origin + dir * boxed.point.x;
+    }
+    return hit;
 }
 
 fn occluded(origin: vec3<f32>, dir: vec3<f32>, max_dist: f32) -> bool {

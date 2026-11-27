@@ -1060,15 +1060,37 @@ fn build() -> Vec<Value> {
             "newObject": {"type": "boolean", "description": "Create a new object for the mesh and make it active. Defaults to false."},
             "name": str_prop("Name of the new object (with newObject). Omit for Object N.")
         }), &["path"]),
-        define("mirror_object", "Copy an object mirrored across a world axis through the origin. Cells use -coord-1 on that axis. One undo step. mirrorBones also copies the bound bone and its descendants, swapping an _l/_r suffix. The copy is unbound unless mirrorBones is true.", json!({
+        define("mirror_object", "Copy an object mirrored across a world axis through the origin. Cells use -coord-1 on that axis, and its strands are mirrored with them. One undo step. mirrorBones also copies the bound bone and its descendants, swapping an _l/_r suffix. The copy is unbound unless mirrorBones is true.", json!({
             "index": int_prop("Object index to copy"),
             "axis": str_prop("x, y, or z"),
             "name": str_prop("Name of the copy"),
             "position": ivec3_prop("World cell of the copy's local (0, 0, 0). Omit to use the minimum corner of the mirrored cells."),
             "mirrorBones": {"type": "boolean", "description": "Copy the bound bone subtree and swap _l/_r. Default false."}
         }), &["index", "axis", "name"]),
-        define("clear_object", "Empty an object of all its cells at once, whatever its size: fill_box with palette 0 stops at 2000000 cells, this has no limit. index is the object (an index or a name), the active one when omitted. Its name, position, bone, script, and markers stay; remove_object deletes it instead. One undo step; an empty object adds none. Replies with index, name, removed, and voxels.", json!({
+        define("clear_object", "Empty an object of all its cells and strands at once, whatever its size: fill_box with palette 0 stops at 2000000 cells, this has no limit. index is the object (an index or a name), the active one when omitted. Its name, position, bone, script, and markers stay; remove_object deletes it instead. One undo step; an empty object adds none. Replies with index, name, removed, and voxels.", json!({
             "index": {"type": ["integer", "string"], "description": "Object index or name. Defaults to the active object."}
+        }), &[]),
+        define("add_strand", "Add a strand to an object: a chain of cubes along a curve, each cube turned along the path (its length along the tangent, width to the path's left, thickness up), so a sedge leaf, a reed, a water weed, a barb, or a fin ray bends smoothly instead of stepping on the grid, and a section under one cell gives detail finer than the grid. The strand stays editable: it is stored as its definition (points, section, step, colours) in the object's local cells, moves with the object, its bone, and the pose, and is drawn, traced, and exported as the same turned boxes everywhere (viewport, preview, model_view, render, export_mesh), never rasterized into cells; bake_strands writes cells from it when a grid copy is wanted (MagicaVoxel shows only cells). Consecutive cubes of one frame and slot merge into one box, so a straight run costs one box. At most 4096 strands and 20000 boxes per object. One undo step. Replies with object, name, strands (count), boxes (the object's), and strand (its index, definition, boxes, length).", merged(strand_props(), json!({})), &["points"]),
+        define("edit_strand", "Change a strand of an object (index, from add_strand or list_strands): any of add_strand's fields replaces that field (points replaces the path); point with at moves one point (a position alone keeps its twist and scale); insert with at adds a point before that index (the count appends); remove deletes a point; move [dx, dy, dz] shifts the whole strand by cells. One undo step. Replies as add_strand.", merged(strand_props(), json!({
+            "index": int_prop("The strand's index on the object"),
+            "point": int_prop("Index of the point to move to at"),
+            "insert": int_prop("Index to insert a new point at (the point count appends)"),
+            "remove": int_prop("Index of the point to delete; a strand keeps at least 2"),
+            "at": {"type": ["array", "object"], "description": "The moved or inserted point: [x, y, z, twist?, scale?] or {x, y, z, twist?, scale?}"},
+            "move": vec3_prop("Shift every point by [dx, dy, dz] cells")
+        })), &["index"]),
+        define("remove_strand", "Remove a strand of an object by index, or every strand with all: true. One undo step. Replies with object, name, strands, boxes, and removed.", json!({
+            "object": {"type": ["integer", "string"], "description": "Object index or name. Defaults to the active object."},
+            "index": int_prop("The strand's index on the object"),
+            "all": bool_prop("Remove every strand of the object")
+        }), &[]),
+        define("list_strands", "The strands of an object: each one's index, points ([x, y, z, twist, scale]), curve, width, thickness, step, palette or palettes with pattern, boxes, and length, plus the object's box total.", json!({
+            "object": {"type": ["integer", "string"], "description": "Object index or name. Defaults to the active object."}
+        }), &[]),
+        define("bake_strands", "Write a grid copy of strands into their object's cells: every cell whose centre lies inside a strand box takes its slot, over what is there, for MagicaVoxel or for grid tools. strands picks strand indices (default all); keep leaves the strands in place, otherwise they are removed so the object does not hold both. One undo step. Replies with object, name, strands (left), boxes, cells (covered), changed, baked, kept, and voxels.", json!({
+            "object": {"type": ["integer", "string"], "description": "Object index or name. Defaults to the active object."},
+            "strands": {"type": "array", "items": {"type": "integer"}, "description": "Strand indices to bake. Defaults to all."},
+            "keep": bool_prop("Keep the strands after baking. Defaults to false.")
         }), &[]),
         define("split_object", "Move (or copy) the cells of an object inside one or more boxes, or of some palette slots, or both, into a new or an existing object, keeping each cell's world position: cut one carve_from_views blockout of a creature into its rig parts (head, flippers, tail) instead of one carve per part plus complement erases. A new object takes the source's position, so its local cells are the source's; an existing target (into) takes them at its own offset, replacing what it holds there. invert takes every cell the boxes and slots do not select. One undo step. Replies with target, name, created, cells (taken), replaced, position, sourceVoxels, targetVoxels, and bounds (target local).", json!({
             "index": {"type": ["integer", "string"], "description": "Source object index or name. Defaults to the active object."},
@@ -1348,6 +1370,22 @@ fn bake_scene_tool() -> Value {
         "path": str_prop(".glb file to write. Its folder is created."),
         "bake": {"type": ["object", "boolean"], "description": "The export_mesh bake option, over the scene's own; distance is in scene units here. Defaults to occlusion alone."}
     }), &["scene", "path"])
+}
+
+fn strand_props() -> Value {
+    json!({
+        "object": {"type": ["integer", "string"], "description": "Object index or name the strand belongs to. Defaults to the active object."},
+        "points": {"type": "array", "items": {"type": ["array", "object"]}, "description": "Path points in the object's local cells, 2..=256: [x, y, z], [x, y, z, twist], [x, y, z, twist, scale], or {x, y, z, twist?, scale?}. A whole number is a cell centre and fractions are allowed. twist is degrees counter-clockwise looking along the path (default 0); scale multiplies the section, 0.05..=16 (default 1), so a leaf tapers to its tip."},
+        "curve": with_default(str_prop("smooth (a Catmull-Rom curve through the points) or polyline (straight spans). Defaults to smooth."), json!("smooth")),
+        "width": hard(with_default(num_prop("Section across the path, to its left, in cells, 0.125..=64. Defaults to 1."), json!(1.0)), 0.125, 64.0),
+        "thickness": hard(with_default(num_prop("Section up from the path, in cells, 0.125..=64. Defaults to 1."), json!(1.0)), 0.125, 64.0),
+        "step": hard(with_default(num_prop("Cube length along the path in cells, 0.125..=64: the path is cut into the whole number of cubes nearest its length over step. Defaults to 1."), json!(1.0)), 0.125, 64.0),
+        "palette": hard(int_prop("Palette index 1..=255 of every cube. Defaults to the active slot."), 1.0, 255.0),
+        "palettes": {"type": "array", "items": {"type": "integer"}, "description": "Palette indices 1..=255 (up to 64) laid out by pattern"},
+        "pattern": {"type": "string", "enum": ["gradient", "rings", "random"], "description": "How palettes lay out: gradient (default) in even runs from the first point to the last, a leaf dark at the base and pale at the tip; rings in turn every period cells of path; random per cube by seed"},
+        "period": hard(with_default(num_prop("rings: cells of path per slot, 0.25..=512. Defaults to 2."), json!(2.0)), 0.25, 512.0),
+        "seed": int_prop("random: the seed. Defaults to 0.")
+    })
 }
 
 fn define(name: &str, description: &str, mut properties: Value, required: &[&str]) -> Value {
