@@ -57,9 +57,9 @@ the written file.
 
 `render` path-traces a PNG in this process; the window path-traces in Render
 mode. `model_view` writes the flat model view (palette colours, no light) for
-comparing with a turnaround sheet. `set_view` moves the window camera before
-`screenshot_viewport`. screenshot, screenshot_viewport, screenshot_region,
-ui_inspect, and ui_click need an editor started with `--control` and this
+comparing with a turnaround sheet. `set_view` moves the window camera before a
+`screenshot` with `region: "viewport"`. screenshot (the window, the viewport,
+or a rectangle), ui_inspect, and ui_click need an editor started with `--control` and this
 server started with `--connect`.
 
 ## Export and baking

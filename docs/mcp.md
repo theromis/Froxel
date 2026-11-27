@@ -25,8 +25,7 @@ froxel mcp
 ```
 
 The session lives in this process. It starts empty: one object, the default
-palette, no file path. No window opens. `screenshot`, `screenshot_viewport`,
-`screenshot_region`, `ui_inspect`, and `ui_click` fail and say how to connect.
+palette, no file path. No window opens. `screenshot`, `ui_inspect`, and `ui_click` fail and say how to connect.
 `froxel mcp --help`
 prints usage and exits. Any other argument is an error, so a client that meant
 to reach the window does not silently edit a private document.
@@ -431,9 +430,7 @@ tracer. A file with no scene graph still loads its first model.
 | `reload` | — | Restart this server on the rebuilt binary in place, keeping the connection and the open document, then send `notifications/tools/list_changed`. `force` reloads an unchanged binary. See [Reloading the server](#reloading-the-server) |
 | `set_tool` | — | Pick the window's `tool` (`brush` … `flood_select`, and `strand`), `mode` (`add`, `remove`, `paint`), active `slot`, and tool options: `size` (1..63) and `shape` (`square`, `circle`) of the brush, `seedColor` (1..255) and `density` (0..1) of the Mutator, so a `ui_click` on the viewport then stamps that tool. Replies with them as they now are. Not an edit |
 | `set_view` | — | Move the session camera; connected, the window's. Optional `view`, `yaw`, `pitch`, `preset`, `presets`, `placementYaw`, `frame`, `distance`, `orthographic`, `bones`, and the window's Render mode refresh: `oneFrame` (trace one frame and again once the view holds still) and `temporalSmooth` (0..1, the live render's least weight for a new frame). Not an edit |
-| `screenshot` | — | PNG of the whole editor window. Connected mode only |
-| `screenshot_viewport` | — | PNG of the 3D viewport, including its mode chips. Connected mode only |
-| `screenshot_region` | `x`, `y`, `width`, `height` | PNG of a rectangle in window points. Connected mode only |
+| `screenshot` | — | PNG of the whole editor window, the 3D viewport with its mode chips (`region: "viewport"`), or a rectangle (`x`, `y`, `width`, `height` in window points). Connected mode only. The old names `screenshot_viewport` and `screenshot_region` still run it, unlisted |
 | `ui_inspect` | — | Previous frame's controls, tool, mode, active object, voxel count, and status. Connected mode only |
 | `ui_click` | `id`, or `x`, `y` | Click a control by its `ui_inspect` `id` (a slider at `value`), or the topmost registered control at a point. A viewport hit stamps the active tool. A slider sets its value from the point. A palette cell selects that slot. Elsewhere, a real pointer click. Connected mode only |
 | `set_marker` | `name` | Name a point, a collision box, or a connector on an object: `kind` (`point`, `box`, `connector`), `point`, the box's inclusive cells `x0`..`z1`, `direction`, `object`. Saved in the `.vox` and exported as a glTF node. A marker of the same name is replaced. One undo step |
@@ -1528,9 +1525,9 @@ slot's material and is one undo step together with the color.
   still document has `{}`. `kind` is `none`, `sway`, or `bob`. `amount` is
   0..4 and defaults to 1. `none` is still
 
-A screenshot tool returns a text block with `width`, `height`, and `path`, plus
+`screenshot` returns a text block with `width`, `height`, and `path`, plus
 an MCP `image` block (`image/png`). `path` also writes that file. Omit it to
-keep the picture only in the reply. `screenshot_region` is measured in window
+keep the picture only in the reply. A rectangle is measured in window
 points from the top-left of the client area, not the title bar. On a retina
 display the PNG is larger than the point size. A rectangle outside the window
 is an error.
@@ -1673,7 +1670,7 @@ and grade, so colour can be judged as the game shows it. Its
 writes with the export options passed in `export`.
 
 `set_view` moves the session camera. Connected to a window, that is the
-editor's camera, so the next `screenshot_viewport` shows an exact front,
+editor's camera, so the next `screenshot` with `region: "viewport"` shows an exact front,
 side, or top view. `frame` defaults to true: the camera first centres on
 every object at the editor's framing distance (the window's Frame, not
 the tighter fit of `render`), and `distance`

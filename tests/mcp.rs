@@ -24,7 +24,7 @@ fn headless_tool_call_edits_and_refuses_a_screenshot() {
         &mut state,
         &mut session,
         None,
-        &json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "screenshot_viewport", "arguments": {}}}),
+        &json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "screenshot", "arguments": {"region": "viewport"}}}),
     )
     .unwrap();
     assert_eq!(reply["result"]["isError"], true);
@@ -3390,8 +3390,6 @@ const NOT_IN_SCRIPTING: &[&str] = &[
     "set_view",
     "set_tool",
     "screenshot",
-    "screenshot_viewport",
-    "screenshot_region",
     "ui_inspect",
     "ui_click",
     "set_script",
@@ -3539,5 +3537,21 @@ fn set_tool_picks_the_windows_tool_and_its_options() {
     ] {
         let error = crate::remote::apply(&mut head.session, "view.tool", &args).unwrap_err();
         assert!(error.contains(says), "{args}: {error}");
+    }
+}
+
+#[test]
+fn the_old_screenshot_names_still_run_screenshot() {
+    let mut head = Headless::new();
+    for name in ["screenshot_viewport", "screenshot_region"] {
+        let reply = dispatch(
+            &mut head.proto,
+            &mut head.session,
+            None,
+            &json!({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": name, "arguments": {}}}),
+        )
+        .unwrap();
+        // Headless, so the call is refused as screenshot refuses it, not as an unknown tool.
+        assert_eq!(reply["result"]["isError"], true, "{name}: {reply}");
     }
 }

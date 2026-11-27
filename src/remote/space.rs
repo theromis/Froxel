@@ -14,7 +14,7 @@ use crate::state::Cell;
 
 /// The schema property of `space`.
 pub(crate) fn space_prop() -> Value {
-    json!({"type": "string", "enum": ["local", "world"], "description": "local (default): coordinates are the active object's local cells. world: they are world cells and the object's position is subtracted first, so the same box hits the same place whatever object it lands in; coordinates in the reply are world cells too."})
+    json!({"type": "string", "enum": ["local", "world"], "description": "local (default): the active object's local cells. world: world cells, the object's position subtracted first, so a box hits the same place whatever the object; reply coordinates are world too."})
 }
 
 /// Whether `params` asks for world space. `space` is `local` or `world`.

@@ -24,7 +24,7 @@ const SUPPORTED: &[&str] = &["2024-11-05", "2025-03-26", "2025-06-18", "2026-07-
 /// The `initialize` instructions. Clients cut long ones (Claude Code keeps
 /// the first 4096 characters, the sandbox note included), so the rest is the
 /// `froxel://guide` resource, `docs/agent-guide.md`.
-pub(crate) const INSTRUCTIONS: &str = "Froxel edits .vox voxel models. Edits apply to the active object (set_active_object), in its local cells; space: \"world\" (on the fills, carve, set_voxels, get_voxels, smooth, loft, blend_shapes, brush, carve_from_views, project_paint, decal, split_object) takes world cells and subtracts the object's position. A box is x0, y0, z0, x1, y1, z1 (inclusive) or min: [x, y, z] and max: [x, y, z], in batch items too; give one form. batch runs a list of editing tools in order as one undo step and stops at the first error with the document as it was: use it instead of dozens of single fill_box and carve calls, and keep render and export calls outside it. Look after every step with preview (a fast lit PNG, under a second; preset game is the gameplay camera, overlay draws collision boxes and markers); render path-traces a slow final still; model_view is the flat palette view to hold against a turnaround sheet; compare_silhouette scores the model against a concept view. mirror on the fills, set_voxels, recolor, surface_stroke, project_paint, and decal repeats a call across the symmetry plane in the same undo step. Tools that write a file create its missing folders. set_palette takes #rrggbb or #rrggbbaa. screenshot, screenshot_viewport, screenshot_region, ui_inspect, and ui_click need an editor started with --control and this server with --connect. If a tool the docs mention is missing, call reload: the froxel on disk is newer than this server. Which tool for which job (hand sculpting, mesh import, a views sheet, stone, wood, and plant surfaces, rig parts, colliders, export and baking) is the resource froxel://guide (docs/agent-guide.md): read it before a new kind of asset. Hand sculpting step by step is froxel://hand-sculpting (docs/hand-sculpting.md); every tool's options are in docs/mcp.md; Rhai scripts (set_script) in docs/scripting.md.";
+pub(crate) const INSTRUCTIONS: &str = "Froxel edits .vox voxel models. Edits apply to the active object (set_active_object), in its local cells; space: \"world\" (on the fills, carve, set_voxels, get_voxels, smooth, loft, blend_shapes, brush, carve_from_views, project_paint, decal, split_object) takes world cells and subtracts the object's position. A box is x0, y0, z0, x1, y1, z1 (inclusive) or min: [x, y, z] and max: [x, y, z], in batch items too; give one form. batch runs a list of editing tools in order as one undo step and stops at the first error with the document as it was: use it instead of dozens of single fill_box and carve calls, and keep render and export calls outside it. Look after every step with preview (a fast lit PNG, under a second; preset game is the gameplay camera, overlay draws collision boxes and markers); render path-traces a slow final still; model_view is the flat palette view to hold against a turnaround sheet; compare_silhouette scores the model against a concept view. mirror on the fills, set_voxels, recolor, surface_stroke, project_paint, and decal repeats a call across the symmetry plane in the same undo step. Tools that write a file create its missing folders. set_palette takes #rrggbb or #rrggbbaa. screenshot (window, viewport, or a rectangle), ui_inspect, and ui_click need an editor started with --control and this server with --connect. If a tool the docs mention is missing, call reload: the froxel on disk is newer than this server. Which tool for which job (hand sculpting, mesh import, a views sheet, stone, wood, and plant surfaces, rig parts, colliders, export and baking) is the resource froxel://guide (docs/agent-guide.md): read it before a new kind of asset. Hand sculpting step by step is froxel://hand-sculpting (docs/hand-sculpting.md); every tool's options are in docs/mcp.md; Rhai scripts (set_script) in docs/scripting.md.";
 
 /// The documents `resources/list` offers: uri, name, description, text.
 const RESOURCES: &[(&str, &str, &str, &str)] = &[
@@ -533,10 +533,20 @@ fn call_tool(
     let Some(name) = params.get("name").and_then(Value::as_str) else {
         return Err("missing tool name".into());
     };
-    let args = params.get("arguments").cloned().unwrap_or(json!({}));
+    let mut args = params.get("arguments").cloned().unwrap_or(json!({}));
     if !args.is_object() {
         return Err("arguments must be an object".into());
     }
+    // The screenshot tools merged into `screenshot`; their old names still
+    // run it, unlisted, so callers written for them keep working.
+    let name = match name {
+        "screenshot_viewport" => {
+            args["region"] = json!("viewport");
+            "screenshot"
+        }
+        "screenshot_region" => "screenshot",
+        other => other,
+    };
     if crate::ops::by_tool(name).is_none() {
         return Err(format!("unknown tool `{name}`"));
     }
@@ -632,16 +642,8 @@ fn map_tool(name: &str, args: &Value) -> Result<(String, Value), String> {
     let method = crate::ops::by_tool(name)
         .ok_or_else(|| format!("unknown tool `{name}`"))?
         .method;
-    let params = match name {
-        "screenshot_viewport" => {
-            let mut params = args.clone();
-            params["region"] = json!("viewport");
-            params
-        }
-        "screenshot_region" => args.clone(),
-        _ => args.clone(),
-    };
-    if name == "screenshot" || name == "screenshot_viewport" || name == "screenshot_region" {
+    let params = args.clone();
+    if name == "screenshot" {
         parse_shot(&params)?;
     }
     Ok((method.to_string(), params))

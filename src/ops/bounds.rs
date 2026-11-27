@@ -114,11 +114,7 @@ pub(super) fn with_box_forms(tools: &mut [Value]) {
         }
         let names = form.axis_names();
         let count = form.axes.len();
-        let lead = if required {
-            "Pass this box or"
-        } else {
-            "Optional; this box or"
-        };
+        let lead = if required { "Box required" } else { "Optional" };
         let side = |which: &str, keys: &[&str]| {
             json!({
                 "type": "array",
@@ -126,7 +122,7 @@ pub(super) fn with_box_forms(tools: &mut [Value]) {
                 "minItems": count,
                 "maxItems": count,
                 "description": format!(
-                    "Inclusive {which} corner [{names}], the same as {}. {lead} the corners, not both.",
+                    "{lead}: inclusive {which} corner [{names}], as {}; this or the corners, not both.",
                     keys.join(", ")
                 )
             })

@@ -89,6 +89,12 @@
 
 ### Changed
 
+- MCP `screenshot` takes `region: "viewport"` or a rectangle (`x`, `y`,
+  `width`, `height`), and `screenshot_viewport` and `screenshot_region` are
+  no longer listed (their names still run it), so `tools/list` is shorter.
+- MCP tool and argument descriptions say the same in fewer words: tool
+  descriptions are a quarter shorter and `tools/list` about a tenth smaller
+  (318 KB to 287 KB).
 - MCP `fill_tube` and `carve` list a `title` for the Tube tool's options and
   `minimum`/`maximum` for `radius`, `aspect`, and `sectors`; `froxel run
   fill_tube --help` prints each option's short hint. The Tube tool's labels,

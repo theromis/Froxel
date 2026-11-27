@@ -495,7 +495,7 @@ refused.
 ## Window
 
 When the server runs with `--connect`, edits appear in the open editor.
-`set_view` moves its camera, `screenshot_viewport` captures it, and
+`set_view` moves its camera, `screenshot` (`region: "viewport"`) captures it, and
 `set_tool` picks the window's tool, mode, slot, and brush size before a
 `ui_click` on the viewport stamps with it. `ui_inspect` with `ui_click` drive the controls: click a listed control (a
 tool, a slider, a Tube toggle such as `op.fill_tube.caps`) by its `id`
@@ -513,7 +513,7 @@ and `model_view` instead.
 - Writing world coordinates into an object whose `position` is not
   `[0, 0, 0]`.
 - Sculpting a curled or posed creature instead of rigging a straight one.
-- Using `screenshot_viewport` to check colours. The viewport is lit; use
+- Using a viewport `screenshot` to check colours. The viewport is lit; use
   `model_view`.
 - Removing an object and reusing old indices. Later indices shift down by
   one, as the reply says.
