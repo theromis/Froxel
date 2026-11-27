@@ -72,6 +72,14 @@ server is still running. A server started with `--watch` reloads by itself.
   modelled. MagicaVoxel shows only cells: `bake_strands` writes a grid copy
   when one is needed. A script's `add_strand` replaces its strands on rerun
   (`tests/fixtures/examples/sedge_tuft.rhai`).
+- **Skin** for creature bodies that should read as irregular bricks, not
+  grid steps (the Frog World look): after sculpting, `skin` with `axis` (the
+  body's length, the same on every rig part), `length` `[2, 4]`, `relief`,
+  and `bare` for the eye and teeth slots. Fins and whiskers thinner than
+  `thin` stay cells. The skin is settings; its bricks follow the cells and
+  are drawn, traced, and exported as turned boxes. `bake_strands` with
+  `skin` writes cells for MagicaVoxel
+  (`tests/fixtures/examples/brick_fish.rhai`).
 - **Markers** for game data: `set_marker` names a ledge point, a collision
   `box`, or a `connector` (a joining end) on an object; scripts call
   `marker`, `collision_box`, and `connector`. They are saved in the `.vox`,

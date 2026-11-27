@@ -34,6 +34,16 @@
 
 ### Added
 
+- Skin: an object's surface covered with irregular bricks of uneven length
+  in staggered rows along a flow axis, each with its own relief, slight
+  tilt, and the colour of the cells under it, for creature bodies that read
+  as built from blocks instead of grid steps. The skin is stored as its
+  settings (the `.vox` keeps them in an `MVSK` chunk) and its bricks are
+  derived from the cells, so edits reshape it; thin parts and `bare` slots
+  keep their cells. The viewport, `preview`, `model_view`, Render, and every
+  export draw the same bricks. MCP `skin`, Rhai `skin` and `clear_skin`, the
+  Skin section, `bake_strands` `skin`, and `inspect_document` lists each
+  object's skin.
 - Bevelled export: `export_mesh` `bevel` (0..0.4 cells) and `bevelMode`
   (`cubes`, every cube rounded with grooves between them; `edges`, only the
   shape's outer edges) write cut cube edges instead of flat faces, with every

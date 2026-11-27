@@ -159,6 +159,13 @@ object, bone, and pose, and `preview`, `render`, `model_view`, and
 `export_mesh` all draw the same turned boxes; `bake_strands` writes a grid
 copy for MagicaVoxel (`tests/fixtures/examples/sedge_tuft.rhai`).
 
+A creature body that should read as irregular bricks instead of grid steps
+(the Frog World look) gets `skin` after it is sculpted: bricks of uneven
+`length` in staggered rows along `axis` (the body's length, the same on
+every rig part), with `relief`, and `bare` for the eye and teeth slots. The
+cells stay the shape and the skin follows later edits; `preview` and the
+glb show the bricks (`tests/fixtures/examples/brick_fish.rhai`).
+
 ## Surfaces
 
 Stone surfaces: `column_relief` breaks a cliff face into columns of uneven

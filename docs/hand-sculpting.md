@@ -617,6 +617,27 @@ bone, and the pose. Only MagicaVoxel ignores strands (it shows the cells);
 generator grows a tuft with `add_strand` in a loop
 (`tests/fixtures/examples/sedge_tuft.rhai`).
 
+## Skin
+
+At low resolution a creature's curved body becomes even grid steps, the
+look the Frog World concepts avoid: there the body is irregular bricks of
+uneven length in staggered rows along it, each standing out differently.
+Sculpt the shape in cells as usual, then give the body object a skin:
+
+```json
+{"axis": "x", "length": [2, 4], "width": 1.5, "relief": 0.3, "tilt": 2,
+ "follow": 0, "bare": [5, 6]}
+```
+
+`axis` is the body's length (the same on every rig part, so their rows
+continue each other), `length` the shortest and longest brick, and `width`
+the row spacing; bigger bricks read coarser. Put the eye and teeth slots in
+`bare` so they stay cells; fins and whiskers thinner than `thin` (3) keep
+their cells anyway. Keep `follow` at 0 for the stepped rows of the concepts;
+raise `relief` for a rougher hide. Check it with `preview`: it draws the
+bricks as `export_mesh` writes them. The skin follows later edits to the
+cells. In the window the Skin section does the same with sliders.
+
 ## Tips
 
 **One object per rig part, at world `[0, 0, 0]`.** Build the head, jaw, body

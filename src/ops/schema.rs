@@ -203,7 +203,7 @@ fn build() -> Vec<Value> {
             "fullPalette": {"type": "boolean", "description": "With detail full, all 256 palette slots, not only used ones. Defaults to false."}
         }), &["path"]),
         define("save_file", "Write every non-empty object as a .vox scene. World voxel and marker positions, negative too, survive reopening, so the reopened document exports the same glTF frame and marker values; local cells may rebase to the model box. Replies with voxels (solid cells in the file) and objects (models written).", json!({"path": str_prop("Where to write. Omit to overwrite the open file. Its folder is created.")}), &[]),
-        define("inspect_document", "Path, voxel count, world bounds, objects (name, world position, local bounds), palette colours by index for the slots some voxel uses (fullPalette: all 256), and motion by palette index for slots not still at amount 1.", json!({
+        define("inspect_document", "Path, voxel count, world bounds, objects (name, world position, local bounds, skin and bricks), palette colours by index for the slots some voxel uses (fullPalette: all 256), and motion by palette index for slots not still at amount 1.", json!({
             "fullPalette": {"type": "boolean", "description": "List all 256 palette slots, not only the used ones. Defaults to false."}
         }), &[]),
         define("get_voxel", "Read one local cell of the active object; 0 is empty.", xyz_props(), &["x", "y", "z"]),

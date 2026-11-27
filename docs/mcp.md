@@ -348,7 +348,7 @@ tracer. A file with no scene graph still loads its first model.
 | `new_document` | — | Empty document, default palette, cleared path and undo stack |
 | `open_file` | `path` | Open a `.vox`, replacing the session. The reply is short: `path`, `objectCount`, `voxels`, `bounds`, `activeObject`, `canUndo`, `canRedo`, `bones` (a count), `paletteSlots` (used slots), `motionSlots`, the first 20 `objectNames`, `moreObjects`, and `warnings` (what the file left out, such as an `MVRG`, `MVAN`, `MVSC`, or `MVMK` chunk from a newer Froxel, which is skipped so the voxels still open and is dropped by a save), plus `sceneShift` and `sceneShiftNote` when world positions differ from the file's (see Saved scene coordinates). `detail` `full` replies with the `inspect_document` result instead (optional `fullPalette`) |
 | `save_file` | — | Write every non-empty object. `path` overwrites the open file when omitted; its folder is created. Replies with `voxels` and `objects` |
-| `inspect_document` | — | Path, counts, world bounds, objects (name and world position), the used palette slots, and the slots with motion. `fullPalette` lists all 256 slots |
+| `inspect_document` | — | Path, counts, world bounds, objects (name, world position, and any `skin` with its `bricks`), the used palette slots, and the slots with motion. `fullPalette` lists all 256 slots |
 | `get_voxel` | `x`, `y`, `z` | Palette index of one **local** cell of the active object. `0` is empty |
 | `batch` | `operations` | Apply a list of editing tools in order as one undo step. Stops at the first error, names the item, and leaves the document as it was. Replies with `items`, `changed`, `voxels`, and each item's result in short form. Tools that write files are refused. See [Batch](#batch) |
 | `set_voxel` | `x`, `y`, `z`, `palette` | Write one **local** cell. One undo step |
@@ -395,12 +395,13 @@ tracer. A file with no scene graph still loads its first model.
 | `set_object` | `index` | Optional `name`, world `position`, `hidden`. Moving changes the scene-graph translation, so voxels move in the world. One undo step |
 | `remove_object` | `index` | Remove the object and its voxels. Its bone stays; the binding goes. Later indices decrease by one. Refuses the last object. One undo step |
 | `mirror_object` | `index`, `axis`, `name` | Copy the object, with its strands, mirrored across `x`, `y`, or `z` through the origin. Optional world `position` and `mirrorBones` (default false). Replies with the copy's `index`, `name`, `bones`, and world `position`. One undo step |
-| `clear_object` | — | Empty an object (`index`, an index or a name; default the active one) of every cell and strand, with no box limit. Its name, position, bone, script, and markers stay. Replies with `index`, `name`, `removed`, `voxels`. One undo step; an empty object adds none |
+| `clear_object` | — | Empty an object (`index`, an index or a name; default the active one) of every cell, strand, and its skin, with no box limit. Its name, position, bone, script, and markers stay. Replies with `index`, `name`, `removed`, `voxels`. One undo step; an empty object adds none |
 | `add_strand` | `points` | Add a strand to an object (`object`, default the active one): a chain of cubes along a curve through 2..=256 local `points` (`[x, y, z, twist?, scale?]`, a whole number is a cell centre), each cube turned along the path. `curve` `smooth` (default) or `polyline`; `width` (to the path's left), `thickness` (up), and `step` (cube length) in cells, 0.125..=64, default 1; `palette`, or `palettes` with `pattern` `gradient` (default), `rings` (`period`), or `random` (`seed`). Stored as its definition, drawn, traced, and exported as the same turned boxes everywhere; see [Strands](#strands). Replies with `object`, `name`, `strands`, `boxes`, `strand`. One undo step |
 | `edit_strand` | `index` | Change a strand: any `add_strand` field replaces it; `point` + `at` moves one point (a position alone keeps its twist and scale), `insert` + `at` adds one, `remove` deletes one, `move` `[dx, dy, dz]` shifts it whole. Replies as `add_strand`. One undo step |
 | `remove_strand` | `index` or `all` | Remove one strand, or every strand of the object. Replies with `removed`. One undo step |
 | `list_strands` | — | The object's strands with their definitions, `boxes`, and `length` |
-| `bake_strands` | — | Write a grid copy of strands (`strands`, default all) into the object's cells: every cell whose centre is inside a box. They are removed unless `keep`. Replies with `cells`, `changed`, `baked`. One undo step |
+| `bake_strands` | — | Write a grid copy of strands (`strands`, default all) into the object's cells: every cell whose centre is inside a box. `skin` bakes the skin's bricks too. They are removed unless `keep`. Replies with `cells`, `changed`, `baked`. One undo step |
+| `skin` | — | Cover an object (`object`, default the active one) with irregular bricks in staggered rows along `axis` (`auto`, `x`, `y`, `z`): `length` `[shortest, longest]` (default `[2, 4]`), `width` (row spacing, 1.5), `height` (0.4) and `depth` (0.75), `stagger` (0.5), `relief` (0.3), `tilt` (2°), `follow` (0, square to the grid; 1, on the surface), `gap` (0.12), `smooth` (2), `thin` (3: thinner parts stay cells), `bare` slots, `seed`. Each call sets the whole skin; `off` removes it. See [Skin](#skin). Replies with `skin` and `bricks`. One undo step |
 | `split_object` | `boxes` or `slots` | Move (or `copy`) the cells of an object (`index`, an index or a name; default the active one) inside one or more inclusive local boxes, or of some `slots`, or both, into a new object (`name`) or an existing one (`into`), each cell keeping its world position. `invert` takes the rest. `makeActive` selects the target. Replies with `target`, `name`, `created`, `cells`, `replaced`, `position`, `sourceVoxels`, `targetVoxels`, `bounds`. One undo step |
 | `split_parts` | `parts` | Cut an object (`object`, default the active one) into its rig parts in one call: `parts` `[{name, point \| points \| bone \| marker, planes?}]`; every cell goes to the part whose seed is nearest through the solid (`metric` `geodesic`, `connectivity` 26 or 6; `euclidean` is the other metric and the fallback for unreached cells), on the kept side of its `planes` `[{normal, at}]`. Each part becomes its own object at world `[0, 0, 0]` with world cells; the source is removed unless a part has its name or `removeSource` is false; `bind` (default true) binds a part to the bone of its name. Optional `reach` (default 8), `space`. Replies with `parts` (`name`, `index`, `cells`, `seeds`, `bone`, `bounds`), `unreached`, `metric`, `sourceRemoved`, `objects`. One undo step. See [Splitting into rig parts](#splitting-into-rig-parts) |
 | `add_bone` | `name`, `pivot` | Add a bone. `pivot` is a fractional world coordinate `[x, y, z]`. Optional `parent` (omit or null for a root) and `rotation` quaternion `[x, y, z, w]` (default identity `[0, 0, 0, 1]`), and `rest`, the saved turn its parts sit at (see [Rest turn](#rest-turn)). One undo step |
@@ -3043,6 +3044,38 @@ inside a box) when one is wanted. An object holds at most 4096 strands and
 20000 boxes. A script's `add_strand` gives strands to the object it writes,
 and a rerun replaces them.
 
+### Skin
+
+The Frog World creatures are not drawn in grid voxels: their bodies are
+irregular bricks of uneven length in staggered rows that run along the body,
+each standing out a little differently. `skin` gives an object that look
+without hand placing anything. The cells stay the shape (and the core under
+the bricks); the skin is stored as its settings, and its bricks are derived
+from the cells whenever they are drawn, so a sculpt, a script rerun, or an
+undo reshapes it.
+
+The cells are blurred (`smooth`) into a smoothed surface. Around the flow
+`axis` (a body's length; `auto` takes the cells' longest spread) the surface
+is cut into rows `width` apart; each row into bricks between the two
+`length`s, offset from the next row by `stagger`. A brick stands `height`
+past the cell faces under it, reaches `depth` in, gets a random `relief` and
+`tilt`, and takes the commonest slot of the cells under it. With `follow` 0
+its faces stay square to the grid, so a curve reads as steps of rows, as in
+the concepts; toward 1 bricks lie on the surface like shingles. `gap` leaves
+a groove between them. Parts thinner than `thin` (fins, whiskers) and the
+`bare` slots (eyes, teeth) keep their cells.
+
+The bricks are drawn, traced, and exported as turned boxes, like strands:
+the viewport, `preview`, `model_view`, `render`, `export_mesh` (and its
+bevel, atlas, occlusion, and bake), and `bake_scene` all show the same skin.
+They move with the object, its bone, and the pose. For rig parts give every
+part the same `axis`: the rows are laid out in the document's frame, so parts
+that meet continue each other's rows. The `.vox` keeps the settings in an
+`MVSK` chunk; MagicaVoxel skips it and shows only cells, so `bake_strands`
+with `skin` writes the bricks as cells when a grid copy is wanted. At most
+50000 bricks per object. A script's `skin(#{...})` sets the skin of the
+object it writes (`tests/fixtures/examples/brick_fish.rhai`).
+
 ### Collision from voxels
 
 `collision_from_voxels` writes the collision boxes instead of you, from the
@@ -3186,6 +3219,7 @@ Paint modes are `mode` `empty`, a carve, and `mode` `paint`; `mode`
 | `clear_object` | Clear object section: Clear empties the active object |
 | `add_strand`, `edit_strand` | Strand tool (**H**): click points on cells, strands, or in the air facing the camera, then Enter or Finish; click a strand to select it and drag its handles or the strand, Shift-click inserts a point, Delete removes a point or the strand; Width, Thickness, Step, Straight, and Solid, Gradient, Rings, or Random with Slots apply to the selected strand and the next one |
 | `list_strands`, `remove_strand`, `bake_strands` | Strands section: the active object's strands (a name selects it in the Strand tool), ✕ to remove, Bake, Remove all |
+| `skin` | Skin section: Bricks on or off, Axis, Length, Width, Height, Depth, Relief, Stagger, Tilt, Follow, Gap, Smooth, Thin, Seed, Bare (+ the active slot), Bake |
 | `split_object` | Split object section: Boxes (one per line), World cells, Slots, Invert, Copy, Into (New object with a Name, or an existing object), Split |
 | `split_parts` | Split parts section: Parts (one line per part: `name x y z`, `name bone=NAME`, `name marker=NAME`, with `\| nx ny nz ax ay az` planes), Seed at selection, World, Distance (through the solid), Source (Remove), Bind (to bones), Split parts |
 | `space` | World cells in Split object, World beside Origin in Carve from views and beside Box in Paint from view; the viewport tools pick cells in place, so they need none |

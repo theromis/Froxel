@@ -1411,6 +1411,21 @@ for i in 0..9 {
 }
 ```
 
+## Skin
+
+`skin()` and `skin(#{...})` cover the object being written with irregular
+bricks (MCP `skin`, [Skin](mcp.md#skin)); the options are the tool's:
+`axis`, `length`, `width`, `height`, `depth`, `stagger`, `relief`, `tilt`,
+`follow`, `gap`, `smooth`, `thin`, `bare`, `seed`. `clear_skin()` removes it.
+A run that calls either sets that object's skin when it is applied; a run
+that calls neither leaves the skin as it was. The bricks follow the cells
+the run writes, so a parameter change reshapes them.
+
+```rhai
+fill_ellipsoid(-24, -8, -10, 24, 8, 10, 2);
+skin(#{axis: "x", length: [2, 4], relief: 0.3, bare: [5]});
+```
+
 ## Markers
 
 ```rhai

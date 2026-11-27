@@ -10,9 +10,10 @@ camera), `files` (open and save), `objects` (bones, the preview pose, clips,
 and undo), `joints` (MCP `place_joints`, pivots at the joints between rig
 parts), `pointer`,
 `selection`, `drag`, `pick`, `geom`, `strands` (the world boxes of an
-object's strands), `strand_tool` (the Strand tool), and `vox/` (`.vox` read,
-write, the `MVRG` rig chunk, the `MVAN` clip chunk, and the `MVST` strand
-chunk). `viewport.rs` is orbit and pointer input. `panels/` is the side
+object's strands, and `SkinCache`, an object's skin bricks kept until its
+cells change), `strand_tool` (the Strand tool), and `vox/` (`.vox` read,
+write, the `MVRG` rig chunk, the `MVAN` clip chunk, the `MVST` strand
+chunk, and the `MVSK` skin chunk). `viewport.rs` is orbit and pointer input. `panels/` is the side
 UI. `tools/` is brush shapes, generators (`generate.rs`: MCP `generate`,
 the Generator tool), and the MCP sculpt shapes
 (`sculpt.rs`: `fill_tube`, `carve`, `smooth`; `loft.rs`, `deform.rs`, and
@@ -28,7 +29,9 @@ the `downscale` of `carve_from_views` and `paint_from_views`;
 k-means, and the accent guard they share; `rig_split.rs`: MCP `split_parts`, the geodesic
 split into rig parts; `upright.rs`: `import_mesh` `orient: "upright"`, the PCA stand-up;
 `strand.rs`: strands, chains of turned cubes along a curve, MCP
-`add_strand` and the rest, `remote/strands.rs`). `mesh.rs` and `gpu.rs` draw the
+`add_strand` and the rest, `remote/strands.rs`; `skin.rs`: MCP `skin`,
+irregular staggered bricks over an object's surface, derived from its
+cells and drawn with the strand boxes, `remote/skin.rs`). `mesh.rs` and `gpu.rs` draw the
 edit-mode mesh. `trace/` is the CPU path tracer (`trace/boxes.rs` is the BVH of strand
 boxes it and `trace.wgsl` walk beside the grid). `trace_gpu.rs` plus
 `trace.wgsl` and `blit.wgsl` are the wgpu tracer used by Render mode.

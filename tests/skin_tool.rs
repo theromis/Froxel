@@ -114,3 +114,27 @@ fn a_script_sets_and_clears_its_object_skin() {
         .and_then(|_| session.regenerate_script(0).map(|_| ()));
     assert!(err.is_err());
 }
+
+#[test]
+fn the_brick_fish_example_skins_its_body_and_keeps_fins_and_eyes() {
+    let mut session = Session::new();
+    session
+        .set_script(0, include_str!("fixtures/examples/brick_fish.rhai"))
+        .unwrap();
+    session.regenerate_script(0).unwrap();
+    let skin = session.objects[0].skin.clone().unwrap();
+    assert_eq!(skin.axis, SkinAxis::X);
+    assert_eq!(skin.bare, vec![5]);
+    let bricks = session.skin_boxes(0);
+    assert!(bricks.len() > 100, "{}", bricks.len());
+    // The eyes (5) are bare; the thin fins (4) keep their cells but where
+    // they join the body.
+    assert!(bricks.iter().all(|b| b.slot != 5));
+    let fins = bricks.iter().filter(|b| b.slot == 4).count();
+    assert!(
+        fins * 30 < bricks.len(),
+        "{fins} fin bricks of {}",
+        bricks.len()
+    );
+    assert!(bricks.iter().any(|b| b.slot == 1) && bricks.iter().any(|b| b.slot == 3));
+}
