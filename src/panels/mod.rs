@@ -263,6 +263,7 @@ const INSPECTOR_SECTIONS: &[(&str, Section)] = &[
     ("edit::split", edit::split),
     ("edit::recolor", edit::recolor),
     ("edit::clear", edit::clear),
+    ("edit::strands", edit::strands),
     ("edit::intersect", edit::intersect),
     ("edit::stroke", edit::stroke),
     ("edit::plates", edit::plates),
@@ -524,6 +525,10 @@ pub(super) fn slider_value(session: &Session, target: SliderTarget) -> f32 {
         SliderTarget::TubePeriod
         | SliderTarget::TubeSectors
         | SliderTarget::TubeAspect
+        | SliderTarget::StrandWidth
+        | SliderTarget::StrandThickness
+        | SliderTarget::StrandStep
+        | SliderTarget::StrandPeriod
         | SliderTarget::TubeRoll
         | SliderTarget::RoundRadius
         | SliderTarget::TorusTube

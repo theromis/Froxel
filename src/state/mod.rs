@@ -27,11 +27,12 @@ pub enum Tool {
     Marquee,
     BoxSelect,
     FloodSelect,
+    Strand,
 }
 
 impl Tool {
     /// Every tool, in tool strip order.
-    pub const ALL: [Tool; 13] = [
+    pub const ALL: [Tool; 14] = [
         Tool::Brush,
         Tool::Line,
         Tool::Circle,
@@ -40,6 +41,7 @@ impl Tool {
         Tool::Face,
         Tool::Generator,
         Tool::Tube,
+        Tool::Strand,
         Tool::Sculpt,
         Tool::Mutator,
         Tool::Marquee,
@@ -59,6 +61,7 @@ impl Tool {
             Tool::Face => Key::F,
             Tool::Generator => Key::N,
             Tool::Tube => Key::P,
+            Tool::Strand => Key::H,
             Tool::Sculpt => Key::S,
             Tool::Mutator => Key::U,
             Tool::Marquee => Key::M,
@@ -78,6 +81,7 @@ impl Tool {
             Tool::Face => "face",
             Tool::Generator => "generator",
             Tool::Tube => "tube",
+            Tool::Strand => "strand",
             Tool::Sculpt => "sculpt",
             Tool::Mutator => "mutator",
             Tool::Marquee => "marquee",
@@ -96,6 +100,7 @@ impl Tool {
             Tool::Face => "Face",
             Tool::Generator => "Generator",
             Tool::Tube => "Tube",
+            Tool::Strand => "Strand",
             Tool::Sculpt => "Sculpt",
             Tool::Mutator => "Mutator",
             Tool::Marquee => "Marquee",
@@ -591,6 +596,8 @@ pub enum Grab {
     Move,
     Object,
     ObjectMarquee,
+    /// A Strand tool drag: a point or a whole strand.
+    Strand,
 }
 
 enum ObjectPress {
@@ -686,6 +693,10 @@ pub struct SliderSpec {
 #[derive(Clone, Copy, PartialEq)]
 pub enum SliderTarget {
     BrushSize,
+    StrandWidth,
+    StrandThickness,
+    StrandStep,
+    StrandPeriod,
     FoliageSeed,
     FoliageDensity,
     TorusTube,
@@ -806,6 +817,10 @@ impl SliderTarget {
             SliderTarget::TubePeriod => "slider.tube-period",
             SliderTarget::TubeSectors => "slider.tube-sectors",
             SliderTarget::TubeAspect => "slider.tube-aspect",
+            SliderTarget::StrandWidth => "slider.strand-width",
+            SliderTarget::StrandThickness => "slider.strand-thickness",
+            SliderTarget::StrandStep => "slider.strand-step",
+            SliderTarget::StrandPeriod => "slider.strand-period",
             SliderTarget::TubeRoll => "slider.tube-roll",
             SliderTarget::SmoothIterations => "slider.smooth-iterations",
             SliderTarget::SmoothFillAt => "slider.smooth-fill-at",
@@ -872,6 +887,7 @@ mod pointer;
 mod selection;
 mod silhouette;
 mod stone;
+mod strand_tool;
 mod strands;
 mod vox;
 pub use strands::WorldBox;
@@ -940,6 +956,8 @@ pub struct Session {
     pub tube_end: f32,
     /// Tube tool: each drag adds a point to one tube until Finish.
     pub tube_chain: bool,
+    /// The Strand tool's points being placed and its selection.
+    pub strand_tool: strand_tool::StrandTool,
     /// Tube tool: the second slot of a `pattern`, with the active slot.
     pub tube_second: i32,
     /// The chain so far, the cells before it, and the cells after its last

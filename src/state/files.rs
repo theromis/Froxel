@@ -1431,6 +1431,10 @@ impl Session {
             SliderTarget::TubePeriod
             | SliderTarget::TubeSectors
             | SliderTarget::TubeAspect
+            | SliderTarget::StrandWidth
+            | SliderTarget::StrandThickness
+            | SliderTarget::StrandStep
+            | SliderTarget::StrandPeriod
             | SliderTarget::TubeRoll
             | SliderTarget::RoundRadius
             | SliderTarget::TorusTube

@@ -9,7 +9,7 @@ pub(super) const STRIP_ICON: f32 = 32.0;
 const STRIP_GAP: f32 = 4.0;
 
 /// The strip's tools and their names; the key is [`Tool::key`].
-pub(super) const TOOLS: [(Tool, &str); 13] = [
+pub(super) const TOOLS: [(Tool, &str); 14] = [
     (Tool::Brush, "Brush"),
     (Tool::Line, "Line"),
     (Tool::Circle, "Circle"),
@@ -18,6 +18,7 @@ pub(super) const TOOLS: [(Tool, &str); 13] = [
     (Tool::Face, "Face"),
     (Tool::Generator, "Generator"),
     (Tool::Tube, "Tube"),
+    (Tool::Strand, "Strand"),
     (Tool::Sculpt, "Sculpt"),
     (Tool::Mutator, "Mutator"),
     (Tool::Marquee, "Marquee"),
@@ -88,7 +89,7 @@ pub(super) fn options(ui: &mut Ui, session: &mut Session) {
 
     if !matches!(
         session.tool,
-        Tool::Face | Tool::Generator | Tool::Tube | Tool::Sculpt
+        Tool::Face | Tool::Generator | Tool::Tube | Tool::Sculpt | Tool::Strand
     ) {
         op_slider(ui, session, SliderTarget::BrushSize);
         segment(
@@ -192,6 +193,7 @@ pub(super) fn options(ui: &mut Ui, session: &mut Session) {
             generator(ui, session);
         }
         Tool::Tube => tube(ui, session),
+        Tool::Strand => strand(ui, session),
         Tool::Sculpt => sculpt(ui, session),
         Tool::Mutator => {
             row(ui, |ui| {
@@ -291,6 +293,107 @@ fn tube(ui: &mut Ui, session: &mut Session) {
         Some("stripes") => op_slider(ui, session, SliderTarget::TubeSectors),
         _ => {}
     }
+}
+
+/// The Strand tool: MCP `add_strand` by clicks, and `edit_strand` on the
+/// selected strand. The section and colours apply to the selected strand
+/// as they change, and to the next one placed.
+fn strand(ui: &mut Ui, session: &mut Session) {
+    // Labels, ranges, and tooltips are add_strand's schema (ops::prop_ui).
+    let tool = "add_strand";
+    op_slider(ui, session, SliderTarget::StrandWidth);
+    op_slider(ui, session, SliderTarget::StrandThickness);
+    op_slider(ui, session, SliderTarget::StrandStep);
+    row(ui, |ui| op_toggle(ui, session, tool, "curve"));
+    op_choice(ui, session, tool, "pattern", Some("Solid"));
+    let pattern = session.op_arg(tool, "pattern");
+    if !pattern.is_null() {
+        row(ui, |ui| {
+            ui.label("Slots");
+            ui.add(
+                egui::TextEdit::singleline(&mut session.strand_tool.slots)
+                    .desired_width(96.0)
+                    .hint_text("2 3 4"),
+            )
+            .on_hover_text("Palette indices of the pattern, base to tip");
+        });
+        match pattern.as_str() {
+            Some("rings") => op_slider(ui, session, SliderTarget::StrandPeriod),
+            Some("random") => {
+                let mut seed = session.op_arg(tool, "seed").as_i64().unwrap_or(0);
+                row(ui, |ui| {
+                    ui.label("Seed");
+                    if ui
+                        .add(egui::DragValue::new(&mut seed).range(0..=u32::MAX as i64))
+                        .on_hover_text("Seed of the random pattern")
+                        .changed()
+                    {
+                        session.set_op_arg(tool, "seed", Some(seed.into()));
+                    }
+                });
+            }
+            _ => {}
+        }
+    }
+    ui.separator();
+    let placing = session.strand_tool.placing.len();
+    if placing > 0 {
+        ui.label(
+            RichText::new(format!("{placing} points placed"))
+                .small()
+                .color(DIM),
+        );
+        row(ui, |ui| {
+            if ui
+                .add_enabled(placing >= 2, egui::Button::new("Finish"))
+                .on_hover_text("Add the strand (Enter)")
+                .clicked()
+            {
+                session.finish_strand();
+            }
+            if ui
+                .button("Cancel")
+                .on_hover_text("Drop the points (Esc)")
+                .clicked()
+            {
+                session.cancel_strand();
+            }
+        });
+    } else if let Some(index) = session.strand_tool.selected {
+        ui.label(
+            RichText::new(format!(
+                "Strand {} of {}",
+                index + 1,
+                session.active().strands.len()
+            ))
+            .small()
+            .color(DIM),
+        );
+        row(ui, |ui| {
+            if ui
+                .button("Use color")
+                .on_hover_text("Give the strand the active palette slot")
+                .clicked()
+            {
+                session.color_strand();
+            }
+            if ui
+                .button("Delete")
+                .on_hover_text("Delete the selected point, or the strand (Delete)")
+                .clicked()
+            {
+                session.delete_strand_part();
+            }
+        });
+    } else {
+        ui.label(
+            RichText::new("Click points on a surface; click a strand to edit it.")
+                .small()
+                .color(DIM),
+        );
+    }
+    let down = ui.input(|input| input.pointer.any_down());
+    session.sync_strand_panel(down);
 }
 
 /// The Sculpt tool: MCP `brush` by drag. A drag lays dabs on the surface

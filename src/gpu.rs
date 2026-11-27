@@ -42,6 +42,7 @@ pub struct SceneGpu {
     depth_view: wgpu::TextureView,
     pipeline: wgpu::RenderPipeline,
     highlight_pipeline: wgpu::RenderPipeline,
+    overlay_pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
     uniforms: wgpu::Buffer,
     chunks: HashMap<(usize, i32, i32, i32), GpuMesh>,
@@ -55,6 +56,10 @@ pub struct SceneGpu {
     selection_key: Option<(u64, u64, [u32; 16])>,
     bones: Option<GpuMesh>,
     bones_key: u64,
+    /// The Strand tool's point handles, and the strand being placed.
+    handles: Option<GpuMesh>,
+    placing: Option<GpuMesh>,
+    strand_tool_key: u64,
     epoch: u64,
 }
 
@@ -96,8 +101,19 @@ impl SceneGpu {
             bind_group_layouts: &[Some(&bind_layout)],
             immediate_size: 0,
         });
-        let pipeline = make_pipeline(device, &pipeline_layout, &shader, 0, 0.0);
-        let highlight_pipeline = make_pipeline(device, &pipeline_layout, &shader, -2, -1.0);
+        let less = wgpu::CompareFunction::Less;
+        let pipeline = make_pipeline(device, &pipeline_layout, &shader, 0, 0.0, less);
+        let highlight_pipeline = make_pipeline(device, &pipeline_layout, &shader, -2, -1.0, less);
+        // The Strand tool's handles show through what is in front of them:
+        // a strand's points lie inside its cubes.
+        let overlay_pipeline = make_pipeline(
+            device,
+            &pipeline_layout,
+            &shader,
+            0,
+            0.0,
+            wgpu::CompareFunction::Always,
+        );
         let (color, color_view, depth, depth_view) = targets(device, 1, 1);
         Self {
             size: [1, 1],
@@ -107,10 +123,14 @@ impl SceneGpu {
             depth_view,
             pipeline,
             highlight_pipeline,
+            overlay_pipeline,
             bind_group,
             uniforms,
             chunks: HashMap::new(),
             strands: HashMap::new(),
+            handles: None,
+            placing: None,
+            strand_tool_key: 0,
             grid: None,
             grid_key: None,
             hover: None,
@@ -172,6 +192,71 @@ impl SceneGpu {
         self.sync_hover(device, session);
         self.sync_selection(device, session);
         self.sync_bones(device, session);
+        self.sync_strand_tool(device, session);
+    }
+
+    fn sync_strand_tool(&mut self, device: &wgpu::Device, session: &Session) {
+        let handles = session.strand_handles();
+        let placing = session.placing_strand();
+        let mut key: u64 = 0xcbf2_9ce4_8422_2325;
+        let mut mix = |bits: u64| key = (key ^ bits).wrapping_mul(0x0100_0000_01b3);
+        for (at, selected, new) in &handles {
+            for v in at.to_array() {
+                mix(v.to_bits() as u64);
+            }
+            mix(u64::from(*selected) | u64::from(*new) << 1);
+        }
+        if let Some(strand) = &placing {
+            for b in strand.boxes() {
+                for v in b.center.iter().chain(b.half.iter()) {
+                    mix(v.to_bits() as u64);
+                }
+                mix(u64::from(b.slot));
+            }
+        }
+        mix(session.mesh_epoch);
+        if key == self.strand_tool_key {
+            return;
+        }
+        self.strand_tool_key = key;
+        self.handles = if handles.is_empty() {
+            None
+        } else {
+            let mut built = Mesh::default();
+            let mut previous: Option<(Vec3, bool)> = None;
+            for (at, selected, new) in &handles {
+                let color = if *selected {
+                    [1.0, 0.84, 0.35]
+                } else if *new {
+                    [0.35, 0.85, 1.0]
+                } else {
+                    [0.92, 0.95, 1.0]
+                };
+                if let Some((from, was_new)) = previous {
+                    if was_new == *new {
+                        push_link(&mut built, from, *at, 0.05, [0.7, 0.75, 0.8]);
+                    }
+                }
+                push_cube(&mut built, *at, 0.2, color);
+                previous = Some((*at, *new));
+            }
+            upload(device, &built, key)
+        };
+        self.placing = placing.and_then(|strand| {
+            let index = session.selected;
+            let object = &session.objects[index];
+            let mut built = mesh::strand_mesh(
+                &strand.boxes(),
+                mesh::motion_base(&object.cells),
+                |slot| session.color(slot),
+                |_| [0.0, 0.0],
+            );
+            mesh::translate_mesh(&mut built, object.translation);
+            if let Some(delta) = session.skin_delta(index) {
+                mesh::transform_mesh(&mut built, delta);
+            }
+            upload(device, &built, key)
+        });
     }
 
     fn sync_chunks(&mut self, device: &wgpu::Device, session: &Session) {
@@ -219,6 +304,17 @@ impl SceneGpu {
                         hash = hash
                             .wrapping_mul(0x9E37_79B1)
                             .wrapping_add(base as u32 as u64);
+                    }
+                    // The mesh is placed at the object's translation, so a
+                    // move rebuilds it.
+                    for value in [
+                        object.translation.0,
+                        object.translation.1,
+                        object.translation.2,
+                    ] {
+                        hash = hash
+                            .wrapping_mul(0x9E37_79B1)
+                            .wrapping_add(value as u32 as u64);
                     }
                     if let Some(delta) = delta {
                         for column in delta.to_cols_array_2d() {
@@ -448,6 +544,9 @@ impl SceneGpu {
         for strands in self.strands.values() {
             draw(&mut pass, strands);
         }
+        if let Some(placing) = &self.placing {
+            draw(&mut pass, placing);
+        }
         if let Some(grid) = &self.grid {
             draw(&mut pass, grid);
         }
@@ -462,6 +561,10 @@ impl SceneGpu {
         if let Some(bones) = &self.bones {
             pass.set_pipeline(&self.highlight_pipeline);
             draw(&mut pass, bones);
+        }
+        if let Some(handles) = &self.handles {
+            pass.set_pipeline(&self.overlay_pipeline);
+            draw(&mut pass, handles);
         }
     }
 }
@@ -689,6 +792,7 @@ fn make_pipeline(
     shader: &wgpu::ShaderModule,
     depth_bias: i32,
     depth_bias_slope_scale: f32,
+    depth_compare: wgpu::CompareFunction,
 ) -> wgpu::RenderPipeline {
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("voxels"),
@@ -733,7 +837,7 @@ fn make_pipeline(
         depth_stencil: Some(wgpu::DepthStencilState {
             format: wgpu::TextureFormat::Depth32Float,
             depth_write_enabled: Some(true),
-            depth_compare: Some(wgpu::CompareFunction::Less),
+            depth_compare: Some(depth_compare),
             stencil: Default::default(),
             bias: wgpu::DepthBiasState {
                 constant: depth_bias,

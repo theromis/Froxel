@@ -27,6 +27,7 @@ impl Session {
         alt: bool,
     ) {
         let world_ray = ray;
+        self.settle_strand_tool();
         let aimed = world_ray.and_then(|(origin, dir)| self.pick_object(origin, dir));
         let ray = self.local_ray(world_ray);
         if inside && scroll.abs() > 0.0 {
@@ -59,6 +60,14 @@ impl Session {
                         ObjectPress::Idle => self.grab = Grab::None,
                     }
                 }
+            } else if self.strand_tool_active() {
+                // Points go on any surface, so another object under the
+                // pointer does not become active.
+                self.grab = if self.strand_press(world_ray, drag.shift) {
+                    Grab::Strand
+                } else {
+                    Grab::None
+                };
             } else if let Some((index, _)) = aimed.filter(|(index, _)| *index != self.selected) {
                 self.select_object(index);
                 self.grab = Grab::None;
@@ -86,6 +95,7 @@ impl Session {
             Grab::Select if primary_down => self.drag_select(ray),
             Grab::Move if primary_down => self.drag_move(ray),
             Grab::Object if primary_down => self.drag_object(world_ray),
+            Grab::Strand if primary_down => self.strand_drag(world_ray),
             _ => {}
         }
 
@@ -100,6 +110,11 @@ impl Session {
             }
             self.stroke = None;
             self.commit();
+            self.grab = Grab::None;
+        }
+        if primary_released && self.grab == Grab::Strand {
+            self.strand_drag(world_ray);
+            self.strand_release();
             self.grab = Grab::None;
         }
         if primary_released && self.grab == Grab::Select {

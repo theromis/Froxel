@@ -5,11 +5,12 @@
 //! Components (MCP `components`), De-terrace (MCP `deterrace`), Reduce
 //! palette (MCP `reduce_palette`), and Split parts (MCP `split_parts`).
 
-use egui::Ui;
+use egui::{RichText, Ui};
+use serde_json::json;
 
-use super::section;
 use super::{choice_label, prop_check, prop_drag, prop_label};
-use crate::state::{EditorMode, Session, INTERSECT_SHAPES};
+use super::{row, section, DIM};
+use crate::state::{EditorMode, Session, Tool, INTERSECT_SHAPES};
 
 /// The Mirror row (MCP `mirror`): on, the axis, and the plane.
 pub(super) fn mirror_row(ui: &mut Ui, tool: &str, id: &str, field: &mut crate::state::MirrorField) {
@@ -143,15 +144,91 @@ pub(super) fn recolor(ui: &mut Ui, session: &mut Session) {
 
 /// MCP `clear_object`: the active object emptied, whatever its size.
 pub(super) fn clear(ui: &mut Ui, session: &mut Session) {
-    let enabled = session.editor_mode == EditorMode::Model && !session.active().cells.is_empty();
+    let enabled = session.editor_mode == EditorMode::Model
+        && (!session.active().cells.is_empty() || !session.active().strands.is_empty());
     ui.add_enabled_ui(enabled, |ui| {
         section(ui, "Clear object");
         if ui
             .button("Clear")
-            .on_hover_text("MCP clear_object: remove every cell of the active object, with no box limit. Its name, position, bone, script, and markers stay. One undo step.")
+            .on_hover_text("MCP clear_object: remove every cell and strand of the active object, with no box limit. Its name, position, bone, script, and markers stay. One undo step.")
             .clicked()
         {
             session.clear_from_panel();
+        }
+    });
+}
+
+/// Most strands the Strands section lists one by one.
+const LISTED_STRANDS: usize = 12;
+
+/// MCP `list_strands`, `remove_strand`, and `bake_strands` on the active
+/// object; a strand's name selects it in the Strand tool.
+pub(super) fn strands(ui: &mut Ui, session: &mut Session) {
+    let count = session.active().strands.len();
+    let enabled = session.editor_mode == EditorMode::Model && count > 0;
+    ui.add_enabled_ui(enabled, |ui| {
+        section(ui, "Strands");
+        let boxes: usize = session.active().strands.iter().map(|s| s.boxes().len()).sum();
+        ui.label(
+            RichText::new(format!("{count} strands, {boxes} boxes"))
+                .small()
+                .color(DIM),
+        );
+        let mut select = None;
+        let mut remove = None;
+        for index in 0..count.min(LISTED_STRANDS) {
+            row(ui, |ui| {
+                let on = session.tool == Tool::Strand && session.strand_tool.selected == Some(index);
+                if ui
+                    .selectable_label(on, format!("Strand {}", index + 1))
+                    .on_hover_text("Edit it with the Strand tool")
+                    .clicked()
+                {
+                    select = Some(index);
+                }
+                if ui.small_button("✕").on_hover_text("MCP remove_strand").clicked() {
+                    remove = Some(index);
+                }
+            });
+        }
+        if count > LISTED_STRANDS {
+            ui.label(
+                RichText::new(format!("and {} more", count - LISTED_STRANDS))
+                    .small()
+                    .color(DIM),
+            );
+        }
+        let mut bake = false;
+        let mut clear = false;
+        row(ui, |ui| {
+            bake = ui
+                .button("Bake")
+                .on_hover_text("MCP bake_strands: write the cells inside the strands' boxes and remove the strands, for MagicaVoxel or grid tools. One undo step.")
+                .clicked();
+            clear = ui
+                .button("Remove all")
+                .on_hover_text("MCP remove_strand with all. One undo step.")
+                .clicked();
+        });
+        let object = session.selected;
+        let result = if let Some(index) = select {
+            session.tool = Tool::Strand;
+            session.select_strand(Some(index));
+            Ok(())
+        } else if let Some(index) = remove {
+            session.select_strand(None);
+            crate::remote::apply(session, "strand.remove", &json!({"object": object, "index": index})).map(|_| ())
+        } else if bake {
+            session.select_strand(None);
+            crate::remote::apply(session, "strand.bake", &json!({"object": object})).map(|_| ())
+        } else if clear {
+            session.select_strand(None);
+            crate::remote::apply(session, "strand.remove", &json!({"object": object, "all": true})).map(|_| ())
+        } else {
+            Ok(())
+        };
+        if let Err(err) = result {
+            session.status = err;
         }
     });
 }

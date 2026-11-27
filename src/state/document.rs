@@ -30,6 +30,7 @@ impl Session {
             tube_start: 3.0,
             tube_end: 1.0,
             tube_chain: false,
+            strand_tool: Default::default(),
             tube_second: 1,
             tube_points: Vec::new(),
             op_args: Self::panel_op_args(),

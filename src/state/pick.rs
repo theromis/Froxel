@@ -27,6 +27,7 @@ impl Session {
             return;
         }
         let object_mode = self.editor_mode == EditorMode::Object;
+        let strand = self.strand_tool_active();
         let mut cmd: Option<Cmd> = None;
         // On macOS the application menu owns the menu shortcuts. Consuming
         // them here as well would undo or save twice when AppKit also delivers
@@ -72,6 +73,20 @@ impl Session {
                 } else {
                     Cmd::RotateObject(axis)
                 });
+            } else if let Some(key) = (strand && !command)
+                .then(|| {
+                    [
+                        egui::Key::Enter,
+                        egui::Key::Escape,
+                        egui::Key::Delete,
+                        egui::Key::Backspace,
+                    ]
+                    .into_iter()
+                    .find(|key| i.key_pressed(*key))
+                })
+                .flatten()
+            {
+                cmd = Some(Cmd::Strand(key));
             } else if !command
                 && (i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace))
             {
@@ -92,6 +107,9 @@ impl Session {
             Some(Cmd::DeletePicked) => self.delete_picked(),
             Some(Cmd::RotateObject(axis)) => self.rotate_object(axis, false),
             Some(Cmd::FlipObject(axis)) => self.flip_object(axis),
+            Some(Cmd::Strand(egui::Key::Enter)) => self.finish_strand(),
+            Some(Cmd::Strand(egui::Key::Escape)) => self.cancel_strand(),
+            Some(Cmd::Strand(_)) => self.delete_strand_part(),
             None => {}
         }
     }

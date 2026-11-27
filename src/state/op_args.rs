@@ -194,6 +194,10 @@ impl SliderTarget {
     pub(crate) fn op_arg(self) -> Option<(&'static str, &'static str)> {
         Some(match self {
             SliderTarget::TubeAspect => ("fill_tube", "aspect"),
+            SliderTarget::StrandWidth => ("add_strand", "width"),
+            SliderTarget::StrandThickness => ("add_strand", "thickness"),
+            SliderTarget::StrandStep => ("add_strand", "step"),
+            SliderTarget::StrandPeriod => ("add_strand", "period"),
             SliderTarget::TubeRoll => ("fill_tube", "roll"),
             SliderTarget::TubePeriod => ("fill_tube", "period"),
             SliderTarget::TubeSectors => ("fill_tube", "sectors"),

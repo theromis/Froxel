@@ -14,6 +14,8 @@ pub(super) enum Cmd {
     DeletePicked,
     RotateObject(Axis),
     FlipObject(Axis),
+    /// Enter, Esc, or Delete with the Strand tool.
+    Strand(egui::Key),
 }
 
 impl Session {

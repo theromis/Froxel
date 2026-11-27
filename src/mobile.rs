@@ -1123,6 +1123,7 @@ fn tool_slug(tool: Tool) -> &'static str {
         Tool::Face => "face",
         Tool::Generator => "generator",
         Tool::Tube => "tube",
+        Tool::Strand => "strand",
         Tool::Sculpt => "sculpt",
         Tool::Mutator => "mutator",
         Tool::Marquee => "marquee",

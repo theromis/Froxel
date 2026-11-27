@@ -1270,7 +1270,7 @@ fn build() -> Vec<Value> {
             "temporalSmooth": soft(ui(hard(num_prop("The window's live Render mode: the least weight a new frame gets against the frames before it, 0..1; lower is smoother and slower to follow a change. Omit to keep it."), 0.0, 1.0), "Temporal smooth", "Least weight a new live frame gets"), 0.0, 1.0, 3)
         }), &[]),
         define("set_tool", "Pick the window's tool and its options, as the tool strip, the mode buttons, the palette, and the tool options row do, so a ui_click on the viewport then stamps that tool. Not an edit and not undoable. Replies with the tool, mode, slot, and options as they now are.", json!({
-            "tool": ui(json!({"type": "string", "enum": ["brush", "line", "circle", "square", "box", "face", "generator", "tube", "sculpt", "mutator", "marquee", "box_select", "flood_select"], "description": "The tool: brush, line, circle, square, box, face, generator, tube, sculpt, mutator, marquee, box_select, or flood_select. Omit to keep it."}), "Tool", "The window's active tool"),
+            "tool": ui(json!({"type": "string", "enum": ["brush", "line", "circle", "square", "box", "face", "generator", "tube", "strand", "sculpt", "mutator", "marquee", "box_select", "flood_select"], "description": "The tool: brush, line, circle, square, box, face, generator, tube, strand, sculpt, mutator, marquee, box_select, or flood_select. Omit to keep it."}), "Tool", "The window's active tool"),
             "mode": ui(json!({"type": "string", "enum": ["add", "remove", "paint"], "description": "add, remove, or paint. Omit to keep it."}), "Mode", "Add, remove, or paint"),
             "slot": ui(int_prop("The active palette slot, 0..255. Omit to keep it."), "Slot", "The active palette slot"),
             "size": soft(ui(int_prop("Brush, Line, Circle, Square, Box, Mutator: brush size in cells, 1..63. Omit to keep it."), "Size", "Brush size in cells"), 1.0, 63.0, 0),
@@ -1376,14 +1376,14 @@ fn strand_props() -> Value {
     json!({
         "object": {"type": ["integer", "string"], "description": "Object index or name the strand belongs to. Defaults to the active object."},
         "points": {"type": "array", "items": {"type": ["array", "object"]}, "description": "Path points in the object's local cells, 2..=256: [x, y, z], [x, y, z, twist], [x, y, z, twist, scale], or {x, y, z, twist?, scale?}. A whole number is a cell centre and fractions are allowed. twist is degrees counter-clockwise looking along the path (default 0); scale multiplies the section, 0.05..=16 (default 1), so a leaf tapers to its tip."},
-        "curve": with_default(str_prop("smooth (a Catmull-Rom curve through the points) or polyline (straight spans). Defaults to smooth."), json!("smooth")),
-        "width": hard(with_default(num_prop("Section across the path, to its left, in cells, 0.125..=64. Defaults to 1."), json!(1.0)), 0.125, 64.0),
-        "thickness": hard(with_default(num_prop("Section up from the path, in cells, 0.125..=64. Defaults to 1."), json!(1.0)), 0.125, 64.0),
-        "step": hard(with_default(num_prop("Cube length along the path in cells, 0.125..=64: the path is cut into the whole number of cubes nearest its length over step. Defaults to 1."), json!(1.0)), 0.125, 64.0),
+        "curve": toggle(ui(with_default(json!({"type": "string", "enum": ["smooth", "polyline"], "description": "smooth (a Catmull-Rom curve through the points) or polyline (straight spans). Defaults to smooth."}), json!("smooth")), "Straight", "Straight spans between the points instead of a smooth curve"), "polyline"),
+        "width": soft(ui(hard(with_default(num_prop("Section across the path, to its left, in cells, 0.125..=64. Defaults to 1."), json!(1.0)), 0.125, 64.0), "Width", "Section across the path, in cells"), 0.125, 8.0, 3),
+        "thickness": soft(ui(hard(with_default(num_prop("Section up from the path, in cells, 0.125..=64. Defaults to 1."), json!(1.0)), 0.125, 64.0), "Thickness", "Section up from the path, in cells"), 0.125, 8.0, 3),
+        "step": soft(ui(hard(with_default(num_prop("Cube length along the path in cells, 0.125..=64: the path is cut into the whole number of cubes nearest its length over step. Defaults to 1."), json!(1.0)), 0.125, 64.0), "Step", "Cube length along the path, in cells"), 0.125, 8.0, 3),
         "palette": hard(int_prop("Palette index 1..=255 of every cube. Defaults to the active slot."), 1.0, 255.0),
         "palettes": {"type": "array", "items": {"type": "integer"}, "description": "Palette indices 1..=255 (up to 64) laid out by pattern"},
-        "pattern": {"type": "string", "enum": ["gradient", "rings", "random"], "description": "How palettes lay out: gradient (default) in even runs from the first point to the last, a leaf dark at the base and pale at the tip; rings in turn every period cells of path; random per cube by seed"},
-        "period": hard(with_default(num_prop("rings: cells of path per slot, 0.25..=512. Defaults to 2."), json!(2.0)), 0.25, 512.0),
+        "pattern": ui(json!({"type": "string", "enum": ["gradient", "rings", "random"], "description": "How palettes lay out: gradient (default) in even runs from the first point to the last, a leaf dark at the base and pale at the tip; rings in turn every period cells of path; random per cube by seed"}), "Pattern", "How the slots lay out along the strand"),
+        "period": soft(ui(hard(with_default(num_prop("rings: cells of path per slot, 0.25..=512. Defaults to 2."), json!(2.0)), 0.25, 512.0), "Period", "Cells of path per slot of the rings"), 0.25, 32.0, 2),
         "seed": int_prop("random: the seed. Defaults to 0.")
     })
 }

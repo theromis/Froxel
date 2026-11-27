@@ -48,6 +48,8 @@ pub fn tool(tool: Tool) -> char {
         // The subset has no tube glyph; the desktop strip draws one with
         // [`paint_tool`].
         Tool::Tube => glyph::POLYLINE,
+        // The desktop strip draws a chain of turned squares with [`paint_tool`].
+        Tool::Strand => glyph::POLYLINE,
         // The desktop strip draws a dab with [`paint_tool`].
         Tool::Sculpt => glyph::BUBBLES,
         Tool::Mutator => glyph::BUBBLES,
@@ -68,7 +70,7 @@ pub fn mode(mode: ToolMode) -> char {
 /// Draw a tool's icon in the middle of a button: its glyph, or for Tube a
 /// tapering curve.
 pub fn paint_tool(ui: &egui::Ui, response: &egui::Response, tool: Tool, selected: bool) {
-    if tool != Tool::Tube && tool != Tool::Sculpt {
+    if tool != Tool::Tube && tool != Tool::Sculpt && tool != Tool::Strand {
         paint(ui, response, self::tool(tool), selected);
         return;
     }
@@ -77,6 +79,42 @@ pub fn paint_tool(ui: &egui::Ui, response: &egui::Response, tool: Tool, selected
     } else {
         ui.visuals().widgets.inactive.fg_stroke.color
     };
+    if tool == Tool::Strand {
+        // A leaf of squares turned along a curve, smaller toward the tip.
+        let rect = response.rect.shrink(response.rect.width() * 0.2);
+        let at = |t: f32| {
+            let a = rect.left_bottom();
+            let b = egui::pos2(rect.left() + rect.width() * 0.15, rect.top());
+            let c = rect.right_top();
+            let u = 1.0 - t;
+            egui::pos2(
+                u * u * a.x + 2.0 * u * t * b.x + t * t * c.x,
+                u * u * a.y + 2.0 * u * t * b.y + t * t * c.y,
+            )
+        };
+        let steps = 5;
+        for step in 0..steps {
+            let t = (step as f32 + 0.5) / steps as f32;
+            let (p, q) = (at(t - 0.05), at(t + 0.05));
+            let dir = (q - p).normalized();
+            let half = 3.6 - 2.2 * t;
+            let side = egui::vec2(-dir.y, dir.x) * half;
+            let along = dir * half;
+            let c = at(t);
+            let corners = vec![
+                c - along - side,
+                c + along - side,
+                c + along + side,
+                c - along + side,
+            ];
+            ui.painter().add(egui::Shape::convex_polygon(
+                corners,
+                color,
+                egui::Stroke::NONE,
+            ));
+        }
+        return;
+    }
     if tool == Tool::Sculpt {
         // A dab: a lump rising out of a surface line, inside the brush ring.
         let rect = response.rect.shrink(response.rect.width() * 0.2);

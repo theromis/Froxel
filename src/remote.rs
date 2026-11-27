@@ -39,7 +39,7 @@ pub(crate) use space::{is_world, space_prop, to_local, to_world_reply};
 pub(crate) use stone::{cavity_writes, radial_writes, stone_writes, ShadedWrites, Stone};
 pub(crate) use strands::{
     add_to as strand_add, bake_choice as strand_bake_choice, edit_in as strand_edit,
-    list_json as strand_list, remove_from as strand_remove,
+    list_json as strand_list, new_strand, remove_from as strand_remove,
 };
 
 use crate::state::{Cell, GlassMode, Session};

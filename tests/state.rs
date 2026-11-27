@@ -2786,6 +2786,10 @@ fn one_frame_traces_again_once_the_view_holds_still() {
 fn schema_drawn_sliders_take_their_range_from_the_registry() {
     use SliderTarget::*;
     let targets = [
+        StrandWidth,
+        StrandThickness,
+        StrandStep,
+        StrandPeriod,
         TubeStart,
         TubeEnd,
         TubeAspect,
@@ -2851,6 +2855,10 @@ fn schema_drawn_sliders_take_their_range_from_the_registry() {
         ConiferSeed,
     ];
     let names = [
+        "StrandWidth",
+        "StrandThickness",
+        "StrandStep",
+        "StrandPeriod",
         "TubeStart",
         "TubeEnd",
         "TubeAspect",
