@@ -329,8 +329,12 @@ impl SceneGpu {
                             .wrapping_mul(0x9E37_79B1)
                             .wrapping_add(value as u32 as u64);
                     }
-                    if let Some(delta) = delta {
-                        for column in delta.to_cols_array_2d() {
+                    // The chunk mesh is baked in world space, so the object
+                    // transform belongs in the hash. Without it a position or
+                    // rotation edit left the old chunk on the GPU until
+                    // something else dirtied it.
+                    for matrix in [session.object_to_world(index)].into_iter().chain(delta) {
+                        for column in matrix.to_cols_array_2d() {
                             for value in column {
                                 hash = hash
                                     .wrapping_mul(0x9E37_79B1)
