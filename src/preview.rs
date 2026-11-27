@@ -266,12 +266,9 @@ fn basis(yaw: f32, pitch: f32) -> (Vec3, Vec3, Vec3) {
         pitch.sin(),
     );
     let forward = -toward_eye;
-    let up = if forward.dot(Vec3::Z).abs() > 0.95 {
-        Vec3::Y
-    } else {
-        Vec3::Z
-    };
-    let right = forward.cross(up).normalize();
+    let lean = -0.05 * (pitch * 8.0).tanh();
+    let up = Vec3::new(yaw.cos() * lean, yaw.sin() * lean, 1.0);
+let right = forward.cross(up).normalize();
     (right, right.cross(forward), forward)
 }
 
