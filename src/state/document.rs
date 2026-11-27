@@ -595,6 +595,22 @@ impl Session {
         Vec3::new(a.cos() * e.cos(), a.sin() * e.cos(), e.sin()).normalize_or_zero()
     }
 
+    /// Camera up vector for the orbit camera, continuous from the horizon
+    /// all the way to both poles (mv-skin). Mostly +Z; near a pole a small
+    /// lean takes over, in the direction an orbit settles on when it looks
+    /// straight down (away from the camera) or straight up (toward it). The
+    /// lean fades with `tanh` so it never points where the view direction
+    /// could be parallel to it, which is what made the old hard switch and a
+    /// naive lean flip the view at pitch ≈ ±87°.
+    pub fn camera_up(&self) -> Vec3 {
+        let lean = -0.05 * (self.pitch * 8.0).tanh();
+        Vec3::new(
+            self.yaw.cos() * lean,
+            self.yaw.sin() * lean,
+            1.0,
+        )
+    }
+
     pub fn eye(&self) -> Vec3 {
         self.target
             + Vec3::new(

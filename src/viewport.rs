@@ -559,13 +559,7 @@ fn projection(session: &Session, aspect: f32) -> Mat4 {
 
 fn view_matrix(session: &Session) -> Mat4 {
     let eye = session.eye();
-    let forward = (session.target - eye).normalize_or_zero();
-    let up = if forward.dot(Vec3::Z).abs() > 0.95 {
-        Vec3::Y
-    } else {
-        Vec3::Z
-    };
-    Mat4::look_at_rh(eye, session.target, up)
+    Mat4::look_at_rh(eye, session.target, session.camera_up())
 }
 
 /// Same view as [`projection`], with z mapped into wgpu's 0..1 clip range.
