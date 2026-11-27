@@ -400,7 +400,7 @@ impl SceneGpu {
     fn sync_strands(&mut self, device: &wgpu::Device, session: &Session) {
         let mut live = std::collections::HashSet::new();
         for (index, object) in session.objects.iter().enumerate() {
-            if object.hidden || object.strands.is_empty() {
+            if object.hidden || !object.has_free_boxes() {
                 continue;
             }
             let delta = session.skin_delta(index);

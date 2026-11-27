@@ -53,7 +53,7 @@ pub(super) fn strand_faces(
 ) -> Vec<PolyFace> {
     let mut out = Vec::new();
     for (index, object) in session.objects.iter().enumerate() {
-        if object.strands.is_empty() || !exported(object, index, only, export_hidden) {
+        if !object.has_free_boxes() || !exported(object, index, only, export_hidden) {
             continue;
         }
         let bone = joint(session, object);
@@ -137,14 +137,14 @@ pub(super) fn strand_face_count(session: &Session, export_hidden: bool) -> usize
         .objects
         .iter()
         .enumerate()
-        .filter(|(_, o)| !o.strands.is_empty() && (!o.hidden || export_hidden))
+        .filter(|(_, o)| o.has_free_boxes() && (!o.hidden || export_hidden))
         .map(|(index, _)| session.strand_boxes(index).len() * 6)
         .sum()
 }
 
 /// Whether an object has anything to export: a solid cell or a strand.
 pub(super) fn has_geometry(object: &crate::state::Volume) -> bool {
-    !object.strands.is_empty() || object.cells.values().any(|slot| *slot != 0)
+    object.has_free_boxes() || object.cells.values().any(|slot| *slot != 0)
 }
 
 /// The cell occlusion at a corner: the nearest lattice point, seen along

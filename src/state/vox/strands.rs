@@ -204,6 +204,7 @@ pub(super) fn install(objects: &mut Vec<LoadedObject>, stored: Vec<StoredStrands
                 bone: None,
                 script: Default::default(),
                 strands: entry.strands,
+                skin: None,
             });
         }
     }

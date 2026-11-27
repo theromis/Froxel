@@ -31,6 +31,7 @@ impl Session {
             tube_end: 1.0,
             tube_chain: false,
             strand_tool: Default::default(),
+            skin_cache: Default::default(),
             tube_second: 1,
             tube_points: Vec::new(),
             op_args: Self::panel_op_args(),
@@ -178,6 +179,7 @@ impl Session {
             bone: None,
             script: Default::default(),
             strands: Vec::new(),
+            skin: None,
         });
         session.frame_camera();
         session.mark_clean();

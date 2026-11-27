@@ -79,7 +79,67 @@ impl WorldBox {
     }
 }
 
+/// One object's bricks and what they were built from: the cells (shared,
+/// so an unchanged object compares by pointer), the translation, and the
+/// skin.
+struct SkinEntry {
+    cells: Cells,
+    translation: Cell,
+    skin: crate::tools::Skin,
+    boxes: std::sync::Arc<Vec<StrandBox>>,
+}
+
+/// Bricks by object index. Rebuilt only for an object whose inputs differ.
+#[derive(Default)]
+pub struct SkinCache(std::sync::Mutex<HashMap<usize, SkinEntry>>);
+
+impl Volume {
+    /// Whether the object has boxes besides its cells: strands or a skin.
+    pub fn has_free_boxes(&self) -> bool {
+        !self.strands.is_empty() || self.skin.is_some()
+    }
+}
+
 impl Session {
+    /// One object's skin bricks in its local geometric frame, from the cache
+    /// while its cells, translation, and skin are unchanged.
+    pub fn skin_boxes(&self, index: usize) -> std::sync::Arc<Vec<StrandBox>> {
+        let Some(object) = self.objects.get(index) else {
+            return Default::default();
+        };
+        let Some(skin) = &object.skin else {
+            return Default::default();
+        };
+        let mut cache = self
+            .skin_cache
+            .0
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        if let Some(entry) = cache.get(&index) {
+            if entry.translation == object.translation
+                && entry.skin == *skin
+                && entry.cells == object.cells
+            {
+                return entry.boxes.clone();
+            }
+        }
+        let boxes = std::sync::Arc::new(crate::tools::skin_boxes(
+            &object.cells,
+            skin,
+            object.translation,
+        ));
+        cache.insert(
+            index,
+            SkinEntry {
+                cells: object.cells.clone(),
+                translation: object.translation,
+                skin: skin.clone(),
+                boxes: boxes.clone(),
+            },
+        );
+        boxes
+    }
+
     /// The bevel the viewport draws: the Export section's, while the
     /// viewport's Bevel box is on in the edit view.
     pub fn view_bevel(&self) -> Option<crate::bevel::Bevel> {
@@ -90,12 +150,17 @@ impl Session {
         }
     }
 
-    /// Local boxes of one object's strands, in its local geometric frame.
+    /// Local boxes of one object's strands and skin bricks, in its local
+    /// geometric frame.
     pub fn strand_boxes(&self, index: usize) -> Vec<StrandBox> {
-        self.objects
-            .get(index)
-            .map(|o| crate::tools::strand_object_boxes(&o.strands))
-            .unwrap_or_default()
+        let Some(object) = self.objects.get(index) else {
+            return Vec::new();
+        };
+        let mut boxes = crate::tools::strand_object_boxes(&object.strands);
+        if object.skin.is_some() {
+            boxes.extend(self.skin_boxes(index).iter().copied());
+        }
+        boxes
     }
 
     /// Every box of one object's strands in the world, after its translation,
@@ -104,7 +169,7 @@ impl Session {
         let Some(object) = self.objects.get(index) else {
             return Vec::new();
         };
-        if object.strands.is_empty() {
+        if !object.has_free_boxes() {
             return Vec::new();
         }
         let map = self.object_to_world(index);
@@ -133,7 +198,7 @@ impl Session {
     pub fn visible_strand_boxes(&self, only: Option<usize>) -> Vec<WorldBox> {
         let mut out = Vec::new();
         for (index, object) in self.objects.iter().enumerate() {
-            if object.strands.is_empty() {
+            if !object.has_free_boxes() {
                 continue;
             }
             let wanted = !object.hidden && only.is_none_or(|only| only == index);

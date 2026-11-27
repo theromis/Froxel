@@ -1365,6 +1365,7 @@ impl Session {
                             bone: None,
                             script: ObjectScript::default(),
                             strands: run_strands.unwrap_or_default(),
+                            skin: None,
                         });
                     }
                 }

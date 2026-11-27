@@ -302,3 +302,44 @@ fn prototype_render() {
         .unwrap();
     }
 }
+
+#[test]
+fn the_session_draws_bricks_and_rebuilds_them_after_an_edit() {
+    let mut session = crate::state::Session::new();
+    session.objects[0].cells = ball(8, 1).into();
+    assert!(session.strand_boxes(0).is_empty());
+    session.objects[0].skin = Some(Skin::default());
+    let first = session.skin_boxes(0);
+    assert!(!first.is_empty());
+    assert_eq!(session.strand_boxes(0).len(), first.len());
+    // Unchanged inputs come from the cache.
+    assert!(std::sync::Arc::ptr_eq(&first, &session.skin_boxes(0)));
+    // A cut into the ball reshapes the skin.
+    for z in 4..=8 {
+        for y in -8..=8 {
+            for x in -8..=8 {
+                session.objects[0].cells.remove(&(x, y, z));
+            }
+        }
+    }
+    let after = session.skin_boxes(0);
+    assert!(!std::sync::Arc::ptr_eq(&first, &after));
+    assert_ne!(*first, *after);
+    // Moving the object keeps the bricks where they were on it.
+    session.objects[0].translation = (3, 0, 0);
+    let moved = session.skin_boxes(0);
+    assert!(!std::sync::Arc::ptr_eq(&after, &moved));
+    assert_eq!(moved.len(), after.len());
+}
+
+#[test]
+fn clearing_an_object_drops_its_skin_and_undo_brings_it_back() {
+    let mut session = crate::state::Session::new();
+    session.objects[0].cells = ball(6, 1).into();
+    session.objects[0].skin = Some(Skin::default());
+    session.clear_object(0).unwrap();
+    assert!(session.objects[0].skin.is_none());
+    session.undo();
+    assert_eq!(session.objects[0].skin, Some(Skin::default()));
+    assert!(!session.skin_boxes(0).is_empty());
+}

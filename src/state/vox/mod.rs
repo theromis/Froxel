@@ -28,6 +28,7 @@ pub(super) struct LoadedObject {
     pub(super) bone: Option<String>,
     pub(super) script: crate::script::ObjectScript,
     pub(super) strands: Vec<crate::tools::Strand>,
+    pub(super) skin: Option<crate::tools::Skin>,
 }
 
 pub(super) struct Loaded {

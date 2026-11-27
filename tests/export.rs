@@ -168,6 +168,7 @@ fn hidden_object_is_left_out_of_the_mesh() {
         bone: None,
         script: Default::default(),
         strands: Vec::new(),
+        skin: None,
     });
     assert_eq!(build(&session).indices.len() / 6, 6);
 }

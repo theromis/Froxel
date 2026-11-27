@@ -572,6 +572,9 @@ pub struct Volume {
     /// Chains of turned cubes along curves (`tools/strand.rs`), in local
     /// cell coordinates. Drawn, traced, and exported as boxes, never as cells.
     pub strands: Vec<crate::tools::Strand>,
+    /// Irregular bricks over the surface (`tools/skin.rs`), derived from the
+    /// cells; drawn, traced, and exported with the strand boxes.
+    pub skin: Option<crate::tools::Skin>,
 }
 
 /// Where a loaded object sits in the `.vox` graph.
@@ -962,6 +965,9 @@ pub struct Session {
     pub tube_chain: bool,
     /// The Strand tool's points being placed and its selection.
     pub strand_tool: strand_tool::StrandTool,
+    /// Each skinned object's bricks, kept until its cells, translation, or
+    /// skin change (`Session::skin_boxes`).
+    pub skin_cache: strands::SkinCache,
     /// Tube tool: the second slot of a `pattern`, with the active slot.
     pub tube_second: i32,
     /// The chain so far, the cells before it, and the cells after its last

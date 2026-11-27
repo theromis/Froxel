@@ -259,6 +259,7 @@ pub(crate) fn load_vox(bytes: &[u8]) -> Result<Loaded, String> {
                     bone: None,
                     script,
                     strands: Vec::new(),
+                    skin: None,
                 });
             }
         }
@@ -538,6 +539,7 @@ pub(crate) fn place_models(
                 bone: None,
                 script: Default::default(),
                 strands: Vec::new(),
+                skin: None,
             }],
             [0, 0, 0],
         ));
@@ -626,6 +628,7 @@ pub(crate) fn place_models(
                     bone: None,
                     script: Default::default(),
                     strands: Vec::new(),
+                    skin: None,
                 })
             },
         )

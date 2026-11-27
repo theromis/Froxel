@@ -145,7 +145,7 @@ pub(super) fn recolor(ui: &mut Ui, session: &mut Session) {
 /// MCP `clear_object`: the active object emptied, whatever its size.
 pub(super) fn clear(ui: &mut Ui, session: &mut Session) {
     let enabled = session.editor_mode == EditorMode::Model
-        && (!session.active().cells.is_empty() || !session.active().strands.is_empty());
+        && (!session.active().cells.is_empty() || session.active().has_free_boxes());
     ui.add_enabled_ui(enabled, |ui| {
         section(ui, "Clear object");
         if ui

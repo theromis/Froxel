@@ -201,7 +201,7 @@ fn meshes(session: &Session, preview: &Preview) -> Vec<(Mesh, bool)> {
             .filter(|(_, slot)| **slot != 0)
             .map(|(cell, slot)| (*cell, *slot))
             .collect();
-        if cells.is_empty() && object.strands.is_empty() {
+        if cells.is_empty() && !object.has_free_boxes() {
             continue;
         }
         // The export's bevel, when its options have one: the preview shows
@@ -221,7 +221,7 @@ fn meshes(session: &Session, preview: &Preview) -> Vec<(Mesh, bool)> {
             }
             None => mesh::mesh_cells(&cells, |slot| session.color(slot), |_| [0.0, 0.0]),
         };
-        if !object.strands.is_empty() {
+        if object.has_free_boxes() {
             // Strands are drawn as the turned boxes they are, as the viewport draws them.
             let boxes = session.strand_boxes(index);
             let strands = match bevel {

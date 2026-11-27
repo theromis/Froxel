@@ -33,6 +33,7 @@ impl Session {
             bone: None,
             script: Default::default(),
             strands: Vec::new(),
+            skin: None,
         });
         self.selected = 0;
         self.focus_object();
@@ -151,6 +152,7 @@ impl Session {
                 bone: object.bone,
                 script: object.script,
                 strands: object.strands,
+                skin: object.skin,
             });
         }
         if self.objects.is_empty() {
@@ -168,6 +170,7 @@ impl Session {
                 bone: None,
                 script: Default::default(),
                 strands: Vec::new(),
+                skin: None,
             });
         }
         self.selected = 0;
@@ -323,6 +326,7 @@ impl Session {
             bone: None,
             script: Default::default(),
             strands: Vec::new(),
+            skin: None,
         });
         self.selected = 0;
         self.focus_object();

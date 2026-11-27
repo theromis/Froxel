@@ -131,6 +131,7 @@ fn object_band_selects_the_hits_and_a_click_keeps_one() {
         bone: None,
         script: Default::default(),
         strands: Vec::new(),
+        skin: None,
     });
     session.finish_object_band(
         &ObjectBand {
@@ -171,6 +172,7 @@ fn object_drag_moves_every_chosen_object() {
         bone: None,
         script: Default::default(),
         strands: Vec::new(),
+        skin: None,
     });
     session.object_selection = vec![0, 1];
     let down = (Vec3::new(0.5, 0.5, 5.0), Vec3::new(0.0, 0.0, -1.0));
@@ -204,6 +206,7 @@ fn rotate_object_turns_the_whole_selection() {
         bone: None,
         script: Default::default(),
         strands: Vec::new(),
+        skin: None,
     });
     session.object_selection = vec![0, 1];
     session.rotate_object(Axis::Z, false);
@@ -498,6 +501,7 @@ fn resize_keeps_a_loaded_rotation() {
         bone: src.bone.clone(),
         script: src.script.clone(),
         strands: Vec::new(),
+        skin: None,
     };
     let stay = src
         .cells
@@ -1014,6 +1018,7 @@ fn scene_save_keeps_each_object_in_place() {
             bone: None,
             script: Default::default(),
             strands: Vec::new(),
+            skin: None,
         },
         Volume {
             name: "B".into(),
@@ -1029,6 +1034,7 @@ fn scene_save_keeps_each_object_in_place() {
             bone: None,
             script: Default::default(),
             strands: Vec::new(),
+            skin: None,
         },
     ];
     let bytes = save_scene(
@@ -1066,6 +1072,7 @@ fn volume_from(object: &LoadedObject) -> Volume {
         bone: object.bone.clone(),
         script: object.script.clone(),
         strands: Vec::new(),
+        skin: None,
     }
 }
 
@@ -1265,6 +1272,7 @@ fn scene_rotation_is_baked_into_the_cells() {
             bone: object.bone.clone(),
             script: object.script.clone(),
             strands: Vec::new(),
+            skin: None,
         }],
         &default_palette(),
         &[Material::default(); 256],
@@ -1446,6 +1454,7 @@ fn bare_volume(name: &str, cells: HashMap<Cell, u8>, translation: Cell) -> Volum
         bone: None,
         script: Default::default(),
         strands: Vec::new(),
+        skin: None,
     }
 }
 

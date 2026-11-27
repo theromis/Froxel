@@ -45,6 +45,7 @@ impl Session {
             bone: None,
             script: Default::default(),
             strands: Vec::new(),
+            skin: None,
         });
         let index = self.objects.len() - 1;
         if make_active {
@@ -194,6 +195,7 @@ impl Session {
             bone: None,
             script: Default::default(),
             strands: Vec::new(),
+            skin: None,
         });
         self.selected = self.objects.len() - 1;
         self.focus_object();
@@ -229,6 +231,7 @@ impl Session {
             bone: source.bone.clone(),
             script: source.script.clone(),
             strands: source.strands.clone(),
+            skin: source.skin.clone(),
         };
         self.objects.insert(self.selected + 1, copy);
         self.selected += 1;
@@ -535,6 +538,7 @@ impl Session {
             }
         }
         let hidden = source.hidden;
+        let skin = source.skin.clone();
         // Strand points follow the cells: a cell centre x mirrors to -x - 1.
         let shift = [
             (source.translation.0 - origin[0]) as f32,
@@ -567,6 +571,7 @@ impl Session {
             bone,
             script: Default::default(),
             strands,
+            skin,
         });
         let created = self.objects.len() - 1;
         self.mesh_epoch = self.mesh_epoch.wrapping_add(1);
@@ -1223,6 +1228,7 @@ impl Session {
                 bone: None,
                 script: Default::default(),
                 strands: Vec::new(),
+                skin: None,
             });
         }
         self.selected = self.selected.min(self.objects.len() - 1);
