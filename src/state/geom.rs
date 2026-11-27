@@ -232,6 +232,22 @@ pub(super) fn flood_same(cells: &HashMap<Cell, u8>, seed: Cell, slot: u8) -> Has
     out
 }
 
+/// MagicaVoxel-style ground fallback (mv-skin): a ray that misses every voxel
+/// lands on the z = 0 plane, as a hit on the cell just below the ground with
+/// an up-pointing normal, so Add mode places the voxel on the ground.
+/// Only rays coming from above are caught; the camera never sees the plane
+/// from below while looking down at the scene.
+pub(super) fn ground_hit(origin: Vec3, dir: Vec3) -> Option<Hit> {
+    if dir.z >= -1e-6 {
+        return None;
+    }
+    let point = intersect_plane(origin, dir, Vec3::new(0.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 1.0))?;
+    Some(Hit {
+        cell: (point.x.floor() as i32, point.y.floor() as i32, -1),
+        normal: (0, 0, 1),
+    })
+}
+
 pub(super) fn intersect_plane(origin: Vec3, dir: Vec3, point: Vec3, normal: Vec3) -> Option<Vec3> {
     let dir = dir.normalize_or_zero();
     let denom = normal.dot(dir);

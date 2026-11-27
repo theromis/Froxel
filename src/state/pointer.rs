@@ -152,7 +152,7 @@ impl Session {
         self.hover = None;
         if inside && self.grab != Grab::Orbit && self.grab != Grab::Pan {
             if let Some((origin, dir)) = ray {
-                self.hover = raycast(&self.active().cells, origin, dir);
+                self.hover = raycast(&self.active().cells, origin, dir).or_else(|| ground_hit(origin, dir));
             }
         }
     }
@@ -275,7 +275,7 @@ impl Session {
                 Some(stroke) => &stroke.base,
                 None => &self.active().cells,
             };
-            if let Some(hit) = raycast(cells, origin, dir) {
+            if let Some(hit) = raycast(cells, origin, dir).or_else(|| ground_hit(origin, dir)) {
                 if self.stroke.is_none() {
                     self.begin_stroke(hit);
                 }
@@ -589,7 +589,12 @@ impl Session {
             return plane_hit(origin, dir, stroke.anchor);
         }
         if self.tool == Tool::Face {
-            return wall_hit(cells, origin, dir);
+            if let Some(hit) = wall_hit(cells, origin, dir) {
+                return Some(hit);
+            }
+        }
+        if matches!(self.tool_mode, ToolMode::Add) {
+            return ground_hit(origin, dir);
         }
         None
     }
