@@ -17,8 +17,11 @@ use std::sync::Arc;
 
 use serde_json::{json, Value};
 
-use super::bake::{self, Bake, Grid, Occluders, Patch, Rays};
+#[cfg(test)]
+use super::bake::Grid;
+use super::bake::{self, Bake, Occluders, Patch, Rays};
 use super::quads::{self, axis_of, GreedyQuad};
+use super::strands::StrandFace;
 use super::*;
 
 /// Nothing is sized by it (indices are u32, the atlas has its own cap); it
@@ -363,7 +366,7 @@ enum Primitive {
 }
 
 struct Solid {
-    grid: Arc<Grid>,
+    solid: Arc<bake::Solid>,
     place: Place,
 }
 
@@ -400,8 +403,21 @@ fn bounds_of(points: impl Iterator<Item = [f64; 3]>) -> ([f64; 3], [f64; 3]) {
 
 impl World {
     /// The grids are one per source; `instances` says which and where.
+    #[cfg(test)]
     pub(super) fn new(
         instances: Vec<(Arc<Grid>, Place)>,
+        occluders: &[Occluder],
+    ) -> Result<World, String> {
+        let solids = instances
+            .into_iter()
+            .map(|(grid, place)| (Arc::new(bake::Solid::of_grid(grid)), place))
+            .collect();
+        World::of_solids(solids, occluders)
+    }
+
+    /// [`World::new`] with each source's cells and strands.
+    fn of_solids(
+        instances: Vec<(Arc<bake::Solid>, Place)>,
         occluders: &[Occluder],
     ) -> Result<World, String> {
         let mut triangles = Vec::new();
@@ -436,7 +452,7 @@ impl World {
         }
         let instances: Vec<Solid> = instances
             .into_iter()
-            .map(|(grid, place)| Solid { grid, place })
+            .map(|(solid, place)| Solid { solid, place })
             .collect();
         let mut world = World {
             instances,
@@ -447,7 +463,7 @@ impl World {
         };
         let mut items: Vec<(Primitive, [f64; 3], [f64; 3])> = Vec::new();
         for (index, solid) in world.instances.iter().enumerate() {
-            if !solid.grid.is_empty() {
+            if !solid.solid.is_empty() {
                 let (low, high) = solid.bounds();
                 items.push((Primitive::Instance(index as u32), low, high));
             }
@@ -520,7 +536,7 @@ impl World {
 impl Solid {
     /// World bounds of the grid's box.
     fn bounds(&self) -> ([f64; 3], [f64; 3]) {
-        let (low, high) = self.grid.bounds();
+        let (low, high) = self.solid.bounds();
         let corners = (0..8).map(|corner| {
             let pick = |axis: usize| {
                 if corner >> axis & 1 == 0 {
@@ -538,7 +554,7 @@ impl Solid {
         let scale = self.place.scale;
         let local = z_up(self.place.local_point(origin));
         let direction = z_up(self.place.local_vector(dir));
-        self.grid
+        self.solid
             .hit(local, direction, reach / scale)
             .map(|t| t * scale)
     }
@@ -664,7 +680,10 @@ fn placed_patch(place: &Place, face: usize, cell: Cell) -> Patch {
 /// times it is placed.
 struct Source {
     session: Session,
-    grid: Arc<Grid>,
+    /// Strand faces in the file's Z-up frame.
+    strands: Vec<StrandFace>,
+    /// What stops light in the file's frame: its cells and strand boxes.
+    grid: Arc<bake::Solid>,
     quads: Vec<GreedyQuad>,
     colors: std::collections::HashMap<Cell, u8>,
     classes: Vec<(u8, u8)>,
@@ -679,9 +698,11 @@ fn load_source(path: &Path, export_hidden: bool) -> Result<Source, String> {
             path.display()
         ));
     }
-    let grid = Arc::new(Grid::of_session(&session, export_hidden));
+    let grid = Arc::new(bake::Solid::of_session(&session, export_hidden));
     let (quads, colors, classes) = quads::atlas_quads(&session, export_hidden);
+    let strands = super::strands::faces(&session, export_hidden, None);
     Ok(Source {
+        strands,
         session,
         grid,
         quads,
@@ -698,7 +719,19 @@ fn world_of(scene: &SceneBake, sources: &[Source], which: &[usize]) -> Result<Wo
         .zip(which)
         .map(|((_, place), source)| (sources[*source].grid.clone(), *place))
         .collect();
-    World::new(placed, &scene.occluders)
+    World::of_solids(placed, &scene.occluders)
+}
+
+/// A strand face of a placed source, as a bake patch in the scene's frame.
+fn placed_strand_patch(place: &Place, face: &StrandFace) -> Patch {
+    let patch = super::strands::patch(face);
+    let turned = |v: [f64; 3]| place.rotate(y_up(v));
+    Patch {
+        corner: place.point(y_up(patch.corner)),
+        u: turned(patch.u).map(|v| v * place.scale),
+        v: turned(patch.v).map(|v| v * place.scale),
+        normal: turned(patch.normal),
+    }
 }
 
 /// The sun of a [`Bake`] in the scene's frame.
@@ -732,10 +765,16 @@ pub fn bake_scene(scene: &SceneBake, output: &Path) -> Result<Value, String> {
         .iter()
         .flat_map(|source| sources[*source].quads.iter().copied())
         .collect();
-    if all_quads.is_empty() {
+    let strand_count: usize = which
+        .iter()
+        .map(|source| sources[*source].strands.len())
+        .sum();
+    if all_quads.is_empty() && strand_count == 0 {
         return Err("Nothing to export.".into());
     }
-    let (width, height, blocks) = quads::pack(&all_quads);
+    let (width, quad_height, blocks) = quads::pack(&all_quads);
+    // One texel per strand face of every instance, below the quads' blocks.
+    let (strand_texels, height) = super::strands::atlas_rows(width, quad_height, strand_count);
     if width > MAX_ATLAS || height > MAX_ATLAS {
         return Err(format!(
             "the atlas would be {width}x{height}, over {MAX_ATLAS} a side: split the scene"
@@ -756,6 +795,18 @@ pub fn bake_scene(scene: &SceneBake, output: &Path) -> Result<Value, String> {
         let patch = placed_patch(place, face, cell);
         rays.light(&scene.bake, &world, &patch, LIFT * place.scale)
     });
+    let mut strand_faces: Vec<(usize, StrandFace)> = Vec::with_capacity(strand_count);
+    for (instance, source) in which.iter().enumerate() {
+        for face in &sources[*source].strands {
+            strand_faces.push((instance, *face));
+        }
+    }
+    let strand_light = bake::parallel_map(strand_faces.len(), |index| {
+        let (instance, face) = &strand_faces[index];
+        let place = &scene.instances[*instance].1;
+        let patch = placed_strand_patch(place, face);
+        rays.light(&scene.bake, &world, &patch, LIFT * place.scale)
+    });
 
     let any_motion = sources.iter().any(|source| source.session.has_motion());
     let mut built = Built {
@@ -772,6 +823,7 @@ pub fn bake_scene(scene: &SceneBake, output: &Path) -> Result<Value, String> {
         blend: false,
     };
     let mut first_block = 0;
+    let mut first_strand = 0;
     let mut next_light = 0;
     let mut spans = Vec::with_capacity(which.len());
     for (instance, source) in which.iter().enumerate() {
@@ -802,8 +854,19 @@ pub fn bake_scene(scene: &SceneBake, output: &Path) -> Result<Value, String> {
                 }
             }
         }
+        let texels = &strand_texels[first_strand..first_strand + source.strands.len()];
+        for (k, (face, (x, y))) in source.strands.iter().zip(texels).enumerate() {
+            let mut rgba = source.session.palette[face.slot as usize];
+            built.blend |= rgba[3] != 255;
+            for (channel, value) in rgba[..3].iter_mut().zip(strand_light[first_strand + k]) {
+                *channel = quads::srgb(quads::linear(*channel) * value);
+            }
+            let at = ((y * width + x) * 4) as usize;
+            built.atlas.2[at..at + 4].copy_from_slice(&rgba);
+        }
+        first_strand += source.strands.len();
         let first_index = built.indices.len();
-        append_instance(&mut built, source, blocks, place, any_motion);
+        append_instance(&mut built, source, blocks, texels, place, any_motion);
         let mut span = json!({
             "source": scene.instances[instance].0.display().to_string(),
             "translation": place.translation,
@@ -835,7 +898,7 @@ pub fn bake_scene(scene: &SceneBake, output: &Path) -> Result<Value, String> {
         "triangles": super::glb_triangles(&bytes)?,
         "vertices": built.positions.len() / 3,
         "atlas": [width, height],
-        "texels": faces.len(),
+        "texels": faces.len() + strand_count,
         "bytes": bytes.len(),
         "memory": {
             "grids": grids,
@@ -852,6 +915,7 @@ fn append_instance(
     built: &mut Built,
     source: &Source,
     blocks: &[(u32, u32)],
+    strand_texels: &[(u32, u32)],
     place: &Place,
     any_motion: bool,
 ) {
@@ -876,6 +940,14 @@ fn append_instance(
         &source.classes,
         any_motion,
         None,
+    );
+    super::strands::emit_atlas(
+        &mut own,
+        &source.session,
+        &source.strands,
+        strand_texels,
+        None,
+        any_motion,
     );
     let first = (built.positions.len() / 3) as u32;
     for corner in own.positions.chunks_exact(3) {

@@ -11,6 +11,8 @@ use crate::state::WorldBox;
 const LEAF: usize = 4;
 /// Box hits closer than this along the ray are the surface the ray left.
 pub(super) const MIN_T: f32 = 1.0e-4;
+/// How near a box's face, in unit-cube units, a ray's start counts as on it.
+const SURFACE: f32 = 1.0e-3;
 
 /// One box: `unit = rows * [p, 1]`, a palette slot.
 #[derive(Clone, Copy, Debug)]
@@ -30,13 +32,13 @@ pub(super) struct Node {
 }
 
 #[derive(Default)]
-pub(super) struct Boxes {
-    pub boxes: Vec<TraceBox>,
-    pub nodes: Vec<Node>,
+pub(crate) struct Boxes {
+    pub(super) boxes: Vec<TraceBox>,
+    pub(super) nodes: Vec<Node>,
 }
 
 impl Boxes {
-    pub(super) fn new(world: &[WorldBox]) -> Boxes {
+    pub(crate) fn new(world: &[WorldBox]) -> Boxes {
         if world.is_empty() {
             return Boxes::default();
         }
@@ -69,7 +71,37 @@ impl Boxes {
 
     /// The nearest box hit closer than `limit`: distance in `dir` units, the
     /// outward normal, and the slot.
-    pub(super) fn hit(&self, origin: Vec3, dir: Vec3, limit: f32) -> Option<(f32, Vec3, u8)> {
+    pub(crate) fn hit(&self, origin: Vec3, dir: Vec3, limit: f32) -> Option<(f32, Vec3, u8)> {
+        self.hit_with(origin, dir, limit, true)
+    }
+
+    /// The bounds of every box, or `None` without boxes.
+    pub(crate) fn bounds(&self) -> Option<(Vec3, Vec3)> {
+        let root = self.nodes.first()?;
+        Some((Vec3::from_array(root.min), Vec3::from_array(root.max)))
+    }
+
+    /// [`Boxes::hit`] for occlusion rays leaving a surface: a ray that starts
+    /// on a box's own face (within a rounding error inside it) is leaving that
+    /// box, not inside it, so a ray grazing its face does not shade itself.
+    /// A ray that starts deeper inside a box (an overlapping neighbour) is
+    /// still stopped by it.
+    pub(crate) fn hit_outside(
+        &self,
+        origin: Vec3,
+        dir: Vec3,
+        limit: f32,
+    ) -> Option<(f32, Vec3, u8)> {
+        self.hit_with(origin, dir, limit, false)
+    }
+
+    fn hit_with(
+        &self,
+        origin: Vec3,
+        dir: Vec3,
+        limit: f32,
+        inside: bool,
+    ) -> Option<(f32, Vec3, u8)> {
         if self.boxes.is_empty() {
             return None;
         }
@@ -94,8 +126,9 @@ impl Boxes {
                 continue;
             }
             for b in &self.boxes[node.first as usize..(node.first + node.count) as usize] {
-                if let Some((t, normal)) = box_hit(b, origin, dir) {
-                    if t >= MIN_T && t < nearest {
+                if let Some((t, normal, depth)) = box_hit(b, origin, dir) {
+                    if (inside || depth < -SURFACE || depth > SURFACE) && t >= MIN_T && t < nearest
+                    {
                         nearest = t;
                         best = Some((t, normal, b.slot));
                     }
@@ -132,8 +165,9 @@ fn slab(origin: Vec3, inv: Vec3, min: [f32; 3], max: [f32; 3], limit: f32) -> bo
 }
 
 /// The ray against one box: the entry distance from outside (or the exit
-/// from inside) and the outward normal of that face.
-pub(super) fn box_hit(b: &TraceBox, origin: Vec3, dir: Vec3) -> Option<(f32, Vec3)> {
+/// from inside), the outward normal of that face, and how deep inside the
+/// box the ray starts, in unit-cube units (negative outside).
+pub(super) fn box_hit(b: &TraceBox, origin: Vec3, dir: Vec3) -> Option<(f32, Vec3, f32)> {
     let row = |i: usize| Vec3::new(b.rows[i][0], b.rows[i][1], b.rows[i][2]);
     let mut near = f32::MIN;
     let mut far = f32::MAX;
@@ -141,9 +175,11 @@ pub(super) fn box_hit(b: &TraceBox, origin: Vec3, dir: Vec3) -> Option<(f32, Vec
     let mut far_axis = 0usize;
     let mut near_sign = 1.0f32;
     let mut far_sign = 1.0f32;
+    let mut outmost = 0.0f32;
     for axis in 0..3 {
         let r = row(axis);
         let o = r.dot(origin) + b.rows[axis][3];
+        outmost = outmost.max(o.abs());
         let d = r.dot(dir);
         if d.abs() < 1.0e-12 {
             if o.abs() > 1.0 {
@@ -182,7 +218,7 @@ pub(super) fn box_hit(b: &TraceBox, origin: Vec3, dir: Vec3) -> Option<(f32, Vec
         (far, far_axis, far_sign)
     };
     let normal = (row(axis) * sign).normalize_or_zero();
-    Some((t, normal))
+    Some((t, normal, 1.0 - outmost))
 }
 
 fn build(items: &mut [(TraceBox, Vec3, Vec3)], offset: usize, at: usize, nodes: &mut Vec<Node>) {

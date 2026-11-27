@@ -104,6 +104,20 @@ impl Session {
             .collect()
     }
 
+    /// The same boxes in the object's bind frame: its translation only, as
+    /// mesh export places cells.
+    pub fn strand_bind_boxes(&self, index: usize) -> Vec<WorldBox> {
+        let Some(object) = self.objects.get(index) else {
+            return Vec::new();
+        };
+        let t = object.translation;
+        let map = glam::Mat4::from_translation(glam::Vec3::new(t.0 as f32, t.1 as f32, t.2 as f32));
+        self.strand_boxes(index)
+            .iter()
+            .map(|b| WorldBox::new(map * b.matrix(), b.slot))
+            .collect()
+    }
+
     /// World boxes of every visible object's strands, or only `only`'s (when
     /// visible), as `posed_voxels` takes cells.
     pub fn visible_strand_boxes(&self, only: Option<usize>) -> Vec<WorldBox> {

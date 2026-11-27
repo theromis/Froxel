@@ -119,6 +119,7 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
     };
     let mut colors: HashMap<Cell, u8> = HashMap::new();
     let mut quads = Vec::new();
+    let strand_faces = super::strands::faces(session, options.export_hidden, only);
     for (index, object) in session.objects.iter().enumerate() {
         if only.is_some_and(|only| only != index) {
             continue;
@@ -195,13 +196,22 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
         quads = split_per_bone(quads);
     }
     if atlas {
-        let (width, height, blocks) = pack(&quads);
+        let (width, quad_height, blocks) = pack(&quads);
+        // Each strand face gets one texel, in rows below the quads' blocks.
+        let (strand_texels, height) =
+            super::strands::atlas_rows(width, quad_height, strand_faces.len());
         let mut pixels = vec![0u8; (width * height * 4) as usize];
         // One light per texel, in the order the loop below paints them.
-        let baked = options.bake.as_ref().map(|bake| {
-            let faces = atlas_faces(&quads);
-            super::bake::session_light(session, options, bake, &faces)
-        });
+        let (baked, strand_light) = match options.bake.as_ref() {
+            Some(bake) => {
+                let faces = atlas_faces(&quads);
+                let patches: Vec<_> = strand_faces.iter().map(super::strands::patch).collect();
+                let (cells, strands) =
+                    super::bake::session_light(session, options, bake, &faces, &patches);
+                (Some(cells), Some(strands))
+            }
+            None => (None, None),
+        };
         let mut next_light = 0;
         for (quad, (x0, y0)) in quads.iter().zip(&blocks) {
             let (normal, _, _) = face_axes(quad.face);
@@ -240,6 +250,30 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
                 }
             }
         }
+        for (k, (face, (x, y))) in strand_faces.iter().zip(&strand_texels).enumerate() {
+            let mut rgba = session.palette[face.slot as usize];
+            if rgba[3] != 255 {
+                built.blend = true;
+            }
+            if let Some(occlusion) = occlusion.as_ref().filter(|_| texel_ao) {
+                let shade = face
+                    .corners
+                    .iter()
+                    .map(|c| super::strands::corner_shade(occlusion, *c, face.normal))
+                    .sum::<f32>()
+                    / 4.0;
+                for channel in &mut rgba[..3] {
+                    *channel = srgb(linear(*channel) * shade);
+                }
+            }
+            if let Some(light) = &strand_light {
+                for (channel, light) in rgba[..3].iter_mut().zip(light[k]) {
+                    *channel = srgb(linear(*channel) * light);
+                }
+            }
+            let at = ((y * width + x) * 4) as usize;
+            pixels[at..at + 4].copy_from_slice(&rgba);
+        }
         built.atlas = (width, height, pixels);
         emit_atlas(
             &mut built,
@@ -249,6 +283,14 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
             &classes,
             with_motion,
             occlusion.as_ref().filter(|_| vertex_ao),
+        );
+        super::strands::emit_atlas(
+            &mut built,
+            session,
+            &strand_faces,
+            &strand_texels,
+            occlusion.as_ref().filter(|_| vertex_ao),
+            with_motion,
         );
         if built.positions.is_empty() {
             built.min = [0.0; 3];
@@ -330,6 +372,14 @@ fn build_filtered(session: &Session, options: &MeshExport, only: Option<usize>) 
             .indices
             .extend_from_slice(&[index[0], index[1], index[2], index[0], index[2], index[3]]);
     }
+    super::strands::emit_plain(
+        &mut built,
+        session,
+        options,
+        &strand_faces,
+        occlusion.as_ref().filter(|_| vertex_ao),
+        with_motion,
+    );
     if built.positions.is_empty() {
         built.min = [0.0; 3];
         built.max = [0.0; 3];
@@ -676,7 +726,8 @@ pub(super) fn unmerged_faces(session: &Session, export_hidden: bool) -> usize {
                 })
                 .sum::<usize>()
         })
-        .sum()
+        .sum::<usize>()
+        + super::strands::face_count(session, export_hidden)
 }
 
 /// [`merged_quads`] with baked occlusion. `shade` gives a face's corner

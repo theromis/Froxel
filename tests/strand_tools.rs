@@ -256,3 +256,196 @@ fn preview_draws_a_strands_only_object() {
     assert!(frame.preview_triangles > 0);
     assert!(covered(&frame.rgba, [0, 0, 0, 0]) > 50);
 }
+
+fn options() -> crate::export::MeshExport {
+    crate::export::MeshExport {
+        vertex_colors: false,
+        merge: false,
+        export_hidden: false,
+        split_objects: false,
+        color_atlas: false,
+        ao_strength: 0.0,
+        ao_radius: 3,
+        ao_target: crate::export::AoTarget::Auto,
+        bake: None,
+        game_view: None,
+    }
+}
+
+fn export(
+    session: &Session,
+    options: &crate::export::MeshExport,
+    name: &str,
+) -> (std::path::PathBuf, usize) {
+    let path = std::env::temp_dir().join(format!("froxel-strands-{name}.glb"));
+    let _ = std::fs::remove_file(&path);
+    crate::export::export_with(session, &path, options).unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    (path, crate::export::glb_triangles(&bytes).unwrap())
+}
+
+#[test]
+fn every_export_writes_the_strand_boxes_and_counts_them() {
+    let scene = || {
+        let mut session = Session::new();
+        session.objects[0].cells.clear();
+        tuft(&mut session);
+        apply(
+            &mut session,
+            "object.add",
+            &json!({"name": "Reeds", "position": [-7, 2, 0]}),
+        )
+        .unwrap();
+        apply(&mut session, "strand.add", &json!({"object": "Reeds", "points": [[0, 0, 0], [0, 0, 12]], "width": 0.5, "palette": 5})).unwrap();
+        session
+    };
+    let session = scene();
+    let boxes = session.strand_boxes(0).len() + session.strand_boxes(1).len();
+    let mut cells_only = scene();
+    for object in &mut cells_only.objects {
+        object.strands.clear();
+    }
+    let variants: Vec<(&str, crate::export::MeshExport)> = vec![
+        ("plain", options()),
+        (
+            "merged",
+            crate::export::MeshExport {
+                merge: true,
+                ..options()
+            },
+        ),
+        (
+            "colors",
+            crate::export::MeshExport {
+                vertex_colors: true,
+                ..options()
+            },
+        ),
+        (
+            "ao",
+            crate::export::MeshExport {
+                merge: true,
+                ao_strength: 0.6,
+                ..options()
+            },
+        ),
+        (
+            "atlas",
+            crate::export::MeshExport {
+                color_atlas: true,
+                ..options()
+            },
+        ),
+        (
+            "atlas-ao",
+            crate::export::MeshExport {
+                color_atlas: true,
+                ao_strength: 0.6,
+                ..options()
+            },
+        ),
+        (
+            "split",
+            crate::export::MeshExport {
+                split_objects: true,
+                ..options()
+            },
+        ),
+        (
+            "bake",
+            crate::export::MeshExport {
+                color_atlas: true,
+                bake: Some(crate::export::bake::Bake::default()),
+                ..options()
+            },
+        ),
+    ];
+    for (name, options) in variants {
+        let (path, triangles) = export(&session, &options, name);
+        let _ = std::fs::remove_file(&path);
+        let (bare, bare_triangles) = export(&cells_only, &options, &format!("{name}-bare"));
+        let _ = std::fs::remove_file(&bare);
+        assert_eq!(triangles, bare_triangles + boxes * 12, "{name}");
+        let counted = crate::export::counts(&session, &options).unwrap();
+        assert_eq!(
+            counted.triangles, triangles,
+            "{name}: counts and the glb disagree"
+        );
+    }
+    // A strands-only document exports too.
+    let mut only = Session::new();
+    only.objects[0].cells.clear();
+    apply(
+        &mut only,
+        "strand.add",
+        &json!({"points": [[0, 0, 0], [0, 0, 4]], "palette": 2}),
+    )
+    .unwrap();
+    let (path, triangles) = export(&only, &options(), "only");
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(triangles, 12);
+}
+
+#[test]
+fn a_rigged_object_exports_its_strands_on_its_joint() {
+    let mut session = Session::new();
+    tuft(&mut session);
+    apply(
+        &mut session,
+        "rig.add",
+        &json!({"name": "root", "pivot": [0, 0, 0]}),
+    )
+    .unwrap();
+    apply(
+        &mut session,
+        "rig.bind",
+        &json!({"index": 0, "bone": "root"}),
+    )
+    .unwrap();
+    let (path, triangles) = export(&session, &options(), "rigged");
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(
+        crate::export::counts(&session, &options())
+            .unwrap()
+            .triangles,
+        triangles
+    );
+}
+
+/// What the viewport draws is what the glb holds: the same silhouette.
+#[test]
+fn the_exported_glb_has_the_preview_silhouette() {
+    let mut session = Session::new();
+    tuft(&mut session);
+    let preview = crate::preview::Preview {
+        width: 160,
+        height: 160,
+        yaw: -50.0,
+        pitch: 25.0,
+        background: [0, 0, 0, 0],
+        antialias: false,
+        ..crate::preview::Preview::default()
+    };
+    let drawn = crate::preview::render(&session, &preview).unwrap();
+    let (glb, _) = export(
+        &session,
+        &crate::export::MeshExport {
+            merge: true,
+            ..options()
+        },
+        "silhouette",
+    );
+    let png = std::env::temp_dir().join("froxel-strands-silhouette.png");
+    let read = crate::preview::write_glb(&glb, &preview, &png).unwrap();
+    let _ = std::fs::remove_file(&glb);
+    let _ = std::fs::remove_file(&png);
+    let mask = |rgba: &[u8]| -> Vec<bool> { rgba.chunks(4).map(|px| px[3] != 0).collect() };
+    let (a, b) = (mask(&drawn.rgba), mask(&read.rgba));
+    let differ = a.iter().zip(&b).filter(|(x, y)| x != y).count();
+    let covered = a.iter().filter(|x| **x).count();
+    assert!(covered > 1000, "{covered}");
+    assert!(
+        differ * 200 < covered,
+        "{differ} of {covered} pixels differ"
+    );
+}

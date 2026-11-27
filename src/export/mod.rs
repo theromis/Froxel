@@ -19,6 +19,7 @@ pub mod bake;
 pub mod occlusion;
 mod quads;
 pub mod scene;
+mod strands;
 pub mod view;
 
 use quads::build_with;
@@ -190,8 +191,7 @@ pub fn counts(session: &Session, options: &MeshExport) -> Result<Counts, String>
         (0..session.objects.len())
             .filter(|&index| {
                 let object = &session.objects[index];
-                object.cells.values().any(|slot| *slot != 0)
-                    && (!object.hidden || options.export_hidden)
+                strands::has_geometry(object) && (!object.hidden || options.export_hidden)
             })
             .map(|index| quads::build_one(session, options, index).indices.len() / 3)
             .sum()
@@ -461,7 +461,7 @@ fn rigid_glb(
 
 fn encode_skinned(session: &Session, options: &MeshExport) -> Result<Vec<u8>, String> {
     for object in &session.objects {
-        if object.cells.values().all(|slot| *slot == 0) {
+        if !strands::has_geometry(object) {
             continue;
         }
         if object.hidden && !options.export_hidden {
@@ -707,7 +707,7 @@ fn encode_split(session: &Session, options: &MeshExport) -> Result<Vec<u8>, Stri
     let mut parts = Vec::new();
     for index in 0..session.objects.len() {
         let object = &session.objects[index];
-        if object.cells.values().all(|slot| *slot == 0) {
+        if !strands::has_geometry(object) {
             continue;
         }
         if object.hidden && !options.export_hidden {

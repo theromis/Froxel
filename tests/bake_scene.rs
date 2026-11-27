@@ -799,3 +799,72 @@ fn an_instance_sway_scales_its_sway_and_leaves_bob_and_others() {
     );
     assert!(bad.is_err());
 }
+
+#[test]
+fn a_placed_source_bakes_its_strands_as_the_asset_does() {
+    let mut session = Session::new();
+    session.objects[0].cells.clear();
+    for cell in block_cells() {
+        session.objects[0].cells.insert(cell, 1);
+    }
+    crate::remote::apply(
+        &mut session,
+        "strand.add",
+        &json!({"points": [[1, 1, 4], [2, 1, 8, 30], [5, 2, 10, 60, 0.5]], "width": 1.0, "thickness": 0.4, "palettes": [2, 3]}),
+    )
+    .unwrap();
+    let source = temp("strands.vox");
+    session.write_vox(&source).unwrap();
+    let mut session = Session::new();
+    session.open_vox(&source).unwrap();
+    let boxes = session.strand_boxes(0).len();
+    assert!(boxes > 0);
+    let bake =
+        json!({"sunDirection": [1, -1, 2], "sunEnergy": 1, "ambientEnergy": 0.4, "rays": 16});
+    let asset = temp("strands-asset.glb");
+    let options = MeshExport {
+        vertex_colors: false,
+        merge: false,
+        export_hidden: false,
+        split_objects: false,
+        color_atlas: true,
+        ao_strength: 0.0,
+        ao_radius: 3,
+        ao_target: AoTarget::Auto,
+        bake: Bake::parse(Some(&bake)).unwrap(),
+        game_view: None,
+    };
+    export_with(&session, &asset, &options).unwrap();
+    let scene_path = temp("strands-scene.glb");
+    let scene = SceneBake::parse(
+        &json!({"instances": [{"source": source.to_str().unwrap()}], "bake": bake}),
+        Path::new(""),
+        None,
+    )
+    .unwrap();
+    let reply = bake_scene(&scene, &scene_path).unwrap();
+    let asset_triangles = crate::export::glb_triangles(&std::fs::read(&asset).unwrap()).unwrap();
+    assert_eq!(reply["triangles"], asset_triangles);
+    let (a, b) = (glb_json(&asset), glb_json(&scene_path));
+    assert_eq!(a["accessors"], b["accessors"]);
+    // The same texels, lit the same way up to the occluders' float precision.
+    let (pa, pb) = (png_of(&asset), png_of(&scene_path));
+    let decode = |bytes: &[u8]| {
+        let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes.to_vec()));
+        decoder.set_transformations(png::Transformations::normalize_to_color8());
+        let mut reader = decoder.read_info().unwrap();
+        let mut buf = vec![0; reader.output_buffer_size().unwrap()];
+        let info = reader.next_frame(&mut buf).unwrap();
+        buf.truncate(info.buffer_size());
+        buf
+    };
+    let (da, db) = (decode(&pa), decode(&pb));
+    assert_eq!(da.len(), db.len());
+    let worst = da
+        .iter()
+        .zip(&db)
+        .map(|(x, y)| x.abs_diff(*y))
+        .max()
+        .unwrap();
+    assert!(worst <= 2, "texels differ by up to {worst}");
+}

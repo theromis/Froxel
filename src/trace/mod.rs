@@ -978,7 +978,7 @@ use shade::{
     aces, camera_basis, center_ray, denoise, first_guides, lens_ray, ortho_primary, primary_dir,
     radiance, to_srgb,
 };
-mod boxes;
+pub(crate) mod boxes;
 use world::{build_world, march, posed_voxels};
 pub use world::{gpu_scene, GpuLight, GpuScene};
 

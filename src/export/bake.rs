@@ -597,13 +597,92 @@ pub(super) fn session_light(
     options: &MeshExport,
     bake: &Bake,
     faces: &[(usize, Cell)],
-) -> Vec<[f32; 3]> {
-    let grid = Grid::of_session(session, options.export_hidden);
+    strands: &[Patch],
+) -> (Vec<[f32; 3]>, Vec<[f32; 3]>) {
+    let solid = Solid::of_session(session, options.export_hidden);
     let rays = Rays::new(bake, bake.sun_direction.map(f64::from));
-    parallel_map(faces.len(), |index| {
+    let cells = parallel_map(faces.len(), |index| {
         let (face, cell) = faces[index];
-        rays.light(bake, &grid, &cell_patch(face, cell), LIFT)
-    })
+        rays.light(bake, &solid, &cell_patch(face, cell), LIFT)
+    });
+    let strands = parallel_map(strands.len(), |index| {
+        rays.light(bake, &solid, &strands[index], LIFT)
+    });
+    (cells, strands)
+}
+
+/// The opaque cells and the strand boxes of the exported objects, in the
+/// bind frame: what a document's bake rays can hit. A scene bake keeps one
+/// per source and sends rays into it through the placement.
+pub(super) struct Solid {
+    grid: std::sync::Arc<Grid>,
+    strands: crate::trace::boxes::Boxes,
+}
+
+impl Solid {
+    pub(super) fn of_session(session: &Session, export_hidden: bool) -> Solid {
+        let mut boxes = Vec::new();
+        for (index, object) in session.objects.iter().enumerate() {
+            if object.hidden && !export_hidden {
+                continue;
+            }
+            boxes.extend(
+                session
+                    .strand_bind_boxes(index)
+                    .into_iter()
+                    .filter(|b| session.palette[b.slot as usize][3] == 255),
+            );
+        }
+        Solid {
+            grid: std::sync::Arc::new(Grid::of_session(session, export_hidden)),
+            strands: crate::trace::boxes::Boxes::new(&boxes),
+        }
+    }
+
+    /// Cells alone.
+    #[cfg(test)]
+    pub(super) fn of_grid(grid: std::sync::Arc<Grid>) -> Solid {
+        Solid {
+            grid,
+            strands: crate::trace::boxes::Boxes::default(),
+        }
+    }
+
+    pub(super) fn is_empty(&self) -> bool {
+        self.grid.is_empty() && self.strands.bounds().is_none()
+    }
+
+    /// The box of the cells and the strands.
+    pub(super) fn bounds(&self) -> ([f64; 3], [f64; 3]) {
+        let (mut low, mut high) = self.grid.bounds();
+        if let Some((lo, hi)) = self.strands.bounds() {
+            if self.grid.is_empty() {
+                low = [f64::INFINITY; 3];
+                high = [f64::NEG_INFINITY; 3];
+            }
+            for axis in 0..3 {
+                low[axis] = low[axis].min(f64::from(lo[axis]));
+                high[axis] = high[axis].max(f64::from(hi[axis]));
+            }
+        }
+        (low, high)
+    }
+
+    pub(super) fn bytes(&self) -> usize {
+        self.grid.bytes()
+    }
+}
+
+impl Occluders for Solid {
+    fn hit(&self, origin: [f64; 3], dir: [f64; 3], reach: f64) -> Option<f64> {
+        let grid = self.grid.hit(origin, dir, reach);
+        let limit = grid.unwrap_or(reach) as f32;
+        let to = |v: [f64; 3]| glam::Vec3::new(v[0] as f32, v[1] as f32, v[2] as f32);
+        match self.strands.hit_outside(to(origin), to(dir), limit) {
+            Some((t, _, _)) => Some(f64::from(t)),
+            None => grid,
+        }
+    }
 }
 
 #[cfg(test)]

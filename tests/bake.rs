@@ -34,7 +34,14 @@ fn parsed(value: serde_json::Value) -> Bake {
 
 /// The light on one face, per channel. Faces are +X -X +Y -Y +Z -Z.
 fn light(session: &Session, bake: &Bake, face: usize, cell: Cell) -> [f32; 3] {
-    session_light(session, &options(Some(bake.clone())), bake, &[(face, cell)])[0]
+    session_light(
+        session,
+        &options(Some(bake.clone())),
+        bake,
+        &[(face, cell)],
+        &[],
+    )
+    .0[0]
 }
 
 const UP: usize = 4;
